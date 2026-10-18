@@ -594,6 +594,12 @@ impl HostApp {
         for document in &update.scenes_changed {
             self.redraw(*document);
         }
+        // After the refresh, so the table already has the row to edit.
+        for effect in &update.effects {
+            if let HostEffect::EditSketchDimension { document, constraint, .. } = effect {
+                self.begin_dimension_edit(*document, *constraint);
+            }
+        }
         if self.quit.try_borrow().map(|q| q.is_some()).unwrap_or(false) {
             self.advance_quit();
         }
@@ -638,6 +644,16 @@ impl HostApp {
                 self.show_next_recovery();
             }
             _ => {}
+        }
+    }
+
+    /// Starts editing a dimension's value cell in the sketch panel.
+    fn begin_dimension_edit(&self, document: DocumentId, constraint: burnburn_document::sketch::ConstraintId) {
+        let row = crate::panels::sketch_row_of(&self.view(), document, constraint);
+        if let (Some(row), Ok(windows)) = (row, self.windows.try_borrow())
+            && let Some(w) = windows.get(&document)
+        {
+            w.begin_dimension_edit(row);
         }
     }
 
@@ -842,6 +858,11 @@ impl HostApp {
         self.windows.try_borrow().map(|w| w.keys().copied().collect()).unwrap_or_default()
     }
 
+    /// The scene the window draws (tests and screenshots).
+    pub fn scene(&self, document: DocumentId) -> Option<Arc<burnburn_editor::SceneSnapshot>> {
+        self.controller.try_borrow().ok()?.scene(document)
+    }
+
     pub fn with_window<T>(&self, document: DocumentId, f: impl FnOnce(&WindowParts<'_>) -> T) -> Option<T> {
         let windows = self.windows.try_borrow().ok()?;
         let w = windows.get(&document)?;
@@ -885,6 +906,17 @@ impl HostApp {
             camera_labels: [&w.camera.labels[0], &w.camera.labels[1], &w.camera.labels[2]],
             camera_devices: &w.camera.devices,
             camera_buttons: [&w.camera.buttons[0], &w.camera.buttons[1], &w.camera.buttons[2]],
+            sketch_panel: &w.sketch.panel,
+            sketch_panel_shown: w.sketch.shown,
+            sketch_table: &w.sketch.table,
+            sketch_freedom: &w.sketch.freedom,
+            sketch_problem: &w.sketch.problem,
+            sketch_role: &w.sketch.role,
+            sketch_params_table: &w.sketch.params_table,
+            sketch_param_inputs: [&w.sketch.param_inputs[0], &w.sketch.param_inputs[1]],
+            sketch_param_set: &w.sketch.param_set,
+            sketch_buttons: &w.sketch.buttons,
+            sketch_toolbar: &w.sketch.toolbar,
             canvas_view: w.canvas_view.as_view(),
             save_panel: w.save_panel.as_deref(),
             export_panel: w.export_panel.as_deref(),
@@ -990,6 +1022,19 @@ pub struct WindowParts<'a> {
     pub camera_labels: [&'a objc2_app_kit::NSTextField; 3],
     pub camera_devices: &'a objc2_app_kit::NSPopUpButton,
     pub camera_buttons: [&'a objc2_app_kit::NSButton; 3],
+    /// Sketch panel (shown while the window is in sketch mode): panel, constraint table, freedom
+    /// label, conflict button, Meten/Sturen, parameter table and fields, command buttons.
+    pub sketch_panel: &'a objc2_app_kit::NSPanel,
+    pub sketch_panel_shown: bool,
+    pub sketch_table: &'a objc2_app_kit::NSTableView,
+    pub sketch_freedom: &'a objc2_app_kit::NSTextField,
+    pub sketch_problem: &'a objc2_app_kit::NSButton,
+    pub sketch_role: &'a objc2_app_kit::NSButton,
+    pub sketch_params_table: &'a objc2_app_kit::NSTableView,
+    pub sketch_param_inputs: [&'a objc2_app_kit::NSTextField; 2],
+    pub sketch_param_set: &'a objc2_app_kit::NSButton,
+    pub sketch_buttons: &'a [(burnburn_presentation::CommandKey, Retained<objc2_app_kit::NSButton>)],
+    pub sketch_toolbar: &'a objc2_app_kit::NSSegmentedControl,
     pub canvas_view: &'a objc2_app_kit::NSView,
     pub save_panel: Option<&'a NSSavePanel>,
     pub export_panel: Option<&'a NSSavePanel>,
@@ -1095,6 +1140,27 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
             item(c(CommandKey::ToolNode), "", false),
             sep(),
             item(c(CommandKey::Measure), "", false),
+        ],
+    ));
+    main.addItem(&submenu(
+        t(HostText::MenuSketch),
+        vec![
+            item(c(CommandKey::SketchNew), "", false),
+            item(c(CommandKey::SketchFromSelection), "", false),
+            item(c(CommandKey::SketchEdit), "", false),
+            item(c(CommandKey::SketchFinish), "", false),
+            sep(),
+            item(c(CommandKey::SketchCoincident), "", false),
+            item(c(CommandKey::SketchHorizontal), "", false),
+            item(c(CommandKey::SketchVertical), "", false),
+            item(c(CommandKey::SketchParallel), "", false),
+            item(c(CommandKey::SketchPerpendicular), "", false),
+            item(c(CommandKey::SketchEqual), "", false),
+            item(c(CommandKey::SketchTangent), "", false),
+            item(c(CommandKey::SketchFix), "", false),
+            sep(),
+            item(c(CommandKey::SketchDimension), "", false),
+            item(c(CommandKey::SketchRemoveConstraint), "", false),
         ],
     ));
     main.addItem(&submenu(

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use burnburn_cam::Finding;
 use burnburn_document::UndoLabel;
-use burnburn_document::sketch::{ConstraintId, SketchId};
+use burnburn_document::sketch::{ConstraintId, DimensionRole, EntityId, SketchId};
 use burnburn_editor::{
     Camera, GeometryIssue, IssueKind, SnapCandidate, SnapKind, SnapSettings, ToolKind, ToolPreview, Viewport,
 };
@@ -90,6 +90,8 @@ pub struct DocumentViewModel {
     pub operation_error: Option<MessageKey>,
     /// The open Cut Settings sheet, if any.
     pub cut_settings: Option<CutSettingsViewModel>,
+    /// Sketch mode (B8): the open sketch's constraint list, freedom and diagnosis.
+    pub sketch_mode: Option<SketchModeViewModel>,
 }
 
 /// Number of colours in the layer palette (slots `0..LAYER_SLOTS`). Hosts draw slot `n` in the
@@ -343,6 +345,85 @@ pub struct SketchViewModel {
     pub last_constraint: Option<ConstraintId>,
 }
 
+/// What a constraint is, for the list's first column (hosts translate it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SketchConstraintKind {
+    Coincident,
+    PointOn,
+    Horizontal,
+    Vertical,
+    Parallel,
+    Perpendicular,
+    Tangent,
+    Equal,
+    Midpoint,
+    Symmetric,
+    Concentric,
+    Fixed,
+    Length,
+    Distance,
+    DistanceX,
+    DistanceY,
+    Radius,
+    Diameter,
+    Angle,
+}
+
+/// What the solver says about one constraint (symbol and words, not colour only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ConstraintHealth {
+    Satisfied,
+    /// Holds, but another constraint already says the same.
+    Redundant,
+    Conflicting,
+    /// Could not be met (the sketch did not converge).
+    Unmet,
+    /// A dimension whose text or parameters are invalid.
+    Invalid,
+    /// A driven dimension: measured, never constraining.
+    Measured,
+    /// Not evaluated.
+    Unknown,
+}
+
+/// One row of the constraint list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConstraintRow {
+    pub id: ConstraintId,
+    pub kind: SketchConstraintKind,
+    /// The entities it relates, in argument order.
+    pub entities: Vec<EntityId>,
+    /// A dimension's text as typed (`breedte + 20 mm`); editable.
+    pub text: Option<String>,
+    /// A dimension's current value in mm or degrees, from the solved geometry.
+    pub value: Option<String>,
+    pub role: Option<DimensionRole>,
+    pub health: ConstraintHealth,
+    pub selected: bool,
+}
+
+/// Sketch mode of one window: the open sketch, what is selected and what the solver says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SketchModeViewModel {
+    pub sketch: SketchId,
+    pub name: String,
+    pub status: SketchStatus,
+    /// Why the sketch failed, in words (`SketchConflict`, `SketchNotConverged`, …).
+    pub problem: Option<MessageKey>,
+    /// The constraints the diagnosis names: `SelectSketchProblem` selects them.
+    pub problem_constraints: Vec<ConstraintId>,
+    /// Remaining degrees of freedom of the last valid solution (0 = fully constrained).
+    pub dof: Option<u32>,
+    pub rows: Vec<ConstraintRow>,
+    pub parameters: Vec<(String, String)>,
+    pub selected_entities: Vec<EntityId>,
+    pub selected_constraints: Vec<ConstraintId>,
+    /// Why the last sketch input did nothing (selection does not fit, shape unsupported, …).
+    pub refused: Option<MessageKey>,
+}
+
 /// Evaluation state shown with symbol and text (not colour only, X03).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SketchStatus {
@@ -500,4 +581,25 @@ pub enum MessageKey {
     SelectObjectsFirst,
     /// The machine profile does not support (or has not validated) this feature (C05, M02).
     MissingCapability(burnburn_job::Feature),
+    /// The kind of a constraint in the constraint list.
+    SketchConstraint(SketchConstraintKind),
+    /// The solver found contradicting constraints; the last valid geometry stays.
+    SketchConflict,
+    /// The solver did not reach a solution; the last valid geometry stays.
+    SketchNotConverged,
+    /// A dimension's text is not a valid length or angle.
+    SketchInvalidDimensions,
+    /// A parameter is invalid (unit, name or cycle).
+    SketchInvalidParameters,
+    SketchInvalidDefinition,
+    /// The selected entities do not fit this relation or dimension.
+    SketchSelectionDoesNotFit,
+    /// Nothing is selected to relate.
+    SketchNothingSelected,
+    /// Ellipses, free curves and the like cannot be drawn into a sketch yet.
+    SketchShapeUnsupported,
+    /// The selected objects contain curves other than full circles.
+    SketchConversionImpossible,
+    /// The sketch edit was refused by the document.
+    SketchEditRefused,
 }

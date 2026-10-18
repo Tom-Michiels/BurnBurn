@@ -13,6 +13,7 @@ use burnburn_document::{EditLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
     CommandKey, Feature, FieldError, FieldKey, MachineAction, MachineStatusKey, MessageKey, OperationField, Outcome,
+    SketchConstraintKind,
 };
 
 /// UI language. Physical values never depend on it (fields accept both decimal signs, DR-05).
@@ -136,6 +137,33 @@ pub enum HostText {
     RecoveryRestore,
     RecoveryLater,
     RecoveryDiscard,
+    MenuSketch,
+    SketchPanelTitle,
+    SketchColumnKind,
+    SketchColumnEntities,
+    SketchColumnValue,
+    SketchColumnStatus,
+    SketchFreedom,
+    SketchFullyConstrained,
+    SketchRemove,
+    SketchToggleRole,
+    SketchParametersTitle,
+    SketchParameterName,
+    SketchParameterValue,
+    SketchParameterSet,
+    SketchProblemHint,
+    SketchHint,
+    SketchPending,
+    SketchHealthSatisfied,
+    SketchHealthRedundant,
+    SketchHealthConflicting,
+    SketchHealthUnmet,
+    SketchHealthInvalid,
+    SketchHealthMeasured,
+    SketchHealthUnknown,
+    SketchRoleDriving,
+    SketchRoleDriven,
+    SketchNoConstraints,
 }
 
 impl HostText {
@@ -226,6 +254,33 @@ impl HostText {
         HostText::RecoveryRestore,
         HostText::RecoveryLater,
         HostText::RecoveryDiscard,
+        HostText::MenuSketch,
+        HostText::SketchPanelTitle,
+        HostText::SketchColumnKind,
+        HostText::SketchColumnEntities,
+        HostText::SketchColumnValue,
+        HostText::SketchColumnStatus,
+        HostText::SketchFreedom,
+        HostText::SketchFullyConstrained,
+        HostText::SketchRemove,
+        HostText::SketchToggleRole,
+        HostText::SketchParametersTitle,
+        HostText::SketchParameterName,
+        HostText::SketchParameterValue,
+        HostText::SketchParameterSet,
+        HostText::SketchProblemHint,
+        HostText::SketchHint,
+        HostText::SketchPending,
+        HostText::SketchHealthSatisfied,
+        HostText::SketchHealthRedundant,
+        HostText::SketchHealthConflicting,
+        HostText::SketchHealthUnmet,
+        HostText::SketchHealthInvalid,
+        HostText::SketchHealthMeasured,
+        HostText::SketchHealthUnknown,
+        HostText::SketchRoleDriving,
+        HostText::SketchRoleDriven,
+        HostText::SketchNoConstraints,
     ];
 }
 
@@ -342,6 +397,44 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::RecoveryRestore => ("Herstel", "Restore"),
         T::RecoveryLater => ("Later", "Later"),
         T::RecoveryDiscard => ("Verwerp", "Discard"),
+        T::MenuSketch => ("Schets", "Sketch"),
+        T::SketchPanelTitle => ("Schets", "Sketch"),
+        T::SketchColumnKind => ("Relatie", "Constraint"),
+        T::SketchColumnEntities => ("Elementen", "Elements"),
+        T::SketchColumnValue => ("Waarde", "Value"),
+        T::SketchColumnStatus => ("Status", "Status"),
+        T::SketchFreedom => ("Vrijheidsgraden", "Degrees of freedom"),
+        T::SketchFullyConstrained => ("Volledig bepaald", "Fully constrained"),
+        T::SketchRemove => ("Verwijder relatie", "Remove Constraint"),
+        T::SketchToggleRole => ("Meten/Sturen", "Measure/Drive"),
+        T::SketchParametersTitle => ("Parameters", "Parameters"),
+        T::SketchParameterName => ("Naam", "Name"),
+        T::SketchParameterValue => (
+            "Waarde of formule (bv. 3,1 mm of dikte + speling)",
+            "Value or formula (e.g. 3.1 mm or thickness + clearance)",
+        ),
+        T::SketchParameterSet => ("Zet parameter", "Set Parameter"),
+        T::SketchProblemHint => {
+            ("Klik om de betrokken relaties te selecteren.", "Click to select the constraints involved.")
+        }
+        T::SketchHint => (
+            "Cmd+Shift bij het loslaten onderdrukt de voorgestelde relaties.",
+            "Cmd+Shift on release suppresses the suggested relations.",
+        ),
+        T::SketchPending => ("Nog niet doorgerekend", "Not solved yet"),
+        T::SketchHealthSatisfied => ("✓ voldaan", "✓ satisfied"),
+        T::SketchHealthRedundant => ("= overbodig", "= redundant"),
+        T::SketchHealthConflicting => ("✗ conflict", "✗ conflict"),
+        T::SketchHealthUnmet => ("✗ niet bereikt", "✗ not reached"),
+        T::SketchHealthInvalid => ("✗ ongeldig", "✗ invalid"),
+        T::SketchHealthMeasured => ("( ) gemeten", "( ) measured"),
+        T::SketchHealthUnknown => ("—", "—"),
+        T::SketchRoleDriving => ("sturend", "driving"),
+        T::SketchRoleDriven => ("meetend", "driven"),
+        T::SketchNoConstraints => (
+            "Nog geen relaties of maten: teken, selecteer en kies een relatie.",
+            "No constraints yet: draw, select and choose a relation.",
+        ),
     }
 }
 
@@ -428,6 +521,20 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ToolTrim => ("Inkorten", "Trim"),
         C::CommitImport => ("Importeer", "Import"),
         C::CancelImport => ("Annuleer import", "Cancel Import"),
+        C::SketchNew => ("Nieuwe schets", "New Sketch"),
+        C::SketchFromSelection => ("Maak schets van selectie", "Make Sketch from Selection"),
+        C::SketchEdit => ("Bewerk schets", "Edit Sketch"),
+        C::SketchFinish => ("Sluit schets", "Finish Sketch"),
+        C::SketchCoincident => ("Samenvallend", "Coincident"),
+        C::SketchHorizontal => ("Horizontaal", "Horizontal"),
+        C::SketchVertical => ("Verticaal", "Vertical"),
+        C::SketchParallel => ("Parallel", "Parallel"),
+        C::SketchPerpendicular => ("Loodrecht", "Perpendicular"),
+        C::SketchEqual => ("Gelijk", "Equal"),
+        C::SketchTangent => ("Raaklijn", "Tangent"),
+        C::SketchFix => ("Vast", "Fix"),
+        C::SketchDimension => ("Maat", "Dimension"),
+        C::SketchRemoveConstraint => ("Verwijder relatie", "Remove Constraint"),
         _ => return None,
     })
 }
@@ -478,6 +585,8 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             SketchLabel::RemoveParameter => ("Parameter verwijderen", "Remove Parameter"),
             SketchLabel::SetDimensionValue => ("Maat wijzigen", "Change Dimension"),
             SketchLabel::SetDimensionRole => ("Maatrol wijzigen", "Change Dimension Role"),
+            SketchLabel::CreateFrom => ("Schets maken van selectie", "Make Sketch from Selection"),
+            SketchLabel::Batch => ("Schets bewerken", "Edit Sketch"),
             _ => return None,
         },
         _ => return None,
@@ -666,6 +775,57 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         M::CameraNotAuthorized => {
             ("Geen toegang tot de camera: vraag eerst toegang.", "No access to the camera: request access first.")
         }
+        M::SketchConstraint(k) => match k {
+            SketchConstraintKind::Coincident => ("Samenvallend", "Coincident"),
+            SketchConstraintKind::PointOn => ("Punt op curve", "Point on Curve"),
+            SketchConstraintKind::Horizontal => ("Horizontaal", "Horizontal"),
+            SketchConstraintKind::Vertical => ("Verticaal", "Vertical"),
+            SketchConstraintKind::Parallel => ("Parallel", "Parallel"),
+            SketchConstraintKind::Perpendicular => ("Loodrecht", "Perpendicular"),
+            SketchConstraintKind::Tangent => ("Raaklijn", "Tangent"),
+            SketchConstraintKind::Equal => ("Gelijk", "Equal"),
+            SketchConstraintKind::Midpoint => ("Midden", "Midpoint"),
+            SketchConstraintKind::Symmetric => ("Symmetrisch", "Symmetric"),
+            SketchConstraintKind::Concentric => ("Concentrisch", "Concentric"),
+            SketchConstraintKind::Fixed => ("Vast", "Fixed"),
+            SketchConstraintKind::Length => ("Lengte", "Length"),
+            SketchConstraintKind::Distance => ("Afstand", "Distance"),
+            SketchConstraintKind::DistanceX => ("Afstand X", "Distance X"),
+            SketchConstraintKind::DistanceY => ("Afstand Y", "Distance Y"),
+            SketchConstraintKind::Radius => ("Straal", "Radius"),
+            SketchConstraintKind::Diameter => ("Diameter", "Diameter"),
+            SketchConstraintKind::Angle => ("Hoek", "Angle"),
+            _ => return None,
+        },
+        M::SketchConflict => (
+            "De schets heeft tegenstrijdige relaties; de laatste geldige vorm blijft staan.",
+            "The sketch has contradicting constraints; the last valid shape stays.",
+        ),
+        M::SketchNotConverged => (
+            "De schets kon niet opgelost worden; de laatste geldige vorm blijft staan.",
+            "The sketch could not be solved; the last valid shape stays.",
+        ),
+        M::SketchInvalidDimensions => {
+            ("Een maat is ongeldig (eenheid of tekst).", "A dimension is invalid (unit or text).")
+        }
+        M::SketchInvalidParameters => {
+            ("Een parameter is ongeldig (eenheid, naam of cyclus).", "A parameter is invalid (unit, name or cycle).")
+        }
+        M::SketchInvalidDefinition => ("De schetsdefinitie is ongeldig.", "The sketch definition is invalid."),
+        M::SketchSelectionDoesNotFit => (
+            "Deze selectie past niet bij deze relatie of maat.",
+            "This selection does not fit this constraint or dimension.",
+        ),
+        M::SketchNothingSelected => ("Selecteer eerst elementen van de schets.", "Select sketch elements first."),
+        M::SketchShapeUnsupported => (
+            "Dit kan nog niet in een schets getekend worden (alleen lijn, polylijn, rechthoek en cirkel).",
+            "This cannot be drawn into a sketch yet (only line, polyline, rectangle and circle).",
+        ),
+        M::SketchConversionImpossible => (
+            "Alleen rechte lijnen en volle cirkels kunnen een schets worden.",
+            "Only straight lines and full circles can become a sketch.",
+        ),
+        M::SketchEditRefused => ("De schetswijziging is geweigerd.", "The sketch change was refused."),
         M::VisualPlacementOnly => (
             "Camerabeeld is alleen een visuele plaatsingshulp, geen productiegeometrie.",
             "The camera image is only a visual placement aid, not production geometry.",
@@ -753,6 +913,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             SketchLabel::RemoveParameter,
             SketchLabel::SetDimensionValue,
             SketchLabel::SetDimensionRole,
+            SketchLabel::CreateFrom,
+            SketchLabel::Batch,
         ]
         .map(UndoLabel::Sketch),
     );
@@ -777,6 +939,42 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::InvalidNumber),
     );
     keys.push(MessageKey::SelectObjectsFirst);
+    keys.extend(
+        [
+            SketchConstraintKind::Coincident,
+            SketchConstraintKind::PointOn,
+            SketchConstraintKind::Horizontal,
+            SketchConstraintKind::Vertical,
+            SketchConstraintKind::Parallel,
+            SketchConstraintKind::Perpendicular,
+            SketchConstraintKind::Tangent,
+            SketchConstraintKind::Equal,
+            SketchConstraintKind::Midpoint,
+            SketchConstraintKind::Symmetric,
+            SketchConstraintKind::Concentric,
+            SketchConstraintKind::Fixed,
+            SketchConstraintKind::Length,
+            SketchConstraintKind::Distance,
+            SketchConstraintKind::DistanceX,
+            SketchConstraintKind::DistanceY,
+            SketchConstraintKind::Radius,
+            SketchConstraintKind::Diameter,
+            SketchConstraintKind::Angle,
+        ]
+        .map(MessageKey::SketchConstraint),
+    );
+    keys.extend([
+        MessageKey::SketchConflict,
+        MessageKey::SketchNotConverged,
+        MessageKey::SketchInvalidDimensions,
+        MessageKey::SketchInvalidParameters,
+        MessageKey::SketchInvalidDefinition,
+        MessageKey::SketchSelectionDoesNotFit,
+        MessageKey::SketchNothingSelected,
+        MessageKey::SketchShapeUnsupported,
+        MessageKey::SketchConversionImpossible,
+        MessageKey::SketchEditRefused,
+    ]);
     keys.extend(Feature::ALL.map(MessageKey::MissingCapability));
     keys.extend(Outcome::ALL.map(|o| MessageKey::MachineAction(MachineAction::RecordOutcome(o))));
     keys.extend(

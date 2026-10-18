@@ -45,7 +45,7 @@ use super::app::HostApp;
 use super::canvas::Canvas;
 use crate::adapter::{CommitCause, MouseButton, MousePhase, NativeEvent, menu_enabled, menu_item, menu_title};
 use crate::l10n::{HostText, host_text};
-use crate::panels::{LayerColumn, OperationLine};
+use crate::panels::{LayerColumn, OperationLine, SketchColumn, SketchLine};
 use crate::text_input::Composer;
 
 /// Run a callback body; a panic stops here (logged) instead of unwinding through AppKit's frames.
@@ -64,6 +64,8 @@ pub(crate) fn ffi_guard<T>(what: &str, default: T, body: impl FnOnce() -> T) -> 
 
 /// Identifier of the toolbar item holding the tool control.
 pub(crate) const TOOLS_ITEM: &str = "app.burnburn.toolbar.tools";
+/// Identifier of the toolbar item with the Schets (sketch) commands.
+pub(crate) const SKETCH_ITEM: &str = "app.burnburn.toolbar.sketch";
 
 pub(crate) struct AppIvars {
     app: RefCell<Weak<HostApp>>,
@@ -233,6 +235,13 @@ pub(crate) struct ControllerParts {
     pub(crate) cut_fields: [Retained<NSTextField>; 5],
     pub(crate) cut_toggles: [Retained<NSButton>; 2],
     pub(crate) camera_devices: Retained<NSPopUpButton>,
+    /// Sketch panel: constraint table, parameter table and the new parameter's name and expression.
+    pub(crate) sketch_table: Retained<NSTableView>,
+    pub(crate) sketch_params_table: Retained<NSTableView>,
+    pub(crate) param_inputs: [Retained<NSTextField>; 2],
+    /// Toolbar segments of the Schets commands.
+    pub(crate) sketch_tools: Retained<NSSegmentedControl>,
+    pub(crate) sketch_tools_label: String,
 }
 
 pub(crate) struct ControllerIvars {
@@ -248,8 +257,16 @@ pub(crate) struct ControllerIvars {
     cut_fields: [Retained<NSTextField>; 5],
     cut_toggles: [Retained<NSButton>; 2],
     camera_devices: Retained<NSPopUpButton>,
+    sketch_table: Retained<NSTableView>,
+    sketch_params_table: Retained<NSTableView>,
+    param_inputs: [Retained<NSTextField>; 2],
+    sketch_tools: Retained<NSSegmentedControl>,
+    sketch_tools_label: String,
     /// Layer-table rows, copied from the view model.
     operation_rows: RefCell<Vec<OperationLine>>,
+    /// Constraint-table and parameter-table rows, copied from the view model.
+    sketch_rows: RefCell<Vec<SketchLine>>,
+    sketch_params: RefCell<Vec<(String, String)>>,
     /// Object names shown by the table (copied from the view model on refresh).
     labels: RefCell<Vec<String>>,
     /// True while the host itself changes the table selection (no intent for that).
@@ -333,6 +350,43 @@ define_class!(
             });
         }
 
+        /// The sketch panel's conflict message: select the constraints it names.
+        #[unsafe(method(sketchProblemClicked:))]
+        fn sketch_problem_clicked(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("sketchProblemClicked:", (), || {
+                self.send(NativeEvent::SketchProblemClicked { document: self.ivars().document });
+            });
+        }
+
+        /// The sketch panel's Meten/Sturen button.
+        #[unsafe(method(sketchRoleClicked:))]
+        fn sketch_role_clicked(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("sketchRoleClicked:", (), || {
+                self.send(NativeEvent::SketchRoleRequested { document: self.ivars().document });
+            });
+        }
+
+        /// The sketch panel's Zet parameter button: name and expression go unparsed.
+        #[unsafe(method(sketchParameterSet:))]
+        fn sketch_parameter_set(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("sketchParameterSet:", (), || {
+                let ivars = self.ivars();
+                let [name, text] = ivars.param_inputs.each_ref().map(|f| f.stringValue().to_string());
+                self.send(NativeEvent::SketchParameterCommitted { document: ivars.document, name, text });
+            });
+        }
+
+        /// The toolbar's Schets control (momentary segments).
+        #[unsafe(method(sketchToolbar:))]
+        fn sketch_toolbar(&self, sender: Option<&AnyObject>) {
+            ffi_guard("sketchToolbar:", (), || {
+                let Some(control) = sender.and_then(|s| s.downcast_ref::<NSSegmentedControl>()) else { return };
+                if let Some(command) = crate::panels::sketch_toolbar_command(control.selectedSegment()) {
+                    self.send(NativeEvent::PanelCommand { document: self.ivars().document, command });
+                }
+            });
+        }
+
         /// A palette colour: the tag is its slot; Shift (from the click event) adds a treatment.
         #[unsafe(method(paletteClicked:))]
         fn palette_clicked(&self, sender: Option<&AnyObject>) {
@@ -399,7 +453,7 @@ define_class!(
         fn camera_button(&self, sender: Option<&AnyObject>) {
             ffi_guard("cameraButton:", (), || {
                 let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
-                let Some(control) = super::window::camera_control(button.tag()) else { return };
+                let Some(control) = super::panels::camera::camera_control(button.tag()) else { return };
                 if let Some(app) = self.ivars().app.upgrade() {
                     app.camera_button_pressed(control, self.ivars().camera_devices.indexOfSelectedItem());
                 }
@@ -478,6 +532,12 @@ define_class!(
                 if self.is_operations(table_view) {
                     return self.ivars().operation_rows.try_borrow().map_or(0, |r| r.len() as NSInteger);
                 }
+                if self.is_sketch(table_view) {
+                    return self.ivars().sketch_rows.try_borrow().map_or(0, |r| r.len() as NSInteger);
+                }
+                if self.is_sketch_params(table_view) {
+                    return self.ivars().sketch_params.try_borrow().map_or(0, |r| r.len() as NSInteger);
+                }
                 self.ivars().labels.try_borrow().map_or(0, |l| l.len() as NSInteger)
             })
         }
@@ -500,6 +560,14 @@ define_class!(
                         return Some(Retained::into_super(Retained::into_super(Retained::into_super(number))));
                     }
                     line.text(column)
+                } else if self.is_sketch(table_view) {
+                    let column = SketchColumn::from_id(&table_column?.identifier().to_string())?;
+                    self.ivars().sketch_rows.try_borrow().ok()?.get(row)?.text(column)
+                } else if self.is_sketch_params(table_view) {
+                    let id = table_column?.identifier().to_string();
+                    let rows = self.ivars().sketch_params.try_borrow().ok()?;
+                    let (name, value) = rows.get(row)?;
+                    if id == SKETCH_PARAM_NAME { name.clone() } else { value.clone() }
                 } else {
                     self.ivars().labels.try_borrow().ok()?.get(row)?.clone()
                 };
@@ -517,6 +585,25 @@ define_class!(
             row: NSInteger,
         ) {
             ffi_guard("tableView:setObjectValue:forTableColumn:row:", (), || {
+                if self.is_sketch(table_view) || self.is_sketch_params(table_view) {
+                    let (Some(column), Ok(row)) = (table_column, usize::try_from(row)) else { return };
+                    let Some(text) = object.and_then(|o| o.downcast_ref::<NSString>()).map(|t| t.to_string()) else {
+                        return;
+                    };
+                    let document = self.ivars().document;
+                    let id = column.identifier().to_string();
+                    if self.is_sketch(table_view) {
+                        if SketchColumn::from_id(&id) == Some(SketchColumn::Value) {
+                            self.send(NativeEvent::SketchValueCommitted { document, row, text });
+                        }
+                    } else if id == SKETCH_PARAM_VALUE {
+                        let name = self.ivars().sketch_params.try_borrow().ok().and_then(|p| p.get(row).map(|r| r.0.clone()));
+                        if let Some(name) = name {
+                            self.send(NativeEvent::SketchParameterCommitted { document, name, text });
+                        }
+                    }
+                    return;
+                }
                 if !self.is_operations(table_view) {
                     return;
                 }
@@ -561,8 +648,8 @@ define_class!(
                     .and_then(|r| self.ivars().operation_rows.try_borrow().ok()?.get(r).map(|l| l.slot));
                 let Some(slot) = slot else { return };
                 cell.setDrawsBackground(true);
-                cell.setBackgroundColor(Some(&super::window::layer_colour(slot)));
-                cell.setTextColor(Some(&super::window::layer_text_colour(slot)));
+                cell.setBackgroundColor(Some(&super::panels::operations::layer_colour(slot)));
+                cell.setTextColor(Some(&super::panels::operations::layer_text_colour(slot)));
             });
         }
 
@@ -573,10 +660,15 @@ define_class!(
                     return;
                 }
                 let Some(table) = notification.object().and_then(|o| o.downcast::<NSTableView>().ok()) else { return };
-                if self.is_operations(&table) {
+                if self.is_operations(&table) || self.is_sketch_params(&table) {
                     return;
                 }
-                let rows = super::window::selected_rows(&table);
+                if self.is_sketch(&table) {
+                    let rows = super::panels::widgets::selected_rows(&table);
+                    self.send(NativeEvent::SketchRowsSelected { document: self.ivars().document, rows });
+                    return;
+                }
+                let rows = super::panels::widgets::selected_rows(&table);
                 self.send(NativeEvent::TableSelectionChanged { document: self.ivars().document, rows });
             });
         }
@@ -591,27 +683,29 @@ define_class!(
             _flag: bool,
         ) -> Option<Retained<NSToolbarItem>> {
             ffi_guard("toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:", None, || {
-                if identifier.to_string() != TOOLS_ITEM {
-                    return None;
-                }
+                let (control, label) = match identifier.to_string().as_str() {
+                    TOOLS_ITEM => (&self.ivars().tools, &self.ivars().tools_label),
+                    SKETCH_ITEM => (&self.ivars().sketch_tools, &self.ivars().sketch_tools_label),
+                    _ => return None,
+                };
                 let mtm = MainThreadMarker::new()?;
                 let item = NSToolbarItem::initWithItemIdentifier(NSToolbarItem::alloc(mtm), identifier);
-                let label = NSString::from_str(&self.ivars().tools_label);
+                let label = NSString::from_str(label);
                 item.setLabel(&label);
                 item.setPaletteLabel(&label);
-                item.setView(Some(&self.ivars().tools));
+                item.setView(Some(control));
                 Some(item)
             })
         }
 
         #[unsafe(method_id(toolbarDefaultItemIdentifiers:))]
         fn toolbar_default(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM)])
+            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM), NSString::from_str(SKETCH_ITEM)])
         }
 
         #[unsafe(method_id(toolbarAllowedItemIdentifiers:))]
         fn toolbar_allowed(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM)])
+            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM), NSString::from_str(SKETCH_ITEM)])
         }
     }
 );
@@ -631,6 +725,11 @@ impl WindowController {
             cut_fields,
             cut_toggles,
             camera_devices,
+            sketch_table,
+            sketch_params_table,
+            param_inputs,
+            sketch_tools,
+            sketch_tools_label,
         } = parts;
         let this = Self::alloc(mtm).set_ivars(ControllerIvars {
             app,
@@ -645,7 +744,14 @@ impl WindowController {
             cut_fields,
             cut_toggles,
             camera_devices,
+            sketch_table,
+            sketch_params_table,
+            param_inputs,
+            sketch_tools,
+            sketch_tools_label,
             operation_rows: RefCell::new(Vec::new()),
+            sketch_rows: RefCell::new(Vec::new()),
+            sketch_params: RefCell::new(Vec::new()),
             labels: RefCell::new(Vec::new()),
             syncing: Cell::new(false),
             canvas: RefCell::new(None),
@@ -700,6 +806,36 @@ impl WindowController {
     /// Replace the operations table's rows; true when they changed (the table must reload).
     pub(crate) fn set_operation_rows(&self, rows: Vec<OperationLine>) -> bool {
         match self.ivars().operation_rows.try_borrow_mut() {
+            Ok(mut current) if *current != rows => {
+                *current = rows;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn is_sketch(&self, table: &NSTableView) -> bool {
+        std::ptr::eq(table, &*self.ivars().sketch_table)
+    }
+
+    fn is_sketch_params(&self, table: &NSTableView) -> bool {
+        std::ptr::eq(table, &*self.ivars().sketch_params_table)
+    }
+
+    /// Replace the constraint table's rows; true when they changed (the table must reload).
+    pub(crate) fn set_sketch_rows(&self, rows: Vec<SketchLine>) -> bool {
+        match self.ivars().sketch_rows.try_borrow_mut() {
+            Ok(mut current) if *current != rows => {
+                *current = rows;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Replace the parameter table's rows; true when they changed.
+    pub(crate) fn set_sketch_params(&self, rows: Vec<(String, String)>) -> bool {
+        match self.ivars().sketch_params.try_borrow_mut() {
             Ok(mut current) if *current != rows => {
                 *current = rows;
                 true
@@ -1149,6 +1285,10 @@ impl CanvasView {
 pub(crate) fn window_delegate(controller: &WindowController) -> &ProtocolObject<dyn NSWindowDelegate> {
     ProtocolObject::from_ref(controller)
 }
+
+/// Column identifiers of the sketch panel's parameter table.
+pub(crate) const SKETCH_PARAM_NAME: &str = "param-name";
+pub(crate) const SKETCH_PARAM_VALUE: &str = "param-value";
 
 /// The controller as table data source / delegate.
 pub(crate) fn table_source(controller: &WindowController) -> &ProtocolObject<dyn NSTableViewDataSource> {

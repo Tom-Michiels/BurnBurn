@@ -9,6 +9,8 @@ use burnburn_editor::{Overlay, SceneSnapshot, StyleRole, Viewport};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
+mod sketch;
+
 use crate::input::Rgba;
 use crate::packet::{Primitive, RenderPacket};
 
@@ -83,6 +85,10 @@ pub struct Theme {
     pub handle_size_pt: f64,
     pub snap: Rgba,
     pub issue: Rgba,
+    /// Sketch mode: relation glyphs, freedom markers and suggestions.
+    pub sketch: Rgba,
+    /// Sketch mode: dimension lines and their numbers.
+    pub sketch_dimension: Rgba,
 }
 
 impl Theme {
@@ -106,6 +112,8 @@ impl Theme {
             handle_size_pt: 6.0,
             snap: Rgba::new(0.85, 0.0, 0.6, 1.0),
             issue: Rgba::new(0.9, 0.1, 0.1, 1.0),
+            sketch: Rgba::new(0.0, 0.4, 0.45, 1.0),
+            sketch_dimension: Rgba::new(0.1, 0.45, 0.15, 1.0),
         }
     }
 
@@ -295,7 +303,7 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::Issue { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt, theme.issue, theme.issue, &proj);
             }
-            _ => {}
+            other => sketch::draw(&mut out, other, theme, &proj),
         }
     }
     RenderPacket { size_px: size, clear: theme.background, primitives: out }

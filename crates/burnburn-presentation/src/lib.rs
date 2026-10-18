@@ -25,7 +25,7 @@ pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
-    OperationKind, SelectMode, UiIntent, ViewPointerEvent,
+    OperationKind, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
 pub use production::{
     ActionId, ActionSubject, Dispatched, ExecutionRecord, HandledAction, HistoryStore, HistoryStoreError, IntentRecord,
@@ -38,9 +38,10 @@ pub use task::{
     TaskRequest, run_task,
 };
 pub use view_model::{
-    AppViewModel, BooleanPreview, CommandState, CutSettingsViewModel, DocumentViewModel, ExportViewModel,
-    FieldViewModel, ImportViewModel, InspectorViewModel, JobCardViewModel, LAYER_SLOTS, MachineButton,
-    MachineStatusKey, MachineViewModel, MeasureViewModel, MessageKey, ModeChoice, ObjectRow, OperationRow,
-    OperatorJobRow, OperatorViewModel, OrderViewModel, PlanViewModel, ProblemViewModel, SelectionCycle, SketchStatus,
-    SketchViewModel, StatusMessage, TaskBadge, TraceSummary, TracerViewModel,
+    AppViewModel, BooleanPreview, CommandState, ConstraintHealth, ConstraintRow, CutSettingsViewModel,
+    DocumentViewModel, ExportViewModel, FieldViewModel, ImportViewModel, InspectorViewModel, JobCardViewModel,
+    LAYER_SLOTS, MachineButton, MachineStatusKey, MachineViewModel, MeasureViewModel, MessageKey, ModeChoice,
+    ObjectRow, OperationRow, OperatorJobRow, OperatorViewModel, OrderViewModel, PlanViewModel, ProblemViewModel,
+    SelectionCycle, SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TaskBadge,
+    TraceSummary, TracerViewModel,
 };

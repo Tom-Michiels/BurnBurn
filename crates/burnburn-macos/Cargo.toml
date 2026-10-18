@@ -143,6 +143,11 @@ name = "layer_palette"
 path = "../../tests/native/macos/layer_palette.rs"
 harness = false
 
+[[test]]
+name = "sketch_mode"
+path = "../../tests/native/macos/sketch_mode.rs"
+harness = false
+
 [dependencies]
 # Platform-independent adapter (event -> UiIntent) and the app wiring: tested headlessly everywhere.
 burnburn-document = { workspace = true }

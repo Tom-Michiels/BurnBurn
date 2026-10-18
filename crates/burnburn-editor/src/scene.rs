@@ -10,6 +10,7 @@ use burnburn_types::{DocumentId, GeometryId, RevisionId};
 
 use crate::issues::{GeometryIssue, IssueKind};
 use crate::selection::Selection;
+use crate::sketch::{PointFreedom, SketchGlyph, SketchMark};
 use crate::snap::{SnapCandidate, SnapKind};
 use crate::tool::{Handle, NodeTarget, ToolKind, ToolPreview};
 
@@ -79,6 +80,37 @@ pub enum Overlay {
     ResultPreview {
         path: Arc<Path>,
     },
+    /// A sketch point in sketch mode, with how free it still is.
+    SketchPoint {
+        at: Point,
+        freedom: PointFreedom,
+        selected: bool,
+    },
+    /// A sketch line or circle emphasised because it is selected or part of a conflict.
+    SketchEntity {
+        path: Arc<Path>,
+        mark: SketchMark,
+    },
+    /// The symbol of a sketch relation, drawn beside the geometry it relates.
+    SketchGlyph {
+        at: Point,
+        glyph: SketchGlyph,
+        mark: SketchMark,
+    },
+    /// A sketch dimension: the lines to draw (extension and dimension lines, world mm) and its
+    /// label. `text` already has the brackets of a driven dimension and the R/Ø prefix.
+    SketchDimension {
+        lines: Vec<[Point; 2]>,
+        label_at: Point,
+        text: String,
+        driven: bool,
+        mark: SketchMark,
+    },
+    /// A relation suggested while drawing, shown dashed; applied when the gesture ends.
+    SketchSuggestion {
+        at: Point,
+        glyph: SketchGlyph,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +133,8 @@ pub struct SceneRequest<'a> {
     pub preview: Option<&'a ToolPreview>,
     pub snap: Option<SnapCandidate>,
     pub issues: &'a [GeometryIssue],
+    /// Overlays the window adds on top (sketch mode, see `sketch_overlays`).
+    pub extra: &'a [Overlay],
     /// A computed result shown before it is applied (boolean preview, E05).
     pub result_preview: Option<Arc<Path>>,
     pub camera: Camera,
@@ -189,6 +223,7 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
         overlays.push(Overlay::ResultPreview { path: Arc::clone(path) });
     }
     overlays.extend(req.issues.iter().map(|i| Overlay::Issue { at: i.at, kind: i.kind }));
+    overlays.extend(req.extra.iter().cloned());
     if let Some(c) = req.snap {
         overlays.push(Overlay::SnapCandidate { at: c.at, kind: c.kind });
     }
@@ -238,6 +273,7 @@ mod tests {
             preview,
             snap: None,
             issues: &[],
+            extra: &[],
             result_preview: None,
             camera: camera(),
             viewport: viewport(),

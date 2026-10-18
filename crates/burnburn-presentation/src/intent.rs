@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use burnburn_document::process::OperationDraft;
-use burnburn_document::sketch::{ConstraintId, SketchConstraint, SketchId};
+use burnburn_document::sketch::{ConstraintId, DimensionRole, EntityId, SketchConstraint, SketchId};
 use burnburn_editor::{CanvasKey, Modifiers, PointerButton, PointerId, PointerPhase, Viewport};
 use burnburn_job::{JobPlanId, MachineProfile};
 use burnburn_machine::ExecutionState;
@@ -116,6 +116,33 @@ pub enum UiIntent {
         sketch: SketchId,
         constraint: ConstraintId,
         text: String,
+    },
+    /// Constraint panel and canvas (sketch mode): select sketch entities and/or constraints of the
+    /// open sketch. Window state, never a document command.
+    SketchSelect {
+        document: DocumentId,
+        entities: Vec<EntityId>,
+        constraints: Vec<ConstraintId>,
+        mode: SelectMode,
+    },
+    /// "Maat": a dimension on the selected sketch entities. `text` is raw (DR-05); empty = the
+    /// value as drawn. The kind is inferred from the selection unless `kind` names one.
+    AddSketchDimension {
+        document: DocumentId,
+        kind: SketchDimensionKind,
+        text: String,
+    },
+    /// Measure ("(120)") or drive a dimension. Turning it into a driving one that over-constrains
+    /// the sketch is accepted and shown as a conflict (S03).
+    SetSketchDimensionRole {
+        document: DocumentId,
+        sketch: SketchId,
+        constraint: ConstraintId,
+        role: DimensionRole,
+    },
+    /// The conflict message was clicked: select the constraints involved (S04).
+    SelectSketchProblem {
+        document: DocumentId,
     },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {
@@ -250,6 +277,21 @@ pub enum UiIntent {
     DiscardRecovery {
         path: PathBuf,
     },
+}
+
+/// Which dimension "Maat" adds. `Auto` follows the selection: a line → its length, two points →
+/// their distance, a circle → its radius, two lines → their angle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SketchDimensionKind {
+    Auto,
+    Length,
+    Distance,
+    DistanceX,
+    DistanceY,
+    Radius,
+    Diameter,
+    Angle,
 }
 
 /// What the Cut Settings sheet sends: field text as typed, mode and the two toggles.
@@ -438,6 +480,26 @@ pub enum CommandKey {
     ToolTrim,
     /// Release the prepared job for the operator view (designer only, IM31).
     ApproveJob,
+    /// Schets ▸ Nieuwe schets: an empty sketch, and sketch mode on it.
+    SketchNew,
+    /// Schets ▸ Maak schets van selectie: drawn lines, polylines, rectangles and circles become a sketch.
+    SketchFromSelection,
+    /// Schets ▸ Bewerk schets: back into sketch mode on the sketch of the selected object.
+    SketchEdit,
+    /// Schets ▸ Sluit schets: leave sketch mode.
+    SketchFinish,
+    SketchCoincident,
+    SketchHorizontal,
+    SketchVertical,
+    SketchParallel,
+    SketchPerpendicular,
+    SketchEqual,
+    SketchTangent,
+    SketchFix,
+    /// Schets ▸ Maat: a dimension on the selection with the value as drawn (then edit it).
+    SketchDimension,
+    /// Remove the selected constraints of the open sketch (one history entry).
+    SketchRemoveConstraint,
 }
 
 impl CommandKey {
@@ -482,6 +544,20 @@ impl CommandKey {
         CommandKey::ToolTrim,
         CommandKey::CommitImport,
         CommandKey::CancelImport,
+        CommandKey::SketchNew,
+        CommandKey::SketchFromSelection,
+        CommandKey::SketchEdit,
+        CommandKey::SketchFinish,
+        CommandKey::SketchCoincident,
+        CommandKey::SketchHorizontal,
+        CommandKey::SketchVertical,
+        CommandKey::SketchParallel,
+        CommandKey::SketchPerpendicular,
+        CommandKey::SketchEqual,
+        CommandKey::SketchTangent,
+        CommandKey::SketchFix,
+        CommandKey::SketchDimension,
+        CommandKey::SketchRemoveConstraint,
     ];
 }
 

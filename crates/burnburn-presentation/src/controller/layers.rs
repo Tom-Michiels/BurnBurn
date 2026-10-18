@@ -17,7 +17,8 @@ use burnburn_editor::{SceneSnapshot, StyleRole};
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::{DocumentId, GeometryId, Length, OperationId, RequestId};
 
-use super::{AppUpdate, DEFAULT_FILL_INTERVAL_MM, Session, apply_edit, parse_speed, refused};
+use super::process::{parse_speed, refused};
+use super::{AppUpdate, DEFAULT_FILL_INTERVAL_MM, Session, apply_edit};
 use crate::field::{format_mm, parse_number, parse_position};
 use crate::intent::{CutSettingsInput, OperationField, OperationKind};
 use crate::view_model::{CutSettingsViewModel, LAYER_SLOTS, MessageKey, ModeChoice, OperationRow};

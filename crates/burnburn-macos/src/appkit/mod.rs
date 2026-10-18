@@ -14,6 +14,7 @@ mod canvas;
 // `define_class!` and `msg_send!` need unsafe; the invariants are in the module's doc comment.
 #[allow(unsafe_code)]
 mod classes;
+mod panels;
 mod window;
 
 use std::process::ExitCode;

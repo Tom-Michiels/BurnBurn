@@ -9,12 +9,34 @@ use burnburn_types::IdAllocator;
 use super::{ConstraintId, DimensionRole, EntityId, Sketch, SketchConstraint, SketchEntity, SketchId};
 use crate::patch::{DerivedOwner, DerivedRecord};
 
+/// One step of a [`SketchCommand::Batch`]. Entity ids a step refers to may be those the earlier
+/// `AddEntity` steps of the same batch will get (`Sketch::next_entity_id` counts up by one).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SketchStep {
+    AddEntity(SketchEntity),
+    AddConstraint(SketchConstraint),
+    RemoveConstraint(ConstraintId),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SketchCommand {
     /// Adds a sketch definition (built locally with the `Sketch` builders).
     Create {
         sketch: Box<Sketch>,
+    },
+    /// Adds a sketch definition and removes the drawn objects it replaces, as one transaction
+    /// (a sketch made from a drawn line, polyline or rectangle). Unknown objects refuse the whole.
+    CreateFrom {
+        sketch: Box<Sketch>,
+        replace: Vec<burnburn_types::GeometryId>,
+    },
+    /// Several entity and constraint edits as one transaction and one history entry (a drawn
+    /// shape with its relations, removing several constraints). Any failing step refuses the whole.
+    Batch {
+        sketch: SketchId,
+        steps: Vec<SketchStep>,
     },
     /// Removes the sketch and its derived outputs.
     Delete {
@@ -67,6 +89,8 @@ pub enum SketchCommand {
 #[non_exhaustive]
 pub enum SketchLabel {
     Create,
+    CreateFrom,
+    Batch,
     Delete,
     AddEntity,
     AddConstraint,
@@ -82,6 +106,8 @@ impl SketchCommand {
     pub fn label(&self) -> SketchLabel {
         match self {
             SketchCommand::Create { .. } => SketchLabel::Create,
+            SketchCommand::CreateFrom { .. } => SketchLabel::CreateFrom,
+            SketchCommand::Batch { .. } => SketchLabel::Batch,
             SketchCommand::Delete { .. } => SketchLabel::Delete,
             SketchCommand::AddEntity { .. } => SketchLabel::AddEntity,
             SketchCommand::AddConstraint { .. } => SketchLabel::AddConstraint,
@@ -232,6 +258,20 @@ pub(crate) fn apply(cmd: SketchCommand, txn: SketchTxn<'_>) -> Result<SketchEffe
             layer.sketches.get(&sketch).ok_or(SketchError::UnknownSketch(sketch))?;
             Err(SketchError::ExternalNotSupported)
         }
+        // The session removes the replaced objects first, then this is a plain `Create`.
+        SketchCommand::CreateFrom { sketch, .. } => {
+            apply(SketchCommand::Create { sketch }, SketchTxn { layer, ids, changed })
+        }
+        SketchCommand::Batch { sketch, steps } => edit(layer, changed, sketch, |s| {
+            for step in steps {
+                match step {
+                    SketchStep::AddEntity(entity) => s.add_entity(entity).map(|_| ())?,
+                    SketchStep::AddConstraint(constraint) => s.add_constraint(constraint).map(|_| ())?,
+                    SketchStep::RemoveConstraint(id) => s.remove_constraint(id).map(|_| ())?,
+                }
+            }
+            Ok(())
+        }),
         SketchCommand::Create { sketch } => {
             let id: SketchId = ids.allocate().map_err(|_| SketchError::IdsExhausted)?;
             layer.sketches.insert(id, Arc::new(*sketch));

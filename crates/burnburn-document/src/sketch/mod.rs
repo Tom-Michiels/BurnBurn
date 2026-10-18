@@ -9,7 +9,7 @@ pub mod canonical;
 mod command;
 mod model;
 
-pub use command::{SketchCommand, SketchError, SketchLabel, SketchLayer};
+pub use command::{SketchCommand, SketchError, SketchLabel, SketchLayer, SketchStep};
 pub(crate) use command::{SketchEffect, SketchTxn, apply};
 pub use model::{
     Along, ConstraintId, Dimension, DimensionKind, DimensionRole, Entity, EntityId, ParameterTable, Relation, Sketch,

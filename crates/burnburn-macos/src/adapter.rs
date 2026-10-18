@@ -234,6 +234,31 @@ pub enum NativeEvent {
     CutSettingsCancelled {
         document: DocumentId,
     },
+    /// The sketch panel's constraint table: these rows are selected now.
+    SketchRowsSelected {
+        document: DocumentId,
+        rows: Vec<usize>,
+    },
+    /// A value cell of the sketch panel edited (Return or end of editing), raw text.
+    SketchValueCommitted {
+        document: DocumentId,
+        row: usize,
+        text: String,
+    },
+    /// The sketch panel's Meten/Sturen button.
+    SketchRoleRequested {
+        document: DocumentId,
+    },
+    /// The conflict message of the sketch panel was clicked.
+    SketchProblemClicked {
+        document: DocumentId,
+    },
+    /// A parameter set in the sketch panel: name and expression as typed.
+    SketchParameterCommitted {
+        document: DocumentId,
+        name: String,
+        text: String,
+    },
     /// The recovery alert closed with this `NSModalResponse` (buttons in
     /// [`crate::lifecycle::RECOVERY_ALERT_BUTTONS`] order).
     RecoveryAnswered {
@@ -508,6 +533,30 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         }
         E::CutSettingsCancelled { document } if vm.document(document).is_some_and(|d| d.cut_settings.is_some()) => {
             UiIntent::CancelCutSettings { document }
+        }
+        E::SketchRowsSelected { document, rows } => match crate::panels::sketch_rows_intent(vm, document, &rows) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::SketchValueCommitted { document, row, text } => {
+            match crate::panels::sketch_value_intent(vm, document, row, &text) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::SketchRoleRequested { document } => match crate::panels::sketch_role_intent(vm, document) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::SketchProblemClicked { document } => match crate::panels::sketch_problem_intent(vm, document) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::SketchParameterCommitted { document, name, text } => {
+            match crate::panels::sketch_parameter_intent(vm, document, &name, &text) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
         }
         E::RecoveryAnswered { path, response } => match crate::lifecycle::recovery_choice(response) {
             Some(crate::lifecycle::RecoveryChoice::Restore) => UiIntent::RestoreRecovery { path },

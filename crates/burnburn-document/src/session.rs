@@ -338,6 +338,18 @@ impl Txn {
                 )
             }
             CommandPayload::Sketch(cmd) => {
+                let cmd = match cmd {
+                    sketch::SketchCommand::CreateFrom { sketch, replace } => {
+                        // The drawn objects the sketch replaces go in the same transaction.
+                        for id in replace {
+                            self.objects.remove(&id).ok_or(CommandError::UnknownGeometry(id))?;
+                            self.changes.deleted.push(id);
+                            self.changes.operations.extend(self.process.remove_geometry(id));
+                        }
+                        sketch::SketchCommand::Create { sketch }
+                    }
+                    other => other,
+                };
                 let effect = sketch::apply(
                     cmd,
                     SketchTxn { layer: &mut self.sketches, ids: &mut self.ids, changed: &mut self.changes.sketches },
