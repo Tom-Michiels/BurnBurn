@@ -5,7 +5,7 @@ use burnburn_job::{
     JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
     PlanSource, PowerRatio, ProfileRevision, ScanAxis, ScanLine,
 };
-use burnburn_machine::{FrameError, FrameOptions, frame_plan};
+use burnburn_machine::{FrameError, FrameOptions, FrameShape, frame_plan, frame_plan_shaped};
 use burnburn_ruida::{Command, Magic, OverscanPolicy, RuidaProfile, decode, lower, unscramble};
 use burnburn_types::{ContentHash, HashDomain, OperationId, RevisionId, StableId};
 
@@ -114,4 +114,161 @@ fn frame_program_contains_no_laser_on_command() {
 fn plan_without_motion_has_no_frame() {
     let plan = builder().finish().unwrap();
     assert_eq!(frame_plan(&plan, &OPTIONS), Err(FrameError::NoMotion));
+}
+
+// ---- W1-L4a: rubber-band frame (convex hull) ----
+
+fn travels(plan: &JobPlan) -> Vec<(f64, f64)> {
+    plan.events()
+        .iter()
+        .filter_map(|e| if let PlanEvent::Travel { to } = e { Some((to.x_mm(), to.y_mm())) } else { None })
+        .collect()
+}
+
+/// Cut triangle (10,10) (50,10) (30,40) with a travel to an interior point and a cut inside.
+fn triangle_plan() -> JobPlan {
+    let mut b = builder();
+    let cut = OperationSettings {
+        mode: PlanMode::Line,
+        speed_mm_s: 20.0,
+        min_power: PowerRatio::new(0.5).unwrap(),
+        max_power: PowerRatio::new(0.6).unwrap(),
+        air_assist: false,
+    };
+    let s = b.add_settings(cut).unwrap();
+    b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(1), settings: s, pass: 0 }).unwrap();
+    b.push(PlanEvent::Travel { to: p(10.0, 10.0) }).unwrap();
+    for to in [p(50.0, 10.0), p(30.0, 40.0), p(10.0, 10.0)] {
+        b.push(PlanEvent::Cut { to, origin: None }).unwrap();
+    }
+    b.push(PlanEvent::Travel { to: p(30.0, 20.0) }).unwrap();
+    b.push(PlanEvent::Cut { to: p(32.0, 22.0), origin: None }).unwrap();
+    b.finish().unwrap()
+}
+
+#[test]
+fn rubber_band_follows_the_convex_hull_while_the_bounding_frame_stays_a_rectangle() {
+    let plan = triangle_plan();
+    let band = frame_plan_shaped(&plan, &OPTIONS, FrameShape::RubberBand).unwrap();
+    // Counter-clockwise from the lowest-left vertex, closed; interior points are not visited.
+    assert_eq!(travels(band.plan()), vec![(10.0, 10.0), (50.0, 10.0), (30.0, 40.0), (10.0, 10.0)]);
+    let rect = frame_plan_shaped(&plan, &OPTIONS, FrameShape::BoundingRectangle).unwrap();
+    assert_eq!(
+        travels(rect.plan()),
+        vec![(10.0, 10.0), (50.0, 10.0), (50.0, 40.0), (10.0, 40.0), (10.0, 10.0)]
+    );
+    assert_eq!(frame_plan(&plan, &OPTIONS).unwrap().plan().events(), rect.plan().events(), "frame_plan = bounds");
+    assert_ne!(band.plan().id(), rect.plan().id(), "the shape is part of the frame plan's identity");
+}
+
+#[test]
+fn rubber_band_is_laser_off_travel_only_with_zero_power() {
+    let band = frame_plan_shaped(&triangle_plan(), &OPTIONS, FrameShape::RubberBand).unwrap();
+    for s in band.plan().settings() {
+        assert_eq!((s.min_power.get(), s.max_power.get()), (0.0, 0.0));
+    }
+    assert!(band
+        .plan()
+        .events()
+        .iter()
+        .all(|e| matches!(e, PlanEvent::Travel { .. } | PlanEvent::OperationBoundary { .. })));
+    assert_eq!(band.source(), triangle_plan().id());
+}
+
+#[test]
+fn rubber_band_includes_scan_overscan_like_the_bounds_do() {
+    let band = frame_plan_shaped(&production_plan(), &OPTIONS, FrameShape::RubberBand).unwrap();
+    let t = travels(band.plan());
+    assert!(t.contains(&(62.0, 30.0)) || t.iter().any(|&(x, _)| x == 62.0), "overscan end missing: {t:?}");
+    assert!(t.iter().all(|&(x, _)| (10.0..=62.0).contains(&x)));
+}
+
+#[test]
+fn rubber_band_of_collinear_or_single_point_motion_is_there_and_back() {
+    let mut b = builder();
+    let s = b
+        .add_settings(OperationSettings {
+            mode: PlanMode::Line,
+            speed_mm_s: 20.0,
+            min_power: PowerRatio::new(0.1).unwrap(),
+            max_power: PowerRatio::new(0.2).unwrap(),
+            air_assist: false,
+        })
+        .unwrap();
+    b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(1), settings: s, pass: 0 }).unwrap();
+    b.push(PlanEvent::Travel { to: p(5.0, 5.0) }).unwrap();
+    b.push(PlanEvent::Cut { to: p(25.0, 5.0), origin: None }).unwrap();
+    b.push(PlanEvent::Cut { to: p(15.0, 5.0), origin: None }).unwrap();
+    let line = b.finish().unwrap();
+    let band = frame_plan_shaped(&line, &OPTIONS, FrameShape::RubberBand).unwrap();
+    assert_eq!(travels(band.plan()), vec![(5.0, 5.0), (25.0, 5.0), (5.0, 5.0)]);
+
+    let mut b = builder();
+    let s = b
+        .add_settings(OperationSettings {
+            mode: PlanMode::Line,
+            speed_mm_s: 20.0,
+            min_power: PowerRatio::new(0.1).unwrap(),
+            max_power: PowerRatio::new(0.2).unwrap(),
+            air_assist: false,
+        })
+        .unwrap();
+    b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(1), settings: s, pass: 0 }).unwrap();
+    b.push(PlanEvent::Travel { to: p(7.0, 9.0) }).unwrap();
+    let dot = b.finish().unwrap();
+    let band = frame_plan_shaped(&dot, &OPTIONS, FrameShape::RubberBand).unwrap();
+    assert_eq!(travels(band.plan()), vec![(7.0, 9.0)]);
+}
+
+#[test]
+fn rubber_band_is_a_strictly_convex_polygon_that_contains_every_point() {
+    // Deterministic scatter (LCG) so the invariant is checked on many shapes, not on one example.
+    let mut seed = 0x2545_f491_u64;
+    let mut next = move || {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        ((seed >> 33) % 28_000) as f64 / 100.0 // 0..280 mm
+    };
+    for round in 0..25 {
+        let n = 3 + round;
+        let pts: Vec<(f64, f64)> = (0..n).map(|_| (next(), next())).collect();
+        let mut b = builder();
+        let s = b
+            .add_settings(OperationSettings {
+                mode: PlanMode::Line,
+                speed_mm_s: 20.0,
+                min_power: PowerRatio::new(0.1).unwrap(),
+                max_power: PowerRatio::new(0.2).unwrap(),
+                air_assist: false,
+            })
+            .unwrap();
+        b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(1), settings: s, pass: 0 }).unwrap();
+        for &(x, y) in &pts {
+            b.push(PlanEvent::Travel { to: p(x, y) }).unwrap();
+        }
+        let plan = b.finish().unwrap();
+        let band = frame_plan_shaped(&plan, &OPTIONS, FrameShape::RubberBand).unwrap();
+        let mut hull = travels(band.plan());
+        assert_eq!(hull.first(), hull.last(), "closed");
+        hull.pop();
+        let cross = |o: (f64, f64), a: (f64, f64), c: (f64, f64)| (a.0 - o.0) * (c.1 - o.1) - (a.1 - o.1) * (c.0 - o.0);
+        let m = hull.len();
+        if m >= 3 {
+            for i in 0..m {
+                assert!(cross(hull[i], hull[(i + 1) % m], hull[(i + 2) % m]) > 0.0, "round {round}: not strictly convex");
+            }
+        }
+        for &q in &pts {
+            for i in 0..m {
+                assert!(cross(hull[i], hull[(i + 1) % m], q) >= -1e-9, "round {round}: {q:?} outside the band");
+            }
+        }
+        // Every hull vertex is one of the plan's own points.
+        assert!(hull.iter().all(|h| pts.contains(h)), "round {round}");
+    }
+}
+
+#[test]
+fn rubber_band_of_a_plan_without_motion_has_no_frame() {
+    let plan = builder().finish().unwrap();
+    assert_eq!(frame_plan_shaped(&plan, &OPTIONS, FrameShape::RubberBand), Err(FrameError::NoMotion));
 }

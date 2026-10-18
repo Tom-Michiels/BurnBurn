@@ -8,10 +8,10 @@ publish.workspace = true
 
 [dependencies]
 burnburn-job = { workspace = true }
+burnburn-ruida = { workspace = true }
 burnburn-types = { workspace = true }
 
 [dev-dependencies]
-burnburn-ruida = { workspace = true }
 burnburn-test-support = { workspace = true }
 
 [lints]

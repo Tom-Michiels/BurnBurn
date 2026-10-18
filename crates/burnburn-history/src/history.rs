@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use burnburn_io::Project;
 use burnburn_io::fs::{FsError, FsErrorKind};
 use burnburn_job::{JobPlan, ProfileRevision};
-use burnburn_machine::{Execution, ExecutionId, MachineId, RdArtifact};
+use burnburn_machine::{Execution, ExecutionId, LiveOutcome, LiveRequest, MachineId, RdArtifact};
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain};
 
 use crate::ids::{ActionId, BlobKey, CompiledJobId, QueueItemId, RecordSeq};
@@ -15,7 +15,7 @@ use crate::journal::{self, SegmentEnd};
 use crate::plan_blob::{decode_plan, encode_plan};
 use crate::record::{
     CompiledBlobs, CompiledJob, EnvelopeIn, EnvelopeOut, EvidenceDto, ExecutionStateDto, FailReasonDto, HistoryRecord,
-    IntentKind, KNOWN_KINDS, OrderRecord, PreflightSummary, RECORD_SCHEMA, ReconcileBasis, ReconcileStatement, Role,
+    IntentKind, KNOWN_KINDS, LiveIntentDto, LiveOutcomeDto, LiveUnknownDto, OrderRecord, PreflightSummary, RECORD_SCHEMA, ReconcileBasis, ReconcileStatement, Role,
     SettingsBackupRecord, StoredRecord, UnknownReasonDto,
 };
 use crate::settings::SettingsBackup;
@@ -74,6 +74,10 @@ pub enum HistoryError {
     },
     /// The RD blob does not match the job's recorded RD hash.
     RdHashMismatch,
+    /// An outcome for a live action that was never recorded.
+    UnknownLiveAction(ActionId),
+    /// Live outcomes are written once; a settled action is not rewritten.
+    LiveOutcomeAlreadyRecorded(ActionId),
 }
 
 impl From<FsError> for HistoryError {
@@ -172,6 +176,20 @@ impl ExecutionView {
     }
 }
 
+/// One laser-window action as the history knows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveActionView {
+    pub seq: RecordSeq,
+    pub action: ActionId,
+    pub machine: MachineId,
+    pub intent: LiveIntentDto,
+    /// `None` while the application that wrote the intent still runs and nothing was proven.
+    pub outcome: Option<LiveOutcomeDto>,
+    /// The application stopped before an outcome was journaled; the outcome is then unknown.
+    pub interrupted_by_restart: bool,
+    pub created: WallTime,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueueItem {
     pub id: QueueItemId,
@@ -223,6 +241,7 @@ pub struct History {
     queue: BTreeMap<QueueItemId, QueueItem>,
     executions: BTreeMap<ExecutionId, ExecutionView>,
     actions: BTreeMap<ActionId, ActionOutcome>,
+    live: BTreeMap<ActionId, LiveActionView>,
     max_execution: u64,
     max_item: u64,
     orders: BTreeMap<u64, OrderRecord>,
@@ -264,6 +283,7 @@ impl History {
             queue: BTreeMap::new(),
             executions: BTreeMap::new(),
             actions: BTreeMap::new(),
+            live: BTreeMap::new(),
             max_execution: 0,
             max_item: 0,
             orders: BTreeMap::new(),
@@ -555,6 +575,50 @@ impl History {
         Ok(IntentReceipt { seq, fresh: true })
     }
 
+    /// Makes a laser-window action durable. Only when this returns `fresh` may the driver
+    /// receive it; a repeated action id is not written again.
+    pub fn record_live_intent(
+        &mut self,
+        fs: &dyn JournalFs,
+        machine: MachineId,
+        action: ActionId,
+        intent: &LiveRequest,
+        at: WallTime,
+    ) -> Result<IntentReceipt, HistoryError> {
+        if let Some(done) = self.live.get(&action) {
+            return Ok(IntentReceipt { seq: done.seq, fresh: false });
+        }
+        let intent = LiveIntentDto::from(intent);
+        let seq = self.append(fs, HistoryRecord::LiveIntent { machine, action, intent }, at)?;
+        Ok(IntentReceipt { seq, fresh: true })
+    }
+
+    /// Journals what was proven about a live action. `Pending` is not an outcome, and an action
+    /// is settled once: a second outcome is refused.
+    pub fn record_live_outcome(
+        &mut self,
+        fs: &dyn JournalFs,
+        action: ActionId,
+        outcome: &LiveOutcome,
+        at: WallTime,
+    ) -> Result<RecordSeq, HistoryError> {
+        let view = self.live.get(&action).ok_or(HistoryError::UnknownLiveAction(action))?;
+        let outcome = LiveOutcomeDto::from_outcome(outcome)
+            .ok_or_else(|| HistoryError::Encode("a pending live action has no outcome yet".into()))?;
+        if view.outcome.is_some() {
+            return Err(HistoryError::LiveOutcomeAlreadyRecorded(action));
+        }
+        self.append(fs, HistoryRecord::LiveOutcome { action, outcome }, at)
+    }
+
+    pub fn live_action(&self, action: ActionId) -> Option<&LiveActionView> {
+        self.live.get(&action)
+    }
+
+    pub fn live_actions(&self) -> impl Iterator<Item = &LiveActionView> {
+        self.live.values()
+    }
+
     /// Journals what the actor observed since the last call: new evidence entries, then the state.
     pub fn observe(&mut self, fs: &dyn JournalFs, execution: &Execution, at: WallTime) -> Result<(), HistoryError> {
         let view = self.executions.get(&execution.id).ok_or(HistoryError::UnknownExecution(execution.id))?;
@@ -738,6 +802,14 @@ impl History {
         };
         match record {
             HistoryRecord::JobCompiled(_) | HistoryRecord::SettingsBackup(_) => Ok(()),
+            HistoryRecord::LiveIntent { .. } => Ok(()),
+            HistoryRecord::LiveOutcome { action, .. } => {
+                if self.live.contains_key(action) {
+                    Ok(())
+                } else {
+                    Err(HistoryError::UnknownLiveAction(*action))
+                }
+            }
             HistoryRecord::Queued { job, .. } => {
                 if self.jobs.contains_key(job) {
                     Ok(())
@@ -864,6 +936,23 @@ impl History {
             HistoryRecord::OrderLinked { order, execution } => {
                 self.order_links.insert(*execution, *order);
             }
+            HistoryRecord::LiveIntent { machine, action, intent } => {
+                self.live.entry(*action).or_insert_with(|| LiveActionView {
+                    seq,
+                    action: *action,
+                    machine: machine.clone(),
+                    intent: intent.clone(),
+                    outcome: None,
+                    interrupted_by_restart: false,
+                    created: at,
+                });
+            }
+            HistoryRecord::LiveOutcome { action, outcome } => {
+                if let Some(v) = self.live.get_mut(action) {
+                    v.outcome.get_or_insert(*outcome);
+                    v.interrupted_by_restart = false;
+                }
+            }
             HistoryRecord::SettingsBackup(_) | HistoryRecord::Unrecognized { .. } => {}
         }
         self.records.push(stored);
@@ -880,6 +969,11 @@ impl History {
                 v.interrupted_by_restart = true;
                 out.push(v.id);
             }
+        }
+        // A live action without a journaled outcome may or may not have reached the machine.
+        for v in self.live.values_mut().filter(|v| v.outcome.is_none()) {
+            v.outcome = Some(LiveOutcomeDto::Unknown { why: LiveUnknownDto::InterruptedByRestart });
+            v.interrupted_by_restart = true;
         }
         out
     }

@@ -30,14 +30,22 @@ impl Capability {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileCapabilities {
     pub list: Capability,
+    pub metadata: Capability,
     pub upload_named: Capability,
+    pub run: Capability,
     pub delete: Capability,
 }
 
 impl Default for FileCapabilities {
     fn default() -> Self {
         let unverified = || Capability::Unverified { reason: "no hardware evidence for this controller".into() };
-        FileCapabilities { list: unverified(), upload_named: unverified(), delete: unverified() }
+        FileCapabilities {
+            list: unverified(),
+            metadata: unverified(),
+            upload_named: unverified(),
+            run: unverified(),
+            delete: unverified(),
+        }
     }
 }
 
@@ -57,11 +65,22 @@ impl ControllerFileName {
     }
 }
 
+/// One stored file as the controller reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileEntry {
+    pub name: ControllerFileName,
+    /// `None` when the controller did not report a size (never 0 by default).
+    pub size_bytes: Option<u64>,
+}
+
 /// An explicit file action chosen by the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControllerFileIntent {
     List,
+    Metadata { name: ControllerFileName },
     Upload { name: ControllerFileName, artifact: RdArtifact },
+    /// Run a stored file. Not the start of an uploaded job: it is its own intent.
+    Run { name: ControllerFileName },
     Delete { name: ControllerFileName },
 }
 
@@ -84,7 +103,9 @@ impl std::error::Error for FileOpError {}
 pub fn authorize(intent: &ControllerFileIntent, caps: &FileCapabilities) -> Result<(), FileOpError> {
     let (operation, cap) = match intent {
         ControllerFileIntent::List => ("list", &caps.list),
+        ControllerFileIntent::Metadata { .. } => ("metadata", &caps.metadata),
         ControllerFileIntent::Upload { .. } => ("upload", &caps.upload_named),
+        ControllerFileIntent::Run { .. } => ("run", &caps.run),
         ControllerFileIntent::Delete { .. } => ("delete", &caps.delete),
     };
     match cap {

@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use burnburn_job::ProfileRevision;
 use burnburn_machine::{
-    ControllerIdentity, ControllerStatus, Evidence, ExecutionId, ExecutionState, FailReason, MachineId, Request,
-    UnknownReason,
+    ControllerIdentity, ControllerStatus, Evidence, ExecutionId, ExecutionState, FailReason, HomeTarget, JogKey,
+    LiveOutcome, LiveRequest, LiveUnknown, MachineId, Request, UnknownReason,
 };
 use burnburn_types::ContentHash;
 use serde::{Deserialize, Serialize};
@@ -104,6 +104,8 @@ pub enum RequestDto {
     Start,
     QueryStatus,
     Stop,
+    /// A laser-window request; its details are journaled as a live intent, not as job evidence.
+    Live,
 }
 
 impl From<&Request> for RequestDto {
@@ -115,6 +117,7 @@ impl From<&Request> for RequestDto {
             Request::Start => RequestDto::Start,
             Request::QueryStatus => RequestDto::QueryStatus,
             Request::Stop => RequestDto::Stop,
+            Request::Live(_) => RequestDto::Live,
         }
     }
 }
@@ -148,6 +151,105 @@ pub struct IdentityDto {
 impl From<&ControllerIdentity> for IdentityDto {
     fn from(i: &ControllerIdentity) -> Self {
         IdentityDto { model: i.model.clone(), firmware: i.firmware.clone() }
+    }
+}
+
+/// A laser-window request as journaled (details of `burnburn_machine::LiveRequest`; machine
+/// types stay serde-free). Keys and targets are stable lower-case labels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "intent", rename_all = "kebab-case")]
+pub enum LiveIntentDto {
+    JogStart { key: String },
+    JogStop { key: String },
+    Home { target: String },
+    MoveAbsolute { x_um: i64, y_um: i64 },
+    Pause,
+    Resume,
+    ReadPosition,
+    ListFiles,
+    FileMetadata { name: String },
+    RunFile { name: String },
+    DeleteFile { name: String },
+}
+
+fn key_label(k: JogKey) -> &'static str {
+    match k {
+        JogKey::XLeft => "x-left",
+        JogKey::XRight => "x-right",
+        JogKey::YTop => "y-top",
+        JogKey::YBottom => "y-bottom",
+        JogKey::ZUp => "z-up",
+        JogKey::ZDown => "z-down",
+        JogKey::UForward => "u-forward",
+        JogKey::UBackwards => "u-backwards",
+    }
+}
+
+fn home_label(t: HomeTarget) -> &'static str {
+    match t {
+        HomeTarget::Xy => "xy",
+        HomeTarget::Z => "z",
+        HomeTarget::U => "u",
+    }
+}
+
+impl From<&LiveRequest> for LiveIntentDto {
+    fn from(r: &LiveRequest) -> Self {
+        match r {
+            LiveRequest::JogStart(k) => LiveIntentDto::JogStart { key: key_label(*k).into() },
+            LiveRequest::JogStop(k) => LiveIntentDto::JogStop { key: key_label(*k).into() },
+            LiveRequest::Home(t) => LiveIntentDto::Home { target: home_label(*t).into() },
+            LiveRequest::MoveAbsolute { x_um, y_um } => LiveIntentDto::MoveAbsolute { x_um: *x_um, y_um: *y_um },
+            LiveRequest::Pause => LiveIntentDto::Pause,
+            LiveRequest::Resume => LiveIntentDto::Resume,
+            LiveRequest::ReadPosition => LiveIntentDto::ReadPosition,
+            LiveRequest::ListFiles => LiveIntentDto::ListFiles,
+            LiveRequest::FileMetadata(n) => LiveIntentDto::FileMetadata { name: n.as_str().into() },
+            LiveRequest::RunFile(n) => LiveIntentDto::RunFile { name: n.as_str().into() },
+            LiveRequest::DeleteFile(n) => LiveIntentDto::DeleteFile { name: n.as_str().into() },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LiveUnknownDto {
+    ReplyLost,
+    Reconnected,
+    SendFailed,
+    /// The application stopped before an outcome was journaled.
+    InterruptedByRestart,
+}
+
+/// What is proven about a journaled live action. There is no "pending": an action without an
+/// outcome record is shown as not yet settled and, after a restart, as unknown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+pub enum LiveOutcomeDto {
+    Acked,
+    Answered,
+    Refused,
+    NotSent,
+    Unknown { why: LiveUnknownDto },
+}
+
+impl LiveOutcomeDto {
+    /// `None` for [`LiveOutcome::Pending`], which is not an outcome.
+    pub fn from_outcome(o: &LiveOutcome) -> Option<Self> {
+        Some(match o {
+            LiveOutcome::Pending => return None,
+            LiveOutcome::Acked => LiveOutcomeDto::Acked,
+            LiveOutcome::Answered => LiveOutcomeDto::Answered,
+            LiveOutcome::Refused => LiveOutcomeDto::Refused,
+            LiveOutcome::NotSent => LiveOutcomeDto::NotSent,
+            LiveOutcome::Unknown(why) => LiveOutcomeDto::Unknown {
+                why: match why {
+                    LiveUnknown::ReplyLost => LiveUnknownDto::ReplyLost,
+                    LiveUnknown::Reconnected => LiveUnknownDto::Reconnected,
+                    LiveUnknown::SendFailed => LiveUnknownDto::SendFailed,
+                },
+            },
+        })
     }
 }
 
@@ -432,6 +534,19 @@ pub enum HistoryRecord {
         execution: ExecutionId,
         text: String,
     },
+    /// A laser-window action (jog, home, pause, ...). Durable before the driver sees it; it is
+    /// not part of any execution.
+    LiveIntent {
+        #[serde(with = "machine_id")]
+        machine: MachineId,
+        action: ActionId,
+        intent: LiveIntentDto,
+    },
+    /// What was proven about a live action. Written at most once per action.
+    LiveOutcome {
+        action: ActionId,
+        outcome: LiveOutcomeDto,
+    },
     SettingsBackup(SettingsBackupRecord),
     OrderRecorded(OrderRecord),
     /// This execution was made for that order; only linked executions count for it.
@@ -459,6 +574,8 @@ pub(crate) const KNOWN_KINDS: &[&str] = &[
     "state-observed",
     "reconciled",
     "operator-note",
+    "live-intent",
+    "live-outcome",
     "settings-backup",
     "order-recorded",
     "order-linked",
