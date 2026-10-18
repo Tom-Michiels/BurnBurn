@@ -9,10 +9,11 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, DitherMode, FillSettings, ImageRender, ImageSettings, Kerf, Lead, LineOptions, MaterialRecipe,
-    OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode, OrderConstraint, Overcut, Passes,
-    Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId, RecipeRef, ScanAxis,
-    ScanDirection, SharedEdgePolicy, Speed, SubOperation, TabSpec, ToneSettings, ZStep,
+    AdvancedOptions, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Kerf, Lead,
+    LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft,
+    OperationMode, OrderConstraint, Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer,
+    ProcessSettings, RecipeDraft, RecipeId, RecipeRef, ScanAxis, ScanDirection, SharedEdgePolicy, Speed, SubOperation,
+    TabPlacement, TabSpec, ToneSettings, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 
@@ -89,9 +90,19 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
         sub_operations.push(v1::SubOperationDto { mode: mode_to_dto(s.mode)?, settings: settings_to_dto(&s.settings) });
     }
     Ok(Some(v1::Advanced {
-        tabs: a.line.tabs.map(|t| v1::Tabs { count: t.count(), width_mm: v1::Num(t.width_mm()) }),
+        tabs: a.line.tabs.map(|t| match t.placement() {
+            TabPlacement::Count(n) => v1::Tabs { count: Some(n), spacing_mm: None, width_mm: v1::Num(t.width_mm()) },
+            TabPlacement::Spacing(s) => {
+                v1::Tabs { count: None, spacing_mm: Some(v1::Num(s)), width_mm: v1::Num(t.width_mm()) }
+            }
+        }),
         lead_in_mm: a.line.lead_in.map(|l| v1::Num(l.length_mm())),
         lead_out_mm: a.line.lead_out.map(|l| v1::Num(l.length_mm())),
+        lead_in_style: a.line.lead_in.and_then(lead_style_to_dto),
+        lead_in_angle_deg: a.line.lead_in.and_then(lead_angle_to_dto),
+        lead_out_style: a.line.lead_out.and_then(lead_style_to_dto),
+        lead_out_angle_deg: a.line.lead_out.and_then(lead_angle_to_dto),
+        dot: a.line.dot.map(|d| v1::DotDto { spacing_mm: v1::Num(d.spacing_mm()), dwell_ms: v1::Num(d.dwell_ms()) }),
         overcut_mm: a.line.overcut.map(|o| v1::Num(o.length_mm())),
         perforation: a
             .line
@@ -104,6 +115,19 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
             SharedEdgePolicy::CutPerRegion => Some(v1::SharedEdges::CutPerRegion),
         },
     }))
+}
+
+/// `None` for the default line lead.
+fn lead_style_to_dto(l: Lead) -> Option<v1::LeadStyle> {
+    match l.style() {
+        LeadStyle::Line => None,
+        LeadStyle::Arc => Some(v1::LeadStyle::Arc),
+    }
+}
+
+/// `None` for the default angle (perpendicular).
+fn lead_angle_to_dto(l: Lead) -> Option<v1::Num> {
+    (l.angle_deg() != 90.0).then(|| v1::Num(l.angle_deg()))
 }
 
 fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
@@ -120,6 +144,14 @@ fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
             },
             overscan_mm: v1::Num(f.overscan().mm()),
             angle_deg: (f.angle_deg() != 0.0).then(|| v1::Num(f.angle_deg())),
+            cross_hatch: f.cross_hatch(),
+            grouping: match f.grouping() {
+                FillGrouping::AllShapes => None,
+                FillGrouping::Groups => Some(v1::FillGrouping::Groups),
+                FillGrouping::Individual => Some(v1::FillGrouping::Individual),
+            },
+            flood_fill: f.flood_fill(),
+            ramp_mm: (f.ramp_mm() != 0.0).then(|| v1::Num(f.ramp_mm())),
         },
         OperationMode::Line { kerf } => v1::Mode::Line { kerf_mm: v1::Num(kerf.width_mm()) },
         OperationMode::OffsetFill(o) => v1::Mode::OffsetFill {
@@ -183,7 +215,17 @@ fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadEr
             let at = || format!("{}.kerf_mm", path());
             OperationMode::Line { kerf: Kerf::width(length(&at, kerf_mm)?).map_err(|e| invalid(&at, e))? }
         }
-        v1::Mode::Fill { interval_mm, axis, direction, overscan_mm, angle_deg } => {
+        v1::Mode::Fill {
+            interval_mm,
+            axis,
+            direction,
+            overscan_mm,
+            angle_deg,
+            cross_hatch,
+            grouping,
+            flood_fill,
+            ramp_mm,
+        } => {
             let interval = length(&|| format!("{}.interval_mm", path()), interval_mm)?;
             let overscan = length(&|| format!("{}.overscan_mm", path()), overscan_mm)?;
             let axis = match axis {
@@ -199,7 +241,19 @@ fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadEr
                     fill.with_angle(num(&at, a)?).map_err(|e| invalid(&at, e))?
                 }
             };
-            OperationMode::Fill(fill)
+            let ramp = match ramp_mm {
+                None => fill,
+                Some(r) => {
+                    let at = || format!("{}.ramp_mm", path());
+                    fill.with_ramp(length(&at, r)?).map_err(|e| invalid(&at, e))?
+                }
+            };
+            let grouping = match grouping {
+                None => FillGrouping::AllShapes,
+                Some(v1::FillGrouping::Groups) => FillGrouping::Groups,
+                Some(v1::FillGrouping::Individual) => FillGrouping::Individual,
+            };
+            OperationMode::Fill(ramp.with_cross_hatch(cross_hatch).with_grouping(grouping).with_flood_fill(flood_fill))
         }
         v1::Mode::OffsetFill { step_mm, order } => {
             let at = || format!("{}.step_mm", path());
@@ -263,11 +317,43 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
         None => None,
         Some(t) => {
             let width = length(&at("tabs.width_mm"), t.width_mm)?;
-            Some(TabSpec::new(t.count, width).map_err(|e| invalid(&at("tabs"), e))?)
+            let spec = match (t.count, t.spacing_mm) {
+                (Some(count), None) => TabSpec::new(count, width),
+                (None, Some(spacing)) => TabSpec::spaced(length(&at("tabs.spacing_mm"), spacing)?, width),
+                _ => {
+                    return Err(invalid(&at("tabs"), "exactly one of count and spacing_mm is required"));
+                }
+            };
+            Some(spec.map_err(|e| invalid(&at("tabs"), e))?)
         }
     };
-    let lead = |f: &'static str, n| -> Result<Option<Lead>, LoadError> {
-        opt(f, n)?.map(|l| Lead::new(l).map_err(|e| invalid(&at(f), e))).transpose()
+    let lead = |f: &'static str,
+                n,
+                style: Option<v1::LeadStyle>,
+                angle_field: &'static str,
+                angle: Option<v1::Num>|
+     -> Result<Option<Lead>, LoadError> {
+        let Some(l) = opt(f, n)? else {
+            if style.is_some() || angle.is_some() {
+                return Err(invalid(&at(angle_field), "a lead style or angle needs the lead length"));
+            }
+            return Ok(None);
+        };
+        let mut lead = Lead::new(l).map_err(|e| invalid(&at(f), e))?;
+        if let Some(v1::LeadStyle::Arc) = style {
+            lead = lead.with_style(LeadStyle::Arc);
+        }
+        if let Some(a) = angle {
+            lead = lead.with_angle(num(&at(angle_field), a)?).map_err(|e| invalid(&at(angle_field), e))?;
+        }
+        Ok(Some(lead))
+    };
+    let dot = match a.dot {
+        None => None,
+        Some(d) => {
+            let spacing = length(&at("dot.spacing_mm"), d.spacing_mm)?;
+            Some(DotMode::new(spacing, num(&at("dot.dwell_ms"), d.dwell_ms)?).map_err(|e| invalid(&at("dot"), e))?)
+        }
     };
     let perforation = match a.perforation {
         None => None,
@@ -288,12 +374,13 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
     Ok(AdvancedOptions {
         line: LineOptions {
             tabs,
-            lead_in: lead("lead_in_mm", a.lead_in_mm)?,
-            lead_out: lead("lead_out_mm", a.lead_out_mm)?,
+            lead_in: lead("lead_in_mm", a.lead_in_mm, a.lead_in_style, "lead_in_angle_deg", a.lead_in_angle_deg)?,
+            lead_out: lead("lead_out_mm", a.lead_out_mm, a.lead_out_style, "lead_out_angle_deg", a.lead_out_angle_deg)?,
             overcut: opt("overcut_mm", a.overcut_mm)?
                 .map(|l| Overcut::new(l).map_err(|e| invalid(&at("overcut_mm"), e)))
                 .transpose()?,
             perforation,
+            dot,
         },
         z_step: opt("z_step_mm", a.z_step_mm)?
             .map(|l| ZStep::new(l).map_err(|e| invalid(&at("z_step_mm"), e)))

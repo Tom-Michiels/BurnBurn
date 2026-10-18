@@ -12,6 +12,10 @@ use crate::line::Contour;
 pub(crate) struct Rows {
     pub interval_mm: f64,
     pub bidirectional: bool,
+    /// Scan each connected region completely before the next (flood fill).
+    pub flood: bool,
+    /// Power ramp length at both ends of each run, 0 = none.
+    pub ramp_mm: f64,
 }
 
 /// The frame scan rows are horizontal in.
@@ -46,6 +50,16 @@ impl ScanFrame {
 /// Upper bound on scan rows per operation pass; keeps one setting from making a compile unbounded.
 pub(crate) const MAX_SCAN_ROWS: u64 = 2_000_000;
 
+/// Spans of one scan row, in the scan frame: `(x_start, x_end, source)`, left to right.
+type Spans = Vec<(f64, f64, GeometryId)>;
+
+/// One non-empty scan row: its index `k` from the bottom and its `y`.
+struct Row {
+    k: u64,
+    y: f64,
+    spans: Spans,
+}
+
 /// Plans one fill pass over the closed contours of an operation; updates `head`.
 ///
 /// Rows lie at row centres: `n = floor(h / interval)` rows, centred in the extent `h`, so for
@@ -56,8 +70,12 @@ pub(crate) const MAX_SCAN_ROWS: u64 = 2_000_000;
 /// top-left, top-right) and zig-zags when bidirectional. Open contours are ignored here and
 /// reported by preflight. Axis Y scans run on the transposed problem, angled scans on the
 /// rotated one (`frame`).
+///
+/// With `spec.flood` the spans are split into connected regions (spans on adjacent rows whose
+/// x-ranges overlap); each region is scanned completely, nearest region first, which avoids
+/// the long empty travels of one row-by-row sweep over separate lobes.
 pub(crate) fn plan(
-    contours: &[Contour],
+    contours: &[&Contour],
     spec: Rows,
     frame: ScanFrame,
     head: &mut Point,
@@ -65,7 +83,6 @@ pub(crate) fn plan(
     cancel: &CancellationToken,
 ) -> Result<Vec<Step>, CompileError> {
     let t = |p: Point| frame.to_local(p);
-    let back = |p: Point| frame.to_bed(p);
     let mut edges: Vec<(Point, Point, GeometryId)> = Vec::new();
     for c in contours.iter().filter(|c| c.closed && c.points.len() >= 3) {
         let n = c.points.len();
@@ -88,41 +105,159 @@ pub(crate) fn plan(
     let rows = rows as u64;
     let offset = (h - rows as f64 * interval) / 2.0;
 
-    let start = t(*head);
+    let mut all: Vec<Row> = Vec::new();
+    for k in 0..rows {
+        cancel.check()?;
+        let y = min.y + offset + (k as f64 + 0.5) * interval;
+        let spans = spans_at(&edges, y);
+        if !spans.is_empty() {
+            all.push(Row { k, y, spans });
+        }
+    }
+
+    let mut steps = Vec::new();
+    if !spec.flood {
+        scan_region(&all, (min, max), spec, frame, head, &mut steps);
+        return Ok(steps);
+    }
+    let mut regions: Vec<(Vec<Row>, (Point, Point))> = regions(all)
+        .into_iter()
+        .map(|r| {
+            let bounds = region_extent(&r);
+            (r, bounds)
+        })
+        .collect();
+    while !regions.is_empty() {
+        cancel.check()?;
+        let start = t(*head);
+        // Nearest region by its nearest bounds corner; ties keep the earlier region.
+        let mut best = 0;
+        let mut best_distance = f64::INFINITY;
+        for (i, (_, (lo, hi))) in regions.iter().enumerate() {
+            let (c, _, _) = nearest_corner(start, *lo, *hi);
+            let d = start.distance(c);
+            if d < best_distance {
+                best = i;
+                best_distance = d;
+            }
+        }
+        let (region, bounds) = regions.remove(best);
+        scan_region(&region, bounds, spec, frame, head, &mut steps);
+    }
+    Ok(steps)
+}
+
+/// The bounds corner nearest `from` (ties: bottom-left, bottom-right, top-left, top-right), and
+/// whether the pass starts at the bottom / the left.
+fn nearest_corner(from: Point, min: Point, max: Point) -> (Point, bool, bool) {
     let corners = [(min.x, min.y), (max.x, min.y), (min.x, max.y), (max.x, max.y)];
     let mut corner = corners[0];
     for c in corners {
-        if start.distance(Point::new(c.0, c.1)) < start.distance(Point::new(corner.0, corner.1)) {
+        if from.distance(Point::new(c.0, c.1)) < from.distance(Point::new(corner.0, corner.1)) {
             corner = c;
         }
     }
-    let bottom_first = corner.1 == min.y;
-    let left_first = corner.0 == min.x;
-    let bidirectional = spec.bidirectional;
+    (Point::new(corner.0, corner.1), corner.1 == min.y, corner.0 == min.x)
+}
 
-    let mut steps = Vec::new();
-    let mut emitted = 0u64;
-    for r in 0..rows {
-        cancel.check()?;
-        let k = if bottom_first { r } else { rows - 1 - r };
-        let y = min.y + offset + (k as f64 + 0.5) * interval;
-        let mut spans = spans_at(&edges, y);
-        if spans.is_empty() {
-            continue;
-        }
-        let forward = left_first != (bidirectional && emitted % 2 == 1);
+/// Emits the rows of one region from the corner nearest the head, zig-zagging when
+/// bidirectional.
+fn scan_region(
+    region: &[Row],
+    (min, max): (Point, Point),
+    spec: Rows,
+    frame: ScanFrame,
+    head: &mut Point,
+    steps: &mut Vec<Step>,
+) {
+    let (_, bottom_first, left_first) = nearest_corner(frame.to_local(*head), min, max);
+    for r in 0..region.len() {
+        let row = &region[if bottom_first { r } else { region.len() - 1 - r }];
+        let mut spans = row.spans.clone();
+        // `r` counts the emitted rows: the zig-zag alternates with every one.
+        let forward = left_first != (spec.bidirectional && r % 2 == 1);
         if !forward {
             spans.reverse();
         }
         for (x0, x1, g) in spans {
             let (a, b) = if forward { (x0, x1) } else { (x1, x0) };
-            let (from, to) = (back(Point::new(a, y)), back(Point::new(b, y)));
-            steps.push(Step::Scan { from, to, source: g });
+            let (from, to) = (frame.to_bed(Point::new(a, row.y)), frame.to_bed(Point::new(b, row.y)));
+            steps.push(if spec.ramp_mm > 0.0 {
+                Step::RampScan { from, to, ramp_mm: spec.ramp_mm, source: g }
+            } else {
+                Step::Scan { from, to, source: g }
+            });
             *head = to;
         }
-        emitted += 1;
     }
-    Ok(steps)
+}
+
+fn region_extent(rows: &[Row]) -> (Point, Point) {
+    let (mut lo_x, mut hi_x) = (f64::INFINITY, f64::NEG_INFINITY);
+    for (a, b, _) in rows.iter().flat_map(|r| r.spans.iter()) {
+        lo_x = lo_x.min(*a);
+        hi_x = hi_x.max(*b);
+    }
+    let (first, last) = (rows.first().map_or(0.0, |r| r.y), rows.last().map_or(0.0, |r| r.y));
+    (Point::new(lo_x, first), Point::new(hi_x, last))
+}
+
+/// Splits rows into connected regions: spans on adjacent rows (`k` and `k + 1`) whose x-ranges
+/// overlap belong together. Regions are ordered by their lowest row, then their leftmost span.
+fn regions(rows: Vec<Row>) -> Vec<Vec<Row>> {
+    // Union-find over (row index, span index) flattened.
+    let starts: Vec<usize> = rows
+        .iter()
+        .scan(0, |n, r| {
+            let s = *n;
+            *n += r.spans.len();
+            Some(s)
+        })
+        .collect();
+    let total: usize = rows.iter().map(|r| r.spans.len()).sum();
+    let mut parent: Vec<usize> = (0..total).collect();
+    fn find(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    for i in 1..rows.len() {
+        if rows[i].k != rows[i - 1].k + 1 {
+            continue;
+        }
+        for (a, sa) in rows[i - 1].spans.iter().enumerate() {
+            for (b, sb) in rows[i].spans.iter().enumerate() {
+                if sa.0 < sb.1 && sb.0 < sa.1 {
+                    let (ra, rb) = (find(&mut parent, starts[i - 1] + a), find(&mut parent, starts[i] + b));
+                    if ra != rb {
+                        parent[rb.max(ra)] = rb.min(ra);
+                    }
+                }
+            }
+        }
+    }
+    let mut order: Vec<usize> = Vec::new();
+    let mut out: Vec<Vec<Row>> = Vec::new();
+    for (i, row) in rows.into_iter().enumerate() {
+        for (j, span) in row.spans.into_iter().enumerate() {
+            let root = find(&mut parent, starts[i] + j);
+            let slot = match order.iter().position(|&r| r == root) {
+                Some(s) => s,
+                None => {
+                    order.push(root);
+                    out.push(Vec::new());
+                    out.len() - 1
+                }
+            };
+            match out[slot].last_mut() {
+                Some(last) if last.k == row.k => last.spans.push(span),
+                _ => out[slot].push(Row { k: row.k, y: row.y, spans: vec![span] }),
+            }
+        }
+    }
+    out
 }
 
 fn extent(edges: &[(Point, Point, GeometryId)]) -> Option<(Point, Point)> {

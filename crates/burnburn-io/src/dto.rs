@@ -257,6 +257,18 @@ pub mod v1 {
             /// Scan angle (IM25). Omitted for an unrotated fill.
             #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
             angle_deg: Option<Num>,
+            /// Second, perpendicular pass (W1-L3). Omitted when off.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            cross_hatch: bool,
+            /// Omitted for "all shapes at once".
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            grouping: Option<FillGrouping>,
+            /// Omitted when off.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            flood_fill: bool,
+            /// Power ramp length at the run ends. Omitted when zero.
+            #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+            ramp_mm: Option<Num>,
         },
         /// Concentric rings (IM25).
         OffsetFill {
@@ -276,6 +288,21 @@ pub mod v1 {
             serpentine: bool,
             overscan_mm: Num,
         },
+    }
+
+    /// Which shapes of a fill are scanned together (the default, all at once, is omitted).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum FillGrouping {
+        Groups,
+        Individual,
+    }
+
+    /// Lead shape; the default line lead is omitted.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum LeadStyle {
+        Arc,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,10 +334,22 @@ pub mod v1 {
         pub lead_in_mm: Option<Num>,
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub lead_out_mm: Option<Num>,
+        /// Lead shape and angle to the contour in degrees (W1-L3); omitted for a perpendicular line.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub lead_in_style: Option<LeadStyle>,
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub lead_in_angle_deg: Option<Num>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub lead_out_style: Option<LeadStyle>,
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub lead_out_angle_deg: Option<Num>,
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub overcut_mm: Option<Num>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub perforation: Option<PerforationDto>,
+        /// Dot (dwell) mode (W1-L3).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub dot: Option<DotDto>,
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub z_step_mm: Option<Num>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -320,11 +359,22 @@ pub mod v1 {
         pub shared_edges: Option<SharedEdges>,
     }
 
+    /// Tabs: exactly one of `count` and `spacing_mm` (W1-L3) is present.
     #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct Tabs {
-        pub count: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub count: Option<u32>,
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub spacing_mm: Option<Num>,
         pub width_mm: Num,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct DotDto {
+        pub spacing_mm: Num,
+        pub dwell_ms: Num,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

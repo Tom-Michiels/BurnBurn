@@ -40,6 +40,9 @@ pub enum Finding {
     /// The operation needs a feature this profile does not support (for example after a
     /// machine change); recompiling for this profile fails with `UnsupportedFeature`.
     UnsupportedFeature { operation: OperationId, feature: Feature },
+    /// The tabs of a Line operation cover a whole contour of `geometry` (for example after the
+    /// source shrank); compiling fails with `InvalidTabs` until the tabs or the source change.
+    InvalidTabs { operation: OperationId, geometry: GeometryId },
     /// These geometries of one Line operation share boundary segments exactly; with the default
     /// `SharedEdgePolicy::CutOnce` each shared segment is cut only once (IM32).
     SharedBoundaryCutOnce { operation: OperationId, geometries: Vec<GeometryId> },
@@ -54,6 +57,7 @@ impl Finding {
             | Finding::SpeedAboveMachineMax { .. }
             | Finding::PowerOutsideMachineRange { .. }
             | Finding::StalePlan
+            | Finding::InvalidTabs { .. }
             | Finding::UnsupportedFeature { .. } => Severity::Error,
             Finding::DuplicateCut { .. }
             | Finding::EmptyOperation { .. }
@@ -191,6 +195,7 @@ pub fn preflight(snapshot: &DocumentSnapshot, plan: &JobPlan, profile: &MachineP
         }
     }
     for op in process.operations().filter(|o| o.output_enabled()) {
+        add_invalid_tabs(snapshot, op, &mut add);
         for feature in crate::required_features(op) {
             if !profile.capabilities().is_supported(feature) {
                 add(Finding::UnsupportedFeature { operation: op.id(), feature });
@@ -273,5 +278,32 @@ fn burning_outside(add: &mut impl FnMut(Finding), origin: Option<SourceRef>, ope
     match origin {
         Some(source) => add(Finding::OutsideBed { source }),
         None => add(Finding::TravelOutsideBed { operation }),
+    }
+}
+
+/// Tabs that cannot be placed on the current source geometry (C04). Uses the nominal contour
+/// length (flattened at 0.01 mm, no kerf); compiling stays the authority and fails with
+/// `InvalidTabs` for the same operation and geometry.
+fn add_invalid_tabs(
+    snapshot: &DocumentSnapshot,
+    op: &burnburn_document::process::Operation,
+    add: &mut impl FnMut(Finding),
+) {
+    let (OperationMode::Line { .. }, Some(tabs)) = (op.mode(), op.advanced().line.tabs) else { return };
+    let Ok(tolerance) = burnburn_types::Length::from_mm(0.01).map(burnburn_geometry::ProductionTolerance::new) else {
+        return;
+    };
+    let Ok(tolerance) = tolerance else { return };
+    for &g in op.targets() {
+        let Some(object) = snapshot.object(g) else { continue };
+        let invalid =
+            object.path().flatten(&tolerance).iter().filter(|pl| pl.closed && pl.points.len() >= 2).any(|pl| {
+                let n = pl.points.len();
+                let perimeter: f64 = (0..n).map(|k| pl.points[k].distance(pl.points[(k + 1) % n])).sum();
+                crate::line::tab_count(&tabs, perimeter).is_none()
+            });
+        if invalid {
+            add(Finding::InvalidTabs { operation: op.id(), geometry: g });
+        }
     }
 }

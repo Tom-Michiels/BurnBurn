@@ -18,7 +18,8 @@ mod recipe;
 mod settings;
 
 pub use advanced::{
-    AdvancedOptions, Lead, LineOptions, Overcut, Perforation, SharedEdgePolicy, SubOperation, TabSpec, ZStep,
+    AdvancedOptions, DotMode, Lead, LeadStyle, LineOptions, Overcut, Perforation, SharedEdgePolicy, SubOperation,
+    TabPlacement, TabSpec, ZStep,
 };
 pub use command::{ProcessCommand, ProcessLabel};
 pub(crate) use command::{ProcessTxn, apply};
@@ -27,6 +28,6 @@ pub use layer::{OrderConstraint, ProcessLayer};
 pub use operation::{Operation, OperationDraft};
 pub use recipe::{MaterialRecipe, RecipeDraft, RecipeId, RecipeRef};
 pub use settings::{
-    DitherMode, FillSettings, ImageRender, ImageSettings, Kerf, OffsetFillOrder, OffsetFillSettings, OperationMode,
-    Passes, PowerPercent, PowerRange, ProcessSettings, ScanAxis, ScanDirection, Speed, ToneSettings,
+    DitherMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Kerf, OffsetFillOrder, OffsetFillSettings,
+    OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, ScanAxis, ScanDirection, Speed, ToneSettings,
 };

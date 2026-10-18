@@ -32,6 +32,12 @@ pub enum CompileError {
         operation: OperationId,
         geometry: GeometryId,
     },
+    /// An arc lead needs the waste side of a closed contour; an open contour has none, so the
+    /// arc is refused instead of being replaced by a line lead.
+    ArcLeadOnOpenContour {
+        operation: OperationId,
+        geometry: GeometryId,
+    },
     /// The image operation's source pixels are not available to the compiler.
     MissingImageSource {
         operation: OperationId,
@@ -60,6 +66,11 @@ pub enum CompileError {
     UnknownGeometry {
         operation: OperationId,
         geometry: GeometryId,
+    },
+    /// Dot mode would need more pulses than the compiler bound allows.
+    TooManyDots {
+        operation: OperationId,
+        dots: u64,
     },
     /// The fill would need more scan rows than the compiler bound allows.
     TooManyScanRows {
@@ -96,6 +107,9 @@ impl fmt::Display for CompileError {
             CompileError::InvalidTabs { operation, geometry } => {
                 write!(f, "{operation}: the tabs cover the whole contour of {geometry}")
             }
+            CompileError::ArcLeadOnOpenContour { operation, geometry } => {
+                write!(f, "{operation}: an arc lead needs a closed contour ({geometry} is open)")
+            }
             CompileError::MissingImageSource { operation, source } => {
                 write!(f, "{operation}: source image {source} is not available")
             }
@@ -108,6 +122,7 @@ impl fmt::Display for CompileError {
             CompileError::UnknownGeometry { operation, geometry } => {
                 write!(f, "{operation} references missing {geometry}")
             }
+            CompileError::TooManyDots { operation, dots } => write!(f, "{operation} needs {dots} dots"),
             CompileError::TooManyScanRows { operation, rows } => write!(f, "{operation} needs {rows} scan rows"),
             CompileError::Plan(e) => write!(f, "plan: {e}"),
         }

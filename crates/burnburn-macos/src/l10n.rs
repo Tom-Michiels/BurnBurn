@@ -690,6 +690,11 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
         Feature::ZStep => ("Z-stap tussen doorgangen", "Z step between passes"),
         Feature::SubOperations => ("deelbewerkingen", "sub-operations"),
         Feature::CommonLine => ("gemeenschappelijke snijlijn", "common-line cutting"),
+        Feature::DotMode => ("puntmodus (dwell)", "dot (dwell) mode"),
+        Feature::CrossHatch => ("kruisarcering", "cross-hatch"),
+        Feature::FloodFill => ("flood fill", "flood fill"),
+        Feature::FillGrouping => ("vulgroepering", "fill grouping"),
+        Feature::RampLength => ("vermogensverloop (ramp)", "power ramp"),
         _ => return None,
     })
 }

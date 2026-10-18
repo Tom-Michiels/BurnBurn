@@ -2,7 +2,7 @@
 
 use burnburn_types::OperationId;
 
-use crate::{JobPlan, JobPlanId, MachinePoint, MachineProfile, PlanEvent, SourceRef};
+use crate::{JobPlan, JobPlanId, MachinePoint, MachineProfile, PlanEvent, PlanMode, SourceRef};
 
 /// What a preview segment represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,6 +16,8 @@ pub enum MoveKind {
     /// Laser-off run-up/run-out of a scan. On controllers that scan natively the firmware
     /// performs this motion itself; its exact shape and timing are firmware-dependent.
     Overscan,
+    /// One laser pulse (zero-length; its duration is the dwell of the dot settings).
+    Dot,
 }
 
 /// One drawable, traceable segment.
@@ -62,6 +64,7 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
     let mut at = plan.start();
     let mut operation = None;
     let mut speed = travel_speed;
+    let mut dwell_ms = 0.0;
     for (event, e) in plan.events().iter().enumerate() {
         let mut push = |kind, from: MachinePoint, to: MachinePoint, source, v: f64| {
             let len = from.distance(to);
@@ -70,6 +73,7 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
                 MoveKind::Cut => pv.cut_length_mm += len,
                 MoveKind::Scan => pv.scan_length_mm += len,
                 MoveKind::Overscan => pv.overscan_length_mm += len,
+                MoveKind::Dot => {}
             }
             pv.estimated_seconds += len / v;
             pv.moves.push(PreviewMove { kind, from, to, event, operation, source });
@@ -77,7 +81,12 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
         match *e {
             PlanEvent::OperationBoundary { operation: op, settings, .. } => {
                 operation = Some(op);
-                speed = plan.settings().get(settings.get()).map_or(travel_speed, |s| s.speed_mm_s);
+                let block = plan.settings().get(settings.get());
+                speed = block.map_or(travel_speed, |s| s.speed_mm_s);
+                dwell_ms = block.map_or(0.0, |s| match s.mode {
+                    PlanMode::Dots { dwell_ms } => dwell_ms,
+                    _ => 0.0,
+                });
             }
             PlanEvent::Travel { to } => {
                 push(MoveKind::Travel, at, to, None, travel_speed);
@@ -88,7 +97,14 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
                 at = to;
             }
             PlanEvent::FocusOffset { .. } => {}
-            PlanEvent::ScanRun { line, origin } | PlanEvent::PowerRun { line, origin, .. } => {
+            PlanEvent::Dot { origin } => {
+                // Zero length, so only the pulse time counts.
+                push(MoveKind::Dot, at, at, origin, 1.0);
+                pv.estimated_seconds += dwell_ms / 1000.0;
+            }
+            PlanEvent::ScanRun { line, origin }
+            | PlanEvent::PowerRun { line, origin, .. }
+            | PlanEvent::RampRun { line, origin, .. } => {
                 let (run_up, run_out) = line.overscan_ends();
                 if run_up != line.from {
                     push(MoveKind::Overscan, run_up, line.from, None, speed);

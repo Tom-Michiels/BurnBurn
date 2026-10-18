@@ -38,11 +38,21 @@ pub enum Feature {
     SubOperations,
     /// Common-line cutting of touching parts (separately validated process, C12).
     CommonLine,
+    /// Discrete laser pulses instead of a continuous cut (dot / dwell mode).
+    DotMode,
+    /// A second scan pass perpendicular to the first (ordinary scan events).
+    CrossHatch,
+    /// Fill regions scanned one connected region after the other (ordinary scan events).
+    FloodFill,
+    /// Fill grouping other than "all shapes at once" (ordinary scan events, other order).
+    FillGrouping,
+    /// Power ramp at the ends of scan runs (`RampRun` events).
+    RampLength,
 }
 
 impl Feature {
     /// Every feature, in canonical order.
-    pub const ALL: [Feature; 12] = [
+    pub const ALL: [Feature; 17] = [
         Feature::KerfCompensation,
         Feature::OffsetFill,
         Feature::ScanAngle,
@@ -55,7 +65,16 @@ impl Feature {
         Feature::ZStep,
         Feature::SubOperations,
         Feature::CommonLine,
+        Feature::DotMode,
+        Feature::CrossHatch,
+        Feature::FloodFill,
+        Feature::FillGrouping,
+        Feature::RampLength,
     ];
+
+    /// Number of features (a prefix of [`Feature::ALL`]) whose support is part of every profile
+    /// hash; later ones only when overridden.
+    const LEGACY: usize = 12;
 
     pub fn tag(self) -> &'static str {
         match self {
@@ -71,6 +90,11 @@ impl Feature {
             Feature::ZStep => "z-step",
             Feature::SubOperations => "sub-operations",
             Feature::CommonLine => "common-line",
+            Feature::DotMode => "dot-mode",
+            Feature::CrossHatch => "cross-hatch",
+            Feature::FloodFill => "flood-fill",
+            Feature::FillGrouping => "fill-grouping",
+            Feature::RampLength => "ramp-length",
         }
     }
 }
@@ -128,6 +152,8 @@ impl MachineCapabilities {
             }
             Feature::CommonLine => Support::Unverified { reason: "common-line cutting is not validated".into() },
             Feature::ZStep => Support::Unsupported,
+            Feature::DotMode => Support::Unverified { reason: "dot pulses have no RD form yet".into() },
+            Feature::RampLength => Support::Unverified { reason: "power ramps along a run have no RD form yet".into() },
             _ => Support::Supported,
         }
     }
@@ -137,8 +163,15 @@ impl MachineCapabilities {
     }
 
     /// Canonical projection: the effective support of every feature in [`Feature::ALL`] order.
+    /// The first [`Feature::LEGACY`] features are always written (so profiles keep the hash they
+    /// had before later features existed); a later feature is written only when its support
+    /// differs from the conservative default.
     pub(crate) fn encode(&self, w: &mut CanonicalWriter) {
-        for f in Feature::ALL {
+        let default = MachineCapabilities::conservative();
+        for (i, f) in Feature::ALL.into_iter().enumerate() {
+            if i >= Feature::LEGACY && self.support(f) == default.support(f) {
+                continue;
+            }
             w.tag(f.tag());
             match self.support(f) {
                 Support::Supported => w.tag("supported"),

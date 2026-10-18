@@ -113,12 +113,16 @@ impl JobPlan {
                     add(to);
                     at = to;
                 }
-                PlanEvent::ScanRun { line, .. } | PlanEvent::PowerRun { line, .. } => {
+                PlanEvent::ScanRun { line, .. }
+                | PlanEvent::PowerRun { line, .. }
+                | PlanEvent::RampRun { line, .. } => {
                     let (a, z) = line.overscan_ends();
                     add(a);
                     add(z);
                     at = line.to;
                 }
+                // A pulse burns where the head is: that position is part of the bounds.
+                PlanEvent::Dot { .. } => add(at),
                 PlanEvent::OperationBoundary { .. } | PlanEvent::FocusOffset { .. } => {}
             }
         }
@@ -184,14 +188,19 @@ impl JobPlanBuilder {
                 }
                 self.position = to;
             }
-            PlanEvent::ScanRun { line, .. } | PlanEvent::PowerRun { line, .. } => {
+            PlanEvent::ScanRun { line, .. } | PlanEvent::PowerRun { line, .. } | PlanEvent::RampRun { line, .. } => {
                 let m = mode(self)?;
                 let fits = match event {
-                    PlanEvent::ScanRun { .. } => m.is_binary_scan(),
+                    PlanEvent::ScanRun { .. } | PlanEvent::RampRun { .. } => m.is_binary_scan(),
                     _ => matches!(m, PlanMode::GrayscaleScan { .. }),
                 };
                 if !fits {
                     return Err(PlanError::EventDoesNotMatchMode);
+                }
+                if let PlanEvent::RampRun { ramp_mm, .. } = event
+                    && !(ramp_mm.is_finite() && ramp_mm >= 0.0)
+                {
+                    return Err(PlanError::OutOfRange("ramp"));
                 }
                 if !(line.overscan_mm.is_finite() && line.overscan_mm >= 0.0) {
                     return Err(PlanError::OutOfRange("overscan"));
@@ -205,6 +214,11 @@ impl JobPlanBuilder {
                 mode(self)?;
                 if !z_mm.is_finite() {
                     return Err(PlanError::NotFinite);
+                }
+            }
+            PlanEvent::Dot { .. } => {
+                if !matches!(mode(self)?, PlanMode::Dots { .. }) {
+                    return Err(PlanError::EventDoesNotMatchMode);
                 }
             }
         }
@@ -271,6 +285,10 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
                 w.f64(interval_mm);
                 w.bool(bidirectional);
             }
+            PlanMode::Dots { dwell_ms } => {
+                w.tag("dots");
+                w.f64(dwell_ms);
+            }
         }
         w.f64(s.speed_mm_s);
         w.f64(s.min_power.get());
@@ -321,6 +339,18 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
             PlanEvent::FocusOffset { z_mm } => {
                 w.tag("focus-offset");
                 w.f64(z_mm);
+            }
+            PlanEvent::Dot { origin: o } => {
+                w.tag("dot");
+                origin(&mut w, o);
+            }
+            PlanEvent::RampRun { line, ramp_mm, origin: o } => {
+                w.tag("ramp-run");
+                point(&mut w, line.from);
+                point(&mut w, line.to);
+                w.f64(line.overscan_mm);
+                w.f64(ramp_mm);
+                origin(&mut w, o);
             }
         }
     }

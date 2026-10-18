@@ -3,14 +3,17 @@
 //! Layout: `seq` operations in list order (`u64` id, `str` name, mode, settings, `seq` of `u64`
 //! targets, `bool` output, recipe ref as `u64` 0 | `u64` 1 + `u64` id + `u64` revision; with
 //! non-default advanced options the recipe marker is 2 | 3 instead and the advanced options
-//! follow, so operations without them keep their earlier hash);
+//! follow, so operations without them keep their earlier hash; options added later (tab spacing,
+//! lead style/angle, dot mode) follow the older ones in an `advanced-ext` block that exists only
+//! when one of them is set, and extended fills use the tag `fill-ext`);
 //! `seq` constraints (`u64` before, `u64` after) in stored order; `seq` recipes in id order.
 
 use burnburn_types::{CanonicalEncode, CanonicalWriter, StableId};
 
 use super::{
-    AdvancedOptions, DitherMode, ImageRender, MaterialRecipe, OffsetFillOrder, Operation, OperationMode,
-    OrderConstraint, ProcessLayer, ProcessSettings, ScanAxis, ScanDirection, SharedEdgePolicy,
+    AdvancedOptions, DitherMode, FillGrouping, ImageRender, Lead, LeadStyle, LineOptions, MaterialRecipe,
+    OffsetFillOrder, Operation, OperationMode, OrderConstraint, ProcessLayer, ProcessSettings, ScanAxis, ScanDirection,
+    SharedEdgePolicy, TabPlacement,
 };
 
 impl CanonicalEncode for ProcessLayer {
@@ -63,12 +66,12 @@ fn opt_f64(out: &mut CanonicalWriter, v: Option<f64>) {
 fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
     out.tag("advanced");
     match a.line.tabs {
-        None => out.u64(0),
-        Some(t) => {
+        Some(t) if matches!(t.placement(), TabPlacement::Count(_)) => {
             out.u64(1);
             out.u64(u64::from(t.count()));
             out.f64(t.width_mm());
         }
+        _ => out.u64(0),
     }
     opt_f64(out, a.line.lead_in.map(|l| l.length_mm()));
     opt_f64(out, a.line.lead_out.map(|l| l.length_mm()));
@@ -91,6 +94,49 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
         SharedEdgePolicy::CutOnce => "shared-cut-once",
         SharedEdgePolicy::CutPerRegion => "shared-cut-per-region",
     });
+    encode_line_extensions(&a.line, out);
+}
+
+/// `tag("advanced-ext")` + tab spacing (optional `f64` spacing, then width) + lead in and lead
+/// out (`u64` 0 | 1 + style tag + `f64` angle) + dot mode (`u64` 0 | 1 + `f64` spacing + `f64`
+/// dwell); written only when a later option is set. Spacing-based tabs are written *only* here
+/// (the earlier tab field then reads "no tabs"), so they never collide with counted tabs.
+fn encode_line_extensions(line: &LineOptions, out: &mut CanonicalWriter) {
+    let lead_is_plain = |l: Option<Lead>| l.is_none_or(|l| l.style() == LeadStyle::Line && l.angle_deg() == 90.0);
+    let spaced = line.tabs.filter(|t| matches!(t.placement(), TabPlacement::Spacing(_)));
+    if spaced.is_none() && lead_is_plain(line.lead_in) && lead_is_plain(line.lead_out) && line.dot.is_none() {
+        return;
+    }
+    out.tag("advanced-ext");
+    match spaced.map(|t| (t.placement(), t.width_mm())) {
+        Some((TabPlacement::Spacing(spacing), width)) => {
+            out.u64(1);
+            out.f64(spacing);
+            out.f64(width);
+        }
+        _ => out.u64(0),
+    }
+    for lead in [line.lead_in, line.lead_out] {
+        match lead {
+            None => out.u64(0),
+            Some(l) => {
+                out.u64(1);
+                out.tag(match l.style() {
+                    LeadStyle::Line => "line",
+                    LeadStyle::Arc => "arc",
+                });
+                out.f64(l.angle_deg());
+            }
+        }
+    }
+    match line.dot {
+        None => out.u64(0),
+        Some(d) => {
+            out.u64(1);
+            out.f64(d.spacing_mm());
+            out.f64(d.dwell_ms());
+        }
+    }
 }
 
 fn direction_tag(d: ScanDirection) -> &'static str {
@@ -128,8 +174,15 @@ pub(crate) fn encode_mode(mode: OperationMode, out: &mut CanonicalWriter) {
             out.f64(kerf.width_mm());
         }
         OperationMode::Fill(f) => {
-            // A rotated fill has its own tag (angle last) so unrotated fills keep their hash.
-            out.tag(if f.angle_deg() == 0.0 { "fill" } else { "fill-angled" });
+            // A rotated fill has its own tag (angle last) so unrotated fills keep their hash;
+            // a fill with extras has another (angle always, then the extras).
+            out.tag(if f.has_extras() {
+                "fill-ext"
+            } else if f.angle_deg() == 0.0 {
+                "fill"
+            } else {
+                "fill-angled"
+            });
             out.f64(f.interval().mm());
             out.tag(match f.axis() {
                 ScanAxis::X => "x",
@@ -137,7 +190,17 @@ pub(crate) fn encode_mode(mode: OperationMode, out: &mut CanonicalWriter) {
             });
             out.tag(direction_tag(f.direction()));
             out.f64(f.overscan().mm());
-            if f.angle_deg() != 0.0 {
+            if f.has_extras() {
+                out.f64(f.angle_deg());
+                out.bool(f.cross_hatch());
+                out.tag(match f.grouping() {
+                    FillGrouping::AllShapes => "all-shapes",
+                    FillGrouping::Groups => "groups",
+                    FillGrouping::Individual => "individual",
+                });
+                out.bool(f.flood_fill());
+                out.f64(f.ramp_mm());
+            } else if f.angle_deg() != 0.0 {
                 out.f64(f.angle_deg());
             }
         }

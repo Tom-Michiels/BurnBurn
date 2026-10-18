@@ -115,3 +115,43 @@ pub fn path_of(points: &[(f64, f64)]) -> Path {
 pub fn mp(x: f64, y: f64) -> MachinePoint {
     MachinePoint::new(x, y).unwrap()
 }
+
+/// Compiles with the head at (−1, −1), so the first travel to an entry at (0, 0) is visible.
+pub fn plan_from_outside(
+    s: &DocumentSession,
+    p: &MachineProfile,
+) -> Result<burnburn_job::JobPlan, burnburn_cam::CompileError> {
+    let mut o = options();
+    o.start = StartPoint::Bed(Point::new(-1.0, -1.0));
+    burnburn_cam::compile(&s.snapshot(), p, &o, &burnburn_types::CancellationToken::never())
+}
+
+/// A profile whose matrix supports exactly the given extra features.
+pub fn supporting(features: &[burnburn_job::Feature]) -> MachineProfile {
+    let caps = features
+        .iter()
+        .fold(burnburn_job::MachineCapabilities::conservative(), |c, f| c.with(*f, burnburn_job::Support::Supported));
+    profile().with_capabilities(caps).unwrap()
+}
+
+/// Total length of the `Cut` events (the head position before a cut is the previous event's end).
+pub fn cut_length(plan: &burnburn_job::JobPlan) -> f64 {
+    let mut at = plan.start();
+    let mut total = 0.0;
+    for e in plan.events() {
+        match *e {
+            PlanEvent::Travel { to } => at = to,
+            PlanEvent::Cut { to, .. } => {
+                total += at.distance(to);
+                at = to;
+            }
+            PlanEvent::ScanRun { line, .. } | PlanEvent::RampRun { line, .. } => at = line.to,
+            _ => {}
+        }
+    }
+    total
+}
+
+pub fn near(a: (f64, f64), b: (f64, f64)) -> bool {
+    (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9
+}

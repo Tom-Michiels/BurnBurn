@@ -11,11 +11,21 @@ fn positive(l: Length, field: &'static str) -> Result<f64, ProcessError> {
     if l.mm() > 0.0 { Ok(l.mm()) } else { Err(ProcessError::NotPositive { field }) }
 }
 
-/// Uncut bridges on every closed contour of a Line operation: `count` gaps of `width`, spaced
-/// evenly by arc length; the first gap is centred `L / (2·count)` after the entry point.
+/// How many tabs a contour gets.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TabPlacement {
+    /// Exactly this many tabs per contour.
+    Count(u32),
+    /// One tab per `spacing` mm of contour length (rounded, at least one), evenly spread.
+    Spacing(f64),
+}
+
+/// Uncut bridges on every closed contour of a Line operation: `n` gaps of `width`, spaced
+/// evenly by arc length; the first gap is centred `L / (2·n)` after the entry point. `n` is the
+/// fixed count or derived from the contour length and the spacing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TabSpec {
-    count: u32,
+    placement: TabPlacement,
     width_mm: f64,
 }
 
@@ -26,31 +36,112 @@ impl TabSpec {
         if !(1..=Self::MAX_COUNT).contains(&count) {
             return Err(ProcessError::OutOfRange { field: "tab count" });
         }
-        Ok(TabSpec { count, width_mm: positive(width, "tab width")? })
+        Ok(TabSpec { placement: TabPlacement::Count(count), width_mm: positive(width, "tab width")? })
     }
 
+    /// Tabs every `spacing` of contour length. The spacing must exceed the tab width.
+    pub fn spaced(spacing: Length, width: Length) -> Result<Self, ProcessError> {
+        let spacing_mm = positive(spacing, "tab spacing")?;
+        let width_mm = positive(width, "tab width")?;
+        if spacing_mm <= width_mm {
+            return Err(ProcessError::OutOfRange { field: "tab spacing" });
+        }
+        Ok(TabSpec { placement: TabPlacement::Spacing(spacing_mm), width_mm })
+    }
+
+    pub fn placement(&self) -> TabPlacement {
+        self.placement
+    }
+
+    /// The fixed tab count, or 0 for spacing-based tabs (see [`TabSpec::placement`]).
     pub fn count(&self) -> u32 {
-        self.count
+        match self.placement {
+            TabPlacement::Count(n) => n,
+            TabPlacement::Spacing(_) => 0,
+        }
     }
     pub fn width_mm(&self) -> f64 {
         self.width_mm
     }
 }
 
-/// A straight lead of `length`, perpendicular to the contour at the entry, on the waste side
-/// (outside an outer contour, inside a hole).
+/// Shape of a lead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum LeadStyle {
+    /// A straight line at [`Lead::angle_deg`] to the contour.
+    #[default]
+    Line,
+    /// A quarter circle of radius `length`, tangent to the contour at the entry or exit.
+    Arc,
+}
+
+/// A lead of `length` on the waste side of a closed contour (outside an outer contour, inside a
+/// hole). A line lead makes `angle_deg` with the contour tangent at the entry or exit (90° =
+/// perpendicular, the default); an arc lead is tangent and has `length` as its radius. On an
+/// open contour a line lead continues the first or last segment.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lead {
     length_mm: f64,
+    style: LeadStyle,
+    angle_deg: f64,
 }
 
 impl Lead {
+    /// A perpendicular line lead.
     pub fn new(length: Length) -> Result<Self, ProcessError> {
-        Ok(Lead { length_mm: positive(length, "lead length")? })
+        Ok(Lead { length_mm: positive(length, "lead length")?, style: LeadStyle::Line, angle_deg: 90.0 })
+    }
+
+    /// The same lead with another shape.
+    pub fn with_style(mut self, style: LeadStyle) -> Self {
+        self.style = style;
+        self
+    }
+
+    /// The same lead at `degrees` to the contour tangent, in `(0, 90]`.
+    pub fn with_angle(mut self, degrees: f64) -> Result<Self, ProcessError> {
+        if !(degrees.is_finite() && degrees > 0.0 && degrees <= 90.0) {
+            return Err(ProcessError::OutOfRange { field: "lead angle" });
+        }
+        self.angle_deg = degrees;
+        Ok(self)
     }
 
     pub fn length_mm(&self) -> f64 {
         self.length_mm
+    }
+    pub fn style(&self) -> LeadStyle {
+        self.style
+    }
+    pub fn angle_deg(&self) -> f64 {
+        self.angle_deg
+    }
+}
+
+/// Dot (dwell) mode: instead of a continuous cut the laser fires a pulse of `dwell_ms` every
+/// `spacing` of contour length, starting at the entry point. Excludes the other line options.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DotMode {
+    spacing_mm: f64,
+    dwell_ms: f64,
+}
+
+impl DotMode {
+    /// Longest pulse accepted (10 s).
+    pub const MAX_DWELL_MS: f64 = 10_000.0;
+
+    pub fn new(spacing: Length, dwell_ms: f64) -> Result<Self, ProcessError> {
+        if !(dwell_ms.is_finite() && dwell_ms > 0.0 && dwell_ms <= Self::MAX_DWELL_MS) {
+            return Err(ProcessError::OutOfRange { field: "dot dwell" });
+        }
+        Ok(DotMode { spacing_mm: positive(spacing, "dot spacing")?, dwell_ms })
+    }
+
+    pub fn spacing_mm(&self) -> f64 {
+        self.spacing_mm
+    }
+    pub fn dwell_ms(&self) -> f64 {
+        self.dwell_ms
     }
 }
 
@@ -119,6 +210,7 @@ pub struct LineOptions {
     pub lead_out: Option<Lead>,
     pub overcut: Option<Overcut>,
     pub perforation: Option<Perforation>,
+    pub dot: Option<DotMode>,
 }
 
 /// What happens to a boundary segment that two target geometries of one Line operation share
@@ -160,6 +252,19 @@ impl AdvancedOptions {
     pub(crate) fn validate(&self) -> Result<(), ProcessError> {
         if self.sub_operations.len() > Self::MAX_SUB_OPERATIONS {
             return Err(ProcessError::OutOfRange { field: "sub-operations" });
+        }
+        let l = &self.line;
+        if l.dot.is_some() {
+            let others = [
+                (l.tabs.is_some(), "tabs"),
+                (l.lead_in.is_some(), "lead-in"),
+                (l.lead_out.is_some(), "lead-out"),
+                (l.overcut.is_some(), "overcut"),
+                (l.perforation.is_some(), "perforation"),
+            ];
+            if let Some((_, second)) = others.into_iter().find(|(on, _)| *on) {
+                return Err(ProcessError::ConflictingOptions { first: "dot mode", second });
+            }
         }
         Ok(())
     }
