@@ -1,5 +1,6 @@
 //! Canonical projection of document objects (ADR 0004). Revision and session state are not content.
 
+use burnburn_geometry::ShapeParams;
 use burnburn_types::{CanonicalEncode, CanonicalWriter, StableId};
 
 use crate::{GeometryObject, GeometrySource, ObjectKind};
@@ -84,5 +85,41 @@ impl CanonicalEncode for GeometryObject {
                 }
             }
         }
+        // Optional trailing field (W1-L2b, after edge-keys): only for parametric shapes, so the
+        // hashes of plain objects stay.
+        if let Some(shape) = self.parametric() {
+            out.tag("parametric");
+            encode_params(shape.params(), out);
+            for c in shape.frame().coefficients() {
+                out.f64(c);
+            }
+        }
+    }
+}
+
+fn encode_params(params: &ShapeParams, out: &mut CanonicalWriter) {
+    match *params {
+        ShapeParams::Polygon { sides } => {
+            out.tag("polygon");
+            out.u64(u64::from(sides));
+        }
+        ShapeParams::Star { points, ratio } => {
+            out.tag("star");
+            out.u64(u64::from(points));
+            out.f64(ratio);
+        }
+        ShapeParams::DoubleStar { points, ratio } => {
+            out.tag("double-star");
+            out.u64(u64::from(points));
+            out.f64(ratio);
+        }
+        ShapeParams::RoundedRectangle { width, height, radius } => {
+            out.tag("rounded-rectangle");
+            out.f64(width);
+            out.f64(height);
+            out.f64(radius);
+        }
+        // Parameter kinds are closed by `ShapeParams::validate`; a future kind needs its own tag.
+        _ => out.tag("unknown-shape"),
     }
 }

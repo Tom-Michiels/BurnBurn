@@ -14,6 +14,7 @@ mod object;
 mod patch;
 pub mod process;
 mod session;
+mod shape_edit;
 pub mod sketch;
 mod snapshot;
 pub mod structure;
@@ -31,4 +32,5 @@ pub use patch::{
     Evaluator, ModifierFailure, OwnerSolution,
 };
 pub use session::DocumentSession;
+pub use shape_edit::{ShapeCommand, ShapeError, ShapeLabel};
 pub use snapshot::{DocumentSnapshot, PlateView, SnapshotError};

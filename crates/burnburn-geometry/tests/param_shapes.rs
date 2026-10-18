@@ -226,6 +226,20 @@ fn fit_makes_the_resolved_bounds_equal_the_target() {
 }
 
 #[test]
+fn fit_of_a_rounded_rectangle_takes_the_box_and_clamps_the_radius() {
+    let b = Bounds::from_corners(Point::new(0.0, 0.0), Point::new(40.0, 10.0));
+    let fit = |r| ParametricShape::fit(ShapeParams::RoundedRectangle { width: 1.0, height: 1.0, radius: r }, b);
+    assert_eq!(*fit(3.0).unwrap().params(), ShapeParams::RoundedRectangle { width: 40.0, height: 10.0, radius: 3.0 });
+    assert_eq!(*fit(99.0).unwrap().params(), ShapeParams::RoundedRectangle { width: 40.0, height: 10.0, radius: 5.0 });
+    assert_eq!(fit(-1.0).unwrap_err(), ShapeParamError::RadiusOutOfRange);
+    let flat = Bounds::from_corners(Point::new(0.0, 0.0), Point::new(40.0, 0.0));
+    assert_eq!(
+        ParametricShape::fit(ShapeParams::Polygon { sides: 5 }, flat).unwrap_err(),
+        ShapeParamError::NonPositiveSize
+    );
+}
+
+#[test]
 fn natural_size_matches_the_resolved_bounds_of_the_unplaced_shape() {
     let cases = [
         ShapeParams::Polygon { sides: 3 },

@@ -178,15 +178,18 @@ impl ParametricShape {
     }
 
     /// The shape stretched so that its outline fills exactly `bounds` (the drawing gesture).
-    /// A rounded rectangle takes the size of `bounds`; its radius is kept, clamped to fit.
+    /// A rounded rectangle takes the size of `bounds` (its own width and height are ignored); its
+    /// radius is kept, clamped to fit.
     pub fn fit(params: ShapeParams, bounds: Bounds) -> Result<Self, ShapeParamError> {
-        params.validate()?;
         let (bw, bh) = (bounds.width(), bounds.height());
         if !(bw > 0.0 && bh > 0.0) {
             return Err(ShapeParamError::NonPositiveSize);
         }
         let to = |m: Result<Affine, GeometryError>| m.map_err(ShapeParamError::Geometry);
         if let ShapeParams::RoundedRectangle { radius, .. } = params {
+            if !(radius.is_finite() && radius >= 0.0) {
+                return Err(ShapeParamError::RadiusOutOfRange);
+            }
             let params = ShapeParams::RoundedRectangle {
                 width: bw,
                 height: bh,
@@ -195,6 +198,7 @@ impl ParametricShape {
             let center = to(Affine::translate(bounds.center().to_vector()))?;
             return Self::new(params, center);
         }
+        params.validate()?;
         let local = ring_bounds(&rings(&params)).ok_or(ShapeParamError::NonPositiveSize)?;
         let frame = to(Affine::translate(-local.min().to_vector()))?
             .then(&to(Affine::scale(bw / local.width(), bh / local.height()))?)
