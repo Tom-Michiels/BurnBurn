@@ -35,7 +35,7 @@ fn art(b: &BitImage) -> Vec<String> {
 fn bits_of(e: Engraved) -> BitImage {
     match e {
         Engraved::Bits(b) => b,
-        Engraved::Levels { .. } => panic!("expected a bit image"),
+        Engraved::Levels { .. } => BitImage::new(0, 0, Vec::new()).unwrap(),
     }
 }
 

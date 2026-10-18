@@ -239,6 +239,102 @@ pub enum DitherMode {
     Ordered {
         size: u8,
     },
+    /// 45° round-dot screen; the cell size comes from [`ImageSettings::screen`].
+    Newsprint,
+    /// Round-dot screen with cell size and angle from [`ImageSettings::screen`].
+    Halftone,
+    /// Sobel edge lines: burn where the edge strength (`0..=255`) is at least `level`.
+    Sketch {
+        level: u8,
+    },
+    /// The source pixels as they are: one source pixel per dot, thresholded at 128, no
+    /// resampling and no adjustments.
+    PassThrough,
+}
+
+/// How colour becomes gray (before transparency is composited over paper).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GrayMethod {
+    /// Rec. 709 luma `0.2126 R + 0.7152 G + 0.0722 B`.
+    #[default]
+    Rec709,
+    /// Rec. 601 luma `0.299 R + 0.587 G + 0.114 B`.
+    Rec601,
+    Average,
+    /// `(max + min) / 2` of the channels.
+    Lightness,
+    Red,
+    Green,
+    Blue,
+}
+
+/// A crop of the source image in source pixels: `[x, x+width) × [y, y+height)`, y down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImageCrop {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Unsharp mask applied on the physical output grid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImageSharpen {
+    amount: f64,
+    radius_mm: f64,
+}
+
+impl ImageSharpen {
+    /// `amount ∈ (0, 10]`, `radius ≥ ` [`ImageSettings::MIN_PITCH_MM`].
+    pub fn new(amount: f64, radius: Length) -> Result<Self, ProcessError> {
+        if !(amount.is_finite() && amount > 0.0 && amount <= 10.0) {
+            return Err(ProcessError::OutOfRange { field: "sharpen amount" });
+        }
+        if !(radius.mm() >= ImageSettings::MIN_PITCH_MM) {
+            return Err(ProcessError::OutOfRange { field: "sharpen radius" });
+        }
+        Ok(ImageSharpen { amount, radius_mm: radius.mm() })
+    }
+
+    pub fn amount(&self) -> f64 {
+        self.amount
+    }
+    pub fn radius_mm(&self) -> f64 {
+        self.radius_mm
+    }
+}
+
+/// Cell size and angle of the Halftone screen (Newsprint always uses 45°).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenSettings {
+    cell_mm: f64,
+    angle_deg: f64,
+}
+
+impl ScreenSettings {
+    pub fn new(cell: Length, angle_deg: f64) -> Result<Self, ProcessError> {
+        if !(cell.mm() >= ImageSettings::MIN_PITCH_MM) {
+            return Err(ProcessError::OutOfRange { field: "screen cell" });
+        }
+        if !angle_deg.is_finite() {
+            return Err(ProcessError::OutOfRange { field: "screen angle" });
+        }
+        Ok(ScreenSettings { cell_mm: cell.mm(), angle_deg: angle_deg.rem_euclid(180.0) })
+    }
+
+    pub fn cell_mm(&self) -> f64 {
+        self.cell_mm
+    }
+    pub fn angle_deg(&self) -> f64 {
+        self.angle_deg
+    }
+}
+
+impl Default for ScreenSettings {
+    /// 0.5 mm cells at 45°.
+    fn default() -> Self {
+        ScreenSettings { cell_mm: 0.5, angle_deg: 45.0 }
+    }
 }
 
 /// How an image becomes laser output.
@@ -301,6 +397,14 @@ pub struct ImageSettings {
     direction: ScanDirection,
     serpentine: bool,
     overscan_mm: f64,
+    negative: bool,
+    dot_width_correction_mm: f64,
+    scan_angle_deg: f64,
+    gray: GrayMethod,
+    crop: Option<ImageCrop>,
+    sharpen: Option<ImageSharpen>,
+    screen: ScreenSettings,
+    mask: bool,
 }
 
 impl ImageSettings {
@@ -329,7 +433,85 @@ impl ImageSettings {
             direction: ScanDirection::Bidirectional,
             serpentine: false,
             overscan_mm: 0.0,
+            negative: false,
+            dot_width_correction_mm: 0.0,
+            scan_angle_deg: 0.0,
+            gray: GrayMethod::Rec709,
+            crop: None,
+            sharpen: None,
+            screen: ScreenSettings::default(),
+            mask: false,
         })
+    }
+
+    /// Burn light instead of dark: the toned gray value is inverted before dithering or
+    /// power mapping.
+    pub fn with_negative(mut self, negative: bool) -> Self {
+        self.negative = negative;
+        self
+    }
+
+    /// Each laser-on run is shortened by `correction` in total (half at each end) to offset the
+    /// beam being wider than the dot pitch; runs that vanish are dropped.
+    pub fn with_dot_width_correction(mut self, correction: Length) -> Result<Self, ProcessError> {
+        if !(correction.mm() >= 0.0) {
+            return Err(ProcessError::OutOfRange { field: "dot width correction" });
+        }
+        self.dot_width_correction_mm = correction.mm();
+        Ok(self)
+    }
+
+    /// Scan line angle in degrees from bed X, counter-clockwise, normalised to `[0, 180)`.
+    pub fn with_scan_angle(mut self, angle_deg: f64) -> Result<Self, ProcessError> {
+        if !angle_deg.is_finite() {
+            return Err(ProcessError::OutOfRange { field: "scan angle" });
+        }
+        self.scan_angle_deg = angle_deg.rem_euclid(180.0);
+        Ok(self)
+    }
+
+    pub fn with_gray_method(mut self, gray: GrayMethod) -> Self {
+        self.gray = gray;
+        self
+    }
+
+    /// Engrave only this window of the source pixels; it is stretched over the target bounds.
+    pub fn with_crop(mut self, crop: Option<ImageCrop>) -> Result<Self, ProcessError> {
+        if crop.is_some_and(|c| c.width == 0 || c.height == 0) {
+            return Err(ProcessError::OutOfRange { field: "crop" });
+        }
+        self.crop = crop;
+        Ok(self)
+    }
+
+    pub fn with_sharpen(mut self, sharpen: Option<ImageSharpen>) -> Self {
+        self.sharpen = sharpen;
+        self
+    }
+
+    pub fn with_screen(mut self, screen: ScreenSettings) -> Self {
+        self.screen = screen;
+        self
+    }
+
+    /// Burn only where the cell centre lies inside the target geometry (even-odd), instead of
+    /// over its whole bounding box.
+    pub fn with_mask(mut self, mask: bool) -> Self {
+        self.mask = mask;
+        self
+    }
+
+    /// Whether any option added after IM18 differs from its default. Such settings have no
+    /// representation in file schema 1 and must not be saved as if they had.
+    pub fn has_extended_options(&self) -> bool {
+        self.negative
+            || self.dot_width_correction_mm != 0.0
+            || self.scan_angle_deg != 0.0
+            || self.gray != GrayMethod::Rec709
+            || self.crop.is_some()
+            || self.sharpen.is_some()
+            || self.screen != ScreenSettings::default()
+            || self.mask
     }
 
     pub fn with_tone(mut self, tone: ToneSettings) -> Self {
@@ -376,6 +558,32 @@ impl ImageSettings {
     /// Laser-off run-up/run-out per scan run, mm.
     pub fn overscan_mm(&self) -> f64 {
         self.overscan_mm
+    }
+    pub fn negative(&self) -> bool {
+        self.negative
+    }
+    /// Total shortening of every laser-on run, mm.
+    pub fn dot_width_correction_mm(&self) -> f64 {
+        self.dot_width_correction_mm
+    }
+    /// Scan line angle in degrees `[0, 180)` from bed X.
+    pub fn scan_angle_deg(&self) -> f64 {
+        self.scan_angle_deg
+    }
+    pub fn gray_method(&self) -> GrayMethod {
+        self.gray
+    }
+    pub fn crop(&self) -> Option<ImageCrop> {
+        self.crop
+    }
+    pub fn sharpen(&self) -> Option<ImageSharpen> {
+        self.sharpen
+    }
+    pub fn screen(&self) -> ScreenSettings {
+        self.screen
+    }
+    pub fn mask(&self) -> bool {
+        self.mask
     }
 }
 

@@ -9,7 +9,7 @@
 use burnburn_types::{CanonicalEncode, CanonicalWriter, StableId};
 
 use super::{
-    AdvancedOptions, DitherMode, ImageRender, MaterialRecipe, OffsetFillOrder, Operation, OperationMode,
+    AdvancedOptions, DitherMode, GrayMethod, ImageRender, MaterialRecipe, OffsetFillOrder, Operation, OperationMode,
     OrderConstraint, ProcessLayer, ProcessSettings, ScanAxis, ScanDirection, SharedEdgePolicy,
 };
 
@@ -169,6 +169,13 @@ pub(crate) fn encode_mode(mode: OperationMode, out: &mut CanonicalWriter) {
                         out.tag("ordered");
                         out.u64(u64::from(size));
                     }
+                    DitherMode::Newsprint => out.tag("newsprint"),
+                    DitherMode::Halftone => out.tag("halftone"),
+                    DitherMode::Sketch { level } => {
+                        out.tag("sketch");
+                        out.u64(u64::from(level));
+                    }
+                    DitherMode::PassThrough => out.tag("pass-through"),
                 },
             }
             let t = i.tone();
@@ -178,6 +185,42 @@ pub(crate) fn encode_mode(mode: OperationMode, out: &mut CanonicalWriter) {
             out.tag(direction_tag(i.direction()));
             out.bool(i.serpentine());
             out.f64(i.overscan_mm());
+            // Options added after IM18 are appended only when set, so earlier hashes stay valid.
+            if i.has_extended_options() {
+                out.tag("image-options");
+                out.bool(i.negative());
+                out.f64(i.dot_width_correction_mm());
+                out.f64(i.scan_angle_deg());
+                out.tag(match i.gray_method() {
+                    GrayMethod::Rec709 => "gray-709",
+                    GrayMethod::Rec601 => "gray-601",
+                    GrayMethod::Average => "gray-average",
+                    GrayMethod::Lightness => "gray-lightness",
+                    GrayMethod::Red => "gray-red",
+                    GrayMethod::Green => "gray-green",
+                    GrayMethod::Blue => "gray-blue",
+                });
+                match i.crop() {
+                    None => out.bool(false),
+                    Some(c) => {
+                        out.bool(true);
+                        for v in [c.x, c.y, c.width, c.height] {
+                            out.u64(u64::from(v));
+                        }
+                    }
+                }
+                match i.sharpen() {
+                    None => out.bool(false),
+                    Some(sh) => {
+                        out.bool(true);
+                        out.f64(sh.amount());
+                        out.f64(sh.radius_mm());
+                    }
+                }
+                out.f64(i.screen().cell_mm());
+                out.f64(i.screen().angle_deg());
+                out.bool(i.mask());
+            }
         }
     }
 }
