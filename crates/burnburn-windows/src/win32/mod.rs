@@ -144,8 +144,14 @@ fn document_of(hwnd: HWND) -> Option<DocumentId> {
 }
 
 fn view() -> Arc<AppViewModel> {
-    with_host(|h| h.controller.view())
-        .unwrap_or_else(|| Arc::new(AppViewModel { documents: Vec::new(), active: None, commands: BTreeMap::new() }))
+    with_host(|h| h.controller.view()).unwrap_or_else(|| {
+        Arc::new(AppViewModel {
+            documents: Vec::new(),
+            active: None,
+            commands: BTreeMap::new(),
+            toolbar: Default::default(),
+        })
+    })
 }
 
 fn window_text(hwnd: HWND) -> String {

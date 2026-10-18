@@ -5,6 +5,7 @@
 //! controller. No AppKit, Windows or GPU type appears here.
 
 mod camera;
+mod catalog;
 mod commit;
 mod controller;
 mod field;
@@ -19,6 +20,10 @@ pub use burnburn_job::Feature;
 pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
     CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
+};
+pub use catalog::{
+    Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,
+    ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
 pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
 pub use field::{FieldError, format_mm, parse_length, parse_position};
@@ -43,5 +48,5 @@ pub use view_model::{
     LAYER_SLOTS, MachineButton, MachineStatusKey, MachineViewModel, MeasureViewModel, MessageKey, ModeChoice,
     ObjectRow, OperationRow, OperatorJobRow, OperatorViewModel, OrderViewModel, PlanViewModel, ProblemViewModel,
     SelectionCycle, SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TaskBadge,
-    TraceSummary, TracerViewModel,
+    ToolMeasurement, ToolRejection, TraceSummary, TracerViewModel,
 };

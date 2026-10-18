@@ -1,10 +1,13 @@
 //! Canvas input: pointer, key and camera events, and the tool step they produce.
 
+use crate::field::format_mm;
+use crate::view_model::{StatusMessage, ToolMeasurement, ToolRejection};
 use burnburn_document::DocumentCommand;
 use burnburn_editor::{
     CLICK_TOLERANCE_PT, CanvasInput, CanvasKey, EditCommit, KeyPhase, Modifiers, PointerEvent, PointerPhase,
     ToolContext, ToolKind, ToolStep, hit_test,
 };
+use burnburn_editor::{Rejection, Unavailable};
 use burnburn_types::{DocumentId, RequestId};
 
 use crate::commit::{name_kind, payload};
@@ -124,6 +127,31 @@ pub(super) fn run_tool(s: &mut Session, document: DocumentId, input: &CanvasInpu
     handle_step(s, document, step, request)
 }
 
+pub(super) fn clear_tool_report(s: &mut Session) {
+    s.tool_measurement = None;
+    s.messages.retain(|m| !matches!(m.key, MessageKey::ToolRejected(_)));
+}
+
+fn rejection_kind(r: &Rejection) -> ToolRejection {
+    match r {
+        Rejection::NothingPicked => ToolRejection::NothingPicked,
+        Rejection::DerivedGeometry(_) => ToolRejection::DerivedGeometry,
+        Rejection::NeedsSelection => ToolRejection::NeedsSelection,
+        Rejection::InvalidSelection => ToolRejection::InvalidSelection,
+        Rejection::NothingToConstrain => ToolRejection::NothingToConstrain,
+        Rejection::InvalidValue => ToolRejection::InvalidValue,
+        Rejection::Corner(_) => ToolRejection::Corner,
+        Rejection::Trim(_) => ToolRejection::Trim,
+        Rejection::Extend(_) => ToolRejection::Extend,
+        Rejection::Break(_) => ToolRejection::Break,
+        Rejection::Offset(_) => ToolRejection::Offset,
+        Rejection::Unavailable(Unavailable::ConstructionOutsideSketch) => ToolRejection::ConstructionOutsideSketch,
+        Rejection::Unavailable(Unavailable::CurvedCorner) => ToolRejection::CurvedCorner,
+        Rejection::Unavailable(Unavailable::BezierExtend) => ToolRejection::BezierExtend,
+        _ => ToolRejection::Unavailable,
+    }
+}
+
 pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep, request: RequestId) -> AppUpdate {
     match step {
         ToolStep::Nothing => AppUpdate::default(),
@@ -136,7 +164,26 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
             edit
             @ (EditCommit::CreateRectangle { .. } | EditCommit::CreateShape { .. } | EditCommit::CreatePath { .. }),
         ) if s.sketch.active.is_some() => sketch::commit_shape(s, document, &edit, request),
+        ToolStep::Rejected(reason) => {
+            s.messages.clear();
+            s.messages.push(StatusMessage { key: MessageKey::ToolRejected(rejection_kind(&reason)) });
+            AppUpdate::redraw(document)
+        }
+        ToolStep::Measured(m) => {
+            s.tool_measurement = Some(ToolMeasurement {
+                distance_text: format_mm(m.distance()),
+                dx_text: format_mm(m.dx()),
+                dy_text: format_mm(m.dy()),
+            });
+            AppUpdate::redraw(document)
+        }
+        ToolStep::Commit(EditCommit::PlaceText { at }) => {
+            // The anchor of the next committed text; no document change by itself.
+            s.text_anchor = Some(at);
+            AppUpdate::redraw(document)
+        }
         ToolStep::Commit(edit) => {
+            s.tool_measurement = None;
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
             let Some(payload) = payload(edit, name) else { return AppUpdate::redraw(document) };

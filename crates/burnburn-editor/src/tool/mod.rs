@@ -2,20 +2,48 @@
 //! temporary preview, and returns at most one [`EditCommit`] per finished gesture. Presentation
 //! turns that commit into exactly one `DocumentCommand` with the expected revision (contract §4).
 
+mod arc;
+mod break_tool;
+mod chamfer;
+mod circle;
+mod click;
+mod constraint;
+mod construction;
+mod dimension;
 mod draw;
+mod ellipse;
+mod extend;
+mod fillet;
+mod line;
+mod mirror;
+mod modify;
+mod move_scale;
 mod node;
+mod offset;
 mod parametric;
+mod pattern;
 mod pick;
+mod point;
+mod polygon;
+mod rect;
 mod rectangle;
 mod round_corner;
 mod select;
+mod sketch_pick;
+mod slot;
+mod spline;
 mod start_point;
+mod text;
+mod trim;
 
 use std::sync::Arc;
 
+use burnburn_document::sketch::{SketchCommand, SketchId};
+use burnburn_document::structure::Modifier;
 use burnburn_document::{DocumentSnapshot, OpsCommand};
 use burnburn_geometry::{
-    Affine, Bounds, NodeEdit, NodeRef, ParametricShape, Path, Point, Rect, Shape, ShapeParamError,
+    Affine, Bounds, CornerCut, EndpointRef, NodeEdit, NodeRef, ParametricShape, Path, Point, Rect, Shape,
+    ShapeParamError,
 };
 use burnburn_types::{GeometryId, Length};
 
@@ -24,7 +52,11 @@ use crate::node_ops::NodeCommand;
 use crate::selection::{Selection, SelectionChange};
 use crate::snap::{SnapCandidate, SnapSettings, snap_point};
 
+pub use arc::TangentArcTool;
+pub use circle::TangentCircleTool;
+pub use click::DrawTool;
 pub use draw::{CircleTool, EllipseTool, LineTool, PenTool, PolylineTool};
+pub use modify::{Measurement, ModifyParam, ModifyTool, Rejection, Unavailable, modify_tool_kind};
 pub use node::{NodeTarget, NodeTool, path_nodes};
 pub use parametric::{BasicShapeTool, ShapeDefaults};
 pub(crate) use rectangle::rect_from_bounds;
@@ -107,6 +139,68 @@ pub enum EditCommit {
     CreatePath {
         path: Path,
     },
+    /// Construction geometry (centerline): drawn and snappable, never part of production output.
+    /// Presentation maps it once the document has a construction flag for drawn geometry.
+    CreateConstruction {
+        shape: Shape,
+    },
+    /// A reference point. Presentation maps it once the document has a point object.
+    CreatePoint {
+        at: Point,
+    },
+    /// Fillet or chamfer one corner. The document re-applies `GeometryCommand::CutCorner`
+    /// (`target`, `pick`, `reach`, `cut`); `path` is the previewed result.
+    CutCorner {
+        target: GeometryId,
+        pick: Point,
+        reach: Length,
+        cut: CornerCut,
+        path: Path,
+    },
+    /// Trim at `pick` between the crossings with `cutters` (`GeometryCommand::TrimAt`).
+    Trim {
+        target: GeometryId,
+        pick: Point,
+        cutters: Vec<GeometryId>,
+        path: Path,
+    },
+    /// Extend an open end to the nearest boundary (`GeometryCommand::ExtendEnd`).
+    Extend {
+        target: GeometryId,
+        end: EndpointRef,
+        boundaries: Vec<GeometryId>,
+        path: Path,
+    },
+    /// Split at `pick` (`GeometryCommand::BreakAt`).
+    Break {
+        target: GeometryId,
+        pick: Point,
+        path: Path,
+    },
+    /// Mirror the targets with `transform` (a reflection). With `keep_original` the mirrored
+    /// objects are copies and the originals stay; without, the targets themselves are mirrored
+    /// (`CommandPayload::Transform`). Copies need a document duplicate command that does not exist yet.
+    Mirror {
+        targets: Vec<GeometryId>,
+        transform: Affine,
+        keep_original: bool,
+    },
+    /// A rectangular or circular array of `targets` as a non-destructive modifier
+    /// (`Modifier::GridArray` / `Modifier::CircularArray`).
+    AddArray {
+        targets: Vec<GeometryId>,
+        modifier: Modifier,
+    },
+    /// Sketch commands of one gesture, applied in order as one history entry.
+    Sketch {
+        sketch: SketchId,
+        commands: Vec<SketchCommand>,
+    },
+    /// Place a text object at `at`; the text itself arrives through the host's text input
+    /// (`UiIntent::InsertText`), which creates the `TextCommand` anchored here.
+    PlaceText {
+        at: Point,
+    },
     /// One history entry for all targets.
     Transform {
         targets: Vec<GeometryId>,
@@ -136,6 +230,10 @@ pub enum ToolStep {
     Cancelled,
     /// Window-local selection change (never a document command).
     Select(SelectionChange),
+    /// A measurement outside a sketch: a readout, never a document command.
+    Measured(Measurement),
+    /// The gesture cannot do what was asked; the document is untouched and the reason is typed.
+    Rejected(Rejection),
 }
 
 /// The temporary gesture geometry a scene must draw. Never document data.
@@ -166,6 +264,18 @@ pub enum ToolPreview {
     },
 }
 
+/// A tool setting that is not part of the gesture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub enum ToolParam {
+    /// Number of sides of the polygon tools (at least 3).
+    Sides(u32),
+    /// Corner radius in millimetres of the rounded rectangle (positive, finite).
+    CornerRadius(f64),
+    /// Settings of the modify, pattern and constraint tools.
+    Modify(ModifyParam),
+}
+
 /// Common behaviour of all tools.
 pub trait Tool {
     fn input(&mut self, input: &CanvasInput, ctx: &ToolContext<'_>) -> ToolStep;
@@ -177,6 +287,15 @@ pub trait Tool {
     /// Exact size typed while drawing (E01). Default: not applicable.
     fn exact_size(&mut self, _width: Length, _height: Length) -> ToolStep {
         ToolStep::Nothing
+    }
+    /// Whether a gesture is in progress. Defaults to "has a preview"; tools whose gesture can be
+    /// running without anything to draw (a first click on a degenerate pair) say so themselves.
+    fn is_active(&self) -> bool {
+        self.preview().is_some()
+    }
+    /// Applies a tool setting; `false` when this tool has no such setting or the value is invalid.
+    fn set_param(&mut self, _param: ToolParam) -> bool {
+        false
     }
 }
 
@@ -226,6 +345,62 @@ pub enum ToolKind {
     StartPoint,
     /// Click a corner to round it with the editor's corner radius (W1-L2a).
     RoundCorner,
+    // Sketch tools (S-draw); ids in docs/coordination/userflow.md.
+    LineMidpoint,
+    Centerline,
+    RectangleCenter,
+    RectangleThreePoint,
+    RectangleRounded,
+    CircleTwoPoint,
+    CircleThreePoint,
+    CircleTwoTangent,
+    CircleThreeTangent,
+    ArcThreePoint,
+    ArcCenterPoint,
+    ArcTangent,
+    /// Centre, major-axis end, minor-axis point (the bounding-box ellipse stays `Ellipse`).
+    EllipseAxes,
+    PolygonInscribed,
+    PolygonCircumscribed,
+    PolygonEdge,
+    SlotCenterToCenter,
+    SlotOverall,
+    SlotCenterPoint,
+    SlotArcThreePoint,
+    SlotArcCenter,
+    Point,
+    // Sketch tools (S-modify); ids in docs/coordination/userflow.md.
+    SplineFit,
+    SplineControl,
+    Conic,
+    Text,
+    Dimension,
+    Fillet,
+    ChamferEqual,
+    ChamferTwo,
+    ChamferAngle,
+    Trim,
+    Extend,
+    Break,
+    Offset,
+    Mirror,
+    Move,
+    Scale,
+    Construction,
+    PatternRectangular,
+    PatternCircular,
+    ConstraintCoincident,
+    ConstraintCollinear,
+    ConstraintConcentric,
+    ConstraintEqual,
+    ConstraintFix,
+    ConstraintHorizontalVertical,
+    ConstraintMidpoint,
+    ConstraintParallel,
+    ConstraintPerpendicular,
+    ConstraintSymmetry,
+    ConstraintTangent,
+    AutoConstrain,
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +416,10 @@ enum Active {
     Shape(BasicShapeTool),
     StartPoint(StartPointTool),
     RoundCorner(RoundCornerTool),
+    Draw(DrawTool),
+    TangentCircle(TangentCircleTool),
+    TangentArc(TangentArcTool),
+    Modify(ModifyTool),
 }
 
 impl Active {
@@ -263,6 +442,29 @@ impl Active {
             | ToolKind::RoundedRectangle => Active::Shape(BasicShapeTool::for_kind(kind, defaults)),
             ToolKind::StartPoint => Active::StartPoint(StartPointTool),
             ToolKind::RoundCorner => Active::RoundCorner(RoundCornerTool::new(round_radius_mm)),
+            ToolKind::CircleTwoTangent => Active::TangentCircle(TangentCircleTool::new(2)),
+            ToolKind::CircleThreeTangent => Active::TangentCircle(TangentCircleTool::new(3)),
+            ToolKind::ArcTangent => Active::TangentArc(TangentArcTool::default()),
+            ToolKind::LineMidpoint
+            | ToolKind::Centerline
+            | ToolKind::RectangleCenter
+            | ToolKind::RectangleThreePoint
+            | ToolKind::RectangleRounded
+            | ToolKind::CircleTwoPoint
+            | ToolKind::CircleThreePoint
+            | ToolKind::ArcThreePoint
+            | ToolKind::ArcCenterPoint
+            | ToolKind::EllipseAxes
+            | ToolKind::PolygonInscribed
+            | ToolKind::PolygonCircumscribed
+            | ToolKind::PolygonEdge
+            | ToolKind::SlotCenterToCenter
+            | ToolKind::SlotOverall
+            | ToolKind::SlotCenterPoint
+            | ToolKind::SlotArcThreePoint
+            | ToolKind::SlotArcCenter
+            | ToolKind::Point => Active::Draw(DrawTool::for_kind(kind)),
+            other => Active::Modify(ModifyTool::for_kind(other)),
         }
     }
 
@@ -279,6 +481,10 @@ impl Active {
             Active::Shape(t) => t,
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
+            Active::Draw(t) => t,
+            Active::TangentCircle(t) => t,
+            Active::TangentArc(t) => t,
+            Active::Modify(t) => t,
         }
     }
 
@@ -295,6 +501,10 @@ impl Active {
             Active::Shape(t) => t,
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
+            Active::Draw(t) => t,
+            Active::TangentCircle(t) => t,
+            Active::TangentArc(t) => t,
+            Active::Modify(t) => t,
         }
     }
 }
@@ -364,6 +574,12 @@ impl Editor {
         self.active.tool().cancel()
     }
 
+    /// Sets a tool setting (polygon sides, rounded-rectangle radius); `false` when the active tool
+    /// has no such setting or the value is invalid.
+    pub fn set_param(&mut self, param: ToolParam) -> bool {
+        self.active.tool().set_param(param)
+    }
+
     pub fn exact_size(&mut self, width: Length, height: Length) -> ToolStep {
         self.active.tool().exact_size(width, height)
     }
@@ -402,7 +618,7 @@ impl Editor {
     }
 
     pub fn is_gesture_active(&self) -> bool {
-        self.preview().is_some()
+        self.active.tool_ref().is_active()
     }
 
     pub fn preview(&self) -> Option<ToolPreview> {

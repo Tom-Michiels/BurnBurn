@@ -446,6 +446,11 @@ impl Sketch {
         Ok(())
     }
 
+    pub fn set_construction(&mut self, id: EntityId, construction: bool) -> Result<(), SketchError> {
+        self.entities.get_mut(&id).ok_or(SketchError::UnknownEntity(id))?.construction = construction;
+        Ok(())
+    }
+
     /// Stores a new last valid solution (from an evaluator patch).
     pub(crate) fn set_solution(&mut self, solution: SketchSolution) -> Result<(), SketchError> {
         self.check_solution(&solution)?;

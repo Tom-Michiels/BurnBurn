@@ -9,48 +9,50 @@ use burnburn_document::process::{
 use burnburn_job::{MachineFrame, MachineProfile, OriginCorner, PowerRatio};
 use burnburn_macos::adapter::{CommitCause, NativeEvent, Reaction, translate};
 use burnburn_macos::l10n::Locale;
-use burnburn_macos::panels::{
-    INSPECTOR_FIELDS, TOOLBAR_TOOLS, estimate_text, plan_panel, toolbar_enabled, toolbar_selected,
-};
+use burnburn_macos::panels::{INSPECTOR_FIELDS, estimate_text, plan_panel};
 use burnburn_presentation::{CommandKey, FieldKey, HeadlessEditorHarness, SelectMode, UiIntent};
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
 
 #[test]
-fn toolbar_shows_the_active_tool_and_choosing_a_segment_invokes_it_for_that_window() {
+fn a_tool_button_selects_that_catalog_tool_for_that_window() {
     let mut h = HeadlessEditorHarness::new();
     let doc = h.new_document().unwrap();
-    assert_eq!(toolbar_selected(&h.view()), Some(0), "select tool is the default");
-    assert_eq!(toolbar_enabled(&h.view()), vec![true; TOOLBAR_TOOLS.len()]);
+    assert!(h.view().toolbar.button("select").unwrap().selected, "select tool is the default");
 
-    let line = TOOLBAR_TOOLS.iter().position(|k| *k == CommandKey::ToolLine).unwrap();
     let Reaction::Intent(intent) =
-        translate(NativeEvent::ToolChosen { document: doc, index: line as isize }, &h.view())
+        translate(NativeEvent::ToolButton { document: doc, id: "sketch.line".into() }, &h.view())
     else {
-        panic!("a segment is a tool command")
+        panic!("a tool button is a tool choice")
     };
-    assert_eq!(intent, UiIntent::Invoke { document: Some(doc), command: CommandKey::ToolLine });
+    assert_eq!(intent, UiIntent::SelectTool { document: Some(doc), id: "sketch.line".into() });
     h.send(intent);
-    assert_eq!(toolbar_selected(&h.view()), Some(line));
-
-    // No segment (-1, AppKit's "none") or an unknown one is no command.
-    for index in [-1, TOOLBAR_TOOLS.len() as isize] {
-        assert_eq!(translate(NativeEvent::ToolChosen { document: doc, index }, &h.view()), Reaction::Nothing);
-    }
+    let vm = h.view();
+    assert!(vm.toolbar.button("sketch.line").unwrap().selected);
+    assert!(!vm.toolbar.button("select").unwrap().selected);
 }
 
 #[test]
-fn toolbar_offers_the_six_drawing_tools_in_order() {
+fn a_variant_entry_is_a_variant_choice_of_its_group() {
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    let event = NativeEvent::VariantChosen { document: doc, group: "sketch.line".into(), id: "sketch.polyline".into() };
+    let Reaction::Intent(intent) = translate(event, &h.view()) else { panic!("a variant is a choice") };
     assert_eq!(
-        TOOLBAR_TOOLS,
-        [
-            CommandKey::ToolSelect,
-            CommandKey::ToolRectangle,
-            CommandKey::ToolEllipse,
-            CommandKey::ToolLine,
-            CommandKey::ToolPen,
-            CommandKey::ToolNode
-        ]
+        intent,
+        UiIntent::SelectVariant { document: Some(doc), group: "sketch.line".into(), id: "sketch.polyline".into() }
     );
+}
+
+#[test]
+fn a_tool_button_for_a_closed_window_and_a_restyle_are_no_intent() {
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    let gone = <burnburn_types::DocumentId as burnburn_types::StableId>::from_raw(9_999);
+    assert_eq!(
+        translate(NativeEvent::ToolButton { document: gone, id: "select".into() }, &h.view()),
+        Reaction::Nothing
+    );
+    assert_eq!(translate(NativeEvent::ToolStripRestyle { document: doc }, &h.view()), Reaction::Nothing);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! One document window: toolbar (tool control), split view with the object table, the canvas
+//! One document window: tool strip (icons per catalog tool), Schets toolbar item, split view with the object table, the canvas
 //! view above the production strip (operations panel, bed camera) and the inspector (X/Y/B/H,
 //! rotation, messages, plan preview with Compile/Export, machine). Builds the widgets and copies
 //! the view model into them; it never decides anything.
@@ -11,9 +11,9 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSAlert, NSBackingStoreType, NSButton, NSColor, NSFloatingWindowLevel, NSFont, NSLineBreakMode,
-    NSSavePanel, NSScrollView, NSSegmentSwitchTracking, NSSegmentedControl, NSSplitView, NSSplitViewDividerStyle,
-    NSTableColumn, NSTableView, NSTextField, NSToolbar, NSToolbarDisplayMode, NSView, NSWindow, NSWindowStyleMask,
+    NSAccessibility, NSAlert, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSFloatingWindowLevel,
+    NSFont, NSLineBreakMode, NSSavePanel, NSScrollView, NSSplitView, NSSplitViewDividerStyle, NSTableColumn,
+    NSTableView, NSTextField, NSToolbar, NSToolbarDisplayMode, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSSize, NSString};
 
@@ -29,11 +29,10 @@ use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
 use super::panels::sketch::{SketchSection, sketch_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
+use super::toolstrip::{STRIP_HEIGHT as TOOL_STRIP_HEIGHT, ToolStrip};
 use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_rows, window_title};
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
-use crate::panels::{
-    INSPECTOR_FIELDS, TOOLBAR_TOOLS, field_unit, machine_panel, plan_panel, toolbar_enabled, toolbar_selected,
-};
+use crate::panels::{INSPECTOR_FIELDS, field_unit, machine_panel, plan_panel};
 
 const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 760.0 };
 /// Machine controls offered at most at once (ConfirmStored, Start, QueryStatus, Cancel, Reconnect).
@@ -56,7 +55,7 @@ pub(crate) struct DocWindow {
     pub(crate) canvas_view: Retained<CanvasView>,
     pub(crate) table: Retained<NSTableView>,
     pub(crate) toolbar: Retained<NSToolbar>,
-    pub(crate) toolbar_tools: Retained<NSSegmentedControl>,
+    pub(crate) strip: ToolStrip,
     pub(crate) fields: Vec<(FieldKey, Retained<NSTextField>)>,
     pub(crate) status_label: Retained<NSTextField>,
     /// Preview panel: title, plan id, estimate, state, findings.
@@ -99,7 +98,7 @@ impl DocWindow {
         let window = unsafe {
             NSWindow::initWithContentRect_styleMask_backing_defer(
                 NSWindow::alloc(mtm),
-                rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height),
+                rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height + TOOL_STRIP_HEIGHT),
                 style,
                 NSBackingStoreType::Buffered,
                 false,
@@ -136,17 +135,6 @@ impl DocWindow {
         let cut_settings = cut_settings_sheet(mtm, locale);
         let sketch = sketch_section(mtm, locale);
 
-        // Toolbar tool control (segments in TOOLBAR_TOOLS order).
-        let tools = NSSegmentedControl::new(mtm);
-        tools.setSegmentCount(TOOLBAR_TOOLS.len() as isize);
-        tools.setTrackingMode(NSSegmentSwitchTracking::SelectOne);
-        for (i, command) in TOOLBAR_TOOLS.iter().enumerate() {
-            let text = message_or_key(MessageKey::Command(*command), locale);
-            tools.setLabel_forSegment(&NSString::from_str(&text), i as isize);
-        }
-        tools.sizeToFit();
-        tools.setAccessibilityLabel(Some(&NSString::from_str(host_text(HostText::ToolbarTools, locale))));
-
         // Right: inspector fields, message line, plan preview.
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
         inspector.setAccessibilityLabel(Some(&NSString::from_str(host_text(HostText::InspectorLabel, locale))));
@@ -177,11 +165,9 @@ impl DocWindow {
         let controller = WindowController::new(
             mtm,
             ControllerParts {
-                app,
+                app: app.clone(),
                 document,
                 fields: fields.clone(),
-                tools: tools.clone(),
-                tools_label: host_text(HostText::ToolbarTools, locale).to_owned(),
                 operations_table: operations.table.clone(),
                 operation_inputs: operations.inputs.clone(),
                 operation_kind: operations.kind.clone(),
@@ -232,7 +218,18 @@ impl DocWindow {
         split.addSubview(&centre);
         split.addSubview(&inspector);
         split.adjustSubviews();
-        window.setContentView(Some(&split));
+        // The tool strip sits above the split view; the content view holds both.
+        let tool_strip = ToolStrip::new(mtm, app, document, target, locale, CONTENT_SIZE.width);
+        tool_strip.view().setFrame(rect(0.0, h, CONTENT_SIZE.width, TOOL_STRIP_HEIGHT));
+        let container =
+            NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, CONTENT_SIZE.width, h + TOOL_STRIP_HEIGHT));
+        split.setFrame(rect(0.0, 0.0, CONTENT_SIZE.width, h));
+        split.setAutoresizingMask(NSAutoresizingMaskOptions(
+            NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewHeightSizable.0,
+        ));
+        container.addSubview(&split);
+        container.addSubview(tool_strip.view());
+        window.setContentView(Some(&container));
 
         for (_, f) in &fields {
             // SAFETY: the target is weak; DocWindow keeps the controller alive while the field
@@ -306,10 +303,6 @@ impl DocWindow {
         unsafe { operations.table.setDataSource(Some(table_source(&controller))) };
         // SAFETY: as above.
         unsafe { operations.table.setDelegate(Some(table_delegate(&controller))) };
-        // SAFETY: as for the fields; `toolChosen:` takes the sender.
-        unsafe { tools.setTarget(Some(target)) };
-        // SAFETY: as above.
-        unsafe { tools.setAction(Some(sel!(toolChosen:))) };
         // SAFETY: data source and delegate are weak; cleared in Drop before the controller goes.
         unsafe { table.setDataSource(Some(table_source(&controller))) };
         // SAFETY: as above.
@@ -350,7 +343,7 @@ impl DocWindow {
             canvas_view,
             table,
             toolbar,
-            toolbar_tools: tools,
+            strip: tool_strip,
             fields,
             status_label,
             plan_labels: [plan_title, plan_id, estimate, state, findings],
@@ -408,6 +401,11 @@ impl DocWindow {
         {
             message = message_text(m.key, locale);
         }
+        if message.is_empty()
+            && let Some(m) = &doc.tool_measurement
+        {
+            message = crate::toolbar::measurement_text(m, locale);
+        }
         set_text(&self.status_label, &message);
 
         let panel = plan_panel(vm, document, locale);
@@ -440,12 +438,9 @@ impl DocWindow {
         self.refresh_camera(camera);
         self.refresh_sketch(vm, document);
 
-        let selected = toolbar_selected(vm).map_or(-1, |i| i as isize);
-        if self.toolbar_tools.selectedSegment() != selected {
-            self.toolbar_tools.setSelectedSegment(selected);
-        }
-        for (i, on) in toolbar_enabled(vm).into_iter().enumerate() {
-            self.toolbar_tools.setEnabled_forSegment(on, i as isize);
+        // The view model's toolbar is the active document's: another window keeps what it had.
+        if vm.active == Some(document) {
+            self.strip.refresh(&vm.toolbar);
         }
 
         if self.controller.set_labels(object_labels(vm, document)) {
@@ -486,12 +481,11 @@ impl Drop for DocWindow {
     #[allow(unsafe_code)]
     fn drop(&mut self) {
         // Clearing weak references is always valid; afterwards nothing refers to the controller.
+        self.strip.clear_targets();
         for (_, f) in &self.fields {
             // SAFETY: a nil target cannot dangle.
             unsafe { f.setTarget(None) };
         }
-        // SAFETY: as above.
-        unsafe { self.toolbar_tools.setTarget(None) };
         // SAFETY: as above.
         unsafe { self.import.units.setTarget(None) };
         // SAFETY: as above.

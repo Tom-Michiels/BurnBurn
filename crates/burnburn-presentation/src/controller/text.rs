@@ -1,5 +1,6 @@
 //! Text input: fonts, `InsertText` and the shared font source of every session's evaluator.
 
+use burnburn_geometry::{Affine, Vector};
 use std::sync::Arc;
 
 use burnburn_document::text::{FontSize, TextCommand, TextId, TextObject};
@@ -59,7 +60,13 @@ impl AppController {
                     else {
                         return error(Some(document), MessageKey::CommandRejected);
                     };
-                    TextCommand::Create { text: Box::new(TextObject::new(text, font, size)) }
+                    let mut object = TextObject::new(text, font, size);
+                    if let Some(at) = s.text_anchor.take()
+                        && let Ok(placement) = Affine::translate(Vector { x: at.x, y: at.y })
+                    {
+                        object.placement = placement;
+                    }
+                    TextCommand::Create { text: Box::new(object) }
                 }
             };
             apply_edit(s, document, CommandPayload::Text(edit), request)

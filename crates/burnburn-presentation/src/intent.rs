@@ -62,6 +62,17 @@ pub enum UiIntent {
         width: String,
         height: String,
     },
+    /// Choose a tool by its catalog id (`ToolCatalog`): the toolbar's one way to pick a tool.
+    SelectTool {
+        document: Option<DocumentId>,
+        id: String,
+    },
+    /// Choose a variant from a group's drop-down: the group remembers it and the tool starts.
+    SelectVariant {
+        document: Option<DocumentId>,
+        group: String,
+        id: String,
+    },
     Invoke {
         document: Option<DocumentId>,
         command: CommandKey,

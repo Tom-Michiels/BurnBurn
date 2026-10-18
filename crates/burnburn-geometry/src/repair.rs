@@ -43,6 +43,8 @@ pub enum ExtendError {
     Closed,
     /// No boundary lies ahead of the end.
     NoBoundaryAhead,
+    /// The end's segment is a Bézier curve; only lines and arcs can be extended.
+    NotExtendable,
 }
 
 impl fmt::Display for ExtendError {

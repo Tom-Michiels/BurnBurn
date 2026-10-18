@@ -28,16 +28,6 @@ pub use operations::*;
 pub use plan::*;
 pub use sketch::*;
 
-/// Segments of the toolbar's tool control, left to right.
-pub const TOOLBAR_TOOLS: [CommandKey; 6] = [
-    CommandKey::ToolSelect,
-    CommandKey::ToolRectangle,
-    CommandKey::ToolEllipse,
-    CommandKey::ToolLine,
-    CommandKey::ToolPen,
-    CommandKey::ToolNode,
-];
-
 /// Segments of the toolbar's Schets control (momentary), left to right.
 pub const SKETCH_TOOLBAR: [CommandKey; 4] =
     [CommandKey::SketchNew, CommandKey::SketchFromSelection, CommandKey::SketchEdit, CommandKey::SketchFinish];
@@ -69,21 +59,6 @@ pub const SKETCH_BUTTONS: [CommandKey; 10] = [
 /// Inspector fields, top to bottom.
 pub const INSPECTOR_FIELDS: [FieldKey; 5] =
     [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation];
-
-/// The tool command for toolbar segment `index` (AppKit's `selectedSegment`, −1 = none).
-pub fn toolbar_tool(index: isize) -> Option<CommandKey> {
-    TOOLBAR_TOOLS.get(usize::try_from(index).ok()?).copied()
-}
-
-/// The segment of the active tool (from the commands' checked state, like the menu checkmarks).
-pub fn toolbar_selected(vm: &AppViewModel) -> Option<usize> {
-    TOOLBAR_TOOLS.iter().position(|k| vm.commands.get(k).is_some_and(|c| c.checked))
-}
-
-/// Enablement per segment (same source as `validateMenuItem:`).
-pub fn toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
-    TOOLBAR_TOOLS.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
-}
 
 /// Unit shown after an inspector field's caption.
 pub fn field_unit(key: FieldKey, locale: Locale) -> &'static str {

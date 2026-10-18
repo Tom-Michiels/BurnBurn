@@ -221,7 +221,12 @@ impl HostApp {
     pub fn view(&self) -> Arc<AppViewModel> {
         match self.controller.try_borrow() {
             Ok(c) => c.view(),
-            Err(_) => Arc::new(AppViewModel { documents: Vec::new(), active: None, commands: BTreeMap::new() }),
+            Err(_) => Arc::new(AppViewModel {
+                documents: Vec::new(),
+                active: None,
+                commands: BTreeMap::new(),
+                toolbar: Default::default(),
+            }),
         }
     }
 
@@ -271,6 +276,11 @@ impl HostApp {
         {
             commits.push(text.clone());
         }
+        if let NativeEvent::ToolStripRestyle { .. } = &event {
+            // Light/dark or backing scale changed: the strip draws its icons again.
+            self.refresh();
+            return;
+        }
         match translate(event, &self.view()) {
             Reaction::Nothing => {}
             Reaction::Intent(intent) => {
@@ -279,6 +289,18 @@ impl HostApp {
             Reaction::ShowOpenPanel => self.show_open_panel(),
             Reaction::ShowImportPanel => self.show_import_panel(),
         }
+    }
+
+    /// The arrow of a variant group was clicked: show the drop-down below it. The menu is built
+    /// while the windows are borrowed and shown after the borrow ended (its action re-enters).
+    pub(crate) fn show_variant_menu(&self, document: DocumentId, group: &str, anchor: &objc2_app_kit::NSButton) {
+        let menu = match self.windows.try_borrow() {
+            Ok(windows) => windows.get(&document).and_then(|w| w.strip.menu(group)),
+            Err(_) => None,
+        };
+        let Some(menu) = menu else { return };
+        let below = objc2_foundation::NSPoint::new(0.0, 0.0);
+        menu.popUpMenuPositioningItem_atLocation_inView(None, below, Some(anchor));
     }
 
     /// Deliver finished worker tasks (runs on the main queue after a worker's wake-up).
@@ -870,7 +892,7 @@ impl HostApp {
             window: &w.window,
             table: &w.table,
             fields: &w.fields,
-            toolbar_tools: &w.toolbar_tools,
+            strip: &w.strip,
             status_label: &w.status_label,
             plan_labels: [
                 &w.plan_labels[0],
@@ -983,7 +1005,7 @@ pub struct WindowParts<'a> {
     pub window: &'a objc2_app_kit::NSWindow,
     pub table: &'a objc2_app_kit::NSTableView,
     pub fields: &'a [(burnburn_presentation::FieldKey, Retained<objc2_app_kit::NSTextField>)],
-    pub toolbar_tools: &'a objc2_app_kit::NSSegmentedControl,
+    pub strip: &'a super::toolstrip::ToolStrip,
     pub status_label: &'a objc2_app_kit::NSTextField,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub plan_labels: [&'a objc2_app_kit::NSTextField; 5],
@@ -1081,7 +1103,12 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
     let item = |menu_item: MenuItem, key: &str, shift: bool| {
         let title = crate::adapter::menu_title(
             menu_item,
-            &AppViewModel { documents: Vec::new(), active: None, commands: BTreeMap::new() },
+            &AppViewModel {
+                documents: Vec::new(),
+                active: None,
+                commands: BTreeMap::new(),
+                toolbar: Default::default(),
+            },
             locale,
         );
         let item = raw_item(&title, Some(sel!(burnburnMenu:)), key);

@@ -1,5 +1,6 @@
 //! The view models and scene a window draws.
 
+use crate::catalog::{ActiveTool, ToolCatalog, ToolState, ToolbarViewModel};
 use std::sync::Arc;
 
 use burnburn_editor::{SceneRequest, SceneSnapshot, boolean_operands, build_scene};
@@ -57,7 +58,13 @@ impl AppController {
                 (*k, state)
             })
             .collect();
-        Arc::new(AppViewModel { documents, active: self.active, commands })
+        let toolbar = ToolbarViewModel::build(
+            ToolCatalog::standard(),
+            ToolState { document: active.is_some(), operator: self.role == Role::Operator, in_sketch: false },
+            ActiveTool { tool: active.map(|s| s.editor.tool()), trim: active.is_some_and(|s| s.trim_mode) },
+            &self.toolbar_variants,
+        );
+        Arc::new(AppViewModel { documents, active: self.active, commands, toolbar })
     }
 
     /// The scene one window draws (contract §5): document revision, selection, gesture preview,
@@ -135,6 +142,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         messages: s.messages.clone(),
         tasks: s.pending.iter().map(|(tid, (kind, _))| TaskBadge { id: *tid, kind: *kind }).collect(),
         measure: s.measure.clone(),
+        tool_measurement: s.tool_measurement.clone(),
         camera: s.camera,
         viewport: s.viewport,
         snap: s.editor.snap(),

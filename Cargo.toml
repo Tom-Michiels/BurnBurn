@@ -18,6 +18,7 @@ burnburn-document = { path = "crates/burnburn-document" }
 burnburn-editor = { path = "crates/burnburn-editor" }
 burnburn-generators = { path = "crates/burnburn-generators" }
 burnburn-geometry = { path = "crates/burnburn-geometry" }
+burnburn-icons = { path = "crates/burnburn-icons" }
 burnburn-history = { path = "crates/burnburn-history" }
 burnburn-image = { path = "crates/burnburn-image" }
 burnburn-io = { path = "crates/burnburn-io" }
@@ -55,6 +56,7 @@ sha2 = "0.11"
 sketch-solver = "=0.1.0"
 skrifa = { version = "0.48.0", default-features = false, features = ["std"] }
 tempfile = "3"
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 toml = "1.1"
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows = { version = "0.62.2", default-features = false }

@@ -1,0 +1,517 @@
+# Labels en tooltips per tool-id (zelfde ids als assets/icons/ui/icons.toml).
+# nl/en: korte naam in de werkbalk en het menu. tip_nl/tip_en: wat de tool doet en hoe je klikt.
+# Sneltoetsen horen in de commandocatalogus, niet in deze teksten.
+# Een tool zonder passend icoon of zonder beschikbare functie krijgt disabled_reason_*.
+
+[panels]
+create      = { nl = "MAKEN",       en = "CREATE" }
+modify      = { nl = "WIJZIGEN",    en = "MODIFY" }
+pattern     = { nl = "PATROON",     en = "PATTERN" }
+constraints = { nl = "BEPERKINGEN", en = "CONSTRAINTS" }
+insert      = { nl = "INVOEGEN",    en = "INSERT" }
+select      = { nl = "SELECTEREN",  en = "SELECT" }
+
+# Maken
+[tools."sketch.line"]
+panel = "create"
+nl = "Lijn"
+en = "Line"
+tip_nl = "Lijn: klik het beginpunt, dan het eindpunt. Esc annuleert."
+tip_en = "Line: click the start point, then the end point. Esc cancels."
+
+[tools."sketch.line.midpoint"]
+panel = "create"
+nl = "Lijn vanuit midden"
+en = "Midpoint line"
+tip_nl = "Lijn vanuit midden: klik het midden, dan een uiteinde. De lijn is symmetrisch om het midden."
+tip_en = "Midpoint line: click the middle, then one end. The line is symmetric about the middle."
+
+[tools."sketch.centerline"]
+panel = "create"
+nl = "Hulplijn"
+en = "Centerline"
+tip_nl = "Hulplijn: klik het beginpunt en het eindpunt. Hulplijnen tellen niet mee als profiel."
+tip_en = "Centerline: click the start and end point. Centerlines do not count as profile."
+
+[tools."sketch.rectangle.two_point"]
+panel = "create"
+nl = "Rechthoek: twee hoeken"
+en = "Rectangle: two corners"
+tip_nl = "Rechthoek met twee hoeken: klik de ene hoek, dan de tegenoverliggende."
+tip_en = "Two-corner rectangle: click one corner, then the opposite corner."
+
+[tools."sketch.rectangle.center"]
+panel = "create"
+nl = "Rechthoek vanuit midden"
+en = "Center rectangle"
+tip_nl = "Rechthoek vanuit middelpunt: klik het middelpunt, dan een hoek"
+tip_en = "Center rectangle: click the center, then a corner"
+
+[tools."sketch.rectangle.three_point"]
+panel = "create"
+nl = "Rechthoek: drie punten"
+en = "Rectangle: three points"
+tip_nl = "Klik twee punten voor de eerste zijde, dan een derde punt voor de breedte."
+tip_en = "Click two points for the first side, then a third point for the width."
+
+[tools."sketch.rectangle.rounded"]
+panel = "create"
+nl = "Afgeronde rechthoek"
+en = "Rounded rectangle"
+tip_nl = "Klik twee hoeken; de hoeken worden afgerond met de ingestelde straal."
+tip_en = "Click two corners; the corners are rounded with the set radius."
+
+[tools."sketch.circle.center"]
+panel = "create"
+nl = "Cirkel vanuit midden"
+en = "Center circle"
+tip_nl = "Cirkel vanuit middelpunt: klik het middelpunt, dan een punt op de omtrek."
+tip_en = "Center circle: click the center, then a point on the circumference."
+
+[tools."sketch.circle.two_point"]
+panel = "create"
+nl = "Cirkel: twee punten"
+en = "Circle: two points"
+tip_nl = "Klik twee punten die de middellijn van de cirkel bepalen."
+tip_en = "Click two points that define the diameter of the circle."
+
+[tools."sketch.circle.three_point"]
+panel = "create"
+nl = "Cirkel: drie punten"
+en = "Circle: three points"
+tip_nl = "Klik drie punten op de omtrek van de cirkel."
+tip_en = "Click three points on the circumference."
+
+[tools."sketch.circle.two_tangent"]
+panel = "create"
+nl = "Cirkel: twee raakelementen"
+en = "Circle: two tangents"
+tip_nl = "Klik twee elementen waar de cirkel aan raakt; geef daarna de straal op."
+tip_en = "Click two elements the circle touches; then enter the radius."
+
+[tools."sketch.circle.three_tangent"]
+panel = "create"
+nl = "Cirkel: drie raakelementen"
+en = "Circle: three tangents"
+tip_nl = "Klik drie elementen waar de cirkel aan raakt."
+tip_en = "Click three elements the circle touches."
+
+[tools."sketch.arc.three_point"]
+panel = "create"
+nl = "Boog: drie punten"
+en = "Arc: three points"
+tip_nl = "Klik beginpunt, eindpunt en een punt waar de boog doorheen loopt."
+tip_en = "Click the start point, the end point and a point the arc passes through."
+
+[tools."sketch.arc.center_point"]
+panel = "create"
+nl = "Boog vanuit middelpunt"
+en = "Center point arc"
+tip_nl = "Klik het middelpunt, dan het beginpunt en het eindpunt van de boog."
+tip_en = "Click the center, then the start point and the end point of the arc."
+
+[tools."sketch.arc.tangent"]
+panel = "create"
+nl = "Raakboog"
+en = "Tangent arc"
+tip_nl = "Klik het beginpunt van een bestaande lijn of boog, dan het eindpunt. De boog sluit raak aan."
+tip_en = "Click the start of an existing line or arc, then the end point. The arc joins tangentially."
+
+[tools."sketch.ellipse"]
+panel = "create"
+nl = "Ellips"
+en = "Ellipse"
+tip_nl = "Klik het middelpunt, dan het eind van de eerste as, dan de tweede as."
+tip_en = "Click the center, then the end of the first axis, then the second axis."
+
+[tools."sketch.polygon.inscribed"]
+panel = "create"
+nl = "Veelhoek: ingeschreven"
+en = "Polygon: inscribed"
+tip_nl = "Klik het middelpunt, dan een hoekpunt. De veelhoek ligt binnen de cirkel."
+tip_en = "Click the center, then a corner. The polygon lies inside the circle."
+
+[tools."sketch.polygon.circumscribed"]
+panel = "create"
+nl = "Veelhoek: omgeschreven"
+en = "Polygon: circumscribed"
+tip_nl = "Klik het middelpunt, dan een punt op een zijde. De veelhoek omsluit de cirkel."
+tip_en = "Click the center, then a point on a side. The polygon encloses the circle."
+
+[tools."sketch.polygon.edge"]
+panel = "create"
+nl = "Veelhoek vanuit zijde"
+en = "Polygon: edge"
+tip_nl = "Klik de twee uiteinden van een zijde; de rest van de veelhoek volgt."
+tip_en = "Click the two ends of one side; the rest of the polygon follows."
+
+[tools."sketch.slot.center_to_center"]
+panel = "create"
+nl = "Sleuf: hart-op-hart"
+en = "Slot: center to center"
+tip_nl = "Klik het eerste middelpunt, dan het tweede. Geef daarna de breedte op."
+tip_en = "Click the first center, then the second. Then enter the width."
+
+[tools."sketch.slot.overall"]
+panel = "create"
+nl = "Sleuf: totale lengte"
+en = "Slot: overall"
+tip_nl = "Klik de twee buitenste uiteinden, dan de breedte."
+tip_en = "Click the two outer ends, then the width."
+
+[tools."sketch.slot.center_point"]
+panel = "create"
+nl = "Sleuf vanuit middelpunt"
+en = "Slot: center point"
+tip_nl = "Klik het middelpunt van de sleuf, dan het uiteinde, dan de breedte."
+tip_en = "Click the slot center, then the end, then the width."
+
+[tools."sketch.slot.arc_three_point"]
+panel = "create"
+nl = "Boogsleuf: drie punten"
+en = "Arc slot: three points"
+tip_nl = "Klik beginpunt, eindpunt en een punt op de boog. De sleuf krijgt ronde uiteinden."
+tip_en = "Click start, end and a point on the arc. The slot gets rounded ends."
+
+[tools."sketch.slot.arc_center"]
+panel = "create"
+nl = "Boogsleuf vanuit middelpunt"
+en = "Arc slot: center point"
+tip_nl = "Klik het middelpunt van de boog, dan begin- en eindpunt."
+tip_en = "Click the arc center, then the start and end point."
+
+[tools."sketch.spline.fit_point"]
+panel = "create"
+nl = "Spline door punten"
+en = "Spline: fit points"
+tip_nl = "Klik de punten waar de kromme doorheen loopt. Esc annuleert."
+tip_en = "Click the points the curve passes through. Esc cancels."
+
+[tools."sketch.spline.control_point"]
+panel = "create"
+nl = "Spline met stuurpunten"
+en = "Spline: control points"
+tip_nl = "Klik de stuurpunten; de kromme volgt het stuurpuntennet, niet elk punt exact."
+tip_en = "Click the control points; the curve follows the control polygon, not each point exactly."
+
+[tools."sketch.conic"]
+panel = "create"
+nl = "Kegelsnede"
+en = "Conic"
+tip_nl = "Klik beginpunt, eindpunt en een stuurpunt. Het stuurpunt bepaalt de kromming."
+tip_en = "Click start, end and a control point. The control point sets the curvature."
+
+[tools."sketch.point"]
+panel = "create"
+nl = "Punt"
+en = "Point"
+tip_nl = "Klik de plek waar het punt moet komen."
+tip_en = "Click where the point should go."
+
+[tools."sketch.text"]
+panel = "create"
+nl = "Tekst"
+en = "Text"
+tip_nl = "Klik de plek voor de tekst, typ de tekst en bevestig."
+tip_en = "Click where the text goes, type it and confirm."
+
+[tools."sketch.dimension"]
+panel = "create"
+nl = "Maatvoering"
+en = "Dimension"
+tip_nl = "Klik een of twee elementen, dan waar de maat komt te staan."
+tip_en = "Click one or two elements, then where the dimension goes."
+
+# Wijzigen
+[tools."sketch.fillet"]
+panel = "modify"
+nl = "Hoekafronding"
+en = "Fillet"
+tip_nl = "Klik twee lijnen of een hoek; geef de straal op."
+tip_en = "Click two lines or a corner; enter the radius."
+
+[tools."sketch.chamfer.equal_distance"]
+panel = "modify"
+nl = "Afschuining: gelijke afstand"
+en = "Chamfer: equal distance"
+tip_nl = "Klik de hoek of de twee lijnen; de afstand geldt voor beide zijden."
+tip_en = "Click the corner or the two lines; the distance applies to both sides."
+
+[tools."sketch.chamfer.two_distance"]
+panel = "modify"
+nl = "Afschuining: twee afstanden"
+en = "Chamfer: two distances"
+tip_nl = "Klik de hoek; geef per zijde een eigen afstand op."
+tip_en = "Click the corner; enter a separate distance for each side."
+
+[tools."sketch.chamfer.distance_angle"]
+panel = "modify"
+nl = "Afschuining: afstand en hoek"
+en = "Chamfer: distance and angle"
+tip_nl = "Klik de hoek; geef een afstand en een hoek op."
+tip_en = "Click the corner; enter a distance and an angle."
+
+[tools."sketch.trim"]
+panel = "modify"
+nl = "Bijknippen"
+en = "Trim"
+tip_nl = "Klik het deel van een element dat weg moet. Het stuk tussen de snijpunten verdwijnt."
+tip_en = "Click the part of an element to remove. The piece between intersections disappears."
+
+[tools."sketch.extend"]
+panel = "modify"
+nl = "Verlengen"
+en = "Extend"
+tip_nl = "Klik het uiteinde van een lijn of boog dat langer moet, tot het volgende element."
+tip_en = "Click the end of a line or arc to lengthen, up to the next element."
+
+[tools."sketch.break"]
+panel = "modify"
+nl = "Breken"
+en = "Break"
+tip_nl = "Klik op een element om het op die plek in twee delen te splitsen."
+tip_en = "Click an element to split it into two at that spot."
+
+[tools."sketch.offset"]
+panel = "modify"
+nl = "Offset"
+en = "Offset"
+tip_nl = "Klik het element, dan de kant waar de kopie komt. Geef de afstand op."
+tip_en = "Click the element, then the side for the copy. Enter the distance."
+
+[tools."sketch.mirror"]
+panel = "modify"
+nl = "Spiegelen"
+en = "Mirror"
+tip_nl = "Selecteer de elementen, klik daarna de spiegelas."
+tip_en = "Select the elements, then click the mirror line."
+
+[tools."sketch.move"]
+panel = "modify"
+nl = "Verplaatsen of kopiëren"
+en = "Move or copy"
+tip_nl = "Selecteer elementen, klik het beginpunt en dan het eindpunt van de verplaatsing."
+tip_en = "Select elements, click the start point and then the end point of the move."
+
+[tools."sketch.scale"]
+panel = "modify"
+nl = "Schalen"
+en = "Scale"
+tip_nl = "Selecteer elementen, klik het schaalpunt en geef de factor op."
+tip_en = "Select elements, click the scale point and enter the factor."
+
+[tools."sketch.construction"]
+panel = "modify"
+nl = "Constructie-element"
+en = "Construction"
+tip_nl = "Zet de geselecteerde elementen om naar hulpgeometrie of terug naar profielgeometrie."
+tip_en = "Switch the selected elements to construction geometry or back to profile geometry."
+
+# Patroon
+[tools."sketch.pattern.rectangular"]
+panel = "pattern"
+nl = "Rechthoekig patroon"
+en = "Rectangular pattern"
+tip_nl = "Selecteer elementen, geef de richting en het aantal per richting op."
+tip_en = "Select elements, enter the direction and the count per direction."
+
+[tools."sketch.pattern.circular"]
+panel = "pattern"
+nl = "Cirkelvormig patroon"
+en = "Circular pattern"
+tip_nl = "Selecteer elementen, klik het middelpunt en geef het aantal op."
+tip_en = "Select elements, click the center and enter the count."
+
+# Beperkingen
+[tools."sketch.constraint.coincident"]
+panel = "constraints"
+nl = "Samenvallend"
+en = "Coincident"
+tip_nl = "Klik twee punten die op dezelfde plek moeten komen."
+tip_en = "Click two points that must share the same location."
+
+[tools."sketch.constraint.collinear"]
+panel = "constraints"
+nl = "Op één lijn"
+en = "Collinear"
+tip_nl = "Klik twee lijnen die op één lijn moeten liggen."
+tip_en = "Click two lines that must lie on one line."
+
+[tools."sketch.constraint.concentric"]
+panel = "constraints"
+nl = "Concentrisch"
+en = "Concentric"
+tip_nl = "Klik twee cirkels of bogen die hetzelfde middelpunt moeten hebben."
+tip_en = "Click two circles or arcs that must share a center."
+
+[tools."sketch.constraint.equal"]
+panel = "constraints"
+nl = "Gelijk"
+en = "Equal"
+tip_nl = "Klik twee lijnen of cirkels die even groot moeten zijn."
+tip_en = "Click two lines or circles that must be equal in size."
+
+[tools."sketch.constraint.fix"]
+panel = "constraints"
+nl = "Vastzetten"
+en = "Fix"
+tip_nl = "Klik een element om het vast te zetten; klik opnieuw om het los te maken."
+tip_en = "Click an element to fix it; click again to release it."
+
+[tools."sketch.constraint.horizontal_vertical"]
+panel = "constraints"
+nl = "Horizontaal of verticaal"
+en = "Horizontal or vertical"
+tip_nl = "Klik een lijn of twee punten; ze worden horizontaal of verticaal."
+tip_en = "Click a line or two points; they become horizontal or vertical."
+
+[tools."sketch.constraint.midpoint"]
+panel = "constraints"
+nl = "Middelpunt op lijn"
+en = "Midpoint"
+tip_nl = "Klik een punt en een lijn; het punt komt op het midden van die lijn."
+tip_en = "Click a point and a line; the point moves to the middle of that line."
+
+[tools."sketch.constraint.parallel"]
+panel = "constraints"
+nl = "Evenwijdig"
+en = "Parallel"
+tip_nl = "Klik twee lijnen die evenwijdig moeten lopen."
+tip_en = "Click two lines that must run parallel."
+
+[tools."sketch.constraint.perpendicular"]
+panel = "constraints"
+nl = "Loodrecht"
+en = "Perpendicular"
+tip_nl = "Klik twee lijnen die loodrecht op elkaar moeten staan."
+tip_en = "Click two lines that must be perpendicular."
+
+[tools."sketch.constraint.symmetry"]
+panel = "constraints"
+nl = "Symmetrie"
+en = "Symmetry"
+tip_nl = "Klik twee punten en daarna de symmetrieas."
+tip_en = "Click two points, then the symmetry line."
+
+[tools."sketch.constraint.tangent"]
+panel = "constraints"
+nl = "Raaklijn"
+en = "Tangent"
+tip_nl = "Klik een lijn en een cirkel of boog die elkaar moeten raken."
+tip_en = "Click a line and a circle or arc that must touch."
+
+[tools."sketch.auto_constrain"]
+panel = "constraints"
+nl = "Automatisch beperken"
+en = "Auto-constrain"
+tip_nl = "Voegt beperkingen toe die de schets al impliciet heeft."
+tip_en = "Adds the constraints the sketch already implies."
+
+# Invoegen
+[tools."sketch.insert_svg"]
+panel = "insert"
+nl = "SVG invoegen"
+en = "Insert SVG"
+tip_nl = "Kies een SVG-bestand; de paden komen als schetsgeometrie in de schets."
+tip_en = "Choose an SVG file; its paths come in as sketch geometry."
+
+[tools."sketch.insert_dxf"]
+panel = "insert"
+nl = "DXF invoegen"
+en = "Insert DXF"
+tip_nl = "Kies een DXF-bestand; de elementen komen als schetsgeometrie in de schets."
+tip_en = "Choose a DXF file; its entities come in as sketch geometry."
+
+# Selecteren en weergave
+[tools."select"]
+panel = "select"
+nl = "Selecteren"
+en = "Select"
+tip_nl = "Klik een element om het te selecteren. Shift voegt toe aan de selectie."
+tip_en = "Click an element to select it. Shift adds to the selection."
+
+[tools."node"]
+panel = "select"
+nl = "Knooppunt"
+en = "Node"
+tip_nl = "Knooppunt-selectie."
+tip_en = "Node selection."
+disabled_reason_nl = "Nog niet beschikbaar: geen passend icoon en nog geen functie."
+disabled_reason_en = "Not available yet: no matching icon and no function yet."
+
+[tools."pan"]
+panel = "select"
+nl = "Verschuiven"
+en = "Pan"
+tip_nl = "Sleep om het beeld te verschuiven."
+tip_en = "Drag to pan the view."
+
+[tools."fit"]
+panel = "select"
+nl = "Passend maken"
+en = "Fit"
+tip_nl = "Past het beeld aan zodat de hele tekening zichtbaar is."
+tip_en = "Adjusts the view so the whole drawing is visible."
+
+[tools."zoom"]
+panel = "select"
+nl = "Zoomen"
+en = "Zoom"
+tip_nl = "Sleep of scroll om in en uit te zoomen."
+tip_en = "Drag or scroll to zoom in and out."
+
+[tools."undo"]
+panel = "select"
+nl = "Ongedaan maken"
+en = "Undo"
+tip_nl = "Maakt de laatste bewerking ongedaan."
+tip_en = "Undoes the last edit."
+
+[tools."redo"]
+panel = "select"
+nl = "Opnieuw"
+en = "Redo"
+tip_nl = "Herhaalt de laatst ongedaan gemaakte bewerking."
+tip_en = "Redoes the last undone edit."
+
+[tools."save"]
+panel = "select"
+nl = "Opslaan"
+en = "Save"
+tip_nl = "Slaat het project op."
+tip_en = "Saves the project."
+
+[tools."open"]
+panel = "select"
+nl = "Openen"
+en = "Open"
+tip_nl = "Opent een bestaand project."
+tip_en = "Opens an existing project."
+
+[tools."new"]
+panel = "select"
+nl = "Nieuw"
+en = "New"
+tip_nl = "Maakt een nieuw project."
+tip_en = "Creates a new project."
+
+[tools."delete"]
+panel = "select"
+nl = "Verwijderen"
+en = "Delete"
+tip_nl = "Verwijdert de geselecteerde elementen."
+tip_en = "Deletes the selected elements."
+
+[tools."copy"]
+panel = "select"
+nl = "Kopiëren"
+en = "Copy"
+tip_nl = "Kopieert de selectie."
+tip_en = "Copies the selection."
+
+[tools."paste"]
+panel = "select"
+nl = "Plakken"
+en = "Paste"
+tip_nl = "Plakt de gekopieerde selectie."
+tip_en = "Pastes the copied selection."

@@ -74,6 +74,12 @@ pub enum SketchCommand {
         constraint: ConstraintId,
         role: DimensionRole,
     },
+    /// Marks an entity as construction geometry (or back): construction never becomes output.
+    SetConstruction {
+        sketch: SketchId,
+        entity: EntityId,
+        construction: bool,
+    },
     /// Projects geometry of another document object into the sketch as a read-only entity, so a
     /// sketch relation (tangent, symmetric, …) can hold against it (IM21 relations between
     /// objects). **Not supported yet:** always refused with `SketchError::ExternalNotSupported`
@@ -99,6 +105,7 @@ pub enum SketchLabel {
     RemoveParameter,
     SetDimensionValue,
     SetDimensionRole,
+    SetConstruction,
     AddExternal,
 }
 
@@ -116,6 +123,7 @@ impl SketchCommand {
             SketchCommand::RemoveParameter { .. } => SketchLabel::RemoveParameter,
             SketchCommand::SetDimensionValue { .. } => SketchLabel::SetDimensionValue,
             SketchCommand::SetDimensionRole { .. } => SketchLabel::SetDimensionRole,
+            SketchCommand::SetConstruction { .. } => SketchLabel::SetConstruction,
             SketchCommand::AddExternal { .. } => SketchLabel::AddExternal,
         }
     }
@@ -302,6 +310,9 @@ pub(crate) fn apply(cmd: SketchCommand, txn: SketchTxn<'_>) -> Result<SketchEffe
         }
         SketchCommand::SetDimensionRole { sketch, constraint, role } => {
             edit(layer, changed, sketch, |s| s.set_dimension_role(constraint, role))
+        }
+        SketchCommand::SetConstruction { sketch, entity, construction } => {
+            edit(layer, changed, sketch, |s| s.set_construction(entity, construction))
         }
     }
 }

@@ -1,5 +1,8 @@
 //! Menu/toolbar commands (`CommandKey`) that run inside one session.
 
+use super::canvas::clear_tool_report;
+use crate::catalog::{Action, ToolCatalog, ToolState, enablement};
+use crate::production::Role;
 use burnburn_document::{AlignTarget, CommandError, CommandPayload, GeometryCommand, ImportItem};
 use burnburn_editor::{SelectionChange, ToolKind};
 use burnburn_geometry::{AlignEdge, BooleanOp, Direction, Spacing};
@@ -19,6 +22,47 @@ use super::{
 };
 
 impl AppController {
+    /// Toolbar choice by catalog id. A disabled or unknown id changes nothing (no silent
+    /// substitute); `group` is set when the choice came from a drop-down.
+    pub(super) fn select_catalog_tool(
+        &mut self,
+        document: Option<DocumentId>,
+        id: &str,
+        group: Option<&str>,
+    ) -> AppUpdate {
+        let Some(document) = document.or(self.active) else { return AppUpdate::default() };
+        let Some(spec) = ToolCatalog::standard().get(id) else { return AppUpdate::default() };
+        if group.is_some() && spec.group != group {
+            return AppUpdate::default();
+        }
+        let state = ToolState {
+            document: self.sessions.contains_key(&document),
+            operator: self.role == Role::Operator,
+            in_sketch: false,
+        };
+        if !enablement(spec, state).is_enabled() {
+            return AppUpdate::default();
+        }
+        if let Some(name) = spec.group {
+            self.toolbar_variants.insert(name, spec.id);
+        }
+        match spec.action {
+            Action::Tool(tool) => self.with_session(document, |s| {
+                s.trim_mode = false;
+                s.editor.select_tool(tool);
+                s.tool_size_error = None;
+                clear_tool_report(s);
+                AppUpdate::redraw(document)
+            }),
+            Action::Command(command) => {
+                let mut update = self.invoke(Some(document), command);
+                update.view_changed = true;
+                update
+            }
+            Action::Unavailable | Action::Deferred => AppUpdate::default(),
+        }
+    }
+
     pub(super) fn invoke(&mut self, document: Option<DocumentId>, command: CommandKey) -> AppUpdate {
         if command == CommandKey::New {
             return self.new_document();
@@ -203,6 +247,7 @@ pub(super) fn invoke_in_session(
                 s.trim_mode = false;
                 s.editor.select_tool(tool);
                 s.tool_size_error = None;
+                super::canvas::clear_tool_report(s);
                 AppUpdate::redraw(document)
             }
             None => AppUpdate::default(),

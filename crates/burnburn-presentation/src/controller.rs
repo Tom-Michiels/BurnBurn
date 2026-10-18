@@ -1,3 +1,5 @@
+use crate::catalog::VariantMemory;
+use crate::view_model::ToolMeasurement;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -154,6 +156,9 @@ struct Session {
     field_errors: BTreeMap<FieldKey, MessageKey>,
     messages: Vec<StatusMessage>,
     measure: Option<MeasureViewModel>,
+    tool_measurement: Option<ToolMeasurement>,
+    /// Where the Text tool was clicked: the next committed text is placed there.
+    text_anchor: Option<Point>,
     pending: BTreeMap<TaskId, (TaskKind, CancellationSource)>,
     /// Default-name counters per created kind ("Rechthoek 2", "Cirkel 1").
     created: BTreeMap<NameKind, u64>,
@@ -206,6 +211,8 @@ impl Session {
             field_errors: BTreeMap::new(),
             messages: Vec::new(),
             measure: None,
+            tool_measurement: None,
+            text_anchor: None,
             pending: BTreeMap::new(),
             created: BTreeMap::new(),
             snap: SnapSettings::default(),
@@ -286,6 +293,8 @@ pub struct AppController {
     app_tasks: BTreeMap<TaskId, TaskKind>,
     /// Open tasks that restore a recovery file (the window opens unsaved and untitled).
     restoring: BTreeMap<TaskId, PathBuf>,
+    /// The last chosen variant of each toolbar group (window-independent preference).
+    toolbar_variants: VariantMemory,
 }
 
 impl AppController {
@@ -309,6 +318,7 @@ impl AppController {
             recovery_dir: None,
             app_tasks: BTreeMap::new(),
             restoring: BTreeMap::new(),
+            toolbar_variants: VariantMemory::new(),
         }
     }
 
@@ -365,6 +375,8 @@ impl AppController {
             }
             UiIntent::CommitField { document, field, text } => self.commit_field(document, field, &text),
             UiIntent::CommitToolSize { document, width, height } => self.commit_tool_size(document, &width, &height),
+            UiIntent::SelectTool { document, id } => self.select_catalog_tool(document, &id, None),
+            UiIntent::SelectVariant { document, group, id } => self.select_catalog_tool(document, &id, Some(&group)),
             UiIntent::Invoke { document, command } => self.invoke(document, command),
             UiIntent::Pointer { document, event } => self.pointer(document, event),
             UiIntent::Key { document, key, modifiers } => self.key(document, key, modifiers),
