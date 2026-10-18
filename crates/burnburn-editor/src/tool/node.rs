@@ -4,14 +4,16 @@
 
 use std::sync::Arc;
 
+use burnburn_document::OpsCommand;
 use burnburn_geometry::{HandleMode, HandleRef, HandleSide, NodeEdit, NodeRef, Path, Point, Segment};
-use burnburn_types::GeometryId;
+use burnburn_types::{CancellationToken, GeometryId};
 
 use super::{
     CLICK_TOLERANCE_PT, DRAG_THRESHOLD_PT, EditCommit, HANDLE_RADIUS_PT, Tool, ToolContext, ToolPreview, ToolStep,
-    is_escape, tool_pointer,
+    is_escape, key_down, tool_pointer,
 };
-use crate::input::{CanvasInput, Modifiers, PointerEvent, PointerPhase};
+use crate::input::{CanvasInput, CanvasKey, Modifiers, PointerEvent, PointerPhase};
+use crate::node_ops::{NodeCommand, node_command_op};
 use crate::selection::{SelectionChange, hit_test};
 use crate::snap::SnapCandidate;
 
@@ -68,13 +70,84 @@ struct NodeDrag {
 pub struct NodeTool {
     drag: Option<NodeDrag>,
     snap: Option<SnapCandidate>,
+    /// Selected nodes of `selected_target` (window-local, never document data).
+    selected: Vec<NodeRef>,
+    selected_target: Option<GeometryId>,
 }
 
 impl NodeTool {
+    /// The selected nodes of the single selected object, in selection order.
+    pub fn selected_nodes(&self) -> &[NodeRef] {
+        &self.selected
+    }
+
+    fn clear_nodes(&mut self) {
+        self.selected.clear();
+        self.selected_target = None;
+    }
+
+    /// The domain operation for `cmd` on the selected nodes and whether the domain accepts it.
+    fn op_for(&self, cmd: NodeCommand, ctx: &ToolContext<'_>) -> Option<(GeometryId, burnburn_geometry::PathOp)> {
+        let target = ctx.selection.single()?;
+        let obj = ctx.document.object(target)?;
+        let nodes = if self.selected_target == Some(target) { self.selected.as_slice() } else { &[] };
+        let op = node_command_op(obj.path(), nodes, cmd).ok()?;
+        obj.path().apply_op(&op, &CancellationToken::never()).ok()?;
+        Some((target, op))
+    }
+
+    /// Whether the button for `cmd` can act on the current node selection.
+    pub fn command_enabled(&self, cmd: NodeCommand, ctx: &ToolContext<'_>) -> bool {
+        self.op_for(cmd, ctx).is_some()
+    }
+
+    /// Applies `cmd` to the selected nodes as exactly one commit (`Nothing` when disabled).
+    /// Commands that renumber nodes clear the node selection.
+    pub fn command(&mut self, cmd: NodeCommand, ctx: &ToolContext<'_>) -> ToolStep {
+        let Some((target, op)) = self.op_for(cmd, ctx) else { return ToolStep::Nothing };
+        if !matches!(
+            cmd,
+            NodeCommand::MakeSmooth
+                | NodeCommand::MakeSymmetric
+                | NodeCommand::MakeCorner
+                | NodeCommand::SegmentsToLines
+                | NodeCommand::SegmentsToCurves
+                | NodeCommand::ClosePaths
+        ) {
+            self.clear_nodes();
+        }
+        ToolStep::Commit(EditCommit::Ops(OpsCommand::PathOp { targets: vec![target], op }))
+    }
+
+    /// A double click on the outline inserts a node there (the curve is not changed).
+    fn insert_at(
+        &self,
+        target: GeometryId,
+        obj: &burnburn_document::GeometryObject,
+        ev: &PointerEvent,
+        ctx: &ToolContext<'_>,
+    ) -> Option<ToolStep> {
+        let near = obj.path().nearest(ev.position)?;
+        if near.distance > ctx.tolerance_mm(CLICK_TOLERANCE_PT) {
+            return None;
+        }
+        let sp = obj.path().subpaths().get(near.at.subpath)?;
+        if near.at.segment >= sp.segments().len() || !(near.t > 1e-6 && near.t < 1.0 - 1e-6) {
+            return None;
+        }
+        let edit = NodeEdit::InsertNode { subpath: near.at.subpath, segment: near.at.segment, t: near.t };
+        let path = obj.path().edit_nodes(&edit).ok()?;
+        Some(ToolStep::Commit(EditCommit::EditNodes { target, edit, path }))
+    }
+
     fn press(&mut self, ev: &PointerEvent, ctx: &ToolContext<'_>) -> ToolStep {
         if let Some(target) = ctx.selection.single()
             && let Some(obj) = ctx.document.object(target)
         {
+            if self.selected_target != Some(target) {
+                self.selected.clear();
+                self.selected_target = Some(target);
+            }
             let radius = ctx.tolerance_mm(HANDLE_RADIUS_PT);
             let picked = path_nodes(obj.path())
                 .into_iter()
@@ -82,6 +155,16 @@ impl NodeTool {
                 .filter(|(d, ..)| *d <= radius)
                 .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
             if let Some((_, _, picked, picked_at)) = picked {
+                if let NodeTarget::Node(n) = picked {
+                    match (ev.modifiers.shift, self.selected.iter().position(|s| *s == n)) {
+                        (true, Some(i)) => {
+                            self.selected.remove(i);
+                        }
+                        (true, None) => self.selected.push(n),
+                        (false, None) => self.selected = vec![n],
+                        (false, Some(_)) => {}
+                    }
+                }
                 self.drag = Some(NodeDrag {
                     target,
                     original: Arc::clone(obj.path()),
@@ -92,6 +175,12 @@ impl NodeTool {
                 });
                 return ToolStep::PreviewChanged;
             }
+            if ev.click_count >= 2
+                && let Some(step) = self.insert_at(target, obj, ev, ctx)
+            {
+                return step;
+            }
+            self.selected.clear();
         }
         let hits = hit_test(ctx.document, ev.position, ctx.tolerance_mm(CLICK_TOLERANCE_PT));
         match hits.first() {
@@ -107,6 +196,9 @@ impl Tool for NodeTool {
     fn input(&mut self, input: &CanvasInput, ctx: &ToolContext<'_>) -> ToolStep {
         if is_escape(input) {
             return self.cancel();
+        }
+        if let Some((CanvasKey::Delete, _)) = key_down(input) {
+            return self.command(NodeCommand::DeleteNodes, ctx);
         }
         let Some(ev) = tool_pointer(input) else { return ToolStep::Nothing };
         match ev.phase {
@@ -166,12 +258,13 @@ impl Tool for NodeTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::{CanvasKey, PointerPhase};
+    use crate::input::CanvasKey;
+    use crate::input::PointerPhase;
     use crate::selection::SelectionChange;
     use crate::tool::EditCommit;
     use crate::tool::fixture::*;
     use burnburn_geometry::PathBuilder;
-    use burnburn_types::StableId;
+    use burnburn_types::{CancellationToken, StableId};
 
     /// Three cubic spans: (0,0) → (30,0) → (60,0) → (90,0), handles 10 mm above/below.
     fn wave() -> Path {
@@ -282,5 +375,107 @@ mod tests {
         let mut tool = NodeTool::default();
         let step = tool.input(&at(PointerPhase::Down, 205.0, 5.0, none()), &f.ctx());
         assert_eq!(step, ToolStep::Select(SelectionChange::Replace(vec![GeometryId::from_raw(2)])));
+    }
+
+    fn click(tool: &mut NodeTool, f: &Fixture, x: f64, y: f64, mods: Modifiers) {
+        tool.input(&at(PointerPhase::Down, x, y, mods), &f.ctx());
+        tool.input(&at(PointerPhase::Up, x, y, mods), &f.ctx());
+    }
+
+    fn node(i: usize) -> NodeRef {
+        NodeRef { subpath: 0, node: i }
+    }
+
+    #[test]
+    fn clicking_nodes_selects_them_and_shift_adds_or_removes() {
+        let f = fixture();
+        let mut tool = NodeTool::default();
+        click(&mut tool, &f, 30.0, 0.0, none());
+        assert_eq!(tool.selected_nodes(), &[node(1)]);
+        click(&mut tool, &f, 60.0, 0.0, shift());
+        assert_eq!(tool.selected_nodes(), &[node(1), node(2)]);
+        click(&mut tool, &f, 30.0, 0.0, shift());
+        assert_eq!(tool.selected_nodes(), &[node(2)], "shift on a selected node removes it");
+        click(&mut tool, &f, 90.0, 0.0, none());
+        assert_eq!(tool.selected_nodes(), &[node(3)], "a plain click replaces the selection");
+        // Clicking handles does not select them.
+        click(&mut tool, &f, 40.0, -10.0, none());
+        assert_eq!(tool.selected_nodes(), &[node(3)]);
+    }
+
+    #[test]
+    fn clicking_the_body_or_another_object_clears_the_node_selection() {
+        let mut f = fixture();
+        let mut tool = NodeTool::default();
+        click(&mut tool, &f, 30.0, 0.0, none());
+        click(&mut tool, &f, 45.0, 0.0, none());
+        assert!(tool.selected_nodes().is_empty(), "a click on the path between nodes drops the nodes");
+        click(&mut tool, &f, 30.0, 0.0, none());
+        let step = tool.input(&at(PointerPhase::Down, 205.0, 5.0, none()), &f.ctx());
+        f.follow(&step);
+        assert!(tool.selected_nodes().is_empty(), "pressing another object drops the nodes of the old one");
+        assert_eq!(f.selection.single(), Some(GeometryId::from_raw(2)));
+    }
+
+    #[test]
+    fn delete_key_removes_the_selected_nodes_as_one_commit() {
+        let f = fixture();
+        let mut tool = NodeTool::default();
+        click(&mut tool, &f, 30.0, 0.0, none());
+        click(&mut tool, &f, 60.0, 0.0, shift());
+        let step = tool.input(&key(CanvasKey::Delete), &f.ctx());
+        let ToolStep::Commit(EditCommit::Ops(OpsCommand::PathOp { targets, op })) = step else {
+            panic!("expected an Ops commit, got {step:?}")
+        };
+        assert_eq!(targets, vec![GeometryId::from_raw(1)]);
+        let out = wave().apply_op(&op, &CancellationToken::never()).unwrap();
+        assert_eq!(out.subpaths()[0].segments().len(), 1, "only the end nodes 0 and 3 remain");
+        assert!(tool.selected_nodes().is_empty(), "the deleted nodes are no longer selected");
+        assert_eq!(tool.input(&key(CanvasKey::Delete), &f.ctx()), ToolStep::Nothing);
+    }
+
+    #[test]
+    fn commands_commit_the_domain_operation_for_the_selected_nodes() {
+        let f = fixture();
+        let mut tool = NodeTool::default();
+        assert!(!tool.command_enabled(NodeCommand::BreakAtNodes, &f.ctx()), "no node selected");
+        assert_eq!(tool.command(NodeCommand::BreakAtNodes, &f.ctx()), ToolStep::Nothing);
+        click(&mut tool, &f, 60.0, 0.0, none());
+        assert!(tool.command_enabled(NodeCommand::BreakAtNodes, &f.ctx()));
+        let ToolStep::Commit(EditCommit::Ops(OpsCommand::PathOp { op, .. })) =
+            tool.command(NodeCommand::BreakAtNodes, &f.ctx())
+        else {
+            panic!("expected a commit")
+        };
+        let out = wave().apply_op(&op, &CancellationToken::never()).unwrap();
+        assert_eq!(out.subpaths().len(), 2);
+        assert!(tool.selected_nodes().is_empty(), "breaking renumbers nodes");
+        // A kind change keeps node numbers, so the selection stays.
+        click(&mut tool, &f, 30.0, 0.0, none());
+        let smooth = tool.command(NodeCommand::MakeCorner, &f.ctx());
+        assert!(matches!(smooth, ToolStep::Commit(EditCommit::Ops(_))));
+        assert_eq!(tool.selected_nodes(), &[node(1)]);
+        // The domain refuses what would change nothing: disabled, not a silent empty commit.
+        assert!(!tool.command_enabled(NodeCommand::SegmentsToCurves, &f.ctx()), "wave spans are already curves");
+    }
+
+    #[test]
+    fn double_clicking_the_outline_inserts_a_node_without_changing_the_curve() {
+        let line = Path::line(Point::new(0.0, 0.0), Point::new(40.0, 0.0)).unwrap();
+        let mut f = Fixture::new(vec![path_obj(1, line.clone())]);
+        f.select(&[1]);
+        let mut tool = NodeTool::default();
+        let step = tool.input(&double_click(10.0, 0.2), &f.ctx());
+        let ToolStep::Commit(EditCommit::EditNodes { target, edit, path }) = step else {
+            panic!("expected an insert commit, got {step:?}")
+        };
+        assert_eq!(target, GeometryId::from_raw(1));
+        let NodeEdit::InsertNode { subpath: 0, segment: 0, t } = edit else { panic!("{edit:?}") };
+        assert!((t - 0.25).abs() < 1e-9, "t = {t}");
+        assert_eq!(path.subpaths()[0].segments().len(), 2);
+        assert_eq!(path.bounds(), line.bounds(), "the outline is the same line");
+        // Far from the outline, or on an existing node, a double click inserts nothing.
+        assert!(!matches!(tool.input(&double_click(10.0, 30.0), &f.ctx()), ToolStep::Commit(_)));
+        assert!(!matches!(tool.input(&double_click(0.0, 0.0), &f.ctx()), ToolStep::Commit(_)));
     }
 }

@@ -4,16 +4,20 @@
 
 mod draw;
 mod node;
+mod pick;
 mod rectangle;
+mod round_corner;
 mod select;
+mod start_point;
 
 use std::sync::Arc;
 
-use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{Affine, Bounds, NodeEdit, Path, Point, Rect, Shape};
+use burnburn_document::{DocumentSnapshot, OpsCommand};
+use burnburn_geometry::{Affine, Bounds, NodeEdit, NodeRef, Path, Point, Rect, Shape};
 use burnburn_types::{GeometryId, Length};
 
 use crate::input::{CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerButton, PointerEvent, PointerPhase};
+use crate::node_ops::NodeCommand;
 use crate::selection::{Selection, SelectionChange};
 use crate::snap::{SnapCandidate, SnapSettings, snap_point};
 
@@ -21,7 +25,9 @@ pub use draw::{CircleTool, EllipseTool, LineTool, PenTool, PolylineTool};
 pub use node::{NodeTarget, NodeTool, path_nodes};
 pub(crate) use rectangle::rect_from_bounds;
 pub use rectangle::{RectanglePreview, RectangleTool};
+pub use round_corner::RoundCornerTool;
 pub use select::{Handle, SelectTool, selection_handles};
+pub use start_point::StartPointTool;
 
 /// Hit-test tolerance for clicks, in logical screen points (independent of zoom).
 pub const CLICK_TOLERANCE_PT: f64 = 4.0;
@@ -100,6 +106,9 @@ pub enum EditCommit {
         edit: NodeEdit,
         path: Path,
     },
+    /// A selection-wide geometry operation (node set, round corners, optimize, cut, join). The
+    /// document recomputes the result from the same domain operation; this is its exact payload.
+    Ops(OpsCommand),
 }
 
 /// What presentation must do after one input.
@@ -192,6 +201,10 @@ pub enum ToolKind {
     Line,
     Polyline,
     Pen,
+    /// Click a node to make it the cutting start (W1-L2a).
+    StartPoint,
+    /// Click a corner to round it with the editor's corner radius (W1-L2a).
+    RoundCorner,
 }
 
 #[derive(Debug, Clone)]
@@ -204,10 +217,12 @@ enum Active {
     Line(LineTool),
     Polyline(PolylineTool),
     Pen(PenTool),
+    StartPoint(StartPointTool),
+    RoundCorner(RoundCornerTool),
 }
 
 impl Active {
-    fn new(kind: ToolKind) -> Self {
+    fn new(kind: ToolKind, round_radius_mm: f64) -> Self {
         match kind {
             ToolKind::Select => Active::Select(SelectTool::default()),
             ToolKind::Node => Active::Node(NodeTool::default()),
@@ -217,6 +232,8 @@ impl Active {
             ToolKind::Line => Active::Line(LineTool::default()),
             ToolKind::Polyline => Active::Polyline(PolylineTool::default()),
             ToolKind::Pen => Active::Pen(PenTool::default()),
+            ToolKind::StartPoint => Active::StartPoint(StartPointTool),
+            ToolKind::RoundCorner => Active::RoundCorner(RoundCornerTool::new(round_radius_mm)),
         }
     }
 
@@ -230,6 +247,8 @@ impl Active {
             Active::Line(t) => t,
             Active::Polyline(t) => t,
             Active::Pen(t) => t,
+            Active::StartPoint(t) => t,
+            Active::RoundCorner(t) => t,
         }
     }
 
@@ -243,6 +262,8 @@ impl Active {
             Active::Line(t) => t,
             Active::Polyline(t) => t,
             Active::Pen(t) => t,
+            Active::StartPoint(t) => t,
+            Active::RoundCorner(t) => t,
         }
     }
 }
@@ -252,7 +273,12 @@ impl Active {
 pub struct Editor {
     kind: ToolKind,
     active: Active,
+    /// Radius of the Round Corners tool, kept across tool switches.
+    round_radius_mm: f64,
 }
+
+/// Corner radius the Round Corners tool starts with.
+pub const DEFAULT_ROUND_RADIUS_MM: f64 = 2.0;
 
 impl Default for Editor {
     fn default() -> Self {
@@ -262,7 +288,11 @@ impl Default for Editor {
 
 impl Editor {
     pub fn new() -> Self {
-        Editor { kind: ToolKind::Select, active: Active::new(ToolKind::Select) }
+        Editor {
+            kind: ToolKind::Select,
+            active: Active::new(ToolKind::Select, DEFAULT_ROUND_RADIUS_MM),
+            round_radius_mm: DEFAULT_ROUND_RADIUS_MM,
+        }
     }
 
     pub fn tool(&self) -> ToolKind {
@@ -273,7 +303,7 @@ impl Editor {
     pub fn select_tool(&mut self, kind: ToolKind) -> ToolStep {
         let step = self.cancel();
         self.kind = kind;
-        self.active = Active::new(kind);
+        self.active = Active::new(kind, self.round_radius_mm);
         step
     }
 
@@ -287,6 +317,39 @@ impl Editor {
 
     pub fn exact_size(&mut self, width: Length, height: Length) -> ToolStep {
         self.active.tool().exact_size(width, height)
+    }
+
+    /// Selected nodes in node-edit mode; empty for every other tool.
+    pub fn node_selection(&self) -> &[NodeRef] {
+        match &self.active {
+            Active::Node(t) => t.selected_nodes(),
+            _ => &[],
+        }
+    }
+
+    /// Runs a node-edit command on the selected nodes (`Nothing` outside node-edit mode).
+    pub fn node_command(&mut self, cmd: NodeCommand, ctx: &ToolContext<'_>) -> ToolStep {
+        match &mut self.active {
+            Active::Node(t) => t.command(cmd, ctx),
+            _ => ToolStep::Nothing,
+        }
+    }
+
+    /// Whether the node-edit button for `cmd` can act on the current selection.
+    pub fn node_command_enabled(&self, cmd: NodeCommand, ctx: &ToolContext<'_>) -> bool {
+        matches!(&self.active, Active::Node(t) if t.command_enabled(cmd, ctx))
+    }
+
+    /// The Round Corners radius (mm); applies to the active tool at once and to later activations.
+    pub fn set_round_radius(&mut self, radius: Length) {
+        self.round_radius_mm = radius.mm();
+        if let Active::RoundCorner(t) = &mut self.active {
+            t.set_radius_mm(self.round_radius_mm);
+        }
+    }
+
+    pub fn round_radius(&self) -> f64 {
+        self.round_radius_mm
     }
 
     pub fn is_gesture_active(&self) -> bool {
