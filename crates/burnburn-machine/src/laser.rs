@@ -30,11 +30,20 @@ pub enum LaserAction {
     /// Key up. Always allowed.
     JogRelease(JogKey),
     /// A bounded step from the known position, in bed-view micrometres (right/up positive).
-    JogStep { dx_view_um: i64, dy_view_um: i64 },
+    JogStep {
+        dx_view_um: i64,
+        dy_view_um: i64,
+    },
     /// Numeric absolute move in machine-frame micrometres.
-    MoveTo { x_um: i64, y_um: i64 },
+    MoveTo {
+        x_um: i64,
+        y_um: i64,
+    },
     /// "Position Laser": a canvas click in bed-view millimetres.
-    PositionLaser { bed_x_mm: f64, bed_y_mm: f64 },
+    PositionLaser {
+        bed_x_mm: f64,
+        bed_y_mm: f64,
+    },
     Home(HomeTarget),
     GoToOrigin(OriginTarget),
     Pause,
@@ -89,7 +98,10 @@ pub enum LaserRefusal {
     PositionUnknown,
     UserOriginNotSet,
     /// The target lies off the bed (machine-frame micrometres).
-    OutsideBed { x_um: i64, y_um: i64 },
+    OutsideBed {
+        x_um: i64,
+        y_um: i64,
+    },
     /// A non-finite or absurdly large coordinate.
     InvalidCoordinate,
 }

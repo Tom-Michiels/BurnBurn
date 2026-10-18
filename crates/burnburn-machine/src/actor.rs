@@ -488,7 +488,8 @@ impl<P: ControllerPort> ExecutionActor<P> {
             Request::QueryIdentity if self.state() == Some(&ExecutionState::VerifyingIdentity) => {
                 self.set_state(ExecutionState::Failed(FailReason::IdentityUnconfirmed));
             }
-            Request::Stop | Request::QueryIdentity | Request::QueryStored | Request::QueryStatus | Request::Live(_) => {}
+            Request::Stop | Request::QueryIdentity | Request::QueryStored | Request::QueryStatus | Request::Live(_) => {
+            }
         }
     }
 }

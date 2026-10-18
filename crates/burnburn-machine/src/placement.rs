@@ -133,7 +133,10 @@ pub enum PlacementError {
     PositionUnknown,
     UserOriginNotSet,
     /// The moved job would leave the bed; the resulting machine-frame bounds are given.
-    OutsideBed { min: (f64, f64), max: (f64, f64) },
+    OutsideBed {
+        min: (f64, f64),
+        max: (f64, f64),
+    },
     /// A plan event this build cannot translate (the event enum is non-exhaustive).
     UnsupportedEvent,
     Plan(PlanError),
@@ -286,10 +289,7 @@ pub fn resolve_scope(
         if scope.cut_selected { objects.iter().filter(is_selected).collect() } else { objects.iter().collect() };
     let origin: Vec<&ScopeObject> =
         if scope.use_selection_origin { objects.iter().filter(is_selected).collect() } else { included.clone() };
-    let origin_bounds = origin
-        .iter()
-        .map(|o| o.bounds)
-        .reduce(|a, b| a.union(&b))
-        .ok_or(ScopeError::NothingSelected)?;
+    let origin_bounds =
+        origin.iter().map(|o| o.bounds).reduce(|a, b| a.union(&b)).ok_or(ScopeError::NothingSelected)?;
     Ok(ScopeResolution { included: included.iter().map(|o| o.id).collect(), origin_bounds })
 }

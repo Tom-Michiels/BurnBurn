@@ -80,7 +80,10 @@ pub enum Reply {
     /// Answer to [`Request::QueryStatus`].
     Status(ControllerStatus),
     /// Answer to a position read. An axis the controller did not report is `None`, never 0.
-    Position { x_um: Option<i64>, y_um: Option<i64> },
+    Position {
+        x_um: Option<i64>,
+        y_um: Option<i64>,
+    },
     /// Answer to a DSP file-list request.
     Files(Vec<FileEntry>),
     /// Answer to a DSP file-metadata request.

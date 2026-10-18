@@ -77,11 +77,20 @@ pub struct FileEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControllerFileIntent {
     List,
-    Metadata { name: ControllerFileName },
-    Upload { name: ControllerFileName, artifact: RdArtifact },
+    Metadata {
+        name: ControllerFileName,
+    },
+    Upload {
+        name: ControllerFileName,
+        artifact: RdArtifact,
+    },
     /// Run a stored file. Not the start of an uploaded job: it is its own intent.
-    Run { name: ControllerFileName },
-    Delete { name: ControllerFileName },
+    Run {
+        name: ControllerFileName,
+    },
+    Delete {
+        name: ControllerFileName,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

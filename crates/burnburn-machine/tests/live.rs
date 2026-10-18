@@ -61,7 +61,12 @@ fn rig_with(caps: Capabilities) -> Rig {
     let machine = MachineId::new("bench-ruida-1");
     let port = FakePort { peer: peer.clone(), machine: machine.clone(), last_tag: None };
     let identity = MachineIdentity { id: machine, model: Some("RDC6445G".into()), firmware: Some("fake-1".into()) };
-    let mut actor = ExecutionActor::new(identity, port, Arc::new(clock.clone()), Policy { reply_timeout: TIMEOUT, max_query_attempts: 3 });
+    let mut actor = ExecutionActor::new(
+        identity,
+        port,
+        Arc::new(clock.clone()),
+        Policy { reply_timeout: TIMEOUT, max_query_attempts: 3 },
+    );
     actor.set_capabilities(caps);
     Rig { clock, peer, actor }
 }
@@ -141,10 +146,11 @@ fn unknown_axis_position_is_not_shown_as_zero() {
     assert_eq!(p.machine_point(), None);
 
     // The controller answers for X only: Y stays unknown, X is shown as read.
-    r.peer.script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Ack).reply(Reply::Position {
-        x_um: Some(12_500),
-        y_um: None,
-    }));
+    r.peer.script(
+        Step::expect(live(LiveRequest::ReadPosition))
+            .reply(Reply::Ack)
+            .reply(Reply::Position { x_um: Some(12_500), y_um: None }),
+    );
     r.actor.live(LiveRequest::ReadPosition).unwrap();
     r.actor.poll().unwrap();
     let p = r.actor.position();
@@ -156,7 +162,8 @@ fn unknown_axis_position_is_not_shown_as_zero() {
 #[test]
 fn a_known_position_of_exactly_zero_is_known_not_unknown() {
     let mut r = rig();
-    r.peer.script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(0), y_um: Some(0) }));
+    r.peer
+        .script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(0), y_um: Some(0) }));
     r.actor.live(LiveRequest::ReadPosition).unwrap();
     r.actor.poll().unwrap();
     assert_eq!(r.actor.position().machine_point().map(|p| (p.x_mm(), p.y_mm())), Some((0.0, 0.0)));
@@ -165,7 +172,9 @@ fn a_known_position_of_exactly_zero_is_known_not_unknown() {
 #[test]
 fn a_motion_command_makes_the_known_position_unknown_until_it_is_read_again() {
     let mut r = rig();
-    r.peer.script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(1_000), y_um: Some(2_000) }));
+    r.peer.script(
+        Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(1_000), y_um: Some(2_000) }),
+    );
     r.actor.live(LiveRequest::ReadPosition).unwrap();
     r.actor.poll().unwrap();
     assert!(r.actor.position().machine_point().is_some());
@@ -182,7 +191,8 @@ fn read_position_is_an_idempotent_query_retried_within_the_bound() {
     let mut r = rig();
     // First attempt: no reply at all. Second attempt: answered.
     r.peer.script(Step::expect(live(LiveRequest::ReadPosition)));
-    r.peer.script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(5), y_um: Some(6) }));
+    r.peer
+        .script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(5), y_um: Some(6) }));
     r.actor.live(LiveRequest::ReadPosition).unwrap();
     r.time_out();
     r.actor.poll().unwrap();
@@ -252,7 +262,8 @@ fn motion_is_refused_while_a_job_may_be_running_but_pause_and_reads_are_not() {
     r.peer.script(Step::expect(live(LiveRequest::Pause)).reply(Reply::Ack));
     r.actor.live(LiveRequest::Pause).unwrap();
     r.actor.poll().unwrap();
-    r.peer.script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(1), y_um: Some(1) }));
+    r.peer
+        .script(Step::expect(live(LiveRequest::ReadPosition)).reply(Reply::Position { x_um: Some(1), y_um: Some(1) }));
     r.actor.live(LiveRequest::ReadPosition).unwrap();
 }
 
@@ -406,7 +417,9 @@ fn file_list_and_metadata_replies_are_kept_as_data() {
     assert_eq!(r.last_outcome(), LiveOutcome::Answered);
 
     let meta = FileEntry { name: name("PLAAT01"), size_bytes: Some(1234) };
-    r.peer.script(Step::expect(live(LiveRequest::FileMetadata(name("PLAAT01")))).reply(Reply::FileMetadata(meta.clone())));
+    r.peer.script(
+        Step::expect(live(LiveRequest::FileMetadata(name("PLAAT01")))).reply(Reply::FileMetadata(meta.clone())),
+    );
     r.actor.live(LiveRequest::FileMetadata(name("PLAAT01"))).unwrap();
     r.actor.poll().unwrap();
     assert_eq!(r.actor.file_metadata(&name("PLAAT01")), Some(&meta));

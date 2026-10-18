@@ -13,7 +13,10 @@ use burnburn_history::{
     ActionId, CompiledJobId, ExecutionStateDto, History, HistoryError, IntentKind, JournalFs, QueueItemId, WallTime,
 };
 use burnburn_job::ProfileRevision;
-use burnburn_machine::{ActorError, ControllerPort, ExecutionActor, ExecutionId, ExecutionState};
+use burnburn_machine::{
+    ActorError, Capabilities, ControllerPort, ExecutionActor, ExecutionId, ExecutionState, LiveError, LiveOutcome,
+    LiveRequest,
+};
 
 /// Wall-clock port: display time for history records only.
 pub trait WallClock: Send + Sync {
@@ -37,6 +40,7 @@ impl WallClock for SystemWallClock {
 pub enum DriverError {
     History(HistoryError),
     Actor(ActorError),
+    Live(LiveError),
     UnknownExecution(ExecutionId),
     /// The history already holds a start intent for this execution: never a second one.
     StartAlreadyRecorded,
@@ -47,6 +51,12 @@ pub enum DriverError {
 impl From<HistoryError> for DriverError {
     fn from(e: HistoryError) -> Self {
         DriverError::History(e)
+    }
+}
+
+impl From<LiveError> for DriverError {
+    fn from(e: LiveError) -> Self {
+        DriverError::Live(e)
     }
 }
 
@@ -72,11 +82,28 @@ pub struct MachineDriver<P: ControllerPort> {
     fs: Arc<dyn JournalFs>,
     wall: Arc<dyn WallClock>,
     max_chunk: usize,
+    /// Which journaled laser-window action each actor attempt belongs to.
+    live_tracks: Vec<LiveTrack>,
+    tracked_attempts: usize,
+}
+
+struct LiveTrack {
+    seq: u32,
+    action: ActionId,
+    journaled: bool,
 }
 
 impl<P: ControllerPort> MachineDriver<P> {
     pub fn new(actor: ExecutionActor<P>, history: History, fs: Arc<dyn JournalFs>, wall: Arc<dyn WallClock>) -> Self {
-        MachineDriver { actor, history, fs, wall, max_chunk: burnburn_ruida::udp::MAX_PAYLOAD }
+        MachineDriver {
+            actor,
+            history,
+            fs,
+            wall,
+            max_chunk: burnburn_ruida::udp::MAX_PAYLOAD,
+            live_tracks: Vec::new(),
+            tracked_attempts: 0,
+        }
     }
 
     pub fn actor(&self) -> &ExecutionActor<P> {
@@ -100,6 +127,17 @@ impl<P: ControllerPort> MachineDriver<P> {
         current_profile: &ProfileRevision,
         action: ActionId,
     ) -> Result<ExecutionId, DriverError> {
+        self.upload_as(IntentKind::Upload, job, item, current_profile, action)
+    }
+
+    fn upload_as(
+        &mut self,
+        kind: IntentKind,
+        job: CompiledJobId,
+        item: Option<QueueItemId>,
+        current_profile: &ProfileRevision,
+        action: ActionId,
+    ) -> Result<ExecutionId, DriverError> {
         if let Some(done) = self.history.action_outcome(action) {
             return Ok(done.execution);
         }
@@ -108,7 +146,7 @@ impl<P: ControllerPort> MachineDriver<P> {
         let now = self.wall.now();
         let machine = self.actor.machine().id.clone();
         let id = self.history.create_execution(fs.as_ref(), job, machine, item, current_profile, now)?;
-        self.history.record_intent(fs.as_ref(), id, action, IntentKind::Upload, now)?;
+        self.history.record_intent(fs.as_ref(), id, action, kind, now)?;
         self.actor.begin_upload(id, &artifact)?;
         self.observe()?;
         Ok(id)
@@ -175,10 +213,90 @@ impl<P: ControllerPort> MachineDriver<P> {
         Ok(())
     }
 
+    pub fn set_capabilities(&mut self, capabilities: Capabilities) {
+        self.actor.set_capabilities(capabilities);
+    }
+
+    /// Journals and sends one laser-window action (jog, home, move, pause, file operations).
+    ///
+    /// - A repeated action id is a no-op.
+    /// - A request the actor would refuse (unverified feature, job may be active, ...) is
+    ///   refused before anything is journaled: it never touches the machine.
+    /// - Otherwise the intent is durable first; the outcome is journaled when it is proven
+    ///   (reply, refusal, not sent) or stays unknown. Nothing is ever resent.
+    pub fn live(&mut self, action: ActionId, request: LiveRequest) -> Result<(), DriverError> {
+        if self.history.live_action(action).is_some() {
+            return Ok(());
+        }
+        self.actor.live_preflight(&request)?;
+        let fs = Arc::clone(&self.fs);
+        let machine = self.actor.machine().id.clone();
+        let receipt = self.history.record_live_intent(fs.as_ref(), machine, action, &request, self.wall.now())?;
+        if !receipt.fresh {
+            return Ok(());
+        }
+        let sent = self.actor.live(request);
+        let attempts = self.actor.live_attempts().len();
+        if attempts > self.tracked_attempts {
+            let seq = u32::try_from(attempts - 1).unwrap_or(u32::MAX);
+            self.live_tracks.push(LiveTrack { seq, action, journaled: false });
+            self.tracked_attempts = attempts;
+        }
+        self.observe_live()?;
+        sent.map_err(DriverError::Live)
+    }
+
+    /// Releases the held jog key (focus loss, window close). `Ok(false)`: nothing was held and
+    /// nothing was journaled.
+    pub fn release_jog(&mut self, action: ActionId) -> Result<bool, DriverError> {
+        match self.actor.jog_held() {
+            Some(key) => self.live(action, LiveRequest::JogStop(key)).map(|()| true),
+            None => Ok(false),
+        }
+    }
+
+    /// A laser-off frame run: like [`MachineDriver::upload`] for a frame job (a compiled frame
+    /// plan from `burnburn_machine::FramePlan::artifact`), journaled as a `Frame` intent. The
+    /// run belongs to no queue item, so it never counts as a produced piece. Starting it is the
+    /// ordinary [`MachineDriver::start`].
+    pub fn upload_frame(
+        &mut self,
+        job: CompiledJobId,
+        current_profile: &ProfileRevision,
+        action: ActionId,
+    ) -> Result<ExecutionId, DriverError> {
+        self.upload_as(IntentKind::Frame, job, None, current_profile, action)
+    }
+
+    /// Replays the journal into a report. There is no port in this path: it cannot touch a
+    /// machine.
+    pub fn diagnostic_report(
+        &self,
+        options: &burnburn_history::DiagnosticOptions,
+    ) -> burnburn_history::DiagnosticReport {
+        burnburn_history::diagnostic_replay(&self.history, options)
+    }
+
     /// Processes replies/timeouts and journals what was observed.
     pub fn poll(&mut self) -> Result<(), DriverError> {
         self.actor.poll()?;
-        self.observe()
+        self.observe()?;
+        self.observe_live()
+    }
+
+    /// Journals the outcome of every live attempt that has been proven (or has stayed unknown).
+    fn observe_live(&mut self) -> Result<(), DriverError> {
+        let fs = Arc::clone(&self.fs);
+        let now = self.wall.now();
+        for track in self.live_tracks.iter_mut().filter(|t| !t.journaled) {
+            let Some(attempt) = self.actor.live_attempts().get(track.seq as usize) else { continue };
+            if attempt.outcome == LiveOutcome::Pending {
+                continue;
+            }
+            self.history.record_live_outcome(fs.as_ref(), track.action, &attempt.outcome, now)?;
+            track.journaled = true;
+        }
+        Ok(())
     }
 
     fn observe(&mut self) -> Result<(), DriverError> {

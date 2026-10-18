@@ -12,7 +12,10 @@ use burnburn_job::{
     JobPlan, JobPlanBuilder, JobPlanId, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, PlanSource,
     PowerRatio,
 };
+use burnburn_ruida::RuidaProfile;
 use burnburn_types::{OperationId, StableId};
+
+use crate::artifact::RdArtifact;
 
 /// Recorded as the compiler of every frame plan (part of its id).
 pub const FRAME_GENERATOR_VERSION: &str = concat!("burnburn-machine frame ", env!("CARGO_PKG_VERSION"));
@@ -39,6 +42,18 @@ impl FramePlan {
     pub fn plan(&self) -> &JobPlan {
         &self.plan
     }
+
+    /// The scrambled `.rd` bytes of the frame, lowered by the same path as a production job.
+    pub fn rd_file(&self, profile: &RuidaProfile) -> Result<Vec<u8>, FrameError> {
+        let program = burnburn_ruida::lower(&self.plan, profile).map_err(|e| FrameError::Rd(format!("{e:?}")))?;
+        program.to_rd_file(profile.magic).map_err(|e| FrameError::Rd(format!("{e:?}")))
+    }
+
+    /// The frame as an uploadable artifact. It names the frame plan, never the source plan.
+    pub fn artifact(&self, profile: &RuidaProfile, max_chunk: usize) -> Result<RdArtifact, FrameError> {
+        let rd = self.rd_file(profile)?;
+        RdArtifact::from_rd_file(self.plan.id(), &rd, max_chunk).map_err(|e| FrameError::Rd(e.to_string()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +61,8 @@ pub enum FrameError {
     /// The plan has no motion, so there are no bounds to frame.
     NoMotion,
     Plan(PlanError),
+    /// The frame plan could not be lowered to RD bytes.
+    Rd(String),
 }
 
 impl From<PlanError> for FrameError {
@@ -59,6 +76,7 @@ impl fmt::Display for FrameError {
         match self {
             FrameError::NoMotion => f.write_str("plan has no motion to frame"),
             FrameError::Plan(e) => write!(f, "{e}"),
+            FrameError::Rd(e) => write!(f, "frame RD: {e}"),
         }
     }
 }

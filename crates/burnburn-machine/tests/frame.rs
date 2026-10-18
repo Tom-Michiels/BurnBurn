@@ -153,10 +153,7 @@ fn rubber_band_follows_the_convex_hull_while_the_bounding_frame_stays_a_rectangl
     // Counter-clockwise from the lowest-left vertex, closed; interior points are not visited.
     assert_eq!(travels(band.plan()), vec![(10.0, 10.0), (50.0, 10.0), (30.0, 40.0), (10.0, 10.0)]);
     let rect = frame_plan_shaped(&plan, &OPTIONS, FrameShape::BoundingRectangle).unwrap();
-    assert_eq!(
-        travels(rect.plan()),
-        vec![(10.0, 10.0), (50.0, 10.0), (50.0, 40.0), (10.0, 40.0), (10.0, 10.0)]
-    );
+    assert_eq!(travels(rect.plan()), vec![(10.0, 10.0), (50.0, 10.0), (50.0, 40.0), (10.0, 40.0), (10.0, 10.0)]);
     assert_eq!(frame_plan(&plan, &OPTIONS).unwrap().plan().events(), rect.plan().events(), "frame_plan = bounds");
     assert_ne!(band.plan().id(), rect.plan().id(), "the shape is part of the frame plan's identity");
 }
@@ -167,11 +164,12 @@ fn rubber_band_is_laser_off_travel_only_with_zero_power() {
     for s in band.plan().settings() {
         assert_eq!((s.min_power.get(), s.max_power.get()), (0.0, 0.0));
     }
-    assert!(band
-        .plan()
-        .events()
-        .iter()
-        .all(|e| matches!(e, PlanEvent::Travel { .. } | PlanEvent::OperationBoundary { .. })));
+    assert!(
+        band.plan()
+            .events()
+            .iter()
+            .all(|e| matches!(e, PlanEvent::Travel { .. } | PlanEvent::OperationBoundary { .. }))
+    );
     assert_eq!(band.source(), triangle_plan().id());
 }
 
@@ -254,7 +252,10 @@ fn rubber_band_is_a_strictly_convex_polygon_that_contains_every_point() {
         let m = hull.len();
         if m >= 3 {
             for i in 0..m {
-                assert!(cross(hull[i], hull[(i + 1) % m], hull[(i + 2) % m]) > 0.0, "round {round}: not strictly convex");
+                assert!(
+                    cross(hull[i], hull[(i + 1) % m], hull[(i + 2) % m]) > 0.0,
+                    "round {round}: not strictly convex"
+                );
             }
         }
         for &q in &pts {
@@ -271,4 +272,19 @@ fn rubber_band_is_a_strictly_convex_polygon_that_contains_every_point() {
 fn rubber_band_of_a_plan_without_motion_has_no_frame() {
     let plan = builder().finish().unwrap();
     assert_eq!(frame_plan_shaped(&plan, &OPTIONS, FrameShape::RubberBand), Err(FrameError::NoMotion));
+}
+
+#[test]
+fn frame_rd_file_is_the_lowered_frame_plan_and_a_laser_off_artifact() {
+    let frame = frame_plan_shaped(&triangle_plan(), &OPTIONS, FrameShape::RubberBand).unwrap();
+    let ruida = RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::Reject };
+    let rd = frame.rd_file(&ruida).unwrap();
+    let inline = lower(frame.plan(), &ruida).unwrap().to_rd_file(ruida.magic).unwrap();
+    assert_eq!(rd, inline, "one lowering path for frame and production");
+    let records = decode(&unscramble(&rd, ruida.magic)).unwrap();
+    assert!(records.iter().all(|r| !matches!(r.command, Command::CutAbs { .. } | Command::CutRel { .. })));
+    // The artifact for upload hashes exactly these bytes and names the frame plan, not the source.
+    let artifact = frame.artifact(&ruida, 1470).unwrap();
+    assert_eq!(artifact.plan(), frame.plan().id());
+    assert_eq!(artifact.rd_hash(), burnburn_machine::rd_hash(&rd));
 }

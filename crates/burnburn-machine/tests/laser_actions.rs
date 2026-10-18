@@ -13,11 +13,7 @@ fn frame(origin: OriginCorner) -> MachineFrame {
 }
 
 fn at(x_um: i64, y_um: i64) -> PositionReading {
-    PositionReading {
-        x: AxisPosition::Known { um: x_um },
-        y: AxisPosition::Known { um: y_um },
-        read_at: None,
-    }
+    PositionReading { x: AxisPosition::Known { um: x_um }, y: AxisPosition::Known { um: y_um }, read_at: None }
 }
 
 fn ctx<'a>(frame: &'a MachineFrame, position: PositionReading, user: Option<UserOrigin>) -> LaserContext<'a> {
@@ -108,10 +104,7 @@ fn step_jog_needs_a_known_position_and_follows_the_view_directions() {
         Ok(LiveRequest::MoveAbsolute { x_um: 95_000, y_um: 98_000 })
     );
     // A step off the bed is refused, not clamped.
-    assert!(matches!(
-        plan_action(&step, &ctx(&f, at(299_000, 100_000), None)),
-        Err(LaserRefusal::OutsideBed { .. })
-    ));
+    assert!(matches!(plan_action(&step, &ctx(&f, at(299_000, 100_000), None)), Err(LaserRefusal::OutsideBed { .. })));
 }
 
 #[test]

@@ -25,9 +25,11 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use burnburn_machine::{ControllerPort, Envelope, Incoming, MachineId, PortError, Reply, Request, RequestTag};
+use burnburn_machine::{
+    ControllerPort, Envelope, Incoming, LiveRequest, MachineId, PortError, Reply, Request, RequestTag,
+};
 use burnburn_ruida::udp::{frame, reply_from_wire};
-use burnburn_ruida::{Magic, ReplyByte, scramble, unscramble};
+use burnburn_ruida::{LiveCommand, LiveProcess, Magic, ReplyByte, encode_live, scramble, unscramble};
 
 /// Controller-side port of the primary job channel in public implementations (OSS, unconfirmed).
 pub const RUIDA_CONTROLLER_PORT: u16 = 50200;
@@ -51,6 +53,37 @@ pub struct NoVerifiedDialect;
 impl WireDialect for NoVerifiedDialect {
     fn encode(&self, _request: &Request) -> Option<Vec<u8>> {
         None
+    }
+
+    fn decode(&self, _request: &Request, _payload: &[u8]) -> Option<Reply> {
+        None
+    }
+}
+
+/// Opt-in dialect with the wire forms that the **public command registry** names for the laser
+/// window: jog key down/up, home XY, pause/restore and stop. This is registry evidence only
+/// (`burnburn_ruida::WireEvidence::PublicRegistry`): it is not the production default, and a
+/// feature stays refused by the actor's capability gate until `docs/hardware/evidence.md` has
+/// hardware evidence for it.
+///
+/// Deliberately absent, because the registry does not explain them: absolute moves (the
+/// `options` byte of `RAPID_MOVE_XY`), position reads and every reply decoder (`GET_SETTING`
+/// answers), the DSP file operations, and the job start (`D8 00`).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RegistryLiveDialect;
+
+impl WireDialect for RegistryLiveDialect {
+    fn encode(&self, request: &Request) -> Option<Vec<u8>> {
+        let command = match request {
+            Request::Live(LiveRequest::JogStart(key)) => LiveCommand::KeyDown(*key),
+            Request::Live(LiveRequest::JogStop(key)) => LiveCommand::KeyUp(*key),
+            Request::Live(LiveRequest::Home(target)) => LiveCommand::Home(*target),
+            Request::Live(LiveRequest::Pause) => LiveCommand::Process(LiveProcess::Pause),
+            Request::Live(LiveRequest::Resume) => LiveCommand::Process(LiveProcess::Restore),
+            Request::Stop => LiveCommand::Process(LiveProcess::Stop),
+            _ => return None,
+        };
+        encode_live(&command).ok()
     }
 
     fn decode(&self, _request: &Request, _payload: &[u8]) -> Option<Reply> {

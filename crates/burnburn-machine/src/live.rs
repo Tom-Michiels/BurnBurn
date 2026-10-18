@@ -7,8 +7,8 @@ use std::fmt;
 pub use burnburn_ruida::{HomeTarget, JogKey};
 
 use crate::controller_files::{Capability, ControllerFileName, FileCapabilities};
-use crate::position::PositionReading;
 use crate::port::PortError;
+use crate::position::PositionReading;
 use crate::state::ExecutionState;
 
 /// One laser-window request to the controller.
@@ -18,7 +18,10 @@ pub enum LiveRequest {
     JogStop(JogKey),
     Home(HomeTarget),
     /// Absolute move in machine-frame micrometres (numeric move, go to origin, position laser).
-    MoveAbsolute { x_um: i64, y_um: i64 },
+    MoveAbsolute {
+        x_um: i64,
+        y_um: i64,
+    },
     Pause,
     Resume,
     ReadPosition,
@@ -165,11 +168,19 @@ impl Capabilities {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveError {
-    Unsupported { feature: LiveFeature },
+    Unsupported {
+        feature: LiveFeature,
+    },
     /// Not proven on this controller; `needs` names the hardware evidence that is missing.
-    NotVerified { feature: LiveFeature, reason: String, needs: &'static str },
+    NotVerified {
+        feature: LiveFeature,
+        reason: String,
+        needs: &'static str,
+    },
     /// The capability is claimed but this build has no wire form for it.
-    NoWireForm { feature: LiveFeature },
+    NoWireForm {
+        feature: LiveFeature,
+    },
     /// A job may be running (any non-terminal execution): the request would fight it.
     JobMayBeActive(ExecutionState),
     /// A request is still waiting for its reply.

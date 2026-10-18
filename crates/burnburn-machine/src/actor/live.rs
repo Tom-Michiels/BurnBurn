@@ -11,9 +11,7 @@
 
 use super::*;
 use crate::controller_files::{ControllerFileName, FileEntry};
-use crate::live::{
-    Capabilities, JogKey, LiveAttempt, LiveError, LiveFeature, LiveOutcome, LiveRequest, LiveUnknown,
-};
+use crate::live::{Capabilities, JogKey, LiveAttempt, LiveError, LiveFeature, LiveOutcome, LiveRequest, LiveUnknown};
 use crate::position::{AxisPosition, PositionReading};
 
 /// Tag owner of live requests: they belong to no execution.
@@ -58,24 +56,31 @@ impl<P: ControllerPort> ExecutionActor<P> {
         }
     }
 
-    /// Sends one live request. The outcome arrives through [`ExecutionActor::poll`] and is
-    /// readable in [`ExecutionActor::live_attempts`].
-    pub fn live(&mut self, request: LiveRequest) -> Result<(), LiveError> {
+    /// Would [`ExecutionActor::live`] accept this request right now? Changes nothing and sends
+    /// nothing, so a caller can journal an intent only for requests that will reach the wire.
+    pub fn live_preflight(&self, request: &LiveRequest) -> Result<(), LiveError> {
         let release = matches!(request, LiveRequest::JogStop(_));
         if !release {
             self.gate(request.feature())?;
         }
-        if request.needs_idle_machine() {
-            if let Some(active) = self.execution.as_ref().filter(|e| !e.state.is_terminal()) {
-                return Err(LiveError::JobMayBeActive(active.state.clone()));
-            }
+        if request.needs_idle_machine()
+            && let Some(active) = self.execution.as_ref().filter(|e| !e.state.is_terminal())
+        {
+            return Err(LiveError::JobMayBeActive(active.state.clone()));
         }
         if self.in_flight.is_some() {
             return Err(LiveError::RequestInFlight);
         }
-        if let (LiveRequest::JogStart(_), Some(held)) = (&request, self.live.jog_held) {
+        if let (LiveRequest::JogStart(_), Some(held)) = (request, self.live.jog_held) {
             return Err(LiveError::JogKeyHeld(held));
         }
+        Ok(())
+    }
+
+    /// Sends one live request. The outcome arrives through [`ExecutionActor::poll`] and is
+    /// readable in [`ExecutionActor::live_attempts`].
+    pub fn live(&mut self, request: LiveRequest) -> Result<(), LiveError> {
+        self.live_preflight(&request)?;
         let seq = u32::try_from(self.live.attempts.len()).unwrap_or(u32::MAX);
         self.live.attempts.push(LiveAttempt { seq, request: request.clone(), outcome: LiveOutcome::Pending });
         if request.moves_head() {

@@ -6,8 +6,8 @@
 mod common;
 
 use burnburn_history::{
-    ActionId, DiagEvent, DiagnosticOptions, ExecutionStateDto, HistoryError, IntentKind, LiveIntentDto,
-    LiveOutcomeDto, LiveUnknownDto, diagnostic_replay,
+    ActionId, DiagEvent, DiagnosticOptions, ExecutionStateDto, HistoryError, IntentKind, LiveIntentDto, LiveOutcomeDto,
+    LiveUnknownDto, diagnostic_replay,
 };
 use burnburn_machine::{
     ControllerFileName, ExecutionId, HomeTarget, JogKey, LiveOutcome, LiveRequest, LiveUnknown, MachineId,
@@ -23,12 +23,10 @@ fn a_live_intent_is_durable_and_a_repeated_action_id_is_not_fresh() {
     let fs = Fs::new();
     let (mut h, _) = open(&fs);
     let action = ActionId::from_raw(0x10);
-    let first =
-        h.record_live_intent(&fs, machine(), action, &LiveRequest::Home(HomeTarget::Xy), t(1)).unwrap();
+    let first = h.record_live_intent(&fs, machine(), action, &LiveRequest::Home(HomeTarget::Xy), t(1)).unwrap();
     assert!(first.fresh);
     let records = h.records().len();
-    let again =
-        h.record_live_intent(&fs, machine(), action, &LiveRequest::Home(HomeTarget::Xy), t(2)).unwrap();
+    let again = h.record_live_intent(&fs, machine(), action, &LiveRequest::Home(HomeTarget::Xy), t(2)).unwrap();
     assert!(!again.fresh, "the same click must not reach the driver twice");
     assert_eq!(again.seq, first.seq);
     assert_eq!(h.records().len(), records, "nothing new is written");
@@ -79,10 +77,7 @@ fn outcomes_are_journaled_once_and_survive_a_restart() {
 
     let (h, _) = open(&fs);
     assert_eq!(h.live_action(a).unwrap().outcome, Some(LiveOutcomeDto::Acked));
-    assert_eq!(
-        h.live_action(b).unwrap().outcome,
-        Some(LiveOutcomeDto::Unknown { why: LiveUnknownDto::ReplyLost })
-    );
+    assert_eq!(h.live_action(b).unwrap().outcome, Some(LiveOutcomeDto::Unknown { why: LiveUnknownDto::ReplyLost }));
     assert_eq!(h.live_action(c).unwrap().outcome, Some(LiveOutcomeDto::NotSent));
     assert_eq!(h.live_action(d).unwrap().outcome, Some(LiveOutcomeDto::Answered));
     assert!(!h.live_action(a).unwrap().interrupted_by_restart);
@@ -93,10 +88,7 @@ fn pending_is_not_a_recordable_outcome_and_unknown_actions_are_rejected() {
     let fs = Fs::new();
     let (mut h, _) = open(&fs);
     let a = ActionId::from_raw(7);
-    assert_eq!(
-        h.record_live_outcome(&fs, a, &LiveOutcome::Acked, t(1)),
-        Err(HistoryError::UnknownLiveAction(a))
-    );
+    assert_eq!(h.record_live_outcome(&fs, a, &LiveOutcome::Acked, t(1)), Err(HistoryError::UnknownLiveAction(a)));
     h.record_live_intent(&fs, machine(), a, &LiveRequest::Resume, t(1)).unwrap();
     assert!(matches!(h.record_live_outcome(&fs, a, &LiveOutcome::Pending, t(2)), Err(HistoryError::Encode(_))));
 }
@@ -106,8 +98,7 @@ fn live_actions_create_no_execution_and_do_not_touch_the_queue() {
     let fs = Fs::new();
     let (mut h, _) = open(&fs);
     let before = h.next_execution_id();
-    h.record_live_intent(&fs, machine(), ActionId::from_raw(9), &LiveRequest::Home(HomeTarget::Xy), t(1))
-        .unwrap();
+    h.record_live_intent(&fs, machine(), ActionId::from_raw(9), &LiveRequest::Home(HomeTarget::Xy), t(1)).unwrap();
     assert_eq!(h.next_execution_id(), before);
     assert_eq!(h.executions().count(), 0);
     assert_eq!(h.queue().count(), 0);
@@ -138,9 +129,10 @@ fn diagnostic_replay_needs_no_machine_contact() {
     assert_eq!(report.jobs.len(), 1);
     assert_eq!(report.jobs[0].profile_revision, 1);
     assert_eq!(report.executions.len(), 1);
-    assert_eq!(report.executions[0].state, ExecutionStateDto::Unknown {
-        why: burnburn_history::UnknownReasonDto::InterruptedByRestart
-    });
+    assert_eq!(
+        report.executions[0].state,
+        ExecutionStateDto::Unknown { why: burnburn_history::UnknownReasonDto::InterruptedByRestart }
+    );
     let kinds: Vec<_> = report.executions[0].timeline.iter().map(|e| matches!(e, DiagEvent::Intent { .. })).collect();
     assert!(kinds.contains(&true), "the upload intent is in the timeline");
     assert_eq!(report.live_actions.len(), 1);

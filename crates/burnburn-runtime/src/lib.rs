@@ -16,5 +16,5 @@ pub use clock::SystemClock;
 pub use driver::{DriverError, MachineDriver, SystemWallClock, WallClock};
 pub use history_store::JournalHistoryStore;
 pub use journal_fs::StdJournalFs;
-pub use udp::{NoVerifiedDialect, RuidaUdpPort, UdpConfig, UdpStats, WireDialect};
+pub use udp::{NoVerifiedDialect, RegistryLiveDialect, RuidaUdpPort, UdpConfig, UdpStats, WireDialect};
 pub use usb::{USB_NOT_SUPPORTED, UsbConfig, UsbPort};

@@ -15,8 +15,8 @@ use crate::journal::{self, SegmentEnd};
 use crate::plan_blob::{decode_plan, encode_plan};
 use crate::record::{
     CompiledBlobs, CompiledJob, EnvelopeIn, EnvelopeOut, EvidenceDto, ExecutionStateDto, FailReasonDto, HistoryRecord,
-    IntentKind, KNOWN_KINDS, LiveIntentDto, LiveOutcomeDto, LiveUnknownDto, OrderRecord, PreflightSummary, RECORD_SCHEMA, ReconcileBasis, ReconcileStatement, Role,
-    SettingsBackupRecord, StoredRecord, UnknownReasonDto,
+    IntentKind, KNOWN_KINDS, LiveIntentDto, LiveOutcomeDto, LiveUnknownDto, OrderRecord, PreflightSummary,
+    RECORD_SCHEMA, ReconcileBasis, ReconcileStatement, Role, SettingsBackupRecord, StoredRecord, UnknownReasonDto,
 };
 use crate::settings::SettingsBackup;
 use crate::storage::{JournalFs, write_atomically};

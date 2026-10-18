@@ -33,14 +33,14 @@ pub use frame::{
     frame_plan_shaped,
 };
 pub use ids::{ControllerIdentity, ExecutionId, MachineId, MachineIdentity};
-pub use placement::{
-    CompileScope, JobAnchor, PlacedPlan, PlacementError, PlacementInput, PlacementSpec, Rect, ScopeError, ScopeObject,
-    ScopeResolution, StartFrom, place_plan, resolve_scope,
-};
 pub use laser::{LaserAction, LaserContext, LaserRefusal, OriginTarget, UserOrigin, plan_action};
 pub use live::{
     Capabilities, HomeTarget, JogKey, LiveAttempt, LiveCapabilities, LiveError, LiveFeature, LiveOutcome, LiveRequest,
     LiveUnknown,
+};
+pub use placement::{
+    CompileScope, JobAnchor, PlacedPlan, PlacementError, PlacementInput, PlacementSpec, Rect, ScopeError, ScopeObject,
+    ScopeResolution, StartFrom, place_plan, resolve_scope,
 };
 pub use port::{ControllerPort, ControllerStatus, Envelope, Incoming, PortError, Reply, Request, RequestTag};
 pub use position::{AxisPosition, PositionReading};

@@ -135,7 +135,8 @@ impl DiagnosticReport {
         let mut out = String::new();
         let _ = writeln!(out, "BurnBurn diagnostic replay: {} journal records", self.records);
         for j in &self.jobs {
-            let _ = write!(out, "job {} rd {} profile {}@{}", j.id, j.rd_hash.to_hex(), j.profile_id, j.profile_revision);
+            let _ =
+                write!(out, "job {} rd {} profile {}@{}", j.id, j.rd_hash.to_hex(), j.profile_id, j.profile_revision);
             if let Some(p) = &j.project_path {
                 let _ = write!(out, " project {}", p.display());
             }

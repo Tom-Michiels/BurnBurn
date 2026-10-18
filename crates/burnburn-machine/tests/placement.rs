@@ -109,8 +109,7 @@ fn user_origin_is_its_own_reference_not_the_current_position() {
     let f = frame(OriginCorner::BottomLeft);
     let plan = plan_on(f);
     let spec = PlacementSpec { start_from: StartFrom::UserOrigin, anchor: JobAnchor::BottomLeft };
-    let placed =
-        place_plan(&plan, &spec, job_rect(), &input(&f, Some(p(200.0, 150.0)), Some(p(70.0, 60.0)))).unwrap();
+    let placed = place_plan(&plan, &spec, job_rect(), &input(&f, Some(p(200.0, 150.0)), Some(p(70.0, 60.0)))).unwrap();
     assert_eq!(bounds_of(&placed.plan).0, (70.0, 60.0));
     // The laser position is irrelevant (even unknown) when starting from the user origin.
     let placed = place_plan(&plan, &spec, job_rect(), &input(&f, None, Some(p(70.0, 60.0)))).unwrap();

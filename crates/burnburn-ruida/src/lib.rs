@@ -31,7 +31,9 @@ pub use decode::{DecodeError, MAX_DECODE_INPUT, Malformation, Record, decode};
 pub use encode::{EncodeError, encode, encode_command};
 pub use field::{AbsCoord, Byte7, FieldError, Power, RelCoord, Speed, U35};
 pub use file::{FileError, RdFile, decode_rd_file, encode_rd_file, file_sum};
-pub use live::{HomeTarget, JogKey, LiveCommand, LiveEncodeError, LiveProcess, MemoryAddress, WireEvidence, encode_live};
+pub use live::{
+    HomeTarget, JogKey, LiveCommand, LiveEncodeError, LiveProcess, MemoryAddress, WireEvidence, encode_live,
+};
 pub use lower::{LowerError, OverscanPolicy, RdProgram, RuidaProfile, lower};
 pub use scramble::{Magic, scramble, scramble_byte, unscramble, unscramble_byte};
 pub use udp::UdpError;
