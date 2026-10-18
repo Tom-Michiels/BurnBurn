@@ -20,7 +20,9 @@ fn controller_file_actions_need_explicit_intent_and_proven_capability() {
     }
     let caps = FileCapabilities {
         list: Capability::Supported,
+        metadata: Capability::Supported,
         upload_named: Capability::Unsupported,
+        run: Capability::Unverified { reason: "seen in OSS only".into() },
         delete: Capability::Unverified { reason: "seen in OSS only".into() },
     };
     assert_eq!(authorize(&ControllerFileIntent::List, &caps), Ok(()));

@@ -11,6 +11,7 @@
 //!   [`JournalFs`]; a torn tail is reported and left in place, mid-segment damage opens the
 //!   history read-only. Nothing is rewritten or truncated.
 
+mod diagnose;
 mod hex;
 mod history;
 mod ids;
@@ -21,18 +22,21 @@ mod settings;
 mod storage;
 mod time;
 
+pub use diagnose::{
+    DiagEvent, DiagExecution, DiagJob, DiagLive, DiagnosticOptions, DiagnosticReport, diagnostic_replay,
+};
 pub use history::{
     ActionOutcome, ActionWhat, CompileRecord, Corruption, ExecutionView, History, HistoryError, IntentReceipt,
-    JournalLimits, MAX_BLOB_BYTES, QueueCounts, QueueItem, RecordedIntent, RecoveryReport, TornTail, compiled_job_id,
-    segment_path,
+    JournalLimits, LiveActionView, MAX_BLOB_BYTES, QueueCounts, QueueItem, RecordedIntent, RecoveryReport, TornTail,
+    compiled_job_id, segment_path,
 };
 pub use ids::{ActionId, BlobKey, CompiledJobId, QueueItemId, RecordSeq};
 pub use journal::{FORMAT_VERSION, RECORD_MAGIC, SEGMENT_MAGIC};
 pub use plan_blob::{decode_plan, encode_plan};
 pub use record::{
     CompiledBlobs, CompiledJob, EvidenceDto, ExecutionStateDto, FailReasonDto, HistoryRecord, IdentityDto, IntentKind,
-    OrderRecord, PreflightSummary, RECORD_SCHEMA, ReconcileBasis, ReconcileStatement, RequestDto, Role,
-    SettingsBackupRecord, StatusDto, StoredRecord, UnknownReasonDto,
+    LiveIntentDto, LiveOutcomeDto, LiveUnknownDto, OrderRecord, PreflightSummary, RECORD_SCHEMA, ReconcileBasis,
+    ReconcileStatement, RequestDto, Role, SettingsBackupRecord, StatusDto, StoredRecord, UnknownReasonDto,
 };
 pub use settings::{BackupValue, SETTINGS_BACKUP_SCHEMA, SettingsBackup};
 pub use storage::JournalFs;

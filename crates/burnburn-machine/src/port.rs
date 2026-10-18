@@ -3,7 +3,9 @@
 
 use std::fmt;
 
+use crate::controller_files::FileEntry;
 use crate::ids::{ControllerIdentity, ExecutionId, MachineId};
+use crate::live::LiveRequest;
 
 /// Protocol-level intents. Byte encoding is the adapter's job.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,12 +24,18 @@ pub enum Request {
     QueryStatus,
     /// Stop the running job. Not retried automatically.
     Stop,
+    /// A laser-window request that is not part of a job execution (jog, home, files, ...).
+    Live(LiveRequest),
 }
 
 impl Request {
     /// Only queries may be resent automatically.
     pub fn is_idempotent(&self) -> bool {
-        matches!(self, Request::QueryIdentity | Request::QueryStored | Request::QueryStatus)
+        match self {
+            Request::QueryIdentity | Request::QueryStored | Request::QueryStatus => true,
+            Request::Live(r) => r.is_idempotent(),
+            Request::UploadChunk { .. } | Request::Start | Request::Stop => false,
+        }
     }
 }
 
@@ -71,6 +79,15 @@ pub enum Reply {
     Stored(bool),
     /// Answer to [`Request::QueryStatus`].
     Status(ControllerStatus),
+    /// Answer to a position read. An axis the controller did not report is `None`, never 0.
+    Position {
+        x_um: Option<i64>,
+        y_um: Option<i64>,
+    },
+    /// Answer to a DSP file-list request.
+    Files(Vec<FileEntry>),
+    /// Answer to a DSP file-metadata request.
+    FileMetadata(FileEntry),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

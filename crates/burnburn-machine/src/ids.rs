@@ -69,6 +69,10 @@ impl ExecutionId {
         ExecutionId(raw)
     }
 
+    pub(crate) const fn from_raw_const(raw: u64) -> Self {
+        ExecutionId(raw)
+    }
+
     pub fn raw(self) -> u64 {
         self.0
     }

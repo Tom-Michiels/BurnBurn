@@ -1,3 +1,5 @@
+mod live;
+
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -76,6 +78,8 @@ pub struct ExecutionActor<P: ControllerPort> {
     ignored: Vec<Incoming>,
     /// The current execution re-verifies an earlier upload instead of uploading.
     reverify: bool,
+    /// Laser-window state (live requests); independent of the execution state.
+    pub(crate) live: crate::live::LiveState,
 }
 
 impl<P: ControllerPort> ExecutionActor<P> {
@@ -92,6 +96,7 @@ impl<P: ControllerPort> ExecutionActor<P> {
             next_seq: 0,
             ignored: Vec::new(),
             reverify: false,
+            live: crate::live::LiveState::default(),
         }
     }
 
@@ -254,7 +259,11 @@ impl<P: ControllerPort> ExecutionActor<P> {
             self.record(Evidence::Reconnected);
         }
         if let Some(f) = self.in_flight.take() {
-            self.uncertain_after_lost_reply(&f.request);
+            if let Request::Live(live) = &f.request {
+                self.live_reply_lost(live, crate::live::LiveUnknown::Reconnected);
+            } else {
+                self.uncertain_after_lost_reply(&f.request);
+            }
         }
         Ok(())
     }
@@ -314,12 +323,14 @@ impl<P: ControllerPort> ExecutionActor<P> {
                 Ok(None) | Err(_) => break,
             }
         }
-        let Some(execution) = self.execution.as_ref().map(|e| e.id) else {
+        let Some(execution) = self.tag_owner(&request) else {
             return Err(PortError::Other("no execution".into()));
         };
         let tag = RequestTag { execution, epoch: self.epoch, seq: self.next_seq };
         self.next_seq = self.next_seq.wrapping_add(1);
-        self.record(Evidence::Sent { request: request.clone() });
+        if !matches!(request, Request::Live(_)) {
+            self.record(Evidence::Sent { request: request.clone() });
+        }
         self.in_flight = Some(InFlight { tag, request: request.clone(), sent_at: self.clock.now(), attempt });
         self.port.send(Envelope { to: self.machine.id.clone(), tag, request })
     }
@@ -331,6 +342,10 @@ impl<P: ControllerPort> ExecutionActor<P> {
             self.ignored.push(incoming);
             return;
         };
+        if let Request::Live(request) = &flight.request {
+            self.handle_live(request, incoming);
+            return;
+        }
         match (&flight.request, &incoming.reply) {
             (Request::UploadChunk { index, .. }, Reply::Ack) => self.chunk_acked(*index),
             (Request::UploadChunk { index, .. }, Reply::Nak | Reply::Err) => {
@@ -435,6 +450,14 @@ impl<P: ControllerPort> ExecutionActor<P> {
             return;
         }
         self.in_flight = None;
+        if let Request::Live(live) = &flight.request {
+            if live.is_idempotent() && flight.attempt < self.policy.max_query_attempts {
+                let _ = self.send(flight.request.clone(), flight.attempt + 1);
+            } else {
+                self.live_reply_lost(live, crate::live::LiveUnknown::ReplyLost);
+            }
+            return;
+        }
         self.record(Evidence::Timeout { request: flight.request.clone(), attempt: flight.attempt });
         if flight.request.is_idempotent() {
             if flight.attempt < self.policy.max_query_attempts {
@@ -465,7 +488,8 @@ impl<P: ControllerPort> ExecutionActor<P> {
             Request::QueryIdentity if self.state() == Some(&ExecutionState::VerifyingIdentity) => {
                 self.set_state(ExecutionState::Failed(FailReason::IdentityUnconfirmed));
             }
-            Request::Stop | Request::QueryIdentity | Request::QueryStored | Request::QueryStatus => {}
+            Request::Stop | Request::QueryIdentity | Request::QueryStored | Request::QueryStatus | Request::Live(_) => {
+            }
         }
     }
 }
