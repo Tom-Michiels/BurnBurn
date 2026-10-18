@@ -1,5 +1,5 @@
 //! W1-L5a image modes and adjustments. Expected pixel patterns come from the independent Python
-//! reference in `docs/dev-notes/IM18-raster.md` (own transcription of each kernel from its
+//! reference `docs/dev-notes/IM18-image-modes-reference.py` (own transcription of each kernel from its
 //! published definition; numeric area integration for the halftone spot function), or are
 //! derived by hand in the comments. They do not call back into the implementation.
 

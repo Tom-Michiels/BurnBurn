@@ -277,64 +277,79 @@ pub struct ImageCrop {
     pub height: u32,
 }
 
-/// Unsharp mask applied on the physical output grid.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Unsharp mask applied on the physical output grid. Stored in fixed units (amount in
+/// hundredths, radius in hundredths of a millimetre) so `ImageSettings` stays small and `Copy`
+/// (it travels inside UI intents).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImageSharpen {
-    amount: f64,
-    radius_mm: f64,
+    amount_centi: u16,
+    radius_centi_mm: u16,
 }
 
 impl ImageSharpen {
-    /// `amount ∈ (0, 10]`, `radius ≥ ` [`ImageSettings::MIN_PITCH_MM`].
+    /// `amount ∈ [0.01, 10]` (resolution 0.01), `radius ∈ [0.01 mm, 100 mm]` (resolution 0.01 mm).
     pub fn new(amount: f64, radius: Length) -> Result<Self, ProcessError> {
-        if !(amount.is_finite() && amount > 0.0 && amount <= 10.0) {
+        let centi = (amount * 100.0).round();
+        if !(amount.is_finite() && (1.0..=1000.0).contains(&centi)) {
             return Err(ProcessError::OutOfRange { field: "sharpen amount" });
         }
-        if !(radius.mm() >= ImageSettings::MIN_PITCH_MM) {
+        let radius_centi = (radius.mm() * 100.0).round();
+        if !(1.0..=10_000.0).contains(&radius_centi) {
             return Err(ProcessError::OutOfRange { field: "sharpen radius" });
         }
-        Ok(ImageSharpen { amount, radius_mm: radius.mm() })
+        Ok(ImageSharpen { amount_centi: centi as u16, radius_centi_mm: radius_centi as u16 })
     }
 
     pub fn amount(&self) -> f64 {
-        self.amount
+        f64::from(self.amount_centi) / 100.0
     }
     pub fn radius_mm(&self) -> f64 {
-        self.radius_mm
+        f64::from(self.radius_centi_mm) / 100.0
     }
 }
 
-/// Cell size and angle of the Halftone screen (Newsprint always uses 45°).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Cell size and angle of the Halftone screen (Newsprint always uses 45°). Stored as hundredths
+/// of a millimetre and of a degree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenSettings {
-    cell_mm: f64,
-    angle_deg: f64,
+    cell_centi_mm: u16,
+    angle_centi: u16,
 }
 
 impl ScreenSettings {
+    /// `cell ∈ [0.01 mm, 500 mm]` (resolution 0.01 mm); the angle is normalised to `[0°, 180°)`
+    /// (resolution 0.01°).
     pub fn new(cell: Length, angle_deg: f64) -> Result<Self, ProcessError> {
-        if !(cell.mm() >= ImageSettings::MIN_PITCH_MM) {
+        let cell_centi = (cell.mm() * 100.0).round();
+        if !(1.0..=50_000.0).contains(&cell_centi) {
             return Err(ProcessError::OutOfRange { field: "screen cell" });
         }
-        if !angle_deg.is_finite() {
-            return Err(ProcessError::OutOfRange { field: "screen angle" });
-        }
-        Ok(ScreenSettings { cell_mm: cell.mm(), angle_deg: angle_deg.rem_euclid(180.0) })
+        let angle_centi = angle_to_centi(angle_deg).ok_or(ProcessError::OutOfRange { field: "screen angle" })?;
+        Ok(ScreenSettings { cell_centi_mm: cell_centi as u16, angle_centi })
     }
 
     pub fn cell_mm(&self) -> f64 {
-        self.cell_mm
+        f64::from(self.cell_centi_mm) / 100.0
     }
     pub fn angle_deg(&self) -> f64 {
-        self.angle_deg
+        f64::from(self.angle_centi) / 100.0
     }
 }
 
 impl Default for ScreenSettings {
     /// 0.5 mm cells at 45°.
     fn default() -> Self {
-        ScreenSettings { cell_mm: 0.5, angle_deg: 45.0 }
+        ScreenSettings { cell_centi_mm: 50, angle_centi: 4500 }
     }
+}
+
+/// An angle in hundredths of a degree within `[0, 18000)`; `None` when not finite.
+fn angle_to_centi(angle_deg: f64) -> Option<u16> {
+    if !angle_deg.is_finite() {
+        return None;
+    }
+    let centi = (angle_deg.rem_euclid(180.0) * 100.0).round() as u32;
+    Some((centi % 18_000) as u16)
 }
 
 /// How an image becomes laser output.
@@ -398,8 +413,8 @@ pub struct ImageSettings {
     serpentine: bool,
     overscan_mm: f64,
     negative: bool,
-    dot_width_correction_mm: f64,
-    scan_angle_deg: f64,
+    dot_width_correction_um: u16,
+    scan_angle_centi: u16,
     gray: GrayMethod,
     crop: Option<ImageCrop>,
     sharpen: Option<ImageSharpen>,
@@ -434,8 +449,8 @@ impl ImageSettings {
             serpentine: false,
             overscan_mm: 0.0,
             negative: false,
-            dot_width_correction_mm: 0.0,
-            scan_angle_deg: 0.0,
+            dot_width_correction_um: 0,
+            scan_angle_centi: 0,
             gray: GrayMethod::Rec709,
             crop: None,
             sharpen: None,
@@ -452,21 +467,21 @@ impl ImageSettings {
     }
 
     /// Each laser-on run is shortened by `correction` in total (half at each end) to offset the
-    /// beam being wider than the dot pitch; runs that vanish are dropped.
+    /// beam being wider than the dot pitch; runs that vanish are dropped. Range 0–65 mm,
+    /// resolution 1 µm.
     pub fn with_dot_width_correction(mut self, correction: Length) -> Result<Self, ProcessError> {
-        if !(correction.mm() >= 0.0) {
+        let um = (correction.mm() * 1000.0).round();
+        if !(0.0..=65_535.0).contains(&um) {
             return Err(ProcessError::OutOfRange { field: "dot width correction" });
         }
-        self.dot_width_correction_mm = correction.mm();
+        self.dot_width_correction_um = um as u16;
         Ok(self)
     }
 
-    /// Scan line angle in degrees from bed X, counter-clockwise, normalised to `[0, 180)`.
+    /// Scan line angle in degrees from bed X, counter-clockwise, normalised to `[0, 180)`
+    /// (resolution 0.01°).
     pub fn with_scan_angle(mut self, angle_deg: f64) -> Result<Self, ProcessError> {
-        if !angle_deg.is_finite() {
-            return Err(ProcessError::OutOfRange { field: "scan angle" });
-        }
-        self.scan_angle_deg = angle_deg.rem_euclid(180.0);
+        self.scan_angle_centi = angle_to_centi(angle_deg).ok_or(ProcessError::OutOfRange { field: "scan angle" })?;
         Ok(self)
     }
 
@@ -505,8 +520,8 @@ impl ImageSettings {
     /// representation in file schema 1 and must not be saved as if they had.
     pub fn has_extended_options(&self) -> bool {
         self.negative
-            || self.dot_width_correction_mm != 0.0
-            || self.scan_angle_deg != 0.0
+            || self.dot_width_correction_um != 0
+            || self.scan_angle_centi != 0
             || self.gray != GrayMethod::Rec709
             || self.crop.is_some()
             || self.sharpen.is_some()
@@ -564,11 +579,11 @@ impl ImageSettings {
     }
     /// Total shortening of every laser-on run, mm.
     pub fn dot_width_correction_mm(&self) -> f64 {
-        self.dot_width_correction_mm
+        f64::from(self.dot_width_correction_um) / 1000.0
     }
     /// Scan line angle in degrees `[0, 180)` from bed X.
     pub fn scan_angle_deg(&self) -> f64 {
-        self.scan_angle_deg
+        f64::from(self.scan_angle_centi) / 100.0
     }
     pub fn gray_method(&self) -> GrayMethod {
         self.gray

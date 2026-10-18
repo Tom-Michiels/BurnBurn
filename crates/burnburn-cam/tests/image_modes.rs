@@ -1,7 +1,7 @@
 //! W1-L5a image modes in the compiler: option semantics (negative, dot width correction,
 //! pass-through, scan angle, crop, mask, sharpen, colour conversion), the new dither modes and
 //! the processed bitmap. Expected pixel patterns come from the independent reference in
-//! `docs/dev-notes/IM18-raster.md` or from hand calculation in the comments.
+//! `docs/dev-notes/IM18-image-modes-reference.py` (see IM18-raster.md) or from hand calculation in the comments.
 
 #![allow(clippy::unwrap_used)]
 
