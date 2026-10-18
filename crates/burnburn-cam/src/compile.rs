@@ -1,6 +1,7 @@
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    FillGrouping, ImageRender, LineOptions, Operation, OperationMode, ProcessSettings, ScanDirection, SharedEdgePolicy,
+    DitherMode, FillGrouping, ImageRender, LineOptions, Operation, OperationMode, ProcessSettings, ScanDirection,
+    SharedEdgePolicy,
 };
 use burnburn_geometry::{Bounds, OffsetError, OffsetJoin, Path, Point, Vector, math, offset};
 use burnburn_job::{
@@ -350,8 +351,19 @@ fn plan_settings(
         OperationMode::Image(i) => {
             let interval_mm = i.line_interval().mm();
             let bidirectional = i.direction() == ScanDirection::Bidirectional;
+            let angle_deg = i.scan_angle_deg();
             match i.render() {
-                ImageRender::Dither(_) => PlanMode::Scan { interval_mm, axis: ScanAxis::X, bidirectional },
+                // Pass-through and grayscale have no angled scan (yet): refuse instead of ignoring.
+                ImageRender::Dither(DitherMode::PassThrough) | ImageRender::Grayscale if angle_deg != 0.0 => {
+                    return Err(CompileError::UnsupportedMode { operation });
+                }
+                ImageRender::Dither(_) if angle_deg == 0.0 => {
+                    PlanMode::Scan { interval_mm, axis: ScanAxis::X, bidirectional }
+                }
+                ImageRender::Dither(_) if angle_deg == 90.0 => {
+                    PlanMode::Scan { interval_mm, axis: ScanAxis::Y, bidirectional }
+                }
+                ImageRender::Dither(_) => PlanMode::AngledScan { interval_mm, angle_deg, bidirectional },
                 ImageRender::Grayscale => PlanMode::GrayscaleScan { interval_mm, bidirectional },
             }
         }

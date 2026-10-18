@@ -313,6 +313,117 @@ pub enum DitherMode {
     Ordered {
         size: u8,
     },
+    /// 45° round-dot screen; the cell size comes from [`ImageSettings::screen`].
+    Newsprint,
+    /// Round-dot screen with cell size and angle from [`ImageSettings::screen`].
+    Halftone,
+    /// Sobel edge lines: burn where the edge strength (`0..=255`) is at least `level`.
+    Sketch {
+        level: u8,
+    },
+    /// The source pixels as they are: one source pixel per dot, thresholded at 128, no
+    /// resampling and no adjustments.
+    PassThrough,
+}
+
+/// How colour becomes gray (before transparency is composited over paper).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GrayMethod {
+    /// Rec. 709 luma `0.2126 R + 0.7152 G + 0.0722 B`.
+    #[default]
+    Rec709,
+    /// Rec. 601 luma `0.299 R + 0.587 G + 0.114 B`.
+    Rec601,
+    Average,
+    /// `(max + min) / 2` of the channels.
+    Lightness,
+    Red,
+    Green,
+    Blue,
+}
+
+/// A crop of the source image in source pixels: `[x, x+width) × [y, y+height)`, y down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImageCrop {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Unsharp mask applied on the physical output grid. Stored in fixed units (amount in
+/// hundredths, radius in hundredths of a millimetre) so `ImageSettings` stays small and `Copy`
+/// (it travels inside UI intents).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageSharpen {
+    amount_centi: u16,
+    radius_centi_mm: u16,
+}
+
+impl ImageSharpen {
+    /// `amount ∈ [0.01, 10]` (resolution 0.01), `radius ∈ [0.01 mm, 100 mm]` (resolution 0.01 mm).
+    pub fn new(amount: f64, radius: Length) -> Result<Self, ProcessError> {
+        let centi = (amount * 100.0).round();
+        if !(amount.is_finite() && (1.0..=1000.0).contains(&centi)) {
+            return Err(ProcessError::OutOfRange { field: "sharpen amount" });
+        }
+        let radius_centi = (radius.mm() * 100.0).round();
+        if !(1.0..=10_000.0).contains(&radius_centi) {
+            return Err(ProcessError::OutOfRange { field: "sharpen radius" });
+        }
+        Ok(ImageSharpen { amount_centi: centi as u16, radius_centi_mm: radius_centi as u16 })
+    }
+
+    pub fn amount(&self) -> f64 {
+        f64::from(self.amount_centi) / 100.0
+    }
+    pub fn radius_mm(&self) -> f64 {
+        f64::from(self.radius_centi_mm) / 100.0
+    }
+}
+
+/// Cell size and angle of the Halftone screen (Newsprint always uses 45°). Stored as hundredths
+/// of a millimetre and of a degree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScreenSettings {
+    cell_centi_mm: u16,
+    angle_centi: u16,
+}
+
+impl ScreenSettings {
+    /// `cell ∈ [0.01 mm, 500 mm]` (resolution 0.01 mm); the angle is normalised to `[0°, 180°)`
+    /// (resolution 0.01°).
+    pub fn new(cell: Length, angle_deg: f64) -> Result<Self, ProcessError> {
+        let cell_centi = (cell.mm() * 100.0).round();
+        if !(1.0..=50_000.0).contains(&cell_centi) {
+            return Err(ProcessError::OutOfRange { field: "screen cell" });
+        }
+        let angle_centi = angle_to_centi(angle_deg).ok_or(ProcessError::OutOfRange { field: "screen angle" })?;
+        Ok(ScreenSettings { cell_centi_mm: cell_centi as u16, angle_centi })
+    }
+
+    pub fn cell_mm(&self) -> f64 {
+        f64::from(self.cell_centi_mm) / 100.0
+    }
+    pub fn angle_deg(&self) -> f64 {
+        f64::from(self.angle_centi) / 100.0
+    }
+}
+
+impl Default for ScreenSettings {
+    /// 0.5 mm cells at 45°.
+    fn default() -> Self {
+        ScreenSettings { cell_centi_mm: 50, angle_centi: 4500 }
+    }
+}
+
+/// An angle in hundredths of a degree within `[0, 18000)`; `None` when not finite.
+fn angle_to_centi(angle_deg: f64) -> Option<u16> {
+    if !angle_deg.is_finite() {
+        return None;
+    }
+    let centi = (angle_deg.rem_euclid(180.0) * 100.0).round() as u32;
+    Some((centi % 18_000) as u16)
 }
 
 /// How an image becomes laser output.
@@ -375,6 +486,14 @@ pub struct ImageSettings {
     direction: ScanDirection,
     serpentine: bool,
     overscan_mm: f64,
+    negative: bool,
+    dot_width_correction_um: u16,
+    scan_angle_centi: u16,
+    gray: GrayMethod,
+    crop: Option<ImageCrop>,
+    sharpen: Option<ImageSharpen>,
+    screen: ScreenSettings,
+    mask: bool,
 }
 
 impl ImageSettings {
@@ -403,7 +522,85 @@ impl ImageSettings {
             direction: ScanDirection::Bidirectional,
             serpentine: false,
             overscan_mm: 0.0,
+            negative: false,
+            dot_width_correction_um: 0,
+            scan_angle_centi: 0,
+            gray: GrayMethod::Rec709,
+            crop: None,
+            sharpen: None,
+            screen: ScreenSettings::default(),
+            mask: false,
         })
+    }
+
+    /// Burn light instead of dark: the toned gray value is inverted before dithering or
+    /// power mapping.
+    pub fn with_negative(mut self, negative: bool) -> Self {
+        self.negative = negative;
+        self
+    }
+
+    /// Each laser-on run is shortened by `correction` in total (half at each end) to offset the
+    /// beam being wider than the dot pitch; runs that vanish are dropped. Range 0–65 mm,
+    /// resolution 1 µm.
+    pub fn with_dot_width_correction(mut self, correction: Length) -> Result<Self, ProcessError> {
+        let um = (correction.mm() * 1000.0).round();
+        if !(0.0..=65_535.0).contains(&um) {
+            return Err(ProcessError::OutOfRange { field: "dot width correction" });
+        }
+        self.dot_width_correction_um = um as u16;
+        Ok(self)
+    }
+
+    /// Scan line angle in degrees from bed X, counter-clockwise, normalised to `[0, 180)`
+    /// (resolution 0.01°).
+    pub fn with_scan_angle(mut self, angle_deg: f64) -> Result<Self, ProcessError> {
+        self.scan_angle_centi = angle_to_centi(angle_deg).ok_or(ProcessError::OutOfRange { field: "scan angle" })?;
+        Ok(self)
+    }
+
+    pub fn with_gray_method(mut self, gray: GrayMethod) -> Self {
+        self.gray = gray;
+        self
+    }
+
+    /// Engrave only this window of the source pixels; it is stretched over the target bounds.
+    pub fn with_crop(mut self, crop: Option<ImageCrop>) -> Result<Self, ProcessError> {
+        if crop.is_some_and(|c| c.width == 0 || c.height == 0) {
+            return Err(ProcessError::OutOfRange { field: "crop" });
+        }
+        self.crop = crop;
+        Ok(self)
+    }
+
+    pub fn with_sharpen(mut self, sharpen: Option<ImageSharpen>) -> Self {
+        self.sharpen = sharpen;
+        self
+    }
+
+    pub fn with_screen(mut self, screen: ScreenSettings) -> Self {
+        self.screen = screen;
+        self
+    }
+
+    /// Burn only where the cell centre lies inside the target geometry (even-odd), instead of
+    /// over its whole bounding box.
+    pub fn with_mask(mut self, mask: bool) -> Self {
+        self.mask = mask;
+        self
+    }
+
+    /// Whether any option added after IM18 differs from its default. Such settings have no
+    /// representation in file schema 1 and must not be saved as if they had.
+    pub fn has_extended_options(&self) -> bool {
+        self.negative
+            || self.dot_width_correction_um != 0
+            || self.scan_angle_centi != 0
+            || self.gray != GrayMethod::Rec709
+            || self.crop.is_some()
+            || self.sharpen.is_some()
+            || self.screen != ScreenSettings::default()
+            || self.mask
     }
 
     pub fn with_tone(mut self, tone: ToneSettings) -> Self {
@@ -450,6 +647,32 @@ impl ImageSettings {
     /// Laser-off run-up/run-out per scan run, mm.
     pub fn overscan_mm(&self) -> f64 {
         self.overscan_mm
+    }
+    pub fn negative(&self) -> bool {
+        self.negative
+    }
+    /// Total shortening of every laser-on run, mm.
+    pub fn dot_width_correction_mm(&self) -> f64 {
+        f64::from(self.dot_width_correction_um) / 1000.0
+    }
+    /// Scan line angle in degrees `[0, 180)` from bed X.
+    pub fn scan_angle_deg(&self) -> f64 {
+        f64::from(self.scan_angle_centi) / 100.0
+    }
+    pub fn gray_method(&self) -> GrayMethod {
+        self.gray
+    }
+    pub fn crop(&self) -> Option<ImageCrop> {
+        self.crop
+    }
+    pub fn sharpen(&self) -> Option<ImageSharpen> {
+        self.sharpen
+    }
+    pub fn screen(&self) -> ScreenSettings {
+        self.screen
+    }
+    pub fn mask(&self) -> bool {
+        self.mask
     }
 }
 

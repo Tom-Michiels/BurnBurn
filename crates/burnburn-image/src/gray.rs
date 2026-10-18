@@ -31,14 +31,45 @@ impl GrayImage {
     }
 }
 
+/// How colour becomes a gray value before alpha is applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum GrayConversion {
+    /// Rec. 709 luma `0.2126 R + 0.7152 G + 0.0722 B` of gamma-encoded sRGB.
+    #[default]
+    Rec709,
+    /// Rec. 601 luma `0.299 R + 0.587 G + 0.114 B`.
+    Rec601,
+    /// Plain mean `(R + G + B) / 3`.
+    Average,
+    /// HSL lightness `(max + min) / 2`.
+    Lightness,
+    Red,
+    Green,
+    Blue,
+}
+
 /// Rec. 709 luma of gamma-encoded sRGB, after applying `alpha`.
 pub fn to_gray(rgba: [f32; 4], alpha: AlphaPolicy) -> f32 {
+    to_gray_with(rgba, alpha, GrayConversion::Rec709)
+}
+
+/// Gray value of `rgba` using `conversion` for the colour, then `alpha`.
+pub fn to_gray_with(rgba: [f32; 4], alpha: AlphaPolicy, conversion: GrayConversion) -> f32 {
     let [r, g, b, a] = rgba;
     let a = (a / 255.0).clamp(0.0, 1.0);
     match alpha {
         AlphaPolicy::Silhouette => 255.0 * (1.0 - a),
         AlphaPolicy::CompositeOver { background } => {
-            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            let luma = match conversion {
+                GrayConversion::Rec709 => 0.2126 * r + 0.7152 * g + 0.0722 * b,
+                GrayConversion::Rec601 => 0.299 * r + 0.587 * g + 0.114 * b,
+                GrayConversion::Average => (r + g + b) / 3.0,
+                GrayConversion::Lightness => (r.max(g).max(b) + r.min(g).min(b)) / 2.0,
+                GrayConversion::Red => r,
+                GrayConversion::Green => g,
+                GrayConversion::Blue => b,
+            };
             (luma * a + f32::from(background) * (1.0 - a)).clamp(0.0, 255.0)
         }
     }

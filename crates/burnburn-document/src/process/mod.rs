@@ -28,6 +28,7 @@ pub use layer::{OrderConstraint, ProcessLayer};
 pub use operation::{Operation, OperationDraft};
 pub use recipe::{MaterialRecipe, RecipeDraft, RecipeId, RecipeRef};
 pub use settings::{
-    DitherMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Kerf, OffsetFillOrder, OffsetFillSettings,
-    OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, ScanAxis, ScanDirection, Speed, ToneSettings,
+    DitherMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender, ImageSettings, ImageSharpen, Kerf,
+    OffsetFillOrder, OffsetFillSettings, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, ScanAxis,
+    ScanDirection, ScreenSettings, Speed, ToneSettings,
 };

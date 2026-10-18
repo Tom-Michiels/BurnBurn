@@ -37,7 +37,7 @@ pub use array::{ArrayError, CircularArray, GridArray, MAX_COPIES, circular_array
 pub use compile::{COMPILER_VERSION, compile, compile_with};
 pub use error::CompileError;
 pub use features::required_features;
-pub use image::{NoRasters, RasterSource};
+pub use image::{NoRasters, RasterSource, processed_bitmap};
 pub use options::{CompileOptions, JobAnchor, Placement, StartPoint};
 pub use preflight::{Finding, PreflightReport, Severity, SizeCheck, preflight};
 pub use source::source_hash;
