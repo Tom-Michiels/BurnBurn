@@ -1,0 +1,64 @@
+[package]
+name = "burnburn-windows"
+description = "BurnBurn's native Windows host (IM08 proof): Win32 window, object list, dimension field, file dialogs and the shared DX12 canvas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Same lint set as the workspace except unsafe_code: denied, not forbidden, so that the Win32 layer
+# (src/win32/, cfg(windows)) can allow it locally with SAFETY comments (ADR 0002/0006). Keep the
+# rest in sync with [workspace.lints].
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+too_many_arguments = "allow"
+type_complexity = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+
+[[bin]]
+name = "burnburn-win"
+path = "src/main.rs"
+
+[dependencies]
+# Platform-independent message adapter (Win32 message data -> UiIntent): tested on every host OS.
+burnburn-document = { workspace = true }
+burnburn-editor = { workspace = true }
+burnburn-io = { workspace = true }
+burnburn-presentation = { workspace = true }
+# System font source for canvas text input (`fonts::first_readable_font`).
+burnburn-runtime = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+burnburn-geometry = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+burnburn-render = { workspace = true }
+raw-window-handle = { workspace = true }
+wgpu = { workspace = true, features = ["dx12"] }
+windows = { workspace = true, features = [
+    "std",
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }

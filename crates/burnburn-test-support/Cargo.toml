@@ -1,0 +1,22 @@
+[package]
+name = "burnburn-test-support"
+description = "Test-only fakes (clock, scripted peer) and checked fixtures for BurnBurn integration tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-types = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true
+
+# Only for tests/untrusted_bytes.rs (stable counterpart of fuzz/). Dev-only, so no cycle with the
+# crates that use this one as a dev-dependency.
+[dev-dependencies]
+burnburn-io = { workspace = true }
+burnburn-ruida = { workspace = true }
+proptest = { workspace = true }

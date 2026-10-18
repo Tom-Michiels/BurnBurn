@@ -1,0 +1,32 @@
+[package]
+name = "burnburn-cli"
+description = "burnburn command line: compile, inspect, preflight, history, and separate explicit upload/start intents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "burnburn"
+path = "src/main.rs"
+
+[dependencies]
+burnburn-cam = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-history = { workspace = true }
+burnburn-io = { workspace = true }
+burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-presentation = { workspace = true }
+burnburn-ruida = { workspace = true }
+burnburn-runtime = { workspace = true }
+burnburn-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+burnburn-document = { workspace = true }
+burnburn-test-support = { workspace = true }
+
+[lints]
+workspace = true

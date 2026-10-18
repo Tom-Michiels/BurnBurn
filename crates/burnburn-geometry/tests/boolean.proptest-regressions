@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 02aba861d9d4c98edb263e468453696b65fc802659c1789467d973ac13731108 # shrinks to a = Path { subpaths: [Subpath { start: Point { x: 0.0, y: 0.0 }, segments: [Line { to: Point { x: 0.5, y: 0.0 } }, Line { to: Point { x: 0.5, y: 0.5 } }, Line { to: Point { x: 0.0, y: 0.5 } }], closed: true }] }, b = Path { subpaths: [Subpath { start: Point { x: 0.0, y: 0.0 }, segments: [Line { to: Point { x: 0.5, y: 0.0 } }, Line { to: Point { x: 0.5, y: 0.5 } }, Line { to: Point { x: 0.0, y: 0.5 } }], closed: true }] }

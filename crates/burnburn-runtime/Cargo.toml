@@ -1,0 +1,26 @@
+[package]
+name = "burnburn-runtime"
+description = "Concrete runtime adapters: monotonic OS clock, Ruida UDP transport thread, USB port definition, machine service glue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-history = { workspace = true }
+burnburn-io = { workspace = true }
+burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-presentation = { workspace = true }
+burnburn-ruida = { workspace = true }
+# System font source for canvas text input (layers.toml C-1).
+burnburn-text = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+burnburn-document = { workspace = true }
+burnburn-test-support = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

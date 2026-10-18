@@ -1,0 +1,21 @@
+[package]
+name = "burnburn-text"
+description = "Text to geometry: font loading from bytes, shaping (harfrust), glyph outlines (skrifa) in mm, layout, fallback chains and single-line stroke text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-types = { workspace = true }
+harfrust = { workspace = true }
+skrifa = { workspace = true }
+
+[dev-dependencies]
+burnburn-test-support = { workspace = true }
+proptest = { workspace = true }

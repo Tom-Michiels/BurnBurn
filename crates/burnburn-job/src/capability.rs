@@ -1,0 +1,153 @@
+//! Capability matrix per machine profile (contracts-phase-c principle 4, IM25).
+//!
+//! Every process option beyond plain Line/Fill names a [`Feature`]. A profile states for each
+//! feature whether it is [`Support::Supported`], [`Support::Unsupported`] or
+//! [`Support::Unverified`]. Only `Supported` may be compiled; `Unverified` behaves like
+//! `Unsupported` until there is evidence for the concrete model/firmware (AGENTS.md). The
+//! compiler never replaces a feature that is not supported by another one.
+
+use std::collections::BTreeMap;
+
+use burnburn_types::CanonicalWriter;
+
+/// A process option that needs an explicit capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum Feature {
+    /// Line kerf compensation (geometric offset; ordinary cut events).
+    KerfCompensation,
+    /// Concentric offset rings as cuts (ordinary cut events).
+    OffsetFill,
+    /// Scan lines at an angle other than 0°/90° (diagonal scan runs: not RD-confirmed).
+    ScanAngle,
+    /// Binary dithered image scanning (ordinary on/off scan runs).
+    ImageDither,
+    /// Power modulated per run (grayscale). Semantics of the RD records are OPEN.
+    GrayscaleModulation,
+    /// Uncut bridges on closed cut paths (laser-off gaps).
+    Tabs,
+    /// Lead-in / lead-out cuts on the waste side.
+    Leads,
+    /// Cutting past the entry point of a closed contour.
+    Overcut,
+    /// Alternating on/off segments along a cut path.
+    Perforation,
+    /// Focus/Z offset between passes (needs a Z axis the backend can drive).
+    ZStep,
+    /// Child operations with their own settings on the parent's geometry.
+    SubOperations,
+    /// Common-line cutting of touching parts (separately validated process, C12).
+    CommonLine,
+}
+
+impl Feature {
+    /// Every feature, in canonical order.
+    pub const ALL: [Feature; 12] = [
+        Feature::KerfCompensation,
+        Feature::OffsetFill,
+        Feature::ScanAngle,
+        Feature::ImageDither,
+        Feature::GrayscaleModulation,
+        Feature::Tabs,
+        Feature::Leads,
+        Feature::Overcut,
+        Feature::Perforation,
+        Feature::ZStep,
+        Feature::SubOperations,
+        Feature::CommonLine,
+    ];
+
+    pub fn tag(self) -> &'static str {
+        match self {
+            Feature::KerfCompensation => "kerf",
+            Feature::OffsetFill => "offset-fill",
+            Feature::ScanAngle => "scan-angle",
+            Feature::ImageDither => "image-dither",
+            Feature::GrayscaleModulation => "grayscale-modulation",
+            Feature::Tabs => "tabs",
+            Feature::Leads => "leads",
+            Feature::Overcut => "overcut",
+            Feature::Perforation => "perforation",
+            Feature::ZStep => "z-step",
+            Feature::SubOperations => "sub-operations",
+            Feature::CommonLine => "common-line",
+        }
+    }
+}
+
+/// Whether a profile may use a feature.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Support {
+    Supported,
+    Unsupported,
+    /// Not proven for this machine; treated as unsupported until there is evidence.
+    Unverified {
+        reason: String,
+    },
+}
+
+/// The feature matrix of one profile. Features not set explicitly have their conservative
+/// default (see [`MachineCapabilities::conservative`]).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MachineCapabilities {
+    explicit: BTreeMap<Feature, Support>,
+}
+
+impl Default for MachineCapabilities {
+    fn default() -> Self {
+        Self::conservative()
+    }
+}
+
+impl MachineCapabilities {
+    /// Defaults without any machine evidence:
+    /// - `Supported`: features the compiler expresses with ordinary travel, cut and axis-aligned
+    ///   on/off scan events only (kerf, offset fill, image dither, tabs, leads, overcut,
+    ///   perforation, sub-operations) — the same event kinds as plain Line/Fill.
+    /// - `Unverified`: diagonal scan angles and grayscale power modulation (RD semantics OPEN,
+    ///   `04-exportanalyse.md`), common-line cutting (needs its own validated process).
+    /// - `Unsupported`: Z steps (no Z axis in any profile yet).
+    pub fn conservative() -> Self {
+        MachineCapabilities { explicit: BTreeMap::new() }
+    }
+
+    /// Sets the support of one feature.
+    pub fn with(mut self, feature: Feature, support: Support) -> Self {
+        self.explicit.insert(feature, support);
+        self
+    }
+
+    pub fn support(&self, feature: Feature) -> Support {
+        if let Some(s) = self.explicit.get(&feature) {
+            return s.clone();
+        }
+        match feature {
+            Feature::ScanAngle => Support::Unverified { reason: "diagonal scan runs are not RD-confirmed".into() },
+            Feature::GrayscaleModulation => {
+                Support::Unverified { reason: "grayscale power records (C7/C2) are not decoded".into() }
+            }
+            Feature::CommonLine => Support::Unverified { reason: "common-line cutting is not validated".into() },
+            Feature::ZStep => Support::Unsupported,
+            _ => Support::Supported,
+        }
+    }
+
+    pub fn is_supported(&self, feature: Feature) -> bool {
+        self.support(feature) == Support::Supported
+    }
+
+    /// Canonical projection: the effective support of every feature in [`Feature::ALL`] order.
+    pub(crate) fn encode(&self, w: &mut CanonicalWriter) {
+        for f in Feature::ALL {
+            w.tag(f.tag());
+            match self.support(f) {
+                Support::Supported => w.tag("supported"),
+                Support::Unsupported => w.tag("unsupported"),
+                Support::Unverified { reason } => {
+                    w.tag("unverified");
+                    w.str(&reason);
+                }
+            }
+        }
+    }
+}

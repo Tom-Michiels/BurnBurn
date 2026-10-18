@@ -1,0 +1,17 @@
+[package]
+name = "burnburn-document"
+description = "Document snapshots, transactional commands with expected revisions, and undo/redo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-geometry = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

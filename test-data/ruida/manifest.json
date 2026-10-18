@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "description": "Ruida RD fixtures for BurnBurn tests. Bytes are unmodified copies of the research corpus; sha256/bytes are checked by burnburn-test-support (test ruida_fixture_hashes_match_manifest) and cross-checked against the research manifest.",
+  "research_manifest": "research/lightburn/evidence/fixtures-manifest.json",
+  "conditions_source": "research/lightburn/ruida/04-exportanalyse.md",
+  "oracle_note": "oracle/*.json is the output of the independent Python research decoder (research/lightburn/tools/rd_inspect.py). It is a development oracle for comparing the Rust decoder, NOT a runtime dependency; Python is never required to build or run BurnBurn. The splitter is a research tool and does not define the complete grammar; unknown records stay visible as UNKNOWN.",
+  "golden_policy": "Never update these bytes or hashes automatically. A changed expectation needs a reviewed explanation (AGENTS.md).",
+  "fixtures": [
+    {
+      "name": "rectangle-default",
+      "rd": "rectangle-default.rd",
+      "sources": [
+        "sources/rectangle.svg"
+      ],
+      "oracle": "oracle/rectangle-default-decoded.json",
+      "conditions": "LightBurn Core 2.1.04 native RD export of rectangle.svg (30 x 15 mm, imported via native import; the saved project has MirrorX/MirrorY and its own XForm, so SVG coordinates are not RD coordinates). Layer C00, speed 100 mm/s, min/max power 20%, air on, 1 pass, mode Line. Effective corners about (771.687; 448.024)-(801.687; 463.024) mm in a 1500 x 900 mm research profile."
+    },
+    {
+      "name": "rectangle-fill",
+      "rd": "rectangle-fill.rd",
+      "sources": [
+        "sources/rectangle.svg",
+        "sources/rectangle-fill.lbrn2"
+      ],
+      "oracle": "oracle/rectangle-fill-decoded.json",
+      "conditions": "As rectangle-default, but mode Fill: interval 0.1 mm, angle 0 deg, bidirectional, no cross-hatch/flood/ramp. Line/Fill difference set in the app; bytes not modified afterwards."
+    },
+    {
+      "name": "gray-ramp-grayscale",
+      "rd": "gray-ramp-grayscale.rd",
+      "sources": [
+        "sources/gray-ramp.png",
+        "sources/gray-ramp-grayscale.lbrn2"
+      ],
+      "oracle": "oracle/gray-ramp-grayscale-decoded.json",
+      "conditions": "LightBurn Core 2.1.04 native RD export of gray-ramp.png (own 16x4 pixel tone ramp, imported at about 5.643739 x 1.410935 mm), mode Grayscale, speed 100 mm/s, min 1%, max 60%, interval 0.1 mm, bidirectional. An earlier attempt with min=max=20% was aborted by the app; no RD exists for it."
+    }
+  ],
+  "files": [
+    {
+      "path": "rectangle-default.rd",
+      "role": "rd",
+      "bytes": 525,
+      "sha256": "392e319b3c4e37b3f5fda49019f11dd2a4f7bcf3dbc905ad70a67d048985ffe9",
+      "origin": "LightBurn Core 2.1.04 native export",
+      "copied_from": "research/lightburn/fixtures/rectangle-default.rd"
+    },
+    {
+      "path": "rectangle-fill.rd",
+      "role": "rd",
+      "bytes": 2572,
+      "sha256": "90512253bd2a22c332d73cb303989b5bcead10e366ba26b5cc7299fac51c77f8",
+      "origin": "LightBurn Core 2.1.04 native export",
+      "copied_from": "research/lightburn/fixtures/rectangle-fill.rd"
+    },
+    {
+      "path": "gray-ramp-grayscale.rd",
+      "role": "rd",
+      "bytes": 7318,
+      "sha256": "3e4fc6d093dde4420b115363701b1c7b81ab7f18894ce8dbf6556b08e4a13a59",
+      "origin": "LightBurn Core 2.1.04 native export",
+      "copied_from": "research/lightburn/fixtures/gray-ramp-grayscale.rd"
+    },
+    {
+      "path": "sources/rectangle.svg",
+      "role": "source",
+      "bytes": 182,
+      "sha256": "7d27636560e67b86ed972aca9fb21cc7061c5b82daf587e0752ce46dd7fe37d6",
+      "origin": "original research test input",
+      "copied_from": "research/lightburn/fixtures/rectangle.svg"
+    },
+    {
+      "path": "sources/rectangle-fill.lbrn2",
+      "role": "source",
+      "bytes": 2993,
+      "sha256": "97881bbb717bff3b9d2df99592a199ca1cb067480e83e2d458347cd16f81b984",
+      "origin": "LightBurn Core 2.1.04 native export",
+      "copied_from": "research/lightburn/fixtures/rectangle-fill.lbrn2"
+    },
+    {
+      "path": "sources/gray-ramp.png",
+      "role": "source",
+      "bytes": 86,
+      "sha256": "6d6e512272e3368636280b346e94b3c0d7ec341170ce9ed0a9cb7562df136d9f",
+      "origin": "original research test input",
+      "copied_from": "research/lightburn/fixtures/gray-ramp.png"
+    },
+    {
+      "path": "sources/gray-ramp-grayscale.lbrn2",
+      "role": "source",
+      "bytes": 3151,
+      "sha256": "051c6cee6f2b90fc60f71a652f1b3d42183c3b97099efbecb240edb4b0197b0b",
+      "origin": "LightBurn Core 2.1.04 native export",
+      "copied_from": "research/lightburn/fixtures/gray-ramp-grayscale.lbrn2"
+    },
+    {
+      "path": "oracle/rectangle-default-decoded.json",
+      "role": "oracle",
+      "bytes": 9646,
+      "sha256": "6c7de6315f6db79d461cfabf28beff9ac3ca0ede0822f4c66e0f6405acfc7419",
+      "origin": "research/lightburn/tools/rd_inspect.py --json (independent Python research decoder)",
+      "copied_from": "research/lightburn/evidence/rectangle-default-decoded.json"
+    },
+    {
+      "path": "oracle/rectangle-fill-decoded.json",
+      "role": "oracle",
+      "bytes": 74684,
+      "sha256": "a2c11a6f96c282686ba5d04fe2824b11fc6c1539f470c566fa01e43ca478cfca",
+      "origin": "research/lightburn/tools/rd_inspect.py --json (independent Python research decoder)",
+      "copied_from": "research/lightburn/evidence/rectangle-fill-decoded.json"
+    },
+    {
+      "path": "oracle/gray-ramp-grayscale-decoded.json",
+      "role": "oracle",
+      "bytes": 394104,
+      "sha256": "a2fc0ba8f09a593ae1667e95063dd73c16137c908d7ce0a80fde87c3b3d46109",
+      "origin": "research/lightburn/tools/rd_inspect.py --json (independent Python research decoder)",
+      "copied_from": "research/lightburn/evidence/gray-ramp-grayscale-decoded.json"
+    }
+  ]
+}

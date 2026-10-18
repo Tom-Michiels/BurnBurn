@@ -1,0 +1,80 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+# cargo-fuzz targets need nightly; they have their own workspace and lockfile (fuzz/README.md).
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+burnburn-cam = { path = "crates/burnburn-cam" }
+burnburn-cli = { path = "crates/burnburn-cli" }
+burnburn-document = { path = "crates/burnburn-document" }
+burnburn-editor = { path = "crates/burnburn-editor" }
+burnburn-generators = { path = "crates/burnburn-generators" }
+burnburn-geometry = { path = "crates/burnburn-geometry" }
+burnburn-history = { path = "crates/burnburn-history" }
+burnburn-image = { path = "crates/burnburn-image" }
+burnburn-io = { path = "crates/burnburn-io" }
+burnburn-job = { path = "crates/burnburn-job" }
+burnburn-machine = { path = "crates/burnburn-machine" }
+burnburn-presentation = { path = "crates/burnburn-presentation" }
+burnburn-render = { path = "crates/burnburn-render" }
+burnburn-ruida = { path = "crates/burnburn-ruida" }
+burnburn-runtime = { path = "crates/burnburn-runtime" }
+burnburn-sketch = { path = "crates/burnburn-sketch" }
+burnburn-test-support = { path = "crates/burnburn-test-support" }
+burnburn-text = { path = "crates/burnburn-text" }
+burnburn-trace = { path = "crates/burnburn-trace" }
+burnburn-types = { path = "crates/burnburn-types" }
+block2 = "0.6.2"
+crc32fast = "1.5.2"
+dispatch2 = "0.3.1"
+harfrust = { version = "0.14.0", default-features = false, features = ["std"] }
+i_overlay = { version = "9.1.0", default-features = false }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+libm = "0.2.16"
+lyon_tessellation = "1.0.22"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false }
+objc2-av-foundation = { version = "0.3.2", default-features = false }
+objc2-core-media = { version = "0.3.2", default-features = false }
+objc2-core-video = { version = "0.3.2", default-features = false }
+objc2-foundation = { version = "0.3.2", default-features = false }
+pollster = "0.4"
+proptest = "1.12"
+raw-window-handle = "0.6.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.11"
+sketch-solver = "=0.1.0"
+skrifa = { version = "0.48.0", default-features = false, features = ["std"] }
+tempfile = "3"
+toml = "1.1"
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
+windows = { version = "0.62.2", default-features = false }
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+too_many_arguments = "allow"
+type_complexity = "allow"
+# `!(x > tol)` is the NaN-safe "not a usable number" idiom.
+neg_cmp_op_on_partial_ord = "allow"
+
+[profile.dev.package."*"]
+opt-level = 2

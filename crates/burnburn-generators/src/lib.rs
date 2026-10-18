@@ -1,0 +1,34 @@
+//! Laser generators as pure functions (IM22): validated parameters in, geometry in millimetres
+//! out, with stable output keys so a result becomes a `DocumentPatch` (contract §11).
+//!
+//! Generators never apply kerf: kerf compensation is CAM's job, exactly once
+//! (`OperationSettings`). A generator's `fit` is design clearance (pasvorm), a separate meaning.
+
+mod barcode;
+mod boxes;
+mod error;
+mod evaluator;
+mod hinge;
+mod joints;
+mod output;
+mod path_text;
+mod qr;
+mod rows;
+mod stencil;
+
+pub use barcode::{Barcode, Code128Params, code128, code128_patterns, code128_symbols};
+pub use boxes::{BoxParams, Lid, Panel, PanelRole, finger_box};
+pub use error::GenError;
+pub use evaluator::{GENERATOR_ENGINE, GeneratorEvaluator};
+pub use hinge::{LivingHinge, living_hinge};
+pub use joints::{
+    EdgeProfile, EdgeStart, FingerJoint, JointSegment, SegmentKind, TabSlot, TabSlotResult, tab_and_slot,
+};
+pub use output::{GeneratedPart, to_outputs};
+pub use path_text::{GlyphFrame, PathText, PathTextParams, text_on_path};
+pub use qr::{
+    QR_MAX_VERSION, QrCode, QrEcc, QrParams, QrSymbol, qr, qr_encode, qr_encode_with, qr_format_bits, qr_reed_solomon,
+    qr_version_bits,
+};
+pub use rows::{CsvError, DataTable, FrozenRows, ResolvedRow, RowBinding, RowError, resolve, resolve_bound};
+pub use stencil::{Stencil, stencil_bridges};

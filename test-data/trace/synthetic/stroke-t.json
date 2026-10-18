@@ -1,0 +1,50 @@
+{
+  "coordinate_system": "origin top-left, y down; pixel (i, j) covers [i, i+1) x [j, j+1)",
+  "height": 64,
+  "name": "stroke-t",
+  "pixel_size_mm": 0.1,
+  "rasterization": "4x4 point samples per pixel at offsets (k + 0.5) / 4; gray = 255 - round(255 * covered / 16); ink 0 on paper 255",
+  "schema": 1,
+  "union_of": [
+    {
+      "cap": "round",
+      "join": "round",
+      "kind": "stroke",
+      "segments": [
+        [
+          [
+            10.0,
+            12.0
+          ],
+          [
+            32.0,
+            12.0
+          ]
+        ],
+        [
+          [
+            32.0,
+            12.0
+          ],
+          [
+            54.0,
+            12.0
+          ]
+        ],
+        [
+          [
+            32.0,
+            12.0
+          ],
+          [
+            32.0,
+            56.0
+          ]
+        ]
+      ],
+      "width": 6.0
+    }
+  ],
+  "units": "px",
+  "width": 64
+}

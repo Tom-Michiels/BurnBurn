@@ -1,0 +1,23 @@
+[package]
+name = "burnburn-ruida"
+description = "Pure Ruida RD codec: scrambling, 7-bit fields, typed records, file sum (no IO)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-job = { workspace = true }
+
+[dev-dependencies]
+burnburn-cam = { workspace = true }
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-image = { workspace = true }
+burnburn-test-support = { workspace = true }
+burnburn-types = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

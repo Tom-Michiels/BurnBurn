@@ -1,0 +1,5 @@
+[toolchain]
+# Exact stable toolchain (IM01). Upgrades are a separate change with tests.
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

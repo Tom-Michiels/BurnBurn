@@ -1,0 +1,27 @@
+[package]
+name = "burnburn-render"
+description = "Canvas scene translation (camera, viewport, f64 world mm to viewport-relative f32 pixels) and wgpu rendering"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-editor = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-types = { workspace = true }
+# General path fills and stroke joins for the screen (ADR 0003); pure Rust.
+lyon_tessellation = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
+
+# Native backends per host (ADR 0003): Metal on macOS, DX12 on Windows (IM08). No Vulkan/GLES: on other
+# platforms (Linux CI) there is no adapter and the GPU test reports SKIPPED, not a pass.
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu = { workspace = true, features = ["metal"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wgpu = { workspace = true, features = ["dx12"] }

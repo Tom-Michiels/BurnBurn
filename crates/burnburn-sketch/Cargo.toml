@@ -1,0 +1,20 @@
+[package]
+name = "burnburn-sketch"
+description = "Parametric sketches: parameters with units and expressions, constraints, the solver adapter and the sketch evaluator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-types = { workspace = true }
+libm = { workspace = true }
+sketch-solver = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

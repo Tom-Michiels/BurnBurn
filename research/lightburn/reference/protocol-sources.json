@@ -1,0 +1,90 @@
+[
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "meerk40t/ruida/rdjob.py",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/rdjob.py",
+    "sha256": "e3642ad748cca5706f80805c0e4cea103f37590215d1091353846669f420f345",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "meerk40t/ruida/controller.py",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/controller.py",
+    "sha256": "e8b77f1c9f8d1e1003565f98633803ceb4226d01b026bee602fc4e784de17d08",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "meerk40t/ruida/driver.py",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/driver.py",
+    "sha256": "bef5b6a5f5cf9b75c6b2ef54c3d7a810cd0527745b2472fc0825ae9a90c3b282",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "meerk40t/ruida/udp_connection.py",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/udp_connection.py",
+    "sha256": "af09108be3c7b2c3ba44f899890c757bd05b14e71e01398ba3ecaa34a1491b28",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "meerk40t/ruida/emulator.py",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/emulator.py",
+    "sha256": "f12f976df33e3aa5cc15ad7aa3d2bd5d092ef15ca8c8cc93b1374364cd31c8ff",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "meerk40t/meerk40t",
+    "commit": "d511944e08788e88077727f682957759884ff5ca",
+    "path": "LICENSE",
+    "url": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/LICENSE",
+    "sha256": "b0cb1df6963e70b7dc3735244360ef6686c4d2aa6288b326a0f7c93014f39cd6",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "jnweiger/ruida-laser",
+    "commit": "a1e7b9b93b10d5cac79c875bc3efec46f7397a11",
+    "path": "src/ruida.py",
+    "url": "https://raw.githubusercontent.com/jnweiger/ruida-laser/a1e7b9b93b10d5cac79c875bc3efec46f7397a11/src/ruida.py",
+    "sha256": "391b31bb99115d31f256e1b9afdca8232aaf339a0f7705b8fc52f10d80949d83",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "jnweiger/ruida-laser",
+    "commit": "a1e7b9b93b10d5cac79c875bc3efec46f7397a11",
+    "path": "doc/protocol.md",
+    "url": "https://raw.githubusercontent.com/jnweiger/ruida-laser/a1e7b9b93b10d5cac79c875bc3efec46f7397a11/doc/protocol.md",
+    "sha256": "cbacee062f86e99c176af4585253a6a0bf9f1c2eb56fb224b1b0725935fe8df0",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "jnweiger/ruida-laser",
+    "commit": "a1e7b9b93b10d5cac79c875bc3efec46f7397a11",
+    "path": "LICENSE",
+    "url": "https://raw.githubusercontent.com/jnweiger/ruida-laser/a1e7b9b93b10d5cac79c875bc3efec46f7397a11/LICENSE",
+    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "kkaempf/ruida",
+    "commit": "1503ba9cf6fd3d73a8a2b4eb64cd06f331e6a49b",
+    "path": "README.md",
+    "url": "https://raw.githubusercontent.com/kkaempf/ruida/1503ba9cf6fd3d73a8a2b4eb64cd06f331e6a49b/README.md",
+    "sha256": "698d8a588399f7054d77a8217f790241abe9a340f3daa096382760a17f8df6e3",
+    "retrieved_date": "2026-10-17"
+  },
+  {
+    "repo": "kkaempf/ruida",
+    "commit": "1503ba9cf6fd3d73a8a2b4eb64cd06f331e6a49b",
+    "path": "LICENSE",
+    "url": "https://raw.githubusercontent.com/kkaempf/ruida/1503ba9cf6fd3d73a8a2b4eb64cd06f331e6a49b/LICENSE",
+    "sha256": "8ea8ef8722fcef4c067a54adb2ffa24bb3b14139615c0fc8af0749c8b1789cc7",
+    "retrieved_date": "2026-10-17"
+  }
+]

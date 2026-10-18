@@ -1,0 +1,503 @@
+use std::collections::BTreeMap;
+
+use std::sync::Arc;
+
+use burnburn_cam::Finding;
+use burnburn_document::UndoLabel;
+use burnburn_document::sketch::{ConstraintId, SketchId};
+use burnburn_editor::{
+    Camera, GeometryIssue, IssueKind, SnapCandidate, SnapKind, SnapSettings, ToolKind, ToolPreview, Viewport,
+};
+use burnburn_geometry::{BooleanOp, Path};
+use burnburn_job::{JobPlanId, PlanPreview};
+use burnburn_types::{DocumentId, GeometryId, OperationId, RevisionId, TaskId, Unit};
+
+use burnburn_machine::{ExecutionId, ExecutionState, MachineId};
+
+use crate::field::FieldError;
+use crate::intent::{CommandKey, FieldKey, ImportUnit, OperationField, OperationKind};
+use crate::production::{ActionId, MachineAction, OrderId};
+use crate::task::TaskKind;
+
+/// Presentation data only: no native objects, no closures, user-visible text as localisation
+/// keys (NL/EN) except user data (names, numbers). Hosts diff it to update widgets.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppViewModel {
+    pub documents: Vec<DocumentViewModel>,
+    pub active: Option<DocumentId>,
+    /// Enablement for the active document; drives `validateMenuItem:` and the toolbar.
+    pub commands: BTreeMap<CommandKey, CommandState>,
+}
+
+impl AppViewModel {
+    pub fn document(&self, id: DocumentId) -> Option<&DocumentViewModel> {
+        self.documents.iter().find(|d| d.id == id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentViewModel {
+    pub id: DocumentId,
+    pub revision: RevisionId,
+    /// File name, or the localised "Untitled N" when never saved.
+    pub title: String,
+    /// macOS: `setDocumentEdited` (dot in close button); Windows: `*` in the title.
+    pub dirty: bool,
+    pub tool: ToolKind,
+    /// Temporary gesture preview (never document data).
+    pub preview: Option<ToolPreview>,
+    pub objects: Vec<ObjectRow>,
+    pub selection: Vec<GeometryId>,
+    pub inspector: Option<InspectorViewModel>,
+    pub undo: Option<UndoLabel>,
+    pub redo: Option<UndoLabel>,
+    pub messages: Vec<StatusMessage>,
+    pub tasks: Vec<TaskBadge>,
+    /// Result of the latest Measure task that matched the then-current revision.
+    pub measure: Option<MeasureViewModel>,
+    pub camera: Camera,
+    pub viewport: Viewport,
+    /// Named snap target under the pointer (cursor label "Eindpunt", E04).
+    pub snap: Option<SnapCandidate>,
+    pub snap_settings: SnapSettings,
+    /// After an Alt-click: which of the overlapping candidates is selected ("2 van 3", E03).
+    pub selection_cycle: Option<SelectionCycle>,
+    /// Align/distribute reference (first selected) when two or more objects are selected (E04).
+    pub align_reference: Option<GeometryId>,
+    /// Located geometry problems of this revision (E09), also drawn as scene overlays.
+    pub issues: Vec<GeometryIssue>,
+    /// Error of the last typed drawing size; the gesture stays in preview (E01).
+    pub tool_size_error: Option<MessageKey>,
+    /// Latest boolean result computed for the current revision (live preview, E05).
+    pub boolean_preview: Option<BooleanPreview>,
+    /// Parametric sketches with their evaluation status and parameters (B8).
+    pub sketches: Vec<SketchViewModel>,
+    /// The last compiled plan of this document (kept after edits, then marked stale).
+    pub plan: Option<PlanViewModel>,
+    /// The last RD export of this document.
+    pub export: Option<ExportViewModel>,
+    /// The open tracer panel, if any (B9).
+    pub tracer: Option<TracerViewModel>,
+    /// The prepared (frozen) job of this document, if any (C1, W01).
+    pub job: Option<JobCardViewModel>,
+    /// The open import preview (P03), if any.
+    pub import: Option<ImportViewModel>,
+    /// The last refused edit with its place (offset, trim, repair); cleared by the next change.
+    pub problem: Option<ProblemViewModel>,
+    /// Operations panel rows, in execution order.
+    pub operations: Vec<OperationRow>,
+    /// Why the last operations-panel input sent no command.
+    pub operation_error: Option<MessageKey>,
+    /// The open Cut Settings sheet, if any.
+    pub cut_settings: Option<CutSettingsViewModel>,
+}
+
+/// Number of colours in the layer palette (slots `0..LAYER_SLOTS`). Hosts draw slot `n` in the
+/// theme's process-layer colour `n`, on the palette and on the canvas.
+pub const LAYER_SLOTS: u8 = 30;
+
+/// The Cut Settings sheet of one operation: current values as editable text, the modes the
+/// machine profile allows, the two toggles and why the last OK was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CutSettingsViewModel {
+    pub operation: OperationId,
+    pub name: String,
+    pub slot: u8,
+    pub mode: OperationKind,
+    /// Line, Fill, Offset fill; a blocked mode stays visible with its reason (C05, M02).
+    pub modes: Vec<ModeChoice>,
+    pub speed: String,
+    pub power_min: String,
+    pub power_max: String,
+    pub passes: String,
+    pub kerf: String,
+    pub output_enabled: bool,
+    pub visible: bool,
+    pub error: Option<MessageKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModeChoice {
+    pub kind: OperationKind,
+    /// `Some` when the active machine profile does not support this mode.
+    pub blocked: Option<MessageKey>,
+}
+
+/// One operation in the operations panel (a layer). Speed (mm/s) and power (%) as display text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationRow {
+    pub id: OperationId,
+    pub name: String,
+    pub kind: OperationKind,
+    /// Palette colour of this layer (`0..LAYER_SLOTS`).
+    pub slot: u8,
+    pub speed: String,
+    /// Maximum power.
+    pub power: String,
+    pub power_min: String,
+    pub passes: String,
+    /// Line kerf width in mm ("0" without kerf or for other modes).
+    pub kerf: String,
+    /// Its objects are drawn on the canvas (window state, C01).
+    pub visible: bool,
+    /// Number of geometry objects the operation uses.
+    pub targets: usize,
+    pub output_enabled: bool,
+}
+
+/// Import preview and report (B6): physical size for the current unit decision, what was not
+/// imported (with source reference) and open contours.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportViewModel {
+    pub file: String,
+    /// No declared unit and no choice yet: Importeer stays disabled.
+    pub needs_unit: bool,
+    pub unit: Option<ImportUnit>,
+    pub units: Option<burnburn_io::import::UnitDecision>,
+    /// Overall size in mm with the current decision (`None` while the unit is unknown).
+    pub size_mm: Option<(f64, f64)>,
+    pub items: usize,
+    pub skipped: Vec<burnburn_io::import::Skipped>,
+    pub open_contours: usize,
+}
+
+/// A refused edit, located: the host zooms to `at` and highlights `object`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProblemViewModel {
+    pub message: MessageKey,
+    pub object: Option<GeometryId>,
+    pub at: burnburn_geometry::Point,
+}
+
+/// Job card (C1): the frozen job revision. It never follows later edits; `design_changed` shows
+/// the banner "ontwerp gewijzigd sinds job".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobCardViewModel {
+    pub plan: JobPlanId,
+    pub plan_revision: RevisionId,
+    pub rd_hash: burnburn_types::ContentHash,
+    pub bytes: usize,
+    /// Released for the operator view (IM31).
+    pub approved: bool,
+    pub design_changed: bool,
+    /// Upload of exactly this job; `None` without a machine service.
+    pub upload: Option<MachineButton>,
+}
+
+/// Compact operator view (W08, IM31): machine status, approved jobs and orders. It has no
+/// tools, fields or document commands by construction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorViewModel {
+    pub machine: Option<MachineViewModel>,
+    /// Approved prepared jobs only.
+    pub jobs: Vec<OperatorJobRow>,
+    pub orders: Vec<OrderViewModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorJobRow {
+    pub document: DocumentId,
+    pub name: String,
+    pub plan: JobPlanId,
+    pub rd_hash: burnburn_types::ContentHash,
+    pub upload: Option<MachineButton>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderViewModel {
+    pub id: OrderId,
+    pub name: String,
+    pub part: String,
+    pub quantity: u32,
+    /// Executions of this order with Completed evidence. Never from uploads, stored or unknown.
+    pub completed: u32,
+    pub remnant: Option<String>,
+    /// The job that produces this order: the only candidate, or the explicit choice.
+    pub job: Option<JobPlanId>,
+    /// Approved jobs whose name matches the order's part.
+    pub candidates: Vec<JobPlanId>,
+    /// More than one candidate and no choice yet: nothing is picked automatically.
+    pub needs_choice: bool,
+    /// Upload of the order's job (send as `UiIntent::UploadForOrder`).
+    pub upload: Option<MachineButton>,
+}
+
+/// One machine control. Hosts send `UiIntent::Machine` with `action` and `seen` unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineButton {
+    pub action: ActionId,
+    pub enabled: bool,
+    /// The execution state this button was offered in.
+    pub seen: Option<ExecutionState>,
+    pub label: MessageKey,
+}
+
+/// Status shown large in the machine panel and the operator view; follows evidence only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MachineStatusKey {
+    Idle,
+    /// The controller's identity is checked against the profile before any job byte is sent.
+    VerifyingIdentity,
+    /// An earlier upload is checked again (identity, then read-back); no job bytes are sent.
+    Reverifying,
+    Uploading,
+    /// Every chunk has a transport ACK; storage not confirmed ("geüpload, nog niet opgeslagen bevestigd").
+    UploadedNotConfirmed,
+    Stored,
+    StartRequested,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineViewModel {
+    pub machine: MachineId,
+    pub status: MachineStatusKey,
+    /// Explanation with the status (e.g. "status onbekend — controleer machine").
+    pub message: Option<MessageKey>,
+    pub execution: Option<ExecutionId>,
+    pub job: Option<JobPlanId>,
+    pub job_name: Option<String>,
+    /// Chunks with a transport ACK, of total.
+    pub progress: Option<(usize, usize)>,
+    /// Controls for the current execution (never an upload; that is on the job card).
+    pub buttons: Vec<MachineButton>,
+    /// The last handled action and whether it was accepted (visible after a reconnect).
+    pub last_action: Option<(ActionId, bool)>,
+}
+
+impl MachineViewModel {
+    pub fn button(&self, kind: MachineAction) -> Option<&MachineButton> {
+        self.buttons.iter().find(|b| b.action.kind == kind)
+    }
+
+    /// True when an enabled control would send `kind`.
+    pub fn offers(&self, kind: MachineAction) -> bool {
+        self.button(kind).is_some_and(|b| b.enabled)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TracerViewModel {
+    pub width_px: u32,
+    pub height_px: u32,
+    /// No physical scale declared yet: the user must give one before tracing (T01).
+    pub needs_scale: bool,
+    /// A trace task is running ("berekenen…"); the last valid result stays visible.
+    pub computing: bool,
+    pub result: Option<TraceSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraceSummary {
+    pub components: usize,
+    pub holes: usize,
+    pub width_mm: f64,
+    pub height_mm: f64,
+    /// Declared source resolution, shown apart from the fitting tolerance.
+    pub mm_per_pixel: (f64, f64),
+    pub fit_tolerance_mm: f64,
+    pub preview: Arc<Path>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanViewModel {
+    pub id: JobPlanId,
+    /// Document revision the plan was compiled from.
+    pub revision: RevisionId,
+    /// The document or the machine profile changed since compiling.
+    pub stale: bool,
+    pub preview: Arc<PlanPreview>,
+    pub findings: Vec<Finding>,
+    pub errors: usize,
+    pub warnings: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportViewModel {
+    pub plan: JobPlanId,
+    pub plan_revision: RevisionId,
+    pub path: std::path::PathBuf,
+    pub rd_hash: burnburn_types::ContentHash,
+    pub bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SketchViewModel {
+    pub id: SketchId,
+    pub name: String,
+    pub status: SketchStatus,
+    /// Parameters as typed (name, text).
+    pub parameters: Vec<(String, String)>,
+    /// Number of constraints (relations and dimensions).
+    pub constraints: usize,
+    /// Remaining degrees of freedom of the last valid solution (design aid, S03).
+    pub dof: Option<u32>,
+    /// Constraints the solver names in its diagnosis (conflict, unmet, invalid value): the
+    /// constraint panel selects these (S04).
+    pub problem_constraints: Vec<ConstraintId>,
+    /// The most recently added constraint (highest id), e.g. to undo a suggestion.
+    pub last_constraint: Option<ConstraintId>,
+}
+
+/// Evaluation state shown with symbol and text (not colour only, X03).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SketchStatus {
+    Valid,
+    /// Not evaluated since the last definition change.
+    Pending,
+    /// Evaluation failed; the geometry shown is the last valid one.
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionCycle {
+    /// 1-based position among the candidates under the pointer.
+    pub position: usize,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BooleanPreview {
+    pub revision: RevisionId,
+    pub op: BooleanOp,
+    pub operands: Vec<GeometryId>,
+    pub result: Arc<Path>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectRow {
+    pub id: GeometryId,
+    pub label: String,
+    pub depth: u16,
+    pub selected: bool,
+    pub visible: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectorViewModel {
+    pub object: GeometryId,
+    pub fields: Vec<FieldViewModel>,
+}
+
+impl InspectorViewModel {
+    pub fn field(&self, key: FieldKey) -> Option<&FieldViewModel> {
+        self.fields.iter().find(|f| f.key == key)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldViewModel {
+    pub key: FieldKey,
+    pub label: MessageKey,
+    pub text: String,
+    pub unit: Unit,
+    pub editable: bool,
+    pub error: Option<MessageKey>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandState {
+    pub enabled: bool,
+    pub checked: bool,
+    pub label: MessageKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusMessage {
+    pub key: MessageKey,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskBadge {
+    pub id: TaskId,
+    pub kind: TaskKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MeasureViewModel {
+    pub revision: RevisionId,
+    pub objects: usize,
+    /// `None` for an empty document.
+    pub width_text: Option<String>,
+    pub height_text: Option<String>,
+}
+
+/// Localisation keys. Hosts map them to NL/EN strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum MessageKey {
+    /// Text input without any font to draw it with.
+    NoFontAvailable,
+    /// Operations-panel text that is not a valid number for that field.
+    InvalidNumber(OperationField),
+    /// The camera may only start after the OS granted access.
+    CameraNotAuthorized,
+    /// Camera image: a visual placement aid, not production geometry.
+    VisualPlacementOnly,
+    Command(CommandKey),
+    UndoAction(UndoLabel),
+    RedoAction(UndoLabel),
+    Field(FieldKey),
+    InvalidLength(FieldError),
+    CommandRejected,
+    SaveFailed,
+    OpenFailed,
+    /// Cursor label of a snap target.
+    Snap(SnapKind),
+    Issue(IssueKind),
+    BooleanFailed,
+    /// No machine profile selected (preferences).
+    NoMachineProfile,
+    CompileFailed,
+    ExportFailed,
+    ImageFailed,
+    TraceFailed,
+    /// Saved, but the OS did not confirm durability (directory sync failed). Not an error dialog.
+    SaveNotConfirmedDurable,
+    /// Label of a machine control ("Software-stop" for `Cancel` after a start).
+    MachineAction(MachineAction),
+    PrepareFailed,
+    /// "Ontwerp gewijzigd sinds job – nieuwe conceptversie".
+    DesignChangedSinceJob,
+    /// "Geüpload, nog niet opgeslagen bevestigd".
+    UploadedNotStoredConfirmed,
+    /// "Start verzonden; wacht op status".
+    StartRequestedAwaitingStatus,
+    /// "Status onbekend — controleer machine" (lost start reply; never retried).
+    StatusUnknownCheckMachine,
+    /// "Software-stop verzonden; uitkomst onbekend — controleer machine. Hardware-noodstop blijft leidend."
+    StopSentOutcomeUnknown,
+    /// "Upload onbevestigd — controleer controller" (no automatic second upload).
+    UploadUnconfirmedCheckController,
+    /// A cancelled upload may have left a (partial) file on the controller; it is not deleted.
+    ControllerFileMayRemain,
+    UploadRejected,
+    /// The controller reported another model/firmware than the profile; nothing was uploaded.
+    IdentityMismatch,
+    /// The identity query stayed unanswered; nothing was uploaded.
+    IdentityUnconfirmed,
+    NotStored,
+    ControllerFault,
+    /// The machine moved on since the control was shown, or the action is not possible now.
+    MachineActionRefused,
+    /// The intent could not be recorded in the history; nothing was sent.
+    IntentNotRecorded,
+    /// The file could not be read or parsed; nothing was imported.
+    ImportFailed,
+    /// An offset would remove a whole object (or needs closed contours); nothing changed.
+    OffsetImpossible,
+    /// The trim found no crossing on the picked line, or the pick is not on a line.
+    TrimImpossible,
+    /// The chosen gap is larger than the repair tolerance; nothing changed.
+    NothingToRepair,
+    /// The current role may not do this (operator: no editing, approved jobs only).
+    NotAllowedForRole,
+    /// A palette colour was clicked without a selection.
+    SelectObjectsFirst,
+    /// The machine profile does not support (or has not validated) this feature (C05, M02).
+    MissingCapability(burnburn_job::Feature),
+}

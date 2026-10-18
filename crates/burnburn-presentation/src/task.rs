@@ -1,0 +1,541 @@
+use std::fmt;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile, preflight};
+use burnburn_document::DocumentSnapshot;
+use burnburn_geometry::{BooleanError, BooleanOp, Bounds, Path, boolean};
+use burnburn_image::{DecodeError, DecodeLimits, SourceImage, decode};
+use burnburn_io::fs::{FileSystem, FsError};
+use burnburn_io::import::{DxfDocument, ImportDraft, ParseError, parse_dxf, parse_svg};
+use burnburn_io::{LoadError, Project, SaveError, load_project, save_project};
+use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
+use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
+use burnburn_trace::{TraceError, TraceRequest, TraceResult, trace};
+use burnburn_types::{
+    CancellationToken, ContentHash, DocumentId, GeometryId, HashDomain, RevisionId, StableId, TaskId,
+};
+
+/// One background job, bound to the document revision of its input snapshot.
+#[derive(Debug, Clone)]
+pub struct TaskRequest {
+    pub id: TaskId,
+    pub document: DocumentId,
+    /// Revision of the snapshot inside `input`.
+    pub source: RevisionId,
+    /// Cache key. Until the canonical snapshot hash (ADR 0004) exists this is revision-scoped:
+    /// task kind, document and revision packed into the hash bytes.
+    pub key: ContentHash,
+    pub cancel: CancellationToken,
+    pub input: TaskInput,
+}
+
+#[derive(Clone)]
+#[non_exhaustive]
+pub enum TaskInput {
+    /// Object count and overall extents of a snapshot (status bar; first worker contract).
+    Measure(Arc<DocumentSnapshot>),
+    /// Atomic save of one revision (temp + sync + replace, IM04).
+    Save { project: Box<Project>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Read a project container; nothing on disk changes.
+    Open { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Boolean of the operands' outlines (live preview, E05). Difference: first minus the rest.
+    Boolean { snapshot: Arc<DocumentSnapshot>, op: BooleanOp, operands: Vec<GeometryId> },
+    /// Compile one revision for one machine profile into an immutable JobPlan, with its preview
+    /// and preflight (B12).
+    Compile { snapshot: Arc<DocumentSnapshot>, profile: Arc<MachineProfile>, options: CompileOptions },
+    /// Lower exactly this plan to RD and write it atomically (M03). Never touches the document.
+    ExportRd { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Read and decode an image for the tracer (bounded by `DecodeLimits`).
+    LoadImage { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Contour trace of a source image with one recipe (IM12).
+    Trace(Box<TraceRequest>),
+    /// Read and parse an SVG/DXF for the import preview (P03); nothing is committed.
+    ParseImport { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Lower exactly this plan to RD bytes for the prepared job (C1); same lowering as `ExportRd`.
+    PrepareJob { plan: Arc<JobPlan>, ruida: RuidaProfile },
+    /// Autosave: the same atomic save as `Save`, to a recovery file (never the project file).
+    SaveRecovery { project: Box<Project>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Recovery files (`*.burnburn`) in `dir`; a missing directory has none.
+    ListRecovery { dir: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Remove one recovery file (after a save, or when the user declines the offer).
+    RemoveRecovery { path: PathBuf, fs: Arc<dyn FileSystem> },
+}
+
+impl fmt::Debug for TaskInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskInput::Measure(s) => write!(f, "Measure(revision {})", s.revision()),
+            TaskInput::Save { project, path, .. } => {
+                write!(f, "Save({} at revision {})", path.display(), project.document.revision())
+            }
+            TaskInput::Open { path, .. } => write!(f, "Open({})", path.display()),
+            TaskInput::Boolean { snapshot, op, operands } => {
+                write!(f, "Boolean({op:?} of {operands:?} at revision {})", snapshot.revision())
+            }
+            TaskInput::Compile { snapshot, profile, .. } => {
+                write!(f, "Compile(revision {} for {})", snapshot.revision(), profile.revision().id)
+            }
+            TaskInput::ExportRd { plan, path, .. } => write!(f, "ExportRd({:?} to {})", plan.id(), path.display()),
+            TaskInput::LoadImage { path, .. } => write!(f, "LoadImage({})", path.display()),
+            TaskInput::Trace(r) => write!(f, "Trace(task {})", r.task),
+            TaskInput::PrepareJob { plan, .. } => write!(f, "PrepareJob({:?})", plan.id()),
+            TaskInput::ParseImport { path, .. } => write!(f, "ParseImport({})", path.display()),
+            TaskInput::SaveRecovery { path, .. } => write!(f, "SaveRecovery({})", path.display()),
+            TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
+            TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
+        }
+    }
+}
+
+impl TaskInput {
+    pub fn kind(&self) -> TaskKind {
+        match self {
+            TaskInput::Measure(_) => TaskKind::Measure,
+            TaskInput::Save { .. } => TaskKind::Save,
+            TaskInput::Open { .. } => TaskKind::Open,
+            TaskInput::Boolean { .. } => TaskKind::Boolean,
+            TaskInput::Compile { .. } => TaskKind::Compile,
+            TaskInput::ExportRd { .. } => TaskKind::ExportRd,
+            TaskInput::LoadImage { .. } => TaskKind::LoadImage,
+            TaskInput::Trace(_) => TaskKind::Trace,
+            TaskInput::PrepareJob { .. } => TaskKind::PrepareJob,
+            TaskInput::ParseImport { .. } => TaskKind::ParseImport,
+            TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
+            TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum TaskKind {
+    Measure,
+    Save,
+    Open,
+    Boolean,
+    Compile,
+    ExportRd,
+    LoadImage,
+    /// Freshness is checked by task identity and recipe key (DR-14), not by document revision:
+    /// an unrelated edit keeps a trace valid.
+    Trace,
+    /// Names its plan; an edit does not invalidate it (the job is frozen, W01).
+    PrepareJob,
+    /// Reads a file; independent of the document revision.
+    ParseImport,
+    /// Writes a recovery file of one revision; like a save it finishes what it started.
+    Autosave,
+    /// Lists or removes recovery files; not tied to a document revision.
+    Recovery,
+}
+
+impl TaskKind {
+    /// Results that describe one revision and are worthless after an edit: cancelled when the
+    /// document changes. A save is not: it must finish writing the revision it started with.
+    pub fn is_revision_sensitive(self) -> bool {
+        matches!(self, TaskKind::Measure | TaskKind::Boolean | TaskKind::Compile)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskOutcome {
+    pub id: TaskId,
+    pub document: DocumentId,
+    pub source: RevisionId,
+    pub result: Result<TaskOutput, TaskError>,
+}
+
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum TaskOutput {
+    Measured(DocumentMeasure),
+    Saved {
+        path: PathBuf,
+    },
+    Opened {
+        project: Box<Project>,
+        path: PathBuf,
+    },
+    Boolean {
+        op: BooleanOp,
+        operands: Vec<GeometryId>,
+        result: Path,
+    },
+    Compiled {
+        plan: Arc<JobPlan>,
+        preview: Arc<PlanPreview>,
+        report: PreflightReport,
+    },
+    ExportedRd {
+        plan: JobPlanId,
+        path: PathBuf,
+        rd_hash: ContentHash,
+        bytes: usize,
+    },
+    ImageLoaded {
+        source: Arc<SourceImage>,
+        bytes: Arc<[u8]>,
+        path: PathBuf,
+    },
+    Traced(Arc<TraceResult>),
+    /// RD bytes of exactly `plan`.
+    Prepared {
+        plan: JobPlanId,
+        rd: Arc<[u8]>,
+        rd_hash: ContentHash,
+    },
+    /// A parsed import file with its bytes (they become the source asset on commit).
+    ImportParsed {
+        path: PathBuf,
+        bytes: Arc<[u8]>,
+        parsed: ParsedImport,
+    },
+    RecoverySaved {
+        path: PathBuf,
+    },
+    RecoveryFound {
+        files: Vec<PathBuf>,
+    },
+    RecoveryRemoved {
+        path: PathBuf,
+    },
+}
+
+/// A parsed import file. A DXF stays in drawing units until the unit decision.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParsedImport {
+    Svg(Box<ImportDraft>),
+    Dxf(Box<DxfDocument>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DocumentMeasure {
+    pub objects: usize,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TaskError {
+    Cancelled,
+    Save(SaveError),
+    Open(LoadError),
+    Boolean(BooleanError),
+    /// An operand id is not in the snapshot.
+    UnknownObject(GeometryId),
+    Compile(CompileError),
+    Lower(LowerError),
+    Encode(EncodeError),
+    Write(FsError),
+    Read(FsError),
+    Decode(DecodeError),
+    Trace(TraceError),
+    Parse(ParseError),
+    /// Neither `.svg` nor `.dxf`.
+    UnsupportedFormat,
+}
+
+impl fmt::Display for TaskError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskError::Cancelled => f.write_str("task cancelled"),
+            TaskError::Save(e) => write!(f, "save failed: {e}"),
+            TaskError::Open(e) => write!(f, "open failed: {e}"),
+            TaskError::Boolean(e) => write!(f, "boolean failed: {e}"),
+            TaskError::UnknownObject(id) => write!(f, "no object {id}"),
+            TaskError::Compile(e) => write!(f, "compile failed: {e:?}"),
+            TaskError::Lower(e) => write!(f, "RD lowering failed: {e:?}"),
+            TaskError::Encode(e) => write!(f, "RD encoding failed: {e:?}"),
+            TaskError::Write(e) => write!(f, "writing failed: {e:?}"),
+            TaskError::Read(e) => write!(f, "reading failed: {e:?}"),
+            TaskError::Decode(e) => write!(f, "image decoding failed: {e:?}"),
+            TaskError::Trace(e) => write!(f, "trace failed: {e:?}"),
+            TaskError::Parse(e) => write!(f, "import failed: {e}"),
+            TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
+        }
+    }
+}
+
+impl std::error::Error for TaskError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskPortError {
+    /// The worker pool is shut down (app quitting).
+    Unavailable,
+}
+
+impl fmt::Display for TaskPortError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("task port unavailable")
+    }
+}
+
+impl std::error::Error for TaskPortError {}
+
+/// Port: runs a request off the UI thread and later delivers its outcome to
+/// `AppController::task_finished` through the host's wake-up. Must never block the UI thread.
+pub trait TaskPort: Send + Sync {
+    fn submit(&self, request: TaskRequest) -> Result<(), TaskPortError>;
+}
+
+/// The task work itself. Lives here so runtime only provides threads, and the headless harness
+/// runs exactly the same function as production.
+pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutput, TaskError> {
+    match input {
+        TaskInput::Measure(snapshot) => {
+            let mut bounds: Option<Bounds> = None;
+            for (_, obj) in snapshot.objects() {
+                cancel.check().map_err(|_| TaskError::Cancelled)?;
+                if let Some(b) = obj.bounds() {
+                    bounds = Some(bounds.map_or(b, |acc| acc.union(b)));
+                }
+            }
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            Ok(TaskOutput::Measured(DocumentMeasure { objects: snapshot.len(), bounds }))
+        }
+        TaskInput::Save { project, path, fs } => {
+            // Checked once before writing; an atomic save is never abandoned half-way.
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            save_project(fs.as_ref(), &path, &project).map_err(TaskError::Save)?;
+            Ok(TaskOutput::Saved { path })
+        }
+        TaskInput::Open { path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let project = load_project(fs.as_ref(), &path).map_err(TaskError::Open)?;
+            Ok(TaskOutput::Opened { project: Box::new(project), path })
+        }
+        TaskInput::Boolean { snapshot, op, operands } => {
+            let result = boolean_of(&snapshot, op, &operands, cancel)?;
+            Ok(TaskOutput::Boolean { op, operands, result })
+        }
+        TaskInput::Compile { snapshot, profile, options } => {
+            let plan = compile(&snapshot, &profile, &options, cancel).map_err(|e| match e {
+                CompileError::Cancelled => TaskError::Cancelled,
+                e => TaskError::Compile(e),
+            })?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let preview = Arc::new(preview(&plan, &profile));
+            let report = preflight(&snapshot, &plan, &profile);
+            Ok(TaskOutput::Compiled { plan: Arc::new(plan), preview, report })
+        }
+        TaskInput::ExportRd { plan, ruida, path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let program = lower(&plan, &ruida).map_err(TaskError::Lower)?;
+            let bytes = program.to_rd_file(ruida.magic).map_err(TaskError::Encode)?;
+            write_atomically(fs.as_ref(), &path, &bytes).map_err(TaskError::Write)?;
+            Ok(TaskOutput::ExportedRd {
+                plan: program.plan(),
+                path,
+                rd_hash: ContentHash::of(HashDomain::Rd, &bytes),
+                bytes: bytes.len(),
+            })
+        }
+        TaskInput::LoadImage { path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let bytes = fs.read(&path, MAX_IMAGE_BYTES).map_err(TaskError::Read)?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let source = decode(&bytes, DecodeLimits::default()).map_err(TaskError::Decode)?;
+            Ok(TaskOutput::ImageLoaded { source: Arc::new(source), bytes: Arc::from(bytes), path })
+        }
+        TaskInput::ParseImport { path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+            let bytes = fs.read(&path, MAX_IMPORT_BYTES).map_err(TaskError::Read)?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let parsed = match ext.as_deref() {
+                Some("svg") => ParsedImport::Svg(Box::new(parse_svg(&bytes).map_err(TaskError::Parse)?)),
+                Some("dxf") => ParsedImport::Dxf(Box::new(parse_dxf(&bytes).map_err(TaskError::Parse)?)),
+                _ => return Err(TaskError::UnsupportedFormat),
+            };
+            Ok(TaskOutput::ImportParsed { path, bytes: Arc::from(bytes), parsed })
+        }
+        TaskInput::PrepareJob { plan, ruida } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let program = lower(&plan, &ruida).map_err(TaskError::Lower)?;
+            let bytes = program.to_rd_file(ruida.magic).map_err(TaskError::Encode)?;
+            Ok(TaskOutput::Prepared {
+                plan: program.plan(),
+                rd_hash: ContentHash::of(HashDomain::Rd, &bytes),
+                rd: Arc::from(bytes),
+            })
+        }
+        TaskInput::SaveRecovery { project, path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            save_project(fs.as_ref(), &path, &project).map_err(TaskError::Save)?;
+            Ok(TaskOutput::RecoverySaved { path })
+        }
+        TaskInput::ListRecovery { dir, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            if !fs.exists(&dir).map_err(TaskError::Read)? {
+                return Ok(TaskOutput::RecoveryFound { files: Vec::new() });
+            }
+            let mut files: Vec<PathBuf> = fs
+                .list_dir(&dir)
+                .map_err(TaskError::Read)?
+                .into_iter()
+                .filter(|p| p.extension().is_some_and(|e| e == "burnburn"))
+                .collect();
+            files.sort();
+            Ok(TaskOutput::RecoveryFound { files })
+        }
+        TaskInput::RemoveRecovery { path, fs } => {
+            fs.remove_file(&path).map_err(TaskError::Write)?;
+            Ok(TaskOutput::RecoveryRemoved { path })
+        }
+        TaskInput::Trace(request) => match trace(&request, cancel) {
+            Ok(result) => Ok(TaskOutput::Traced(Arc::new(result))),
+            Err(TraceError::Cancelled(_)) => Err(TaskError::Cancelled),
+            Err(e) => Err(TaskError::Trace(e)),
+        },
+    }
+}
+
+/// Largest SVG/DXF file read for import (the parsers have their own limits too).
+const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Largest image file the tracer reads (the decoder also limits pixels).
+const MAX_IMAGE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Temp file in the target directory, write, flush, atomic replace, directory sync (the IM04
+/// pattern). A failure leaves any previous file at `path` intact and removes the temp file.
+fn write_atomically(fs: &dyn FileSystem, path: &std::path::Path, bytes: &[u8]) -> Result<(), FsError> {
+    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let stem = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let temp = fs.create_temp_in(dir, &format!(".{stem}"))?;
+    let written = fs.write_all(&temp, bytes).and_then(|()| fs.sync_file(&temp)).and_then(|()| fs.replace(&temp, path));
+    if let Err(e) = written {
+        // Best effort: the temp file is ours; the target was not replaced.
+        let _ = fs.remove_file(&temp);
+        return Err(e);
+    }
+    fs.sync_dir(dir)
+}
+
+/// Folds the domain `boolean` over the operands: union of all; first minus the union of the rest;
+/// intersection of all.
+fn boolean_of(
+    snapshot: &DocumentSnapshot,
+    op: BooleanOp,
+    operands: &[GeometryId],
+    cancel: &CancellationToken,
+) -> Result<Path, TaskError> {
+    let options = crate::commit::boolean_options().ok_or(TaskError::Boolean(BooleanError::OutOfRange))?;
+    let path =
+        |id: &GeometryId| snapshot.object(*id).map(|o| o.path().as_ref().clone()).ok_or(TaskError::UnknownObject(*id));
+    let (first, rest) = operands.split_first().ok_or(TaskError::Boolean(BooleanError::OutOfRange))?;
+    let run = |a: &Path, b: &Path, op| {
+        boolean(a, b, op, &options, cancel).map_err(|e| match e {
+            BooleanError::Cancelled => TaskError::Cancelled,
+            e => TaskError::Boolean(e),
+        })
+    };
+    let mut acc = path(first)?;
+    match op {
+        BooleanOp::Difference => {
+            let mut clip: Option<Path> = None;
+            for id in rest {
+                let p = path(id)?;
+                clip = Some(match clip {
+                    Some(c) => run(&c, &p, BooleanOp::Union)?,
+                    None => p,
+                });
+            }
+            if let Some(c) = clip {
+                acc = run(&acc, &c, BooleanOp::Difference)?;
+            }
+        }
+        op => {
+            for id in rest {
+                acc = run(&acc, &path(id)?, op)?;
+            }
+        }
+    }
+    Ok(acc)
+}
+
+pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: RevisionId) -> ContentHash {
+    let mut bytes = [0u8; 32];
+    bytes[0] = match kind {
+        TaskKind::Measure => 1,
+        TaskKind::Save => 2,
+        TaskKind::Open => 3,
+        TaskKind::Boolean => 4,
+        TaskKind::Compile => 5,
+        TaskKind::ExportRd => 6,
+        TaskKind::LoadImage => 7,
+        TaskKind::Trace => 8,
+        TaskKind::PrepareJob => 9,
+        TaskKind::ParseImport => 10,
+        TaskKind::Autosave => 11,
+        TaskKind::Recovery => 12,
+    };
+    bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
+    bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());
+    ContentHash::from_bytes(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burnburn_document::{GeometryObject, GeometrySource, ObjectKind};
+    use burnburn_geometry::{Point, Rect};
+    use burnburn_types::{CancellationSource, Length};
+
+    fn snapshot() -> Arc<DocumentSnapshot> {
+        let r = |raw: u64, x: f64, y: f64, w: f64, h: f64| {
+            let rect = Rect::new(Point::new(x, y), Length::from_mm(w).unwrap(), Length::from_mm(h).unwrap()).unwrap();
+            GeometryObject::new(
+                GeometryId::from_raw(raw),
+                "r".into(),
+                ObjectKind::Rectangle,
+                GeometrySource::Drawn,
+                Path::rectangle(rect),
+            )
+        };
+        Arc::new(
+            DocumentSnapshot::from_parts(vec![r(1, 0.0, 0.0, 120.0, 80.0), r(2, 100.0, 50.0, 50.0, 50.0)], 3).unwrap(),
+        )
+    }
+
+    #[test]
+    fn measure_reports_count_and_union_bounds() {
+        let out = run_task(TaskInput::Measure(snapshot()), &CancellationToken::never()).unwrap();
+        let TaskOutput::Measured(m) = out else { panic!("expected a measure") };
+        assert_eq!(m.objects, 2);
+        let b = m.bounds.unwrap();
+        assert_eq!((b.min(), b.max()), (Point::new(0.0, 0.0), Point::new(150.0, 100.0)));
+    }
+
+    #[test]
+    fn cancelled_measure_returns_cancelled_not_partial_result() {
+        let source = CancellationSource::new();
+        source.cancel();
+        assert_eq!(run_task(TaskInput::Measure(snapshot()), &source.token()).err(), Some(TaskError::Cancelled));
+    }
+
+    /// Two overlapping 120×80 and 50×50 rectangles: union area = 9600 + 2500 − 20·30.
+    #[test]
+    fn boolean_task_folds_the_domain_boolean_over_the_operands() {
+        let ids = vec![GeometryId::from_raw(1), GeometryId::from_raw(2)];
+        let run = |op| {
+            run_task(
+                TaskInput::Boolean { snapshot: snapshot(), op, operands: ids.clone() },
+                &CancellationToken::never(),
+            )
+        };
+        let Ok(TaskOutput::Boolean { result, .. }) = run(BooleanOp::Union) else { panic!("union") };
+        assert!((result.signed_area().abs() - (9600.0 + 2500.0 - 600.0)).abs() < 1e-6, "{}", result.signed_area());
+        let Ok(TaskOutput::Boolean { result, .. }) = run(BooleanOp::Difference) else { panic!("difference") };
+        assert!((result.signed_area().abs() - (9600.0 - 600.0)).abs() < 1e-6);
+        let Ok(TaskOutput::Boolean { result, .. }) = run(BooleanOp::Intersection) else { panic!("intersection") };
+        assert!((result.signed_area().abs() - 600.0).abs() < 1e-6);
+        let source = CancellationSource::new();
+        source.cancel();
+        let cancelled = run_task(
+            TaskInput::Boolean { snapshot: snapshot(), op: BooleanOp::Union, operands: ids.clone() },
+            &source.token(),
+        );
+        assert_eq!(cancelled.err(), Some(TaskError::Cancelled), "never a partial result");
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "description": "Geometry fixtures for burnburn-geometry. Expectations are hand-derived and documented in each file; never regenerate them from a test run.",
+  "golden_policy": "Changing an expected value needs a reviewed explanation (AGENTS.md).",
+  "fixtures": [
+    {
+      "file": "boolean-cases.txt",
+      "bytes": 1390,
+      "sha256": "7ee5f1cae949dba99cf7c4251835fa08ddf3ee6ad8b925c73dcccafe5db677fd",
+      "origin": "Written by hand 2026-10-18 (IM09, kern-geometrie).",
+      "consumer": "crates/burnburn-geometry/tests/boolean_fixtures.rs",
+      "content": "Union/difference/intersection/xor of rectangles, a plate with a hole (as clip and as even-odd contour), two overlapping L shapes and corner contact; areas in mm²."
+    }
+  ]
+}

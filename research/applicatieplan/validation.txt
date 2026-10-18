@@ -1,0 +1,10 @@
+Plancontrole op 17 oktober 2026
+Markdownbestanden: 7
+Unieke user stories: 74
+Verdeling: {'P': 8, 'E': 11, 'S': 8, 'T': 10, 'C': 12, 'M': 9, 'W': 9, 'X': 7}
+Relatieve documentlinks: gecontroleerd
+Codeblokken: gecontroleerd
+Storyformaat en verwijzingen: gecontroleerd
+Fouten: 0
+Geen applicatie- of hardwaretest uitgevoerd.
+Expliciete story-afhankelijkheden: geen cyclus gevonden.

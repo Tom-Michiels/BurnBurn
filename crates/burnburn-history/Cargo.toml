@@ -1,0 +1,30 @@
+[package]
+name = "burnburn-history"
+description = "Append-only production history: frozen CompiledJobs, executions with evidence, queue and counts (ADR 0008)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-io = { workspace = true }
+burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-types = { workspace = true }
+crc32fast = { workspace = true }
+serde = { workspace = true }
+# Plan blobs carry f64 coordinates: exact text roundtrip, like io.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[dev-dependencies]
+burnburn-cam = { workspace = true }
+# Tests write journal bytes by hand from the documented format (independent of the encoder).
+crc32fast = { workspace = true }
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-ruida = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

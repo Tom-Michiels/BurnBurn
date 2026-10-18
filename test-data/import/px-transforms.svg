@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <g transform="scale(2) rotate(90 10 10)">
+    <polyline id="tick" points="0,0 10,0 10,5"/>
+  </g>
+  <path id="curves" d="M0 90 C 10 80, 20 80, 30 90 S 50 100, 60 90 Q 70 80 80 90 T 95 90"/>
+  <line id="diag" x1="0" y1="0" x2="96" y2="96" clip-path="url(#c)"/>
+</svg>

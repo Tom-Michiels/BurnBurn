@@ -1,0 +1,43 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+jobs:
+  # Platform-neutral core: fmt, layering (docs/design/layers.toml), clippy, tests, doc tests.
+  # Runs on all three OSes; a pass on Windows/Linux proves the shared crates build and test
+  # there, NOT that a native GUI or driver works (AGENTS.md).
+  core:
+    name: Kernsuite (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain uit rust-toolchain.toml
+        run: rustup show
+      - name: cargo xtask verify
+        run: cargo xtask verify
+
+  # Native macOS host. Placeholder until crates/burnburn-macos has real AppKit integration
+  # tests; it then runs on a real macOS runner (not cross-compiled).
+  macos-native:
+    name: macOS native host
+    runs-on: macos-15
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain uit rust-toolchain.toml
+        run: rustup show
+      - name: cargo test -p burnburn-macos
+        shell: bash
+        run: |
+          if [ -f crates/burnburn-macos/Cargo.toml ]; then
+            cargo test -p burnburn-macos --locked
+          else
+            echo "crates/burnburn-macos bestaat nog niet; native job overgeslagen."
+          fi

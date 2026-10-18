@@ -1,0 +1,14 @@
+[package]
+name = "burnburn-types"
+description = "Stable IDs, units, revisions and typed errors shared by every BurnBurn crate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Domain-separated content hashes (DR-17, ADR 0004).
+sha2 = { workspace = true }

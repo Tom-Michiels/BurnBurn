@@ -1,0 +1,20 @@
+[package]
+name = "burnburn-generators"
+description = "Laser generators as pure functions: finger joints, tab/slot, boxes, living hinges, stencil bridges, text on a path, frozen data rows and barcodes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-text = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+burnburn-test-support = { workspace = true }
+proptest = { workspace = true }

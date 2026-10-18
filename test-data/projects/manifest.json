@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "description": "BurnBurn project container fixtures, one or more per released schema version. Each must keep loading with the hand-written expectations in crates/burnburn-io/tests/migration_fixtures.rs.",
+  "golden_policy": "Never regenerate or update these bytes or hashes automatically. A changed file needs a reviewed explanation (AGENTS.md); old-schema fixtures are never rewritten, they are what migrations are tested against.",
+  "fixtures": [
+    {
+      "file": "v1/rectangle-120x80.burnburn",
+      "schema": 1,
+      "bytes": 573,
+      "sha256": "9f0b355a2bedad4d06abec316613641a5df546376dc492e0370ed6a8ed9b651d",
+      "origin": "Written 2026-10-18 by the ignored test burnburn-io::migration_fixtures::write_v1_rectangle_fixture (container v1, burnburn-io 0.1.0); document.json reviewed by hand.",
+      "content": "One drawn rectangle 'Plaat' (GeometryId 1), 120 x 80 mm from (0, 0), counter-clockwise; one placeholder operation 'Snijden' (OperationId 2) targeting it; next_id 3; no assets; uuid 0b0b0b0b-0001-4000-8000-000000000120."
+    },
+    {
+      "file": "v2/plate-operations.burnburn",
+      "schema": 2,
+      "bytes": 1141,
+      "sha256": "2ec762d383f5da1652ddfa529367059fd65f7ef3962aaaa02d057f3fa063088d",
+      "origin": "Written 2026-10-18 by the ignored test burnburn-scenarios::project_fixtures::write_v2_plate_fixture (container schema 2, burnburn-io 0.1.0; Testing, on request of CAM); document.json reviewed by hand.",
+      "consumer": "crates/burnburn-scenarios/tests/project_fixtures.rs",
+      "content": "Rectangle 'Plaat' 120 x 80 from (0,0) (GeometryId 1); circle 'Gat' r 10 at (60,40) as four quarter arcs (2); rectangle 'Logo' 20 x 10 at (10,60) (3). Operations: 4 'Graveren' fill 0.1 mm X bidirectional, 300 mm/s 10-25 %, on 3; 5 'Binnen' line 20 mm/s 60 % air, on 2; 6 'Buiten' line on 1 with recipe 7 rev 1 applied (15 mm/s, 55-65 %, 2 passes, air). Order constraint 5 before 6. Recipe 7 'Multiplex 3 mm snijden', Berken multiplex 3 mm, machine research-1500x900. next_id 8; no assets; uuid 0b0b0b0b-0002-4000-8000-000000000120."
+    }
+  ]
+}

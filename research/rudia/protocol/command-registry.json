@@ -1,0 +1,1162 @@
+{
+  "status": "public implementation reference; not proof of LightBurn use or firmware support",
+  "source": "https://raw.githubusercontent.com/meerk40t/meerk40t/d511944e08788e88077727f682957759884ff5ca/meerk40t/ruida/rdjob.py",
+  "commit": "d511944e08788e88077727f682957759884ff5ca",
+  "commands": [
+    {
+      "name": "INTERFACE_FRAME",
+      "hex": "a5 53 00",
+      "source_line": 13
+    },
+    {
+      "name": "INTERFACE_PLUS_X_DOWN",
+      "hex": "a5 50 02",
+      "source_line": 14
+    },
+    {
+      "name": "INTERFACE_PLUS_X_UP",
+      "hex": "a5 51 02",
+      "source_line": 15
+    },
+    {
+      "name": "INTERFACE_MINUS_X_DOWN",
+      "hex": "a5 50 01",
+      "source_line": 16
+    },
+    {
+      "name": "INTERFACE_MINUS_X_UP",
+      "hex": "a5 51 01",
+      "source_line": 17
+    },
+    {
+      "name": "INTERFACE_PLUS_Y_DOWN",
+      "hex": "a5 50 03",
+      "source_line": 18
+    },
+    {
+      "name": "INTERFACE_PLUS_Y_UP",
+      "hex": "a5 51 03",
+      "source_line": 19
+    },
+    {
+      "name": "INTERFACE_MINUS_Y_DOWN",
+      "hex": "a5 50 04",
+      "source_line": 20
+    },
+    {
+      "name": "INTERFACE_MINUS_Y_UP",
+      "hex": "a5 51 04",
+      "source_line": 21
+    },
+    {
+      "name": "INTERFACE_PLUS_Z_DOWN",
+      "hex": "a5 50 0a",
+      "source_line": 22
+    },
+    {
+      "name": "INTERFACE_PLUS_Z_UP",
+      "hex": "a5 51 0a",
+      "source_line": 23
+    },
+    {
+      "name": "INTERFACE_MINUS_Z_DOWN",
+      "hex": "a5 50 0b",
+      "source_line": 24
+    },
+    {
+      "name": "INTERFACE_MINUS_Z_UP",
+      "hex": "a5 51 0b",
+      "source_line": 25
+    },
+    {
+      "name": "INTERFACE_PLUS_U_DOWN",
+      "hex": "a5 50 0c",
+      "source_line": 26
+    },
+    {
+      "name": "INTERFACE_PLUS_U_UP",
+      "hex": "a5 51 0c",
+      "source_line": 27
+    },
+    {
+      "name": "INTERFACE_MINUS_U_DOWN",
+      "hex": "a5 50 0d",
+      "source_line": 28
+    },
+    {
+      "name": "INTERFACE_MINUS_U_UP",
+      "hex": "a5 51 0d",
+      "source_line": 29
+    },
+    {
+      "name": "INTERFACE_PULSE_DOWN",
+      "hex": "a5 50 05",
+      "source_line": 30
+    },
+    {
+      "name": "INTERFACE_PULSE_UP",
+      "hex": "a5 51 05",
+      "source_line": 31
+    },
+    {
+      "name": "INTERFACE_SPEED_DOWN",
+      "hex": "a5 50 11",
+      "source_line": 32
+    },
+    {
+      "name": "INTERFACE_SPEED_UP",
+      "hex": "a5 51 11",
+      "source_line": 33
+    },
+    {
+      "name": "INTERFACE_PAUSE_DOWN",
+      "hex": "a5 50 06",
+      "source_line": 34
+    },
+    {
+      "name": "INTERFACE_PAUSE_UP",
+      "hex": "a5 51 06",
+      "source_line": 35
+    },
+    {
+      "name": "INTERFACE_STOP_DOWN",
+      "hex": "a5 50 09",
+      "source_line": 36
+    },
+    {
+      "name": "INTERFACE_STOP_UP",
+      "hex": "a5 51 09",
+      "source_line": 37
+    },
+    {
+      "name": "INTERFACE_RESET_DOWN",
+      "hex": "a5 50 5a",
+      "source_line": 38
+    },
+    {
+      "name": "INTERFACE_RESET_UP",
+      "hex": "a5 51 5a",
+      "source_line": 39
+    },
+    {
+      "name": "INTERFACE_TRACE_DOWN",
+      "hex": "a5 50 0f",
+      "source_line": 40
+    },
+    {
+      "name": "INTERFACE_TRACE_UP",
+      "hex": "a5 51 0f",
+      "source_line": 41
+    },
+    {
+      "name": "INTERFACE_ESCAPE_DOWN",
+      "hex": "a5 50 07",
+      "source_line": 42
+    },
+    {
+      "name": "INTERFACE_ESCAPE_UP",
+      "hex": "a5 51 07",
+      "source_line": 43
+    },
+    {
+      "name": "INTERFACE_LASER_GATE_DOWN",
+      "hex": "a5 50 12",
+      "source_line": 44
+    },
+    {
+      "name": "INTERFACE_LASER_GATE_UP",
+      "hex": "a5 51 12",
+      "source_line": 45
+    },
+    {
+      "name": "INTERFACE_ORIGIN_DOWN",
+      "hex": "a5 50 08",
+      "source_line": 46
+    },
+    {
+      "name": "INTERFACE_ORIGIN_UP",
+      "hex": "a5 51 08",
+      "source_line": 47
+    },
+    {
+      "name": "AXIS_X_MOVE",
+      "hex": "80 00",
+      "source_line": 50,
+      "upstream_parameter_hint": "abscoord(x)"
+    },
+    {
+      "name": "AXIS_Z_MOVE",
+      "hex": "80 01",
+      "source_line": 51,
+      "upstream_parameter_hint": "abscoord(z) TODO: Should be 0x80 0x08?"
+    },
+    {
+      "name": "MOVE_ABS_XY",
+      "hex": "88",
+      "source_line": 52,
+      "upstream_parameter_hint": "abscoord(x), abscoord(y)"
+    },
+    {
+      "name": "MOVE_REL_XY",
+      "hex": "89",
+      "source_line": 53,
+      "upstream_parameter_hint": "relcoord(dx), relcoord(dy)"
+    },
+    {
+      "name": "AXIS_A_MOVE",
+      "hex": "a0 00",
+      "source_line": 54,
+      "upstream_parameter_hint": "abscoord(a) TODO: Should be AXIS_Y_MOVE?"
+    },
+    {
+      "name": "AXIS_U_MOVE",
+      "hex": "a0 08",
+      "source_line": 55,
+      "upstream_parameter_hint": "abscoord(u)"
+    },
+    {
+      "name": "MOVE_REL_X",
+      "hex": "8a",
+      "source_line": 56,
+      "upstream_parameter_hint": "relcoord(dx)"
+    },
+    {
+      "name": "MOVE_REL_Y",
+      "hex": "8b",
+      "source_line": 57,
+      "upstream_parameter_hint": "relcoord(dy)"
+    },
+    {
+      "name": "CUT_ABS_XY",
+      "hex": "a8",
+      "source_line": 58,
+      "upstream_parameter_hint": "abscoord(x), abscoord(y)"
+    },
+    {
+      "name": "CUT_REL_XY",
+      "hex": "a9",
+      "source_line": 59,
+      "upstream_parameter_hint": "relcoord(dx), relcoord(dy)"
+    },
+    {
+      "name": "CUT_REL_X",
+      "hex": "aa",
+      "source_line": 60,
+      "upstream_parameter_hint": "relcoord(dx)"
+    },
+    {
+      "name": "CUT_REL_Y",
+      "hex": "ab",
+      "source_line": 61,
+      "upstream_parameter_hint": "relcoord(dy)"
+    },
+    {
+      "name": "IMD_POWER_1",
+      "hex": "c7",
+      "source_line": 62,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "IMD_POWER_2",
+      "hex": "c0",
+      "source_line": 63,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "IMD_POWER_3",
+      "hex": "c2",
+      "source_line": 64,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "IMD_POWER_4",
+      "hex": "c3",
+      "source_line": 65,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "END_POWER_1",
+      "hex": "c8",
+      "source_line": 66,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "END_POWER_2",
+      "hex": "c1",
+      "source_line": 67,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "END_POWER_3",
+      "hex": "c4",
+      "source_line": 68,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "END_POWER_4",
+      "hex": "c5",
+      "source_line": 69,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MIN_POWER_1",
+      "hex": "c6 01",
+      "source_line": 70,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MAX_POWER_1",
+      "hex": "c6 02",
+      "source_line": 71,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MIN_POWER_2",
+      "hex": "c6 21",
+      "source_line": 72,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MAX_POWER_2",
+      "hex": "c6 22",
+      "source_line": 73,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MIN_POWER_3",
+      "hex": "c6 05",
+      "source_line": 74,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MAX_POWER_3",
+      "hex": "c6 06",
+      "source_line": 75,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MIN_POWER_4",
+      "hex": "c6 07",
+      "source_line": 76,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "MAX_POWER_4",
+      "hex": "c6 08",
+      "source_line": 77,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "LASER_INTERVAL",
+      "hex": "c6 10",
+      "source_line": 78,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "ADD_DELAY",
+      "hex": "c6 11",
+      "source_line": 79,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "LASER_ON_DELAY",
+      "hex": "c6 12",
+      "source_line": 80,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "LASER_OFF_DELAY",
+      "hex": "c6 13",
+      "source_line": 81,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "LASER_ON_DELAY2",
+      "hex": "c6 15",
+      "source_line": 82,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "LASER_OFF_DELAY2",
+      "hex": "c6 16",
+      "source_line": 83,
+      "upstream_parameter_hint": "time(5)"
+    },
+    {
+      "name": "MIN_POWER_1_PART",
+      "hex": "c6 31",
+      "source_line": 84,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MAX_POWER_1_PART",
+      "hex": "c6 32",
+      "source_line": 85,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MIN_POWER_2_PART",
+      "hex": "c6 41",
+      "source_line": 86,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MAX_POWER_2_PART",
+      "hex": "c6 42",
+      "source_line": 87,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MIN_POWER_3_PART",
+      "hex": "c6 35",
+      "source_line": 88,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MAX_POWER_3_PART",
+      "hex": "c6 36",
+      "source_line": 89,
+      "upstream_parameter_hint": "part(1), power(2"
+    },
+    {
+      "name": "MIN_POWER_4_PART",
+      "hex": "c6 37",
+      "source_line": 90,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "MAX_POWER_4_PART",
+      "hex": "c6 38",
+      "source_line": 91,
+      "upstream_parameter_hint": "part(1), power(2)"
+    },
+    {
+      "name": "THROUGH_POWER_1",
+      "hex": "c6 50",
+      "source_line": 92,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "THROUGH_POWER_2",
+      "hex": "c6 51",
+      "source_line": 93,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "THROUGH_POWER_3",
+      "hex": "c6 55",
+      "source_line": 94,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "THROUGH_POWER_4",
+      "hex": "c6 56",
+      "source_line": 95,
+      "upstream_parameter_hint": "power(2)"
+    },
+    {
+      "name": "FREQUENCY_PART",
+      "hex": "c6 60",
+      "source_line": 96,
+      "upstream_parameter_hint": "laser(1), part(1), frequency(5)"
+    },
+    {
+      "name": "SPEED_LASER_1",
+      "hex": "c9 02",
+      "source_line": 97,
+      "upstream_parameter_hint": "speed(5)"
+    },
+    {
+      "name": "SPEED_AXIS",
+      "hex": "c9 03",
+      "source_line": 98,
+      "upstream_parameter_hint": "speed(5)"
+    },
+    {
+      "name": "SPEED_LASER_1_PART",
+      "hex": "c9 04",
+      "source_line": 99,
+      "upstream_parameter_hint": "part(1), speed(5)"
+    },
+    {
+      "name": "FORCE_ENG_SPEED",
+      "hex": "c9 05",
+      "source_line": 100,
+      "upstream_parameter_hint": "speed(5)"
+    },
+    {
+      "name": "SPEED_AXIS_MOVE",
+      "hex": "c9 06",
+      "source_line": 101,
+      "upstream_parameter_hint": "speed(5)"
+    },
+    {
+      "name": "LAYER_END",
+      "hex": "ca 01 00",
+      "source_line": 102
+    },
+    {
+      "name": "WORK_MODE_1",
+      "hex": "ca 01 01",
+      "source_line": 103
+    },
+    {
+      "name": "WORK_MODE_2",
+      "hex": "ca 01 02",
+      "source_line": 104
+    },
+    {
+      "name": "WORK_MODE_3",
+      "hex": "ca 01 03",
+      "source_line": 105
+    },
+    {
+      "name": "WORK_MODE_4",
+      "hex": "ca 01 04",
+      "source_line": 106
+    },
+    {
+      "name": "WORK_MODE_5",
+      "hex": "ca 01 55",
+      "source_line": 107
+    },
+    {
+      "name": "WORK_MODE_6",
+      "hex": "ca 01 05",
+      "source_line": 108
+    },
+    {
+      "name": "LASER_DEVICE_0",
+      "hex": "ca 01 10",
+      "source_line": 109
+    },
+    {
+      "name": "LASER_DEVICE_1",
+      "hex": "ca 01 11",
+      "source_line": 110
+    },
+    {
+      "name": "AIR_ASSIST_OFF",
+      "hex": "ca 01 12",
+      "source_line": 111
+    },
+    {
+      "name": "AIR_ASSIST_ON",
+      "hex": "ca 01 13",
+      "source_line": 112
+    },
+    {
+      "name": "DB_HEAD",
+      "hex": "ca 01 14",
+      "source_line": 113
+    },
+    {
+      "name": "EN_LASER_2_OFFSET_0",
+      "hex": "ca 01 30",
+      "source_line": 114
+    },
+    {
+      "name": "EN_LASER_2_OFFSET_1",
+      "hex": "ca 01 31",
+      "source_line": 115
+    },
+    {
+      "name": "LAYER_NUMBER_PART",
+      "hex": "ca 02",
+      "source_line": 116,
+      "upstream_parameter_hint": "part(1)"
+    },
+    {
+      "name": "EN_LASER_TUBE_START",
+      "hex": "ca 03",
+      "source_line": 117,
+      "upstream_parameter_hint": "part(1)"
+    },
+    {
+      "name": "X_SIGN_MAP",
+      "hex": "ca 04",
+      "source_line": 118,
+      "upstream_parameter_hint": "value(1)"
+    },
+    {
+      "name": "LAYER_COLOR",
+      "hex": "ca 05",
+      "source_line": 119,
+      "upstream_parameter_hint": "color(5)"
+    },
+    {
+      "name": "LAYER_COLOR_PART",
+      "hex": "ca 06",
+      "source_line": 120,
+      "upstream_parameter_hint": "part(1), color(5)"
+    },
+    {
+      "name": "EN_EX_IO",
+      "hex": "ca 10",
+      "source_line": 121,
+      "upstream_parameter_hint": "value(1)"
+    },
+    {
+      "name": "MAX_LAYER_PART",
+      "hex": "ca 22",
+      "source_line": 122,
+      "upstream_parameter_hint": "part(1)"
+    },
+    {
+      "name": "U_FILE_ID",
+      "hex": "ca 30",
+      "source_line": 123,
+      "upstream_parameter_hint": "file_number(2)"
+    },
+    {
+      "name": "ZU_MAP",
+      "hex": "ca 40",
+      "source_line": 124,
+      "upstream_parameter_hint": "value(1)"
+    },
+    {
+      "name": "WORK_MODE_PART",
+      "hex": "ca 41",
+      "source_line": 125,
+      "upstream_parameter_hint": "part(1), mode(1)"
+    },
+    {
+      "name": "ACK",
+      "hex": "cc",
+      "source_line": 126
+    },
+    {
+      "name": "NAK",
+      "hex": "cf",
+      "source_line": 127
+    },
+    {
+      "name": "ERR",
+      "hex": "cd",
+      "source_line": 128
+    },
+    {
+      "name": "ENQ",
+      "hex": "ce",
+      "source_line": 129
+    },
+    {
+      "name": "END_OF_FILE",
+      "hex": "d7",
+      "source_line": 130
+    },
+    {
+      "name": "START_PROCESS",
+      "hex": "d8 00",
+      "source_line": 131
+    },
+    {
+      "name": "STOP_PROCESS",
+      "hex": "d8 01",
+      "source_line": 132
+    },
+    {
+      "name": "PAUSE_PROCESS",
+      "hex": "d8 02",
+      "source_line": 133
+    },
+    {
+      "name": "RESTORE_PROCESS",
+      "hex": "d8 03",
+      "source_line": 134
+    },
+    {
+      "name": "REF_POINT_2",
+      "hex": "d8 10",
+      "source_line": 135,
+      "upstream_parameter_hint": "MACHINE_ZERO/ABS POSITION"
+    },
+    {
+      "name": "REF_POINT_1",
+      "hex": "d8 11",
+      "source_line": 136,
+      "upstream_parameter_hint": "ANCHOR_POINT"
+    },
+    {
+      "name": "REF_POINT_0",
+      "hex": "d8 12",
+      "source_line": 137,
+      "upstream_parameter_hint": "CURRENT_POSITION"
+    },
+    {
+      "name": "HOME_Z",
+      "hex": "d8 2c",
+      "source_line": 138
+    },
+    {
+      "name": "HOME_U",
+      "hex": "d8 2d",
+      "source_line": 139
+    },
+    {
+      "name": "HOME_XY",
+      "hex": "d8 2a",
+      "source_line": 140
+    },
+    {
+      "name": "FOCUS_Z",
+      "hex": "d8 2e",
+      "source_line": 141
+    },
+    {
+      "name": "KEYDOWN_X_LEFT",
+      "hex": "d8 20",
+      "source_line": 142
+    },
+    {
+      "name": "KEYDOWN_X_RIGHT",
+      "hex": "d8 21",
+      "source_line": 143
+    },
+    {
+      "name": "KEYDOWN_Y_TOP",
+      "hex": "d8 22",
+      "source_line": 144
+    },
+    {
+      "name": "KEYDOWN_Y_BOTTOM",
+      "hex": "d8 23",
+      "source_line": 145
+    },
+    {
+      "name": "KEYDOWN_Z_UP",
+      "hex": "d8 24",
+      "source_line": 146
+    },
+    {
+      "name": "KEYDOWN_Z_DOWN",
+      "hex": "d8 25",
+      "source_line": 147
+    },
+    {
+      "name": "KEYDOWN_U_FORWARD",
+      "hex": "d8 26",
+      "source_line": 148
+    },
+    {
+      "name": "KEYDOWN_U_BACKWARDS",
+      "hex": "d8 27",
+      "source_line": 149
+    },
+    {
+      "name": "KEYUP_X_LEFT",
+      "hex": "d8 30",
+      "source_line": 150
+    },
+    {
+      "name": "KEYUP_X_RIGHT",
+      "hex": "d8 31",
+      "source_line": 151
+    },
+    {
+      "name": "KEYUP_Y_TOP",
+      "hex": "d8 32",
+      "source_line": 152
+    },
+    {
+      "name": "KEYUP_Y_BOTTOM",
+      "hex": "d8 33",
+      "source_line": 153
+    },
+    {
+      "name": "KEYUP_Z_UP",
+      "hex": "d8 34",
+      "source_line": 154
+    },
+    {
+      "name": "KEYUP_Z_DOWN",
+      "hex": "d8 35",
+      "source_line": 155
+    },
+    {
+      "name": "KEYUP_U_FORWARD",
+      "hex": "d8 36",
+      "source_line": 156
+    },
+    {
+      "name": "KEYUP_U_BACKWARDS",
+      "hex": "d8 37",
+      "source_line": 157
+    },
+    {
+      "name": "RAPID_MOVE_X",
+      "hex": "d9 00",
+      "source_line": 162,
+      "upstream_parameter_hint": "options(1), abscoord(5)"
+    },
+    {
+      "name": "RAPID_MOVE_Y",
+      "hex": "d9 01",
+      "source_line": 163,
+      "upstream_parameter_hint": "options(1), abscoord(5)"
+    },
+    {
+      "name": "RAPID_MOVE_Z",
+      "hex": "d9 02",
+      "source_line": 164,
+      "upstream_parameter_hint": "options(1), abscoord(5)"
+    },
+    {
+      "name": "RAPID_MOVE_U",
+      "hex": "d9 03",
+      "source_line": 165,
+      "upstream_parameter_hint": "options(1), abscoord(5)"
+    },
+    {
+      "name": "RAPID_FEED_AXIS_MOVE",
+      "hex": "d9 0f",
+      "source_line": 166,
+      "upstream_parameter_hint": "options(1)"
+    },
+    {
+      "name": "RAPID_MOVE_XY",
+      "hex": "d9 10",
+      "source_line": 167,
+      "upstream_parameter_hint": "options(1), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "RAPID_MOVE_XYU",
+      "hex": "d9 30",
+      "source_line": 168,
+      "upstream_parameter_hint": "options(1), abscoord(5), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "GET_SETTING",
+      "hex": "da 00",
+      "source_line": 169,
+      "upstream_parameter_hint": "memory(2)"
+    },
+    {
+      "name": "SET_SETTING",
+      "hex": "da 01",
+      "source_line": 170,
+      "upstream_parameter_hint": "memory(2), v0(5), v1(5)"
+    },
+    {
+      "name": "DOCUMENT_FILE_UPLOAD",
+      "hex": "e5 00",
+      "source_line": 171,
+      "upstream_parameter_hint": "file_number(2), v0(5), v1(5)"
+    },
+    {
+      "name": "DOCUMENT_FILE_END",
+      "hex": "e5 02",
+      "source_line": 172
+    },
+    {
+      "name": "SET_FILE_SUM",
+      "hex": "e5 05",
+      "source_line": 173
+    },
+    {
+      "name": "SET_ABSOLUTE",
+      "hex": "e6 01",
+      "source_line": 174
+    },
+    {
+      "name": "BLOCK_END",
+      "hex": "e7 00",
+      "source_line": 175
+    },
+    {
+      "name": "SET_FILENAME",
+      "hex": "e7 01",
+      "source_line": 176,
+      "upstream_parameter_hint": "filename (null terminated)."
+    },
+    {
+      "name": "PROCESS_TOP_LEFT",
+      "hex": "e7 03",
+      "source_line": 177,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "PROCESS_REPEAT",
+      "hex": "e7 04",
+      "source_line": 178,
+      "upstream_parameter_hint": "v0(2), v1(2), v2(2), v3(2), v4(2), v5(2), v6(2)"
+    },
+    {
+      "name": "ARRAY_DIRECTION",
+      "hex": "e7 05",
+      "source_line": 179,
+      "upstream_parameter_hint": "direction(1)"
+    },
+    {
+      "name": "FEED_REPEAT",
+      "hex": "e7 06",
+      "source_line": 180,
+      "upstream_parameter_hint": "v0(5), v1(5)"
+    },
+    {
+      "name": "PROCESS_BOTTOM_RIGHT",
+      "hex": "e7 07",
+      "source_line": 181,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ARRAY_REPEAT",
+      "hex": "e7 08",
+      "source_line": 182,
+      "upstream_parameter_hint": "v0(2), v1(2), v2(2), v3(2), v4(2), v5(2), v6(2)"
+    },
+    {
+      "name": "FEED_LENGTH",
+      "hex": "e7 09",
+      "source_line": 183,
+      "upstream_parameter_hint": "value(5)"
+    },
+    {
+      "name": "FEED_INFO",
+      "hex": "e7 0a",
+      "source_line": 184
+    },
+    {
+      "name": "ARRAY_EN_MIRROR_CUT",
+      "hex": "e7 0b",
+      "source_line": 185,
+      "upstream_parameter_hint": "value(1)"
+    },
+    {
+      "name": "ARRAY_MIN_POINT",
+      "hex": "e7 13",
+      "source_line": 186,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ARRAY_MAX_POINT",
+      "hex": "e7 17",
+      "source_line": 187,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ARRAY_ADD",
+      "hex": "e7 23",
+      "source_line": 188,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ARRAY_MIRROR",
+      "hex": "e7 24",
+      "source_line": 189,
+      "upstream_parameter_hint": "mirror(1)"
+    },
+    {
+      "name": "BLOCK_X_SIZE",
+      "hex": "e7 35",
+      "source_line": 190,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "BY_TEST",
+      "hex": "e7 35",
+      "source_line": 191,
+      "upstream_parameter_hint": "0x11227766 TODO: Unclear why?"
+    },
+    {
+      "name": "ARRAY_EVEN_DISTANCE",
+      "hex": "e7 37",
+      "source_line": 193
+    },
+    {
+      "name": "SET_FEED_AUTO_PAUSE",
+      "hex": "e7 38",
+      "source_line": 194
+    },
+    {
+      "name": "UNION_BLOCK_PROPERTY",
+      "hex": "e7 3a",
+      "source_line": 195
+    },
+    {
+      "name": "DOCUMENT_MIN_POINT",
+      "hex": "e7 50",
+      "source_line": 196,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "DOCUMENT_MAX_POINT",
+      "hex": "e7 51",
+      "source_line": 197,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "PART_MIN_POINT",
+      "hex": "e7 52",
+      "source_line": 198,
+      "upstream_parameter_hint": "part(1), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "PART_MAX_POINT",
+      "hex": "e7 53",
+      "source_line": 199,
+      "upstream_parameter_hint": "part(1), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "PEN_OFFSET",
+      "hex": "e7 54",
+      "source_line": 200,
+      "upstream_parameter_hint": "axis(1), coord(5)"
+    },
+    {
+      "name": "LAYER_OFFSET",
+      "hex": "e7 55",
+      "source_line": 201,
+      "upstream_parameter_hint": "axis(1), coord(5)"
+    },
+    {
+      "name": "SET_CURRENT_ELEMENT_INDEX",
+      "hex": "e7 60",
+      "source_line": 202,
+      "upstream_parameter_hint": "index(1)"
+    },
+    {
+      "name": "PART_MIN_POINT_EX",
+      "hex": "e7 61",
+      "source_line": 203,
+      "upstream_parameter_hint": "part(1), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "PART_MAX_POINT_EX",
+      "hex": "e7 62",
+      "source_line": 204,
+      "upstream_parameter_hint": "part(1), abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ARRAY_START",
+      "hex": "ea",
+      "source_line": 205,
+      "upstream_parameter_hint": "index(1)"
+    },
+    {
+      "name": "ARRAY_END",
+      "hex": "eb",
+      "source_line": 206
+    },
+    {
+      "name": "REF_POINT_SET",
+      "hex": "f0",
+      "source_line": 207
+    },
+    {
+      "name": "ELEMENT_MAX_INDEX",
+      "hex": "f1 00",
+      "source_line": 208,
+      "upstream_parameter_hint": "index(1)"
+    },
+    {
+      "name": "ELEMENT_NAME_MAX_INDEX",
+      "hex": "f1 01",
+      "source_line": 209,
+      "upstream_parameter_hint": "index(1)"
+    },
+    {
+      "name": "ENABLE_BLOCK_CUTTING",
+      "hex": "f1 02",
+      "source_line": 210,
+      "upstream_parameter_hint": "enable(1)"
+    },
+    {
+      "name": "DISPLAY_OFFSET",
+      "hex": "f1 03",
+      "source_line": 211,
+      "upstream_parameter_hint": "abscoord(5),  abscoord(5)"
+    },
+    {
+      "name": "FEED_AUTO_CALC",
+      "hex": "f1 04",
+      "source_line": 212,
+      "upstream_parameter_hint": "enable(1)"
+    },
+    {
+      "name": "ELEMENT_INDEX",
+      "hex": "f2 00",
+      "source_line": 213,
+      "upstream_parameter_hint": "index(1)"
+    },
+    {
+      "name": "ELEMENT_NAME",
+      "hex": "f2 02",
+      "source_line": 214,
+      "upstream_parameter_hint": "name(10)"
+    },
+    {
+      "name": "ELEMENT_ARRAY_MIN_POINT",
+      "hex": "f2 03",
+      "source_line": 215,
+      "upstream_parameter_hint": "abscoord(5),  abscoord(5)"
+    },
+    {
+      "name": "ELEMENT_ARRAY_MAX_POINT",
+      "hex": "f2 04",
+      "source_line": 216,
+      "upstream_parameter_hint": "abscoord(5),  abscoord(5)"
+    },
+    {
+      "name": "ELEMENT_ARRAY",
+      "hex": "f2 05",
+      "source_line": 217,
+      "upstream_parameter_hint": "v0(2), v1(2), v2(2), v3(2), v4(2), v5(2), v6(2)"
+    },
+    {
+      "name": "ELEMENT_ARRAY_ADD",
+      "hex": "f2 06",
+      "source_line": 218,
+      "upstream_parameter_hint": "abscoord(5), abscoord(5)"
+    },
+    {
+      "name": "ELEMENT_ARRAY_MIRROR",
+      "hex": "f2 07",
+      "source_line": 219,
+      "upstream_parameter_hint": "mirror(1)"
+    }
+  ],
+  "memory_addresses": [
+    {
+      "name": "MEM_CARD_ID",
+      "hex": "05 7e",
+      "source_line": 221
+    },
+    {
+      "name": "MEM_BED_SIZE_X",
+      "hex": "00 26",
+      "source_line": 226
+    },
+    {
+      "name": "MEM_BED_SIZE_Y",
+      "hex": "00 36",
+      "source_line": 227
+    },
+    {
+      "name": "MEM_MACHINE_STATUS",
+      "hex": "04 00",
+      "source_line": 230,
+      "upstream_parameter_hint": "Returns status bits."
+    },
+    {
+      "name": "MEM_CURRENT_X",
+      "hex": "04 21",
+      "source_line": 241
+    },
+    {
+      "name": "MEM_CURRENT_Y",
+      "hex": "04 31",
+      "source_line": 242
+    },
+    {
+      "name": "MEM_CURRENT_Z",
+      "hex": "04 41",
+      "source_line": 243
+    },
+    {
+      "name": "MEM_CURRENT_U",
+      "hex": "04 51",
+      "source_line": 244
+    }
+  ]
+}

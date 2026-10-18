@@ -1,0 +1,20 @@
+[package]
+name = "burnburn-geometry"
+description = "f64 points, affine transforms, bounds, paths and explicit tolerances in canonical millimetres"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-types = { workspace = true }
+# Booleans/offsets behind `boolean.rs` only (ADR 0007).
+i_overlay = { workspace = true }
+# Platform-independent transcendental functions (DR-13); used only through `math.rs`.
+libm = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

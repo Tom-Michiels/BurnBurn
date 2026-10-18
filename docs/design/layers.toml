@@ -1,0 +1,326 @@
+# BurnBurn crate layering — machine-readable source of truth for `cargo xtask layers`.
+# Rationale and the human-readable table: docs/adr/0001-workspace-en-lagen.md.
+# Owner: Design. Change via an ADR amendment; Testing implements the check in xtask.
+#
+# Rules the checker enforces (schema 1):
+#  R1  Every workspace package must have an entry in [crates]; unknown packages fail.
+#  R2  A *normal* or *build* dependency on a workspace crate must be listed in that crate's `allow`
+#      AND have a strictly lower `layer`. (The allow-list is the contract; the layer number
+#      prevents cycles and keeps the table readable.)
+#  R3  A *dev* dependency on a workspace crate must have layer <= own layer, or be
+#      `burnburn-test-support`. Hosts (kind = "host") may never be a dependency of anything.
+#  R4  `burnburn-test-support` (kind = "testkit") may only appear as a dev-dependency.
+#  R5  `forbid` lists external package groups (see [groups]) that must not appear as a
+#      *direct* normal/build dependency of the crate.
+#  R6  `forbid_transitive` lists groups that must not appear anywhere in the crate's resolved
+#      normal+build dependency closure. Check it per target triple in [targets], using
+#      `cargo metadata --format-version 1 --filter-platform <triple>`.
+#  R7  `unsafe = "forbid"` crates must inherit `[lints] workspace = true` (unsafe_code = forbid).
+#      Only `unsafe = "adapter"` crates may override it, and only in reviewed modules (ADR 0002/0003).
+#  R8  kind = "tool" (xtask) is exempt from R2–R6 but must not be depended on by any crate.
+#
+# Group patterns: exact package name, or a trailing `*` as prefix match.
+
+[meta]
+schema = 1
+prefix = "burnburn-"
+
+[targets]
+# Both triples are checked from any host; this is metadata resolution, not a build.
+triples = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+
+[groups]
+apple_native   = ["objc2", "objc2-*", "block2", "dispatch2", "cocoa", "cocoa-*", "core-foundation", "core-foundation-*", "core-graphics", "core-graphics-*", "metal", "raw-window-metal"]
+windows_native = ["windows", "windows-*", "winapi", "winapi-*", "winit", "webview2*"]
+gpu            = ["wgpu", "wgpu-*", "naga", "vello", "vello_*", "ash", "glow", "gpu-allocator", "d3d12"]
+ui_toolkit     = ["winit", "tao", "egui", "eframe", "iced", "slint", "gtk", "gtk4", "relm4", "fltk", "wry", "tauri", "tauri-*", "rfd", "dioxus", "dioxus-*", "druid", "xilem", "masonry"]
+async_runtime  = ["tokio", "tokio-*", "async-std", "smol", "async-io", "mio"]
+network        = ["reqwest", "hyper", "ureq", "socket2", "surf", "isahc", "curl", "curl-sys"]
+# Non-Rust algorithm kernels must not enter the runtime graph silently (AGENTS.md).
+foreign_kernel = ["slvs", "potrace-sys", "autotrace*", "harfbuzz-sys", "harfbuzz_rs", "freetype-sys", "freetype-rs", "opencv", "opencv-*", "clipper-sys", "clipper2-sys"]
+# Compiling C/C++ in the build graph. Forbidden transitively for core crates; hosts are reviewed
+# case by case in docs/design/dependency-register.md.
+c_toolchain    = ["cc", "cmake", "bindgen", "pkg-config", "vcpkg"]
+
+# Shorthand used below (not interpreted by the checker; copied out per crate for clarity):
+#   CORE_FORBID = apple_native, windows_native, gpu, ui_toolkit, async_runtime, network, foreign_kernel, c_toolchain
+
+# ---------------------------------------------------------------------------------------------
+# Layer 0–1: types and geometry
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-types]
+layer = 0
+kind = "core"
+owner = "implementatie-kern"
+unsafe = "forbid"
+allow = []
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.burnburn-geometry]
+layer = 1
+kind = "core"
+owner = "implementatie-kern"
+unsafe = "forbid"
+allow = ["burnburn-types"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 2: data models that do not evaluate each other
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-document]
+layer = 2
+kind = "core"
+owner = "implementatie-kern"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.burnburn-image]
+layer = 2
+kind = "core"
+owner = "trace"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Immutable JobPlan contract (ADR 0001 §JobPlan, contracts.md §8/§14). IM13.
+[crates.burnburn-job]
+layer = 2
+kind = "core"
+owner = "cam"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 3: evaluators and the pure codec
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-sketch]
+layer = 3
+kind = "core"
+owner = "sketch"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.burnburn-trace]
+layer = 3
+kind = "core"
+owner = "trace"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-image", "burnburn-document"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# CAM reads only *resolved* geometry from DocumentSnapshot (sketch/text/trace results are already
+# patched into the document), so it does not depend on the evaluators. Dither/raster prep: burnburn-image.
+[crates.burnburn-cam]
+layer = 3
+kind = "core"
+owner = "cam"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Text shaping + glyph outlines (harfrust + skrifa, ADR 0007). IM18; evaluator like sketch.
+# Text *data* (TextObject, FontRef) lives in burnburn-document::text (module owner Generators/tekst), like DR-12.
+# Fase C (design-review "Fase C-besluiten" C-1): owner = Generators/tekst.
+[crates.burnburn-text]
+layer = 3
+kind = "core"
+owner = "generators"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Pure RD codec. No sockets, no clock, no document. Encoder input is burnburn-job (later).
+[crates.burnburn-ruida]
+layer = 3
+kind = "core"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-job"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 4: storage, editor interaction, machine state machine (all IO behind ports)
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-io]
+layer = 4
+kind = "core"
+owner = "implementatie-kern"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.burnburn-editor]
+layer = 4
+kind = "core"
+owner = "user-flow"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-sketch", "burnburn-job"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.burnburn-machine]
+layer = 4
+kind = "core"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-job", "burnburn-ruida"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Parametric laser generators (IM22: finger joints, tab/slot, box/hinge, stencil bridges, path text,
+# single-line text, frozen data rows/barcodes). Own crate, not a sketch module (C-1): it needs `text`
+# (same layer as sketch) and must not see `cam` (kerf is applied once, in cam). Generator *data* lives in
+# burnburn-document::generator; this crate implements document::Evaluator (DerivedOwner::Generator).
+[crates.burnburn-generators]
+layer = 4
+kind = "core"
+owner = "generators"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-text"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 5: shared presentation and the GPU renderer
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-presentation]
+layer = 5
+kind = "core"
+owner = "user-flow"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
+         "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-text", "burnburn-ruida", "burnburn-io",
+         "burnburn-editor", "burnburn-machine", "burnburn-generators"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Append-only production history (CompiledJob/Execution records, contracts-phase-c.md §IM17).
+# Pure log format + recovery over io's FileSystem port; presentation reaches it via a HistoryStore port with
+# presentation-owned read models (same layer: presentation never names history types). C-1: own crate.
+[crates.burnburn-history]
+layer = 5
+kind = "core"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-job", "burnburn-machine", "burnburn-io"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# wgpu pulls objc2-metal (macOS) and windows (Windows) transitively; that is allowed here.
+# Directly naming AppKit/Windows UI crates is not: the host hands a raw-window-handle in.
+[crates.burnburn-render]
+layer = 5
+kind = "adapter"
+owner = "gui"
+unsafe = "adapter"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-image", "burnburn-editor", "burnburn-job"]
+forbid = ["apple_native", "windows_native", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
+forbid_transitive = ["ui_toolkit", "async_runtime", "network", "foreign_kernel"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 6: concrete runtime adapters (threads, OS clock, filesystem, UDP/USB)
+# ---------------------------------------------------------------------------------------------
+[crates.burnburn-runtime]
+layer = 6
+kind = "adapter"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+# C-1 (fase C): + text (runtime implements text::FontSource over system font folders, pure std).
+# UDP via std::net only; Tokio/network crates now forbidden (ADR 0005). windows_native stays allowed
+# *transitively* (e.g. windows-sys under getrandom); naming it directly is not.
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-job", "burnburn-ruida", "burnburn-machine", "burnburn-io",
+         "burnburn-document", "burnburn-history", "burnburn-presentation", "burnburn-text"]
+forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+forbid_transitive = ["gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 7: hosts and binaries. Nothing depends on these.
+# ---------------------------------------------------------------------------------------------
+# burnburn-io: interim, for StdFileSystem in AppPorts until burnburn-runtime re-exports it (GUI, fase B).
+# C-1: bevestigd als tijdelijk; vervalt zodra runtime `StdFileSystem` re-exporteert (DR-21).
+# burnburn-image: IM27 — the host's CameraPort builds `CameraFrame { image: RasterImage }`.
+[crates.burnburn-macos]
+layer = 7
+kind = "host"
+owner = "gui"
+unsafe = "adapter"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image"]
+forbid = ["windows_native", "ui_toolkit", "foreign_kernel"]
+forbid_transitive = ["ui_toolkit", "foreign_kernel"]
+
+[crates.burnburn-windows]
+layer = 7
+kind = "host"
+owner = "gui"
+unsafe = "adapter"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image"]
+forbid = ["apple_native", "ui_toolkit", "foreign_kernel"]
+forbid_transitive = ["ui_toolkit", "foreign_kernel"]
+
+[crates.burnburn-cli]
+layer = 7
+kind = "host"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
+         "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-ruida", "burnburn-io",
+         "burnburn-text", "burnburn-machine", "burnburn-history", "burnburn-presentation", "burnburn-runtime",
+         "burnburn-generators"]
+# C-1: the CLI drives AppController headless + runtime; it never opens sockets itself.
+forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "foreign_kernel"]
+
+# ---------------------------------------------------------------------------------------------
+# Test tooling and build tooling
+# ---------------------------------------------------------------------------------------------
+# Fakes (clock, filesystem, transport), fixtures and harnesses. Implements the ports of the
+# crates it lists, so it sits above them; R4 keeps it out of production graphs.
+[crates.burnburn-test-support]
+layer = 6
+kind = "testkit"
+owner = "testing"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
+         "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-text", "burnburn-ruida", "burnburn-io",
+         "burnburn-editor", "burnburn-machine", "burnburn-history", "burnburn-presentation", "burnburn-generators"]
+forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# Cross-crate scenario tests (integration gates); test-only, owner Testing. Empty library, every
+# workspace crate below the hosts is a dev-dependency only. Layer 8 so R3 admits all of them; kind
+# "testkit" so R4 keeps it out of every graph (nothing may depend on it). Added by Testing in
+# phase C (docs/coordination/testing.md § Aan Design); accepted by Design as C-1 (design-review.md).
+# Never contacts a real laser: live UDP only against a fake controller on 127.0.0.1 (phase-c.md).
+[crates.burnburn-scenarios]
+layer = 8
+kind = "testkit"
+owner = "testing"
+unsafe = "forbid"
+allow = []
+forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+[crates.xtask]
+layer = 99
+kind = "tool"
+owner = "testing"
+unsafe = "forbid"
+allow = []
+forbid = []
+forbid_transitive = []

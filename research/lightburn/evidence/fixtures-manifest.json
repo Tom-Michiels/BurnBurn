@@ -1,0 +1,44 @@
+[
+  {
+    "path": "fixtures/gray-ramp-grayscale.lbrn2",
+    "bytes": 3151,
+    "sha256": "051c6cee6f2b90fc60f71a652f1b3d42183c3b97099efbecb240edb4b0197b0b",
+    "origin": "LightBurn Core 2.1.04 native export"
+  },
+  {
+    "path": "fixtures/gray-ramp-grayscale.rd",
+    "bytes": 7318,
+    "sha256": "3e4fc6d093dde4420b115363701b1c7b81ab7f18894ce8dbf6556b08e4a13a59",
+    "origin": "LightBurn Core 2.1.04 native export"
+  },
+  {
+    "path": "fixtures/gray-ramp.png",
+    "bytes": 86,
+    "sha256": "6d6e512272e3368636280b346e94b3c0d7ec341170ce9ed0a9cb7562df136d9f",
+    "origin": "original research test input"
+  },
+  {
+    "path": "fixtures/rectangle-default.rd",
+    "bytes": 525,
+    "sha256": "392e319b3c4e37b3f5fda49019f11dd2a4f7bcf3dbc905ad70a67d048985ffe9",
+    "origin": "LightBurn Core 2.1.04 native export"
+  },
+  {
+    "path": "fixtures/rectangle-fill.lbrn2",
+    "bytes": 2993,
+    "sha256": "97881bbb717bff3b9d2df99592a199ca1cb067480e83e2d458347cd16f81b984",
+    "origin": "LightBurn Core 2.1.04 native export"
+  },
+  {
+    "path": "fixtures/rectangle-fill.rd",
+    "bytes": 2572,
+    "sha256": "90512253bd2a22c332d73cb303989b5bcead10e366ba26b5cc7299fac51c77f8",
+    "origin": "LightBurn Core 2.1.04 native export"
+  },
+  {
+    "path": "fixtures/rectangle.svg",
+    "bytes": 182,
+    "sha256": "7d27636560e67b86ed972aca9fb21cc7061c5b82daf587e0752ce46dd7fe37d6",
+    "origin": "original research test input"
+  }
+]

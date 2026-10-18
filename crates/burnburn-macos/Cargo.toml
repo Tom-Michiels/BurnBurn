@@ -1,0 +1,182 @@
+[package]
+name = "burnburn-macos"
+description = "BurnBurn's native macOS host: AppKit window, menu, inspector and the Metal canvas surface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "burnburn"
+
+# The workspace lints, except unsafe_code: denied, not forbidden, so that the AppKit layer
+# (src/appkit/) can allow it locally with SAFETY comments: defining Objective-C classes and creating
+# the wgpu surface on an NSView have no safe API. Keep the rest in sync with [workspace.lints].
+# ADR 0002 adds: unsafe_op_in_unsafe_fn, undocumented_unsafe_blocks, multiple_unsafe_ops_per_block.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+too_many_arguments = "allow"
+type_complexity = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+
+[features]
+default = ["camera"]
+# IM27: the AVFoundation camera adapter (`appkit::camera`). On by default since the integration
+# round: `run_app` attaches it to the camera section, which only reads the permission state and
+# the device list; the privacy prompt and capture start only on the user's click, never in
+# automatic tests (see docs/dev-notes/IM27.md, IM20.md).
+camera = ["dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video"]
+
+[[bin]]
+name = "burnburn"
+path = "src/main.rs"
+
+# AppKit lifecycle on the main thread with the real event loop: libtest's harness would run the
+# test on a worker thread, so each test brings its own main (one scenario per process, ADR 0002).
+[[test]]
+name = "native_dimension_commit"
+path = "../../tests/native/macos/native_dimension_commit.rs"
+harness = false
+
+[[test]]
+name = "callback_after_close_is_ignored"
+path = "../../tests/native/macos/callback_after_close_is_ignored.rs"
+harness = false
+
+[[test]]
+name = "native_canvas_surface"
+path = "../../tests/native/macos/native_canvas_surface.rs"
+harness = false
+
+[[test]]
+name = "surface_lost_is_recreated"
+path = "../../tests/native/macos/surface_lost_is_recreated.rs"
+harness = false
+
+[[test]]
+name = "closing_dirty_document"
+path = "../../tests/native/macos/closing_dirty_document.rs"
+harness = false
+
+[[test]]
+name = "native_file_panels"
+path = "../../tests/native/macos/native_file_panels.rs"
+harness = false
+
+[[test]]
+name = "native_object_list"
+path = "../../tests/native/macos/native_object_list.rs"
+harness = false
+
+[[test]]
+name = "quit_with_dirty_documents"
+path = "../../tests/native/macos/quit_with_dirty_documents.rs"
+harness = false
+
+[[test]]
+name = "finder_open"
+path = "../../tests/native/macos/finder_open.rs"
+harness = false
+
+[[test]]
+name = "two_windows"
+path = "../../tests/native/macos/two_windows.rs"
+harness = false
+
+[[test]]
+name = "canvas_accessibility"
+path = "../../tests/native/macos/canvas_accessibility.rs"
+harness = false
+
+[[test]]
+name = "canvas_text_input"
+path = "../../tests/native/macos/canvas_text_input.rs"
+harness = false
+
+[[test]]
+name = "language_follows_locale"
+path = "../../tests/native/macos/language_follows_locale.rs"
+harness = false
+
+[[test]]
+name = "offline_start"
+path = "../../tests/native/macos/offline_start.rs"
+harness = false
+
+[[test]]
+name = "panels_and_preview"
+path = "../../tests/native/macos/panels_and_preview.rs"
+harness = false
+
+[[test]]
+name = "import_and_machine_panels"
+path = "../../tests/native/macos/import_and_machine_panels.rs"
+harness = false
+
+[[test]]
+name = "presentation_panels"
+path = "../../tests/native/macos/presentation_panels.rs"
+harness = false
+
+[[test]]
+name = "pen_tool"
+path = "../../tests/native/macos/pen_tool.rs"
+harness = false
+
+[[test]]
+name = "recovery_offer"
+path = "../../tests/native/macos/recovery_offer.rs"
+harness = false
+
+[[test]]
+name = "layer_palette"
+path = "../../tests/native/macos/layer_palette.rs"
+harness = false
+
+[dependencies]
+# Platform-independent adapter (event -> UiIntent) and the app wiring: tested headlessly everywhere.
+burnburn-document = { workspace = true }
+burnburn-editor = { workspace = true }
+burnburn-geometry = { workspace = true }
+# IM27: camera frames become `SourceImage`s (layers.toml allows image for the hosts).
+burnburn-image = { workspace = true }
+# StdFileSystem for AppPorts.fs until burnburn-runtime re-exports it (docs/coordination/gui.md).
+burnburn-io = { workspace = true }
+burnburn-presentation = { workspace = true }
+# System font source for canvas text input (`fonts::first_readable_font`).
+burnburn-runtime = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+# Compiling a plan in the preview-panel test needs a machine profile and a controller dialect.
+burnburn-job = { workspace = true }
+burnburn-ruida = { workspace = true }
+# Machine panel test: execution states and machine ids as the view model carries them.
+burnburn-machine = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+burnburn-render = { workspace = true }
+wgpu = { workspace = true, features = ["metal"] }
+# The canvas NSView handed to wgpu's Metal surface (wgpu attaches and tracks its CAMetalLayer).
+raw-window-handle = { workspace = true }
+# `exception`: AppKit methods that raise an NSException become a Rust error (ADR 0002).
+objc2 = { workspace = true, features = ["exception"] }
+# Completion handlers of NSSavePanel/NSOpenPanel/NSAlert sheets (ADR 0002).
+block2 = { workspace = true }
+# Wake-up of the main thread when a worker task finishes (ADR 0002).
+dispatch2 = { workspace = true }
+objc2-av-foundation = { workspace = true, optional = true, features = ["std", "block2", "dispatch2", "objc2-core-media", "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureSession", "AVCaptureSessionPreset", "AVCaptureVideoDataOutput", "AVMediaFormat"] }
+objc2-core-media = { workspace = true, optional = true, features = ["std", "objc2-core-video", "CMBase", "CMFormatDescription", "CMSampleBuffer"] }
+objc2-core-video = { workspace = true, optional = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimer", "NSURL"] }
+objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow"] }

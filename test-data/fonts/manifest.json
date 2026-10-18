@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "description": "Open-licence fonts for burnburn-text and burnburn-generators tests (IM18 tekstdeel, IM22). Tests load fonts from these bytes only; no system font scan.",
+  "golden_policy": "Never replace these files automatically. A different font version changes glyph outlines and shaping fixtures; that needs a reviewed explanation (AGENTS.md).",
+  "files": [
+    {
+      "path": "LiberationSans-Regular.ttf",
+      "role": "font",
+      "bytes": 410820,
+      "sha256": "075e71be4c58beda172ecb574a799308f04c3d054c6a5b7434954d3b0f1b28d8",
+      "licence": "SIL Open Font License 1.1 (LiberationSans-OFL.txt)",
+      "origin": "Copied 2026-10-18 from the local sibling project ../solidcraft/assets/fonts/liberation-sans/ (its OFL.txt names crates/sketch/fonts/LiberationSans-Regular.ttf). Not downloaded. Liberation Sans 2.x, copyright 2010 Google, 2012 Red Hat.",
+      "content": "Latin primary font: kerning (GPOS), fi/fl ligatures (GSUB), no CJK glyphs."
+    },
+    {
+      "path": "LiberationSans-OFL.txt",
+      "role": "licence",
+      "bytes": 4379,
+      "sha256": "4979693b52ea5ae499162505ff3d82916a8f9f17300daaf7af75497172aa1548",
+      "licence": "SIL Open Font License 1.1",
+      "origin": "Copied with the font from ../solidcraft/assets/fonts/liberation-sans/OFL.txt.",
+      "content": "Licence text for LiberationSans-Regular.ttf."
+    },
+    {
+      "path": "BIZUDPGothic-Regular.ttf",
+      "role": "font",
+      "bytes": 4669688,
+      "sha256": "258d7156c165f2ff774b6efee637c22c3b950de0d8a10e501137061bc8085d01",
+      "licence": "SIL Open Font License 1.1 (BIZUDPGothic-OFL.txt)",
+      "origin": "Copied 2026-10-18 from the local sibling project ../solidcraft/assets/fonts/biz-udp-gothic/. Not downloaded. Copyright 2022 The BIZ UDGothic Project Authors (github.com/googlefonts/morisawa-biz-ud-mincho).",
+      "content": "Fallback font in tests: Japanese glyphs that Liberation Sans lacks."
+    },
+    {
+      "path": "BIZUDPGothic-OFL.txt",
+      "role": "licence",
+      "bytes": 4408,
+      "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc",
+      "licence": "SIL Open Font License 1.1",
+      "origin": "Copied with the font from ../solidcraft/assets/fonts/biz-udp-gothic/OFL.txt.",
+      "content": "Licence text for BIZUDPGothic-Regular.ttf."
+    },
+    {
+      "path": "reference_metrics.py",
+      "role": "reference-tool",
+      "bytes": 3019,
+      "sha256": "9429a4cf636163148c3050d6cea59ce2d46f53f95f772919cee2dd7e70b918b8",
+      "licence": "MIT OR Apache-2.0 (BurnBurn)",
+      "origin": "Written 2026-10-18 by Generators/tekst: struct-only reader of head/cmap/hmtx/glyf, independent of skrifa. Not a runtime dependency.",
+      "content": "Prints units per em, glyph ids, advances and glyf bounding boxes used as oracles in burnburn-text tests."
+    }
+  ]
+}

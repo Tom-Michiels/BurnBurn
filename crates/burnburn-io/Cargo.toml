@@ -1,0 +1,31 @@
+[package]
+name = "burnburn-io"
+description = "The .burnburn project container (v1), schema DTOs, canonical hashes, and atomic save/recovery behind a FileSystem port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Source-image validation and dimensions; png + jpeg only (ADR 0007).
+image = { workspace = true }
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+# Frozen machine-profile snapshots in a project (IM28, P07).
+burnburn-job = { workspace = true }
+burnburn-types = { workspace = true }
+serde = { workspace = true }
+# Exact f64 text roundtrip: a reopened project must have bit-identical coordinates.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+zip = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+# Tests recompute hashes from hand-written framing bytes.
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+# Tests craft damaged containers independently of the crate's own encoder.
+zip = { workspace = true }

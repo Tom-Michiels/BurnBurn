@@ -1,0 +1,10 @@
+Documentcontrole — 17 oktober 2026
+Markdownbestanden in dossier: 6
+Gecontroleerde lokale links inclusief researchindex: 21
+Unieke idee-IDs: 12
+Unieke proef-IDs: 12
+Broncodes in register inclusief lokale LightBurn-studie: 28
+Woorden in dossier (benadering): 6184
+Controle: lokale links, expliciete broncodes en ID-aantallen.
+Geen live externe linktest, geïnstalleerde apptest of hardwaretest uitgevoerd.
+Resultaat: GESLAAGD

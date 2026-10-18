@@ -1,0 +1,18 @@
+[package]
+name = "burnburn-image"
+description = "Source images with preserved original pixels, physical scale, non-destructive crop/rotation and binarisation for tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-types = { workspace = true }
+image = { workspace = true }
+libm = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

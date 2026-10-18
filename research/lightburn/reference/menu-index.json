@@ -1,0 +1,1836 @@
+[
+  {
+    "id": "M001",
+    "menu": "LightBurn",
+    "path": "About LightBurn",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M002",
+    "menu": "LightBurn",
+    "path": "Services / Activity Monitor",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M003",
+    "menu": "LightBurn",
+    "path": "Services / Allocations & Leaks",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M004",
+    "menu": "LightBurn",
+    "path": "Services / File Activity",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M005",
+    "menu": "LightBurn",
+    "path": "Services / System Trace",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M006",
+    "menu": "LightBurn",
+    "path": "Services / Time Profile Active Application",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M007",
+    "menu": "LightBurn",
+    "path": "Services / Time Profile App Under Mouse",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M008",
+    "menu": "LightBurn",
+    "path": "Services / Time Profile Entire System",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M009",
+    "menu": "LightBurn",
+    "path": "Services / Toggle Instruments Recording",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M010",
+    "menu": "LightBurn",
+    "path": "Services / Services Settings…",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M011",
+    "menu": "LightBurn",
+    "path": "Hide LightBurn",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M012",
+    "menu": "LightBurn",
+    "path": "Hide Others",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M013",
+    "menu": "LightBurn",
+    "path": "Show All",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M014",
+    "menu": "LightBurn",
+    "path": "Quit LightBurn",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M015",
+    "menu": "File",
+    "path": "New",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M016",
+    "menu": "File",
+    "path": "New Window",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M017",
+    "menu": "File",
+    "path": "Recent Projects",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M018",
+    "menu": "File",
+    "path": "Recent Templates",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M019",
+    "menu": "File",
+    "path": "Open",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M020",
+    "menu": "File",
+    "path": "Import",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M021",
+    "menu": "File",
+    "path": "Show Notes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M022",
+    "menu": "File",
+    "path": "Save",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M023",
+    "menu": "File",
+    "path": "Save As",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M024",
+    "menu": "File",
+    "path": "Save As Template",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M025",
+    "menu": "File",
+    "path": "Save RD file",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M026",
+    "menu": "File",
+    "path": "Export",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M027",
+    "menu": "File",
+    "path": "Preferences / Import Prefs",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M028",
+    "menu": "File",
+    "path": "Preferences / Export Prefs",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M029",
+    "menu": "File",
+    "path": "Preferences / Open Prefs Folder",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M030",
+    "menu": "File",
+    "path": "Preferences / Load Prefs Backup",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M031",
+    "menu": "File",
+    "path": "Preferences / Edit Hotkeys",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M032",
+    "menu": "File",
+    "path": "Bundles / Import Bundle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M033",
+    "menu": "File",
+    "path": "Bundles / Export Bundle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M034",
+    "menu": "File",
+    "path": "Print (Black Only)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M035",
+    "menu": "File",
+    "path": "Print (Keep Colors)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M036",
+    "menu": "File",
+    "path": "Save Processed Bitmap",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M037",
+    "menu": "File",
+    "path": "Save Background Capture",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M038",
+    "menu": "Edit",
+    "path": "Undo",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M039",
+    "menu": "Edit",
+    "path": "Redo",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M040",
+    "menu": "Edit",
+    "path": "Undo History",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M041",
+    "menu": "Edit",
+    "path": "Select All",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M042",
+    "menu": "Edit",
+    "path": "Invert Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M043",
+    "menu": "Edit",
+    "path": "Cut",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M044",
+    "menu": "Edit",
+    "path": "Copy",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M045",
+    "menu": "Edit",
+    "path": "Duplicate",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M046",
+    "menu": "Edit",
+    "path": "Paste",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M047",
+    "menu": "Edit",
+    "path": "Paste in Place",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M048",
+    "menu": "Edit",
+    "path": "Delete",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M049",
+    "menu": "Edit",
+    "path": "Convert to Path",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M050",
+    "menu": "Edit",
+    "path": "Convert to Bitmap",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M051",
+    "menu": "Edit",
+    "path": "Close Path",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M052",
+    "menu": "Edit",
+    "path": "Close Selected Paths With Tolerance",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M053",
+    "menu": "Edit",
+    "path": "Auto-Join Selected Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M054",
+    "menu": "Edit",
+    "path": "Optimize Selected Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M055",
+    "menu": "Edit",
+    "path": "Delete Duplicates",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M056",
+    "menu": "Edit",
+    "path": "Reverse Shape Direction",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M057",
+    "menu": "Edit",
+    "path": "Select Open Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M058",
+    "menu": "Edit",
+    "path": "Select Open Shapes Set to Fill",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M059",
+    "menu": "Edit",
+    "path": "Select All Shapes in Current Layer",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M060",
+    "menu": "Edit",
+    "path": "Flash Shapes in Current Layer",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M061",
+    "menu": "Edit",
+    "path": "Select Contained Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M062",
+    "menu": "Edit",
+    "path": "Select Shapes Smaller Than Selected",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M063",
+    "menu": "Edit",
+    "path": "Select Circles",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M064",
+    "menu": "Edit",
+    "path": "Image options / Refresh Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M065",
+    "menu": "Edit",
+    "path": "Image options / Replace Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M066",
+    "menu": "Edit",
+    "path": "Image options / Replace Image to Fit",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M067",
+    "menu": "Edit",
+    "path": "Settings",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M068",
+    "menu": "Edit",
+    "path": "AutoFill / Contact…",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M069",
+    "menu": "Edit",
+    "path": "AutoFill / Passwords…",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M070",
+    "menu": "Edit",
+    "path": "AutoFill / Credit Card…",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M071",
+    "menu": "Edit",
+    "path": "Start Dictation…",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M072",
+    "menu": "Edit",
+    "path": "Emoji & Symbols",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M073",
+    "menu": "Tools",
+    "path": "Select",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M074",
+    "menu": "Tools",
+    "path": "Draw Lines",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M075",
+    "menu": "Tools",
+    "path": "Draw Shape / Rectangle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M076",
+    "menu": "Tools",
+    "path": "Draw Shape / Ellipse",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M077",
+    "menu": "Tools",
+    "path": "Draw Shape / Triangle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M078",
+    "menu": "Tools",
+    "path": "Draw Shape / Pentagon",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M079",
+    "menu": "Tools",
+    "path": "Draw Shape / Polygon",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M080",
+    "menu": "Tools",
+    "path": "Draw Shape / Octagon",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M081",
+    "menu": "Tools",
+    "path": "Draw Shape / Star",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M082",
+    "menu": "Tools",
+    "path": "Draw Shape / Dual Star",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M083",
+    "menu": "Tools",
+    "path": "Edit Nodes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M084",
+    "menu": "Tools",
+    "path": "Trim Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M085",
+    "menu": "Tools",
+    "path": "Add Tabs",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M086",
+    "menu": "Tools",
+    "path": "Edit Text",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M087",
+    "menu": "Tools",
+    "path": "Position Laser",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M088",
+    "menu": "Tools",
+    "path": "Measure",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M089",
+    "menu": "Tools",
+    "path": "Create Bar Code",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M090",
+    "menu": "Tools",
+    "path": "Offset Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M091",
+    "menu": "Tools",
+    "path": "Weld Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M092",
+    "menu": "Tools",
+    "path": "Boolean Union",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M093",
+    "menu": "Tools",
+    "path": "Boolean Subtract",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M094",
+    "menu": "Tools",
+    "path": "Boolean Intersection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M095",
+    "menu": "Tools",
+    "path": "Boolean Assistant",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M096",
+    "menu": "Tools",
+    "path": "Cut Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M097",
+    "menu": "Tools",
+    "path": "Adjust Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M098",
+    "menu": "Tools",
+    "path": "Trace Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M099",
+    "menu": "Tools",
+    "path": "Multi-File Trace Image (Labs)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M100",
+    "menu": "Tools",
+    "path": "Apply Path to Text",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M101",
+    "menu": "Tools",
+    "path": "Apply Mask to Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M102",
+    "menu": "Tools",
+    "path": "Crop Image",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M103",
+    "menu": "Tools",
+    "path": "Resize Slots in Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M104",
+    "menu": "Tools",
+    "path": "Warp Selection (4 points)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M105",
+    "menu": "Tools",
+    "path": "Deform Selection (16 points)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M106",
+    "menu": "Tools",
+    "path": "Generate Tangent Circle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M107",
+    "menu": "Arrange",
+    "path": "Group",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M108",
+    "menu": "Arrange",
+    "path": "Ungroup",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M109",
+    "menu": "Arrange",
+    "path": "Auto-Group",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M110",
+    "menu": "Arrange",
+    "path": "Flip Horizontal",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M111",
+    "menu": "Arrange",
+    "path": "Flip Vertical",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M112",
+    "menu": "Arrange",
+    "path": "Mirror Across Line",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M113",
+    "menu": "Arrange",
+    "path": "Rotate 90° Clockwise",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M114",
+    "menu": "Arrange",
+    "path": "Rotate 90° Counter-Clockwise",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M115",
+    "menu": "Arrange",
+    "path": "Two-Point Rotate / Scale",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M116",
+    "menu": "Arrange",
+    "path": "Align / Align Centers",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M117",
+    "menu": "Arrange",
+    "path": "Align / Align Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M118",
+    "menu": "Arrange",
+    "path": "Align / Align Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M119",
+    "menu": "Arrange",
+    "path": "Align / Align Top",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M120",
+    "menu": "Arrange",
+    "path": "Align / Align Bottom",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M121",
+    "menu": "Arrange",
+    "path": "Align / Align H-Center",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M122",
+    "menu": "Arrange",
+    "path": "Align / Align V-Center",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M123",
+    "menu": "Arrange",
+    "path": "Distribute / Distribute H-Spaced",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M124",
+    "menu": "Arrange",
+    "path": "Distribute / Distribute H-Centered",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M125",
+    "menu": "Arrange",
+    "path": "Distribute / Distribute V-Spaced",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M126",
+    "menu": "Arrange",
+    "path": "Distribute / Distribute V-Centered",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M127",
+    "menu": "Arrange",
+    "path": "Distribute / Move H-Together",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M128",
+    "menu": "Arrange",
+    "path": "Distribute / Move V-Together",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M129",
+    "menu": "Arrange",
+    "path": "Nest Selected",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M130",
+    "menu": "Arrange",
+    "path": "Quick Nest",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M131",
+    "menu": "Arrange",
+    "path": "Dock / Dock Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M132",
+    "menu": "Arrange",
+    "path": "Dock / Dock Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M133",
+    "menu": "Arrange",
+    "path": "Dock / Dock Up",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M134",
+    "menu": "Arrange",
+    "path": "Dock / Dock Down",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M135",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Laser Position",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M136",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Page Center",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M137",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Upper Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M138",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Upper Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M139",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Lower Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M140",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Lower Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M141",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M142",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M143",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Top",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M144",
+    "menu": "Arrange",
+    "path": "Move Selected Objects / Move to Bottom",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M145",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Selection Center",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M146",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Upper Left of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M147",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Upper Right of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M148",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Lower Left of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M149",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Lower Right of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M150",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Top of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M151",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Bottom of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M152",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Left of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M153",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Move Laser to Right of Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M154",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Jog Laser Left",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M155",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Jog Laser Right",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M156",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Jog Laser Down",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M157",
+    "menu": "Arrange",
+    "path": "Move Laser to Selection / Jog Laser Up",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M158",
+    "menu": "Arrange",
+    "path": "Grid / Array",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M159",
+    "menu": "Arrange",
+    "path": "Circular Array",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M160",
+    "menu": "Arrange",
+    "path": "Copy Along Path",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M161",
+    "menu": "Arrange",
+    "path": "Create rubber band outline from selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M162",
+    "menu": "Arrange",
+    "path": "Break Apart",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M163",
+    "menu": "Arrange",
+    "path": "Push Forward in Draw Order",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M164",
+    "menu": "Arrange",
+    "path": "Push Backward in Draw Order",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M165",
+    "menu": "Arrange",
+    "path": "Push to Front",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M166",
+    "menu": "Arrange",
+    "path": "Push to Back",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M167",
+    "menu": "Arrange",
+    "path": "Lock Selected Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M168",
+    "menu": "Arrange",
+    "path": "Unlock Selected Shapes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M169",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Start Wizard",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M170",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Set First Target Position",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M171",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Set Second Target Position",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M172",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Align Output to Targets",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M173",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Align Output to Targets (no scaling)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M174",
+    "menu": "Laser Tools",
+    "path": "Print and Cut / Reset Print and Cut",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M175",
+    "menu": "Laser Tools",
+    "path": "Manage Cameras",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M176",
+    "menu": "Laser Tools",
+    "path": "Rotary Setup",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M177",
+    "menu": "Laser Tools",
+    "path": "Feeder Setup",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M178",
+    "menu": "Laser Tools",
+    "path": "Focus Test",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M179",
+    "menu": "Laser Tools",
+    "path": "Interval Test",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M180",
+    "menu": "Laser Tools",
+    "path": "Material Test",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M181",
+    "menu": "Laser Tools",
+    "path": "Center Finder",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M182",
+    "menu": "Laser Tools",
+    "path": "Taper Warp",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M183",
+    "menu": "Laser Tools",
+    "path": "Manage Devices",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M184",
+    "menu": "Laser Tools",
+    "path": "Device Settings",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M185",
+    "menu": "Laser Tools",
+    "path": "Machine Settings",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M186",
+    "menu": "Laser Tools",
+    "path": "Get Controller Info",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M187",
+    "menu": "Web Tools",
+    "path": "Cuttle",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M188",
+    "menu": "Window",
+    "path": "Reset to Default Layout",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M189",
+    "menu": "Window",
+    "path": "Preview",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M190",
+    "menu": "Window",
+    "path": "Zoom to Page",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M191",
+    "menu": "Window",
+    "path": "Zoom In",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M192",
+    "menu": "Window",
+    "path": "Zoom Out",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M193",
+    "menu": "Window",
+    "path": "Frame Selection",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M194",
+    "menu": "Window",
+    "path": "View Style: / Wireframe / Coarse",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M195",
+    "menu": "Window",
+    "path": "View Style: / Wireframe / Smooth",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M196",
+    "menu": "Window",
+    "path": "View Style: / Filled / Coarse",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M197",
+    "menu": "Window",
+    "path": "View Style: / Filled / Smooth",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M198",
+    "menu": "Window",
+    "path": "Toggle Wireframe / Filled",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M199",
+    "menu": "Window",
+    "path": "Toggle Side Panels",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M200",
+    "menu": "Window",
+    "path": "Main",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M201",
+    "menu": "Window",
+    "path": "Numeric Edits",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M202",
+    "menu": "Window",
+    "path": "Creation Tools",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M203",
+    "menu": "Window",
+    "path": "Text Options",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M204",
+    "menu": "Window",
+    "path": "Modifiers",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M205",
+    "menu": "Window",
+    "path": "Arrange",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M206",
+    "menu": "Window",
+    "path": "Arrange (long)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M207",
+    "menu": "Window",
+    "path": "Color Palette",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M208",
+    "menu": "Window",
+    "path": "Docking",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M209",
+    "menu": "Window",
+    "path": "Modes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M210",
+    "menu": "Window",
+    "path": "Art Library",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M211",
+    "menu": "Window",
+    "path": "Cameras",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M212",
+    "menu": "Window",
+    "path": "Console",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M213",
+    "menu": "Window",
+    "path": "Cuts / Layers",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M214",
+    "menu": "Window",
+    "path": "Laser",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M215",
+    "menu": "Window",
+    "path": "File List",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M216",
+    "menu": "Window",
+    "path": "Macros",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M217",
+    "menu": "Window",
+    "path": "Material Library",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M218",
+    "menu": "Window",
+    "path": "Move",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M219",
+    "menu": "Window",
+    "path": "Shape Properties",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M220",
+    "menu": "Window",
+    "path": "Variable Text",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M221",
+    "menu": "Language",
+    "path": "العربية (Arabic)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M222",
+    "menu": "Language",
+    "path": "Čeština (Czech)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M223",
+    "menu": "Language",
+    "path": "Dansk (Danish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M224",
+    "menu": "Language",
+    "path": "Deutsch (German)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M225",
+    "menu": "Language",
+    "path": "Ελληνικά (Greek)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M226",
+    "menu": "Language",
+    "path": "English",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M227",
+    "menu": "Language",
+    "path": "Español (Spanish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M228",
+    "menu": "Language",
+    "path": "Español (Latin American)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M229",
+    "menu": "Language",
+    "path": "Suomi (Finnish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M230",
+    "menu": "Language",
+    "path": "Français (French)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M231",
+    "menu": "Language",
+    "path": "Magyar (Hungarian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M232",
+    "menu": "Language",
+    "path": "Italiano (Italian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M233",
+    "menu": "Language",
+    "path": "日本語 (Japanese)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M234",
+    "menu": "Language",
+    "path": "한국어 (Korean)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M235",
+    "menu": "Language",
+    "path": "Nederlands (Dutch)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M236",
+    "menu": "Language",
+    "path": "Norsk (Norwegian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M237",
+    "menu": "Language",
+    "path": "Język Polski (Polish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M238",
+    "menu": "Language",
+    "path": "Português Brasileiro (Brazilian Portuguese)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M239",
+    "menu": "Language",
+    "path": "Português (Portuguese)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M240",
+    "menu": "Language",
+    "path": "Русский (Russian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M241",
+    "menu": "Language",
+    "path": "Slovenski Jezik (Slovenian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M242",
+    "menu": "Language",
+    "path": "Svenska (Swedish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M243",
+    "menu": "Language",
+    "path": "ภาษาไทย (Thai)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M244",
+    "menu": "Language",
+    "path": "Türkçe (Turkish)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M245",
+    "menu": "Language",
+    "path": "Українська (Ukrainian)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M246",
+    "menu": "Language",
+    "path": "汉语 (Simplified Chinese)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M247",
+    "menu": "Language",
+    "path": "漢語 (Traditional Chinese)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M248",
+    "menu": "Help",
+    "path": "End User License Agreement",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M249",
+    "menu": "Help",
+    "path": "LightBurn Support Forum",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M250",
+    "menu": "Help",
+    "path": "Submit Feature Request",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M251",
+    "menu": "Help",
+    "path": "Quick Help and Notes",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M252",
+    "menu": "Help",
+    "path": "Online Documentation",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M253",
+    "menu": "Help",
+    "path": "PDF Documentation Link",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M254",
+    "menu": "Help",
+    "path": "Online Video Tutorials",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M255",
+    "menu": "Help",
+    "path": "Generate Support Data",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M256",
+    "menu": "Help",
+    "path": "Camera Selection Help",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M257",
+    "menu": "Help",
+    "path": "Check for Updates",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M258",
+    "menu": "Help",
+    "path": "License Management",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M259",
+    "menu": "Help",
+    "path": "Enable Debug Log",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M260",
+    "menu": "Help",
+    "path": "Debug Drawing",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M261",
+    "menu": "Help",
+    "path": "Convert to Cut (Debug)",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  },
+  {
+    "id": "M262",
+    "menu": "Help",
+    "path": "Real-Time Statistics",
+    "evidence": "UI",
+    "context": "macOS; LightBurn Core 2.1.04; Ruida profile"
+  }
+]

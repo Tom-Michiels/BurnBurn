@@ -1,0 +1,80 @@
+# cargo-fuzz targets for BurnBurn's untrusted-byte parsers (Testing role).
+# Deliberately NOT a workspace member (root `exclude = ["fuzz"]`): libFuzzer instrumentation
+# needs a nightly toolchain, while the workspace is pinned to stable 1.99.1. Own lockfile.
+# How to run: fuzz/README.md.
+[package]
+name = "burnburn-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+burnburn-image = { path = "../crates/burnburn-image" }
+burnburn-io = { path = "../crates/burnburn-io" }
+burnburn-ruida = { path = "../crates/burnburn-ruida" }
+burnburn-types = { path = "../crates/burnburn-types" }
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+[[bin]]
+name = "ruida_decode"
+path = "fuzz_targets/ruida_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ruida_rd_file"
+path = "fuzz_targets/ruida_rd_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ruida_udp_frame"
+path = "fuzz_targets/ruida_udp_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "io_container"
+path = "fuzz_targets/io_container.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "io_dto_json"
+path = "fuzz_targets/io_dto_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "io_parse_svg"
+path = "fuzz_targets/io_parse_svg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "io_parse_dxf"
+path = "fuzz_targets/io_parse_dxf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "image_decode"
+path = "fuzz_targets/image_decode.rs"
+test = false
+doc = false
+bench = false

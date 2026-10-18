@@ -1,0 +1,38 @@
+{
+  "coordinate_system": "origin top-left, y down; pixel (i, j) covers [i, i+1) x [j, j+1)",
+  "height": 64,
+  "name": "square-sharp-corners",
+  "pixel_size_mm": 0.1,
+  "rasterization": "4x4 point samples per pixel at offsets (k + 0.5) / 4; gray = 255 - round(255 * covered / 16); ink 0 on paper 255",
+  "schema": 1,
+  "union_of": [
+    {
+      "fill_rule": "evenodd",
+      "kind": "fill",
+      "rings": [
+        {
+          "polygon": [
+            [
+              12.25,
+              12.25
+            ],
+            [
+              51.75,
+              12.25
+            ],
+            [
+              51.75,
+              51.75
+            ],
+            [
+              12.25,
+              51.75
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "units": "px",
+  "width": 64
+}

@@ -1,0 +1,27 @@
+[package]
+name = "burnburn-scenarios"
+description = "Cross-crate scenario tests (integration gates) for BurnBurn; test-only, no library code"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Test-only crate (owner Testing): everything lives in tests/ and uses the domain crates as
+# dev-dependencies. Nothing may depend on this crate (layers.toml: kind = "testkit").
+[dev-dependencies]
+burnburn-cam = { workspace = true }
+burnburn-document = { workspace = true }
+burnburn-generators = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-image = { workspace = true }
+burnburn-io = { workspace = true }
+burnburn-job = { workspace = true }
+burnburn-ruida = { workspace = true }
+burnburn-sketch = { workspace = true }
+burnburn-test-support = { workspace = true }
+burnburn-trace = { workspace = true }
+burnburn-types = { workspace = true }
+serde_json = { workspace = true }

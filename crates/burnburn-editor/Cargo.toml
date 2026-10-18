@@ -1,0 +1,15 @@
+[package]
+name = "burnburn-editor"
+description = "Shared editor interaction: tool state machines, selection and edit previews (no platform widgets)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+burnburn-document = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-types = { workspace = true }

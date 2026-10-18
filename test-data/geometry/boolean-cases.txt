@@ -1,0 +1,35 @@
+# Boolean fixtures for burnburn-geometry (tests/boolean_fixtures.rs). Areas are hand-derived (mm²).
+# Format: "case <name> <union|difference|intersection|xor> <area>", then "a" and "b" lines with
+# x,y vertices of one closed polygon each (several "a"/"b" lines = several contours, even-odd).
+case overlapping-rectangles union 175
+a 0,0 10,0 10,10 0,10
+b 5,5 15,5 15,15 5,15
+case overlapping-rectangles intersection 25
+a 0,0 10,0 10,10 0,10
+b 5,5 15,5 15,15 5,15
+case overlapping-rectangles difference 75
+a 0,0 10,0 10,10 0,10
+b 5,5 15,5 15,15 5,15
+case overlapping-rectangles xor 150
+a 0,0 10,0 10,10 0,10
+b 5,5 15,5 15,15 5,15
+# 100 × 50 plate minus a centred 10 × 10 hole: 5000 − 100.
+case plate-with-hole difference 4900
+a 0,0 100,0 100,50 0,50
+b 45,20 55,20 55,30 45,30
+# The same plate given as one even-odd operand with the hole inside, unioned with a disjoint tab.
+case plate-hole-as-contour union 4925
+a 0,0 100,0 100,50 0,50
+a 45,20 55,20 55,30 45,30
+b 110,0 115,0 115,5 110,5
+# Two 175 mm² L shapes overlapping in two 5 × 5 squares: 175 + 175 − 50.
+case two-l-shapes union 300
+a 0,0 20,0 20,5 5,5 5,20 0,20
+b 20,20 0,20 0,15 15,15 15,0 20,0
+case two-l-shapes intersection 50
+a 0,0 20,0 20,5 5,5 5,20 0,20
+b 20,20 0,20 0,15 15,15 15,0 20,0
+# Corner contact only: no shared area, nothing lost.
+case touching-corner union 200
+a 0,0 10,0 10,10 0,10
+b 10,10 20,10 20,20 10,20

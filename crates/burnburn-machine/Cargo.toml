@@ -1,0 +1,18 @@
+[package]
+name = "burnburn-machine"
+description = "Machine execution state machine with evidence levels, frame/calibration plans and controller-file/settings intents; no live IO (transport via port trait)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-job = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+burnburn-ruida = { workspace = true }
+burnburn-test-support = { workspace = true }
+
+[lints]
+workspace = true

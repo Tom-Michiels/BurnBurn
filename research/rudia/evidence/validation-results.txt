@@ -1,0 +1,28 @@
+Ruida dossier validation — 2026-10-17
+No hardware or network operations performed.
+PASS: local Markdown links resolve.
+PASS: 6 JSON files parse.
+PASS: gray-ramp-grayscale.rd: 7318 bytes, 5 packets, checksum and reconstruction; SHA256 3e4fc6d093dde4420b115363701b1c7b81ab7f18894ce8dbf6556b08e4a13a59
+PASS: rectangle-default.rd: 525 bytes, 1 packets, checksum and reconstruction; SHA256 392e319b3c4e37b3f5fda49019f11dd2a4f7bcf3dbc905ad70a67d048985ffe9
+PASS: rectangle-fill.rd: 2572 bytes, 2 packets, checksum and reconstruction; SHA256 90512253bd2a22c332d73cb303989b5bcead10e366ba26b5cc7299fac51c77f8
+PASS: packet boundaries and invalid chunk sizes.
+test_malformed_record_prefix (test_rd_codec.CodecTests.test_malformed_record_prefix) ... ok
+test_published_speed_and_relative_vectors (test_rd_codec.CodecTests.test_published_speed_and_relative_vectors) ... ok
+test_reject_range_errors (test_rd_codec.CodecTests.test_reject_range_errors) ... ok
+test_relative_boundaries_exhaustively (test_rd_codec.CodecTests.test_relative_boundaries_exhaustively) ... ok
+test_scrambling_all_byte_values (test_rd_codec.CodecTests.test_scrambling_all_byte_values) ... ok
+test_scrambling_known_wire_responses (test_rd_codec.CodecTests.test_scrambling_known_wire_responses) ... ok
+test_udp_checksum_over_encoded_bytes (test_rd_codec.CodecTests.test_udp_checksum_over_encoded_bytes) ... ok
+test_checksums_for_all_real_exports (test_rd_codec.GoldenExportTests.test_checksums_for_all_real_exports) ... ok
+test_fill_geometry_matches_preview_cut_distance (test_rd_codec.GoldenExportTests.test_fill_geometry_matches_preview_cut_distance) ... ok
+test_grayscale_records_and_power_pairs (test_rd_codec.GoldenExportTests.test_grayscale_records_and_power_pairs) ... ok
+test_line_geometry_and_parameters (test_rd_codec.GoldenExportTests.test_line_geometry_and_parameters) ... ok
+test_real_exports_byte_roundtrip (test_rd_codec.GoldenExportTests.test_real_exports_byte_roundtrip) ... ok
+test_unknown_record_not_hidden (test_rd_codec.GoldenExportTests.test_unknown_record_not_hidden) ... ok
+test_wrong_magic_does_not_match_known_header (test_rd_codec.GoldenExportTests.test_wrong_magic_does_not_match_known_header) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.100s
+
+OK
+PASS: decoder resolves local command registry.

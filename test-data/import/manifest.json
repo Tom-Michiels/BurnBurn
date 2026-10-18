@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "description": "Import fixtures for burnburn-io (SVG/DXF). Every expectation is hand-derived from the file text; also seeds for the parser property tests (tests/parser_robustness.rs).",
+  "golden_policy": "Never regenerate these files or their hashes automatically; a change needs a reviewed explanation (AGENTS.md).",
+  "fixtures": [
+    {
+      "file": "unitless-lines.dxf",
+      "format": "dxf",
+      "bytes": 115,
+      "sha256": "517d3983544dc884d207d7ea7f0aed978ab97045cbb20c566be688234a8d19fb",
+      "origin": "Written by hand 2026-10-18 (IM10, kern-geometrie); expectations derived by hand in crates/burnburn-io/tests/import.rs.",
+      "content": "Two LINE entities (handles 1A, 1B) in drawing units, no HEADER: 4 × 2 L shape. Unitless → explicit scale required; with inch: 101.6 × 50.8 mm."
+    },
+    {
+      "file": "mm-plate.dxf",
+      "format": "dxf",
+      "bytes": 433,
+      "sha256": "c8fd3973148fa2216d3921a1948987ff2442d84283d20e0803e4262e562e93a8",
+      "origin": "Written by hand 2026-10-18 (IM10, kern-geometrie); expectations derived by hand in crates/burnburn-io/tests/import.rs.",
+      "content": "$INSUNITS 4 (mm). Closed LWPOLYLINE 100 × 50 (2A, layer Plaat); CIRCLE r 5 at (25,25) (2B); upper half ARC r 5 at (75,25) (2C, open, gap 10); closed LWPOLYLINE of two bulge-1 half circles = circle d 10 at (65,40) (2D); TEXT (2E) must be reported as skipped."
+    },
+    {
+      "file": "inch-spline.dxf",
+      "format": "dxf",
+      "bytes": 359,
+      "sha256": "f74fa6fd6825f06819974e70d133a6f225a9e9473ae59ef1c536b6e8aa9d2d26",
+      "origin": "Written by hand 2026-10-18 (IM10, kern-geometrie); expectations derived by hand in crates/burnburn-io/tests/import.rs.",
+      "content": "$INSUNITS 1 (inch). Clamped cubic SPLINE (3A), knots 0,0,0,0,0.5,0.75,1,1,1,1, six control points → three exact Bézier spans (oracle: de Boor in the test); full ELLIPSE (3B) major 2, ratio 0.5 → area 2π in²."
+    },
+    {
+      "file": "mm-viewbox.svg",
+      "format": "svg",
+      "bytes": 555,
+      "sha256": "8b7303bc95cd13f9f81195b5f1d20c8f73d8904a2e7217b1e54c4ea5231f561d",
+      "origin": "Written by hand 2026-10-18 (IM10, kern-geometrie); expectations derived by hand in crates/burnburn-io/tests/import.rs.",
+      "content": "100 × 50 mm, viewBox 0 0 1000 500 (0.1 mm/unit). rect 'plate' (full sheet), circle 'hole' r 50 under translate(250 250), stadium path 'slot' (h/a commands), text 'label' (reported), ellipse 'hidden' with display:none (reported)."
+    },
+    {
+      "file": "px-transforms.svg",
+      "format": "svg",
+      "bytes": 330,
+      "sha256": "1a2f654932370c004f75730fab2cace3c0997a5409b18b107f5558bed6430ad4",
+      "origin": "Written by hand 2026-10-18 (IM10, kern-geometrie); expectations derived by hand in crates/burnburn-io/tests/import.rs.",
+      "content": "viewBox 0 0 96 96 without size → 96 units/in assumed. polyline 'tick' under scale(2) rotate(90 10 10); path 'curves' with C/S/Q/T; line 'diag' with clip-path (imported, effect reported)."
+    }
+  ]
+}

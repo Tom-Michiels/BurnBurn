@@ -1,0 +1,56 @@
+{
+  "coordinate_system": "origin top-left, y down; pixel (i, j) covers [i, i+1) x [j, j+1)",
+  "height": 48,
+  "name": "plate-two-holes",
+  "pixel_size_mm": 0.25,
+  "rasterization": "4x4 point samples per pixel at offsets (k + 0.5) / 4; gray = 255 - round(255 * covered / 16); ink 0 on paper 255",
+  "schema": 1,
+  "union_of": [
+    {
+      "fill_rule": "evenodd",
+      "kind": "fill",
+      "rings": [
+        {
+          "polygon": [
+            [
+              6.5,
+              8.25
+            ],
+            [
+              57.75,
+              8.25
+            ],
+            [
+              57.75,
+              40.5
+            ],
+            [
+              6.5,
+              40.5
+            ]
+          ]
+        },
+        {
+          "circle": {
+            "center": [
+              20.3,
+              24.1
+            ],
+            "r": 6.2
+          }
+        },
+        {
+          "circle": {
+            "center": [
+              43.7,
+              24.6
+            ],
+            "r": 7.1
+          }
+        }
+      ]
+    }
+  ],
+  "units": "px",
+  "width": 64
+}

@@ -1,0 +1,453 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "components": 1,
+        "holes": 1
+      },
+      "image": "synthetic/ring.png",
+      "name": "ring",
+      "pixel_size_mm": 0.1,
+      "purpose": "One component with one hole (annulus); first red test of IM12.",
+      "reference": "synthetic/ring.json"
+    },
+    {
+      "expected": {
+        "components": 4,
+        "holes": 0
+      },
+      "image": "synthetic/separate-components.png",
+      "name": "separate-components",
+      "pixel_size_mm": 0.1,
+      "purpose": "Four disjoint shapes (square, circle, triangle, rectangle): one contour each.",
+      "reference": "synthetic/separate-components.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "corners_px": [
+          [
+            12.25,
+            12.25
+          ],
+          [
+            51.75,
+            12.25
+          ],
+          [
+            51.75,
+            51.75
+          ],
+          [
+            12.25,
+            51.75
+          ]
+        ],
+        "holes": 0
+      },
+      "image": "synthetic/square-sharp-corners.png",
+      "name": "square-sharp-corners",
+      "pixel_size_mm": 0.1,
+      "purpose": "Axis-aligned square with edges on quarter pixels: four 90 degree corners must stay sharp.",
+      "reference": "synthetic/square-sharp-corners.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "corners_px": [
+          [
+            8.0,
+            58.0
+          ],
+          [
+            26.0,
+            6.0
+          ],
+          [
+            38.0,
+            6.0
+          ],
+          [
+            56.0,
+            58.0
+          ],
+          [
+            44.0,
+            58.0
+          ],
+          [
+            39.5,
+            44.0
+          ],
+          [
+            24.5,
+            44.0
+          ],
+          [
+            20.0,
+            58.0
+          ],
+          [
+            27.0,
+            34.0
+          ],
+          [
+            37.0,
+            34.0
+          ],
+          [
+            32.0,
+            18.0
+          ]
+        ],
+        "holes": 1
+      },
+      "image": "synthetic/letter-a.png",
+      "name": "letter-a",
+      "pixel_size_mm": 0.1,
+      "purpose": "Letter-like outline with a triangular counter: concave and convex corners plus a hole.",
+      "reference": "synthetic/letter-a.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "holes": 0,
+        "skeleton_nodes_px": [
+          {
+            "at": [
+              32.0,
+              12.0
+            ],
+            "degree": 3
+          },
+          {
+            "at": [
+              10.0,
+              12.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              54.0,
+              12.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              32.0,
+              56.0
+            ],
+            "degree": 1
+          }
+        ]
+      },
+      "image": "synthetic/stroke-t.png",
+      "name": "stroke-t",
+      "pixel_size_mm": 0.1,
+      "purpose": "Centerline (later): T junction, one degree-3 node and three ends.",
+      "reference": "synthetic/stroke-t.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "holes": 0,
+        "skeleton_nodes_px": [
+          {
+            "at": [
+              32.0,
+              32.0
+            ],
+            "degree": 4
+          },
+          {
+            "at": [
+              10.0,
+              10.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              54.0,
+              54.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              54.0,
+              10.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              10.0,
+              54.0
+            ],
+            "degree": 1
+          }
+        ]
+      },
+      "image": "synthetic/stroke-x.png",
+      "name": "stroke-x",
+      "pixel_size_mm": 0.1,
+      "purpose": "Centerline (later): X crossing, one degree-4 node and four ends.",
+      "reference": "synthetic/stroke-x.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "holes": 0,
+        "skeleton_nodes_px": [
+          {
+            "at": [
+              32.0,
+              32.0
+            ],
+            "degree": 3
+          },
+          {
+            "at": [
+              32.0,
+              58.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              12.0,
+              8.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              52.0,
+              8.0
+            ],
+            "degree": 1
+          }
+        ]
+      },
+      "image": "synthetic/stroke-y.png",
+      "name": "stroke-y",
+      "pixel_size_mm": 0.1,
+      "purpose": "Centerline (later): Y fork with acute branch angle, one degree-3 node and three ends.",
+      "reference": "synthetic/stroke-y.json"
+    },
+    {
+      "expected": {
+        "components": 2,
+        "holes": 0,
+        "skeleton_nodes_px": [
+          {
+            "at": [
+              24.0,
+              8.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              24.0,
+              56.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              32.0,
+              8.0
+            ],
+            "degree": 1
+          },
+          {
+            "at": [
+              32.0,
+              56.0
+            ],
+            "degree": 1
+          }
+        ]
+      },
+      "image": "synthetic/strokes-near-touching.png",
+      "name": "strokes-near-touching",
+      "pixel_size_mm": 0.1,
+      "purpose": "Two parallel strokes with a 2 px gap: must stay two components / two centerlines.",
+      "reference": "synthetic/strokes-near-touching.json"
+    }
+  ],
+  "description": "Synthetic trace corpus. Each PNG is rasterized from the vector reference next to it by `cargo xtask gen-trace-corpus` (xtask/src/trace_corpus.rs); sizes and SHA-256 are checked by burnburn-test-support (fixtures_match_manifests) and the bytes by xtask (committed_corpus_matches_generator).",
+  "files": [
+    {
+      "bytes": 4228,
+      "path": "synthetic/ring.png",
+      "role": "image",
+      "sha256": "b01ec871c228e123b1afc802c311cda8ad46ef75ccbcb77dde96f8af23969af2"
+    },
+    {
+      "bytes": 753,
+      "path": "synthetic/ring.json",
+      "role": "reference",
+      "sha256": "e0efde66b8dc0b4c5a0b2eb35b89e77b1c7f2ef2fe52f4d48a2fc82283a48e79"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/separate-components.png",
+      "role": "image",
+      "sha256": "a590d722d3fafee9e290d3cf8622e62e5a699510d04ef5eae03ca690480ca239"
+    },
+    {
+      "bytes": 1787,
+      "path": "synthetic/separate-components.json",
+      "role": "reference",
+      "sha256": "f059af4d76dbd1485c46b43fbed815b3b5e49fcb74baed6efc21867fc4ad22cc"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/square-sharp-corners.png",
+      "role": "image",
+      "sha256": "a0c32e37cb0e066de61b9f8d1a59a293fc1e2284342dcffb860958ce78b9d2aa"
+    },
+    {
+      "bytes": 794,
+      "path": "synthetic/square-sharp-corners.json",
+      "role": "reference",
+      "sha256": "cd50f90d097184aeb81f04971d032b6fe616fd213bbf6542eced11a5438a6d01"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/letter-a.png",
+      "role": "image",
+      "sha256": "cdcf22854df43df9e7f4b40cc67ee17d520a0c1373603131fe426ab93ca88822"
+    },
+    {
+      "bytes": 1302,
+      "path": "synthetic/letter-a.json",
+      "role": "reference",
+      "sha256": "40ec26d8c227fbfbe310d0229c37411230f02a60cff25573cf58287110afca24"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/stroke-t.png",
+      "role": "image",
+      "sha256": "a1802d45f8d8803898535519a9a20986ac42ac71c3fd4cfb8ce9951b28de8158"
+    },
+    {
+      "bytes": 907,
+      "path": "synthetic/stroke-t.json",
+      "role": "reference",
+      "sha256": "798c709d1c8dd1af23e9020ef607103d7848d04e32d0182c150c1cc74bc002bd"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/stroke-x.png",
+      "role": "image",
+      "sha256": "41a836a155a4619a2d3bc54535f281648c3b5ae2d89930bc649b25f1c15ef7c3"
+    },
+    {
+      "bytes": 1047,
+      "path": "synthetic/stroke-x.json",
+      "role": "reference",
+      "sha256": "9efcbb9d08a092b9fc855047af3f6cdee1f0159cb94b4fa71b6f790074e6a5b6"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/stroke-y.png",
+      "role": "image",
+      "sha256": "3111011de0cf5138d22ed3f38d91838e8fe5e0dd1cad144b89d505516ad418ea"
+    },
+    {
+      "bytes": 905,
+      "path": "synthetic/stroke-y.json",
+      "role": "reference",
+      "sha256": "dd1dc4131a7745d900e75c28d36c79fbf8125b9944d67b34efc0eb2c13c76f65"
+    },
+    {
+      "bytes": 4228,
+      "path": "synthetic/strokes-near-touching.png",
+      "role": "image",
+      "sha256": "58a573918dd0a369430f501fa0eac4b2654513f61e07102a087d0c9ef6630b68"
+    },
+    {
+      "bytes": 907,
+      "path": "synthetic/strokes-near-touching.json",
+      "role": "reference",
+      "sha256": "5eb88164b69d79a7900428c29e4027e6f1ccbfbbdd36125dcabc249477dc1a60"
+    },
+    {
+      "bytes": 3188,
+      "path": "holdout/plate-two-holes.png",
+      "role": "image",
+      "sha256": "4ec8f576bdbebd917669743334ed9a915cb061af4ad1f9e2290ac136ef532bf0"
+    },
+    {
+      "bytes": 1090,
+      "path": "holdout/plate-two-holes.json",
+      "role": "reference",
+      "sha256": "bf4002fe79b64af1982ce005220c2f968ef74109e6004ab0f5ba5ddd7fede07f"
+    },
+    {
+      "bytes": 4228,
+      "path": "holdout/ring-offcentre-fine.png",
+      "role": "image",
+      "sha256": "54a582a9b42cbe4883afe58977032da2c25c5e8cf9287dc55c11667276b44dbf"
+    },
+    {
+      "bytes": 773,
+      "path": "holdout/ring-offcentre-fine.json",
+      "role": "reference",
+      "sha256": "c3877e8c2560eea036e32e028ea198dcb81a4d0c1f04b9e2ceffa2661f6d616c"
+    }
+  ],
+  "generator": "cargo xtask gen-trace-corpus",
+  "golden_policy": "Never regenerate to make a test pass. A changed image needs a reviewed explanation of the rasterizer or case change (AGENTS.md). Expected topology was written before any tracer existed.",
+  "holdout": [
+    {
+      "expected": {
+        "components": 1,
+        "corners_px": [
+          [
+            6.5,
+            8.25
+          ],
+          [
+            57.75,
+            8.25
+          ],
+          [
+            57.75,
+            40.5
+          ],
+          [
+            6.5,
+            40.5
+          ]
+        ],
+        "holes": 2
+      },
+      "image": "holdout/plate-two-holes.png",
+      "name": "plate-two-holes",
+      "pixel_size_mm": 0.25,
+      "purpose": "Holdout: off-grid rectangle with two unequal circular holes at 0.25 mm/px (coarser than every dev case).",
+      "reference": "holdout/plate-two-holes.json"
+    },
+    {
+      "expected": {
+        "components": 1,
+        "holes": 1
+      },
+      "image": "holdout/ring-offcentre-fine.png",
+      "name": "ring-offcentre-fine",
+      "pixel_size_mm": 0.05,
+      "purpose": "Holdout: annulus with an off-grid centre at 0.05 mm/px (finer than every dev case).",
+      "reference": "holdout/ring-offcentre-fine.json"
+    }
+  ],
+  "holdout_policy": "Cases under `holdout` (files in holdout/) are not for tracer development or tuning: do not iterate them in crate tests or look at their traces while changing the tracer. Only the release evaluation reads them (crates/burnburn-scenarios/tests/trace_holdout.rs). Report holdout results, never adjust them.",
+  "judging": "Judge traces against the vector reference (max/bidirectional distance, holes, graph structure), not pixel overlap (01-test-driven-design.md § Tracer).",
+  "schema": 1
+}
