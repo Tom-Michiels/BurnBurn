@@ -275,7 +275,67 @@ pub mod v1 {
             direction: ScanDirection,
             serpentine: bool,
             overscan_mm: Num,
+            /// Options added after IM18 (W1-L5a). Omitted when all are at their defaults.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            options: Option<ImageOptions>,
         },
+    }
+
+    /// Image options beyond IM18; every field is omitted when at its default.
+    #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct ImageOptions {
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub negative: bool,
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub dot_width_correction_mm: Option<Num>,
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub scan_angle_deg: Option<Num>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub gray: Option<GrayMethod>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub crop: Option<Crop>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub sharpen: Option<Sharpen>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub screen: Option<Screen>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pub mask: bool,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum GrayMethod {
+        Rec709,
+        Rec601,
+        Average,
+        Lightness,
+        Red,
+        Green,
+        Blue,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Crop {
+        pub x: u32,
+        pub y: u32,
+        pub width: u32,
+        pub height: u32,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Sharpen {
+        pub amount: Num,
+        pub radius_mm: Num,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Screen {
+        pub cell_mm: Num,
+        pub angle_deg: Num,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -295,6 +355,10 @@ pub mod v1 {
         Stucki,
         Atkinson,
         Ordered { size: u8 },
+        Newsprint,
+        Halftone,
+        Sketch { level: u8 },
+        PassThrough,
     }
 
     /// IM25 options; every field is omitted when off.

@@ -9,10 +9,11 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, DitherMode, FillSettings, ImageRender, ImageSettings, Kerf, Lead, LineOptions, MaterialRecipe,
-    OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode, OrderConstraint, Overcut, Passes,
-    Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId, RecipeRef, ScanAxis,
-    ScanDirection, SharedEdgePolicy, Speed, SubOperation, TabSpec, ToneSettings, ZStep,
+    AdvancedOptions, DitherMode, FillSettings, GrayMethod, ImageCrop, ImageRender, ImageSettings, ImageSharpen, Kerf,
+    Lead, LineOptions, MaterialRecipe, OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode,
+    OrderConstraint, Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings,
+    RecipeDraft, RecipeId, RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation,
+    TabSpec, ToneSettings, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 
@@ -141,6 +142,10 @@ fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
                 ImageRender::Dither(DitherMode::Stucki) => v1::Render::Stucki,
                 ImageRender::Dither(DitherMode::Atkinson) => v1::Render::Atkinson,
                 ImageRender::Dither(DitherMode::Ordered { size }) => v1::Render::Ordered { size },
+                ImageRender::Dither(DitherMode::Newsprint) => v1::Render::Newsprint,
+                ImageRender::Dither(DitherMode::Halftone) => v1::Render::Halftone,
+                ImageRender::Dither(DitherMode::Sketch { level }) => v1::Render::Sketch { level },
+                ImageRender::Dither(DitherMode::PassThrough) => v1::Render::PassThrough,
                 // `DitherMode` is non-exhaustive: never store a future algorithm as another one.
                 ImageRender::Dither(_) => return Err(SaveError::Encode("dither mode has no file form".into())),
             },
@@ -150,10 +155,39 @@ fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
             direction: direction_to(i.direction()),
             serpentine: i.serpentine(),
             overscan_mm: v1::Num(i.overscan_mm()),
+            options: image_options_to_dto(&i),
         },
         // `OperationMode` is non-exhaustive: a future mode without a schema is an error, never
         // saved as another mode.
         _ => return Err(SaveError::Encode("operation mode has no file schema".into())),
+    })
+}
+
+/// `None` when every option is at its default, so earlier image operations keep their file form.
+fn image_options_to_dto(i: &ImageSettings) -> Option<v1::ImageOptions> {
+    if !i.has_extended_options() {
+        return None;
+    }
+    let num = |v: f64| v1::Num(v);
+    let screen = i.screen();
+    Some(v1::ImageOptions {
+        negative: i.negative(),
+        dot_width_correction_mm: (i.dot_width_correction_mm() != 0.0).then(|| num(i.dot_width_correction_mm())),
+        scan_angle_deg: (i.scan_angle_deg() != 0.0).then(|| num(i.scan_angle_deg())),
+        gray: (i.gray_method() != GrayMethod::Rec709).then(|| match i.gray_method() {
+            GrayMethod::Rec601 => v1::GrayMethod::Rec601,
+            GrayMethod::Average => v1::GrayMethod::Average,
+            GrayMethod::Lightness => v1::GrayMethod::Lightness,
+            GrayMethod::Red => v1::GrayMethod::Red,
+            GrayMethod::Green => v1::GrayMethod::Green,
+            GrayMethod::Blue => v1::GrayMethod::Blue,
+            _ => v1::GrayMethod::Rec709,
+        }),
+        crop: i.crop().map(|c| v1::Crop { x: c.x, y: c.y, width: c.width, height: c.height }),
+        sharpen: i.sharpen().map(|s| v1::Sharpen { amount: num(s.amount()), radius_mm: num(s.radius_mm()) }),
+        screen: (screen != ScreenSettings::default())
+            .then(|| v1::Screen { cell_mm: num(screen.cell_mm()), angle_deg: num(screen.angle_deg()) }),
+        mask: i.mask(),
     })
 }
 
@@ -222,6 +256,7 @@ fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadEr
             direction,
             serpentine,
             overscan_mm,
+            ref options,
         } => {
             let at = |f: &'static str| move || format!("{}.{f}", path());
             let source = ContentHash::from_hex(source).map_err(|e| invalid(&at("source"), e))?;
@@ -233,6 +268,10 @@ fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadEr
                 v1::Render::Stucki => ImageRender::Dither(DitherMode::Stucki),
                 v1::Render::Atkinson => ImageRender::Dither(DitherMode::Atkinson),
                 v1::Render::Ordered { size } => ImageRender::Dither(DitherMode::Ordered { size }),
+                v1::Render::Newsprint => ImageRender::Dither(DitherMode::Newsprint),
+                v1::Render::Halftone => ImageRender::Dither(DitherMode::Halftone),
+                v1::Render::Sketch { level } => ImageRender::Dither(DitherMode::Sketch { level }),
+                v1::Render::PassThrough => ImageRender::Dither(DitherMode::PassThrough),
             };
             let tone = ToneSettings::new(
                 num(&at("gamma"), gamma)?,
@@ -251,9 +290,58 @@ fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadEr
             .with_direction(direction_from(direction), serpentine)
             .with_overscan(length(&at("overscan_mm"), overscan_mm)?)
             .map_err(|e| invalid(&at("overscan_mm"), e))?;
+            let settings = match options {
+                Some(o) => image_options_from_dto(&|| format!("{}.options", path()), o, settings)?,
+                None => settings,
+            };
             OperationMode::Image(settings)
         }
     })
+}
+
+fn image_options_from_dto(
+    path: PathFn<'_>,
+    o: &v1::ImageOptions,
+    settings: ImageSettings,
+) -> Result<ImageSettings, LoadError> {
+    let at = |f: &'static str| move || format!("{}.{f}", path());
+    let mut s = settings.with_negative(o.negative).with_mask(o.mask);
+    if let Some(n) = o.dot_width_correction_mm {
+        s = s
+            .with_dot_width_correction(length(&at("dot_width_correction_mm"), n)?)
+            .map_err(|e| invalid(&at("dot_width_correction_mm"), e))?;
+    }
+    if let Some(n) = o.scan_angle_deg {
+        s = s.with_scan_angle(num(&at("scan_angle_deg"), n)?).map_err(|e| invalid(&at("scan_angle_deg"), e))?;
+    }
+    if let Some(g) = o.gray {
+        s = s.with_gray_method(match g {
+            v1::GrayMethod::Rec709 => GrayMethod::Rec709,
+            v1::GrayMethod::Rec601 => GrayMethod::Rec601,
+            v1::GrayMethod::Average => GrayMethod::Average,
+            v1::GrayMethod::Lightness => GrayMethod::Lightness,
+            v1::GrayMethod::Red => GrayMethod::Red,
+            v1::GrayMethod::Green => GrayMethod::Green,
+            v1::GrayMethod::Blue => GrayMethod::Blue,
+        });
+    }
+    if let Some(c) = o.crop {
+        let crop = ImageCrop { x: c.x, y: c.y, width: c.width, height: c.height };
+        s = s.with_crop(Some(crop)).map_err(|e| invalid(&at("crop"), e))?;
+    }
+    if let Some(sh) = o.sharpen {
+        let radius = length(&at("sharpen.radius_mm"), v1::Num(sh.radius_mm.0))?;
+        let sharpen = ImageSharpen::new(num(&at("sharpen.amount"), sh.amount)?, radius)
+            .map_err(|e| invalid(&at("sharpen"), e))?;
+        s = s.with_sharpen(Some(sharpen));
+    }
+    if let Some(sc) = o.screen {
+        let cell = length(&at("screen.cell_mm"), sc.cell_mm)?;
+        let screen = ScreenSettings::new(cell, num(&at("screen.angle_deg"), sc.angle_deg)?)
+            .map_err(|e| invalid(&at("screen"), e))?;
+        s = s.with_screen(screen);
+    }
+    Ok(s)
 }
 
 fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptions, LoadError> {
