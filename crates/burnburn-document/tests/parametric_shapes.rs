@@ -8,9 +8,7 @@ use burnburn_document::{
     Anchor, Axis, CommandError, CommandPayload, DocumentCommand, DocumentSession, GeometryCommand, ObjectKind,
     ShapeCommand, ShapeError, ShapeLabel, UndoLabel,
 };
-use burnburn_geometry::{
-    Affine, Bounds, NodeEdit, ParametricShape, Point, ShapeParamError, ShapeParams, Vector,
-};
+use burnburn_geometry::{Affine, Bounds, NodeEdit, ParametricShape, Point, ShapeParamError, ShapeParams, Vector};
 use burnburn_types::{Angle, CanonicalEncode, CanonicalWriter, DocumentId, GeometryId, Length, RequestId, StableId};
 
 fn session() -> DocumentSession {
@@ -18,12 +16,7 @@ fn session() -> DocumentSession {
 }
 
 fn run(s: &mut DocumentSession, payload: CommandPayload) -> Result<burnburn_document::CommandOutcome, CommandError> {
-    s.apply(DocumentCommand {
-        document: s.id(),
-        expected: s.revision(),
-        request: RequestId::from_raw(1),
-        payload,
-    })
+    s.apply(DocumentCommand { document: s.id(), expected: s.revision(), request: RequestId::from_raw(1), payload })
 }
 
 fn shape_cmd(s: &mut DocumentSession, c: ShapeCommand) -> Result<burnburn_document::CommandOutcome, CommandError> {
@@ -98,8 +91,8 @@ fn editing_parameters_regenerates_the_outline_and_keeps_identity_and_placement()
     let id = create(&mut s, ShapeParams::Polygon { sides: 5 }, bounds(10.0, 10.0, 50.0, 50.0), "P");
     let frame = *s.snapshot().object(id).unwrap().parametric().unwrap().frame();
     let before = s.revision();
-    let out = shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Polygon { sides: 8 } })
-        .unwrap();
+    let out =
+        shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Polygon { sides: 8 } }).unwrap();
     assert_eq!(out.changes.modified, vec![id]);
     assert_eq!(s.undo_label(), Some(UndoLabel::Shape(ShapeLabel::SetParams)));
     let snap = s.snapshot();
@@ -119,10 +112,12 @@ fn invalid_parameters_are_rejected_without_touching_the_document() {
     let mut s = session();
     let id = create(&mut s, ShapeParams::Star { points: 5, ratio: 0.5 }, bounds(0.0, 0.0, 20.0, 20.0), "");
     let rev = s.revision();
-    let r = shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 5, ratio: 1.5 } });
+    let r =
+        shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 5, ratio: 1.5 } });
     assert_eq!(r.unwrap_err(), CommandError::Shape(ShapeError::Param(ShapeParamError::RatioOutOfRange)));
     // Same parameters: no history entry.
-    let same = shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 5, ratio: 0.5 } });
+    let same =
+        shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 5, ratio: 0.5 } });
     assert_eq!(same.unwrap_err(), CommandError::Shape(ShapeError::NothingChanged));
     assert_eq!(s.revision(), rev);
     // A shape cannot be created with an invalid definition either: validation happens in the constructor.
@@ -134,7 +129,8 @@ fn moving_rotating_and_resizing_keep_the_definition_editable() {
     let mut s = session();
     let id = create(&mut s, ShapeParams::Star { points: 6, ratio: 0.5 }, bounds(0.0, 0.0, 40.0, 40.0), "");
     let params = ShapeParams::Star { points: 6, ratio: 0.5 };
-    let m = Affine::rotate(Angle::from_degrees(25.0).unwrap()).then(&Affine::translate(Vector::new(100.0, -20.0)).unwrap());
+    let m =
+        Affine::rotate(Angle::from_degrees(25.0).unwrap()).then(&Affine::translate(Vector::new(100.0, -20.0)).unwrap());
     run(&mut s, CommandPayload::Transform { targets: vec![id], transform: m }).unwrap();
     let after_move = s.snapshot();
     let obj = after_move.object(id).unwrap();
@@ -156,7 +152,8 @@ fn moving_rotating_and_resizing_keep_the_definition_editable() {
     assert!((obj.bounds().unwrap().width() - 60.0).abs() < 1e-7);
     assert_eq!(*obj.parametric().unwrap().params(), params);
     // And the sides can still be changed afterwards, in the transformed placement.
-    shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 7, ratio: 0.5 } }).unwrap();
+    shape_cmd(&mut s, ShapeCommand::SetParams { target: id, params: ShapeParams::Star { points: 7, ratio: 0.5 } })
+        .unwrap();
     assert_eq!(s.snapshot().object(id).unwrap().path().subpaths()[0].segments().len() + 1, 14);
 }
 
@@ -205,7 +202,8 @@ fn convert_to_path_keeps_the_outline_drops_the_definition_and_is_undoable() {
         CommandError::Shape(ShapeError::NotParametric(a))
     );
     assert_eq!(
-        shape_cmd(&mut s, ShapeCommand::SetParams { target: a, params: ShapeParams::Polygon { sides: 7 } }).unwrap_err(),
+        shape_cmd(&mut s, ShapeCommand::SetParams { target: a, params: ShapeParams::Polygon { sides: 7 } })
+            .unwrap_err(),
         CommandError::Shape(ShapeError::NotParametric(a))
     );
     assert_eq!(s.revision(), rev);

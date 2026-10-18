@@ -14,7 +14,9 @@ use burnburn_document::{
 };
 use burnburn_geometry::{Affine, Bounds, ParametricShape, Point, ShapeParams, Vector};
 use burnburn_io::memory::MemoryFileSystem;
-use burnburn_io::{AssetStore, LoadError, Project, ProjectUuid, decode_container, encode_container, load_project, save_project};
+use burnburn_io::{
+    AssetStore, LoadError, Project, ProjectUuid, decode_container, encode_container, load_project, save_project,
+};
 use burnburn_types::{Angle, DocumentId, GeometryId, RequestId, StableId};
 use common::{rewrite_json, sample_project};
 
@@ -144,14 +146,23 @@ fn star_index() -> usize {
 fn invalid_definitions_are_refused_with_their_json_path() {
     let i = star_index();
     let err = tampered(|o| o["parametric"]["points"] = serde_json::json!(2)).unwrap_err();
-    assert!(matches!(&err, LoadError::InvalidValue { path, .. } if path == &format!("objects[{i}].parametric")), "{err:?}");
+    assert!(
+        matches!(&err, LoadError::InvalidValue { path, .. } if path == &format!("objects[{i}].parametric")),
+        "{err:?}"
+    );
     let err = tampered(|o| o["parametric"]["ratio"] = serde_json::json!(1.5)).unwrap_err();
-    assert!(matches!(&err, LoadError::InvalidValue { path, .. } if path == &format!("objects[{i}].parametric")), "{err:?}");
+    assert!(
+        matches!(&err, LoadError::InvalidValue { path, .. } if path == &format!("objects[{i}].parametric")),
+        "{err:?}"
+    );
     // A damaged number (serde_json writes NaN as null) names the exact field.
     let err = tampered(|o| o["parametric"]["frame"][2] = serde_json::Value::Null).unwrap_err();
     assert_eq!(
         err,
-        LoadError::InvalidValue { path: format!("objects[{i}].parametric.frame[2]"), reason: "not a finite number".into() }
+        LoadError::InvalidValue {
+            path: format!("objects[{i}].parametric.frame[2]"),
+            reason: "not a finite number".into()
+        }
     );
     // Unknown shape type or field: reported, never dropped.
     let err = tampered(|o| o["parametric"]["type"] = serde_json::json!("heptagram")).unwrap_err();

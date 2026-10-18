@@ -262,7 +262,16 @@ impl EdgeKeys {
 
 impl GeometryObject {
     pub fn new(id: GeometryId, name: String, kind: ObjectKind, source: GeometrySource, path: Path) -> Self {
-        GeometryObject { id, name, kind, source, path: Arc::new(path), groups: Arc::from([]), edge_keys: None, parametric: None }
+        GeometryObject {
+            id,
+            name,
+            kind,
+            source,
+            path: Arc::new(path),
+            groups: Arc::from([]),
+            edge_keys: None,
+            parametric: None,
+        }
     }
 
     /// A basic shape that stays editable: its outline is the resolved definition.

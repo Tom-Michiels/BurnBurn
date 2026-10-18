@@ -190,11 +190,7 @@ impl ParametricShape {
             if !(radius.is_finite() && radius >= 0.0) {
                 return Err(ShapeParamError::RadiusOutOfRange);
             }
-            let params = ShapeParams::RoundedRectangle {
-                width: bw,
-                height: bh,
-                radius: radius.min(bw.min(bh) / 2.0),
-            };
+            let params = ShapeParams::RoundedRectangle { width: bw, height: bh, radius: radius.min(bw.min(bh) / 2.0) };
             let center = to(Affine::translate(bounds.center().to_vector()))?;
             return Self::new(params, center);
         }
@@ -256,11 +252,8 @@ impl ParametricShape {
         let snap = |s: f64| if (s - 1.0).abs() < UNIT_SNAP { 1.0 } else { s };
         let (sx, sy) = (snap(sx), snap(sy));
         let (width, height) = (width * sx, height * sy);
-        let params = ShapeParams::RoundedRectangle {
-            width,
-            height,
-            radius: (radius * sx.min(sy)).min(width.min(height) / 2.0),
-        };
+        let params =
+            ShapeParams::RoundedRectangle { width, height, radius: (radius * sx.min(sy)).min(width.min(height) / 2.0) };
         let frame = Affine::new([a / sx, b / sx, c / sy, d / sy, e, f]).ok()?;
         Some(ParametricShape { params, frame })
     }

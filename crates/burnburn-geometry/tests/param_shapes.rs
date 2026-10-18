@@ -6,8 +6,8 @@
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use burnburn_geometry::{
-    Affine, Bounds, GeometryError, ParametricShape, Path, Point, Segment, ShapeParamError, ShapeParams, Vector,
-    MAX_SIDES,
+    Affine, Bounds, GeometryError, MAX_SIDES, ParametricShape, Path, Point, Segment, ShapeParamError, ShapeParams,
+    Vector,
 };
 use burnburn_types::Angle;
 use proptest::prelude::*;
@@ -164,23 +164,19 @@ fn rounded_rectangle_has_closed_form_area_bounds_and_tangent_arcs() {
 
 #[test]
 fn rounded_rectangle_without_radius_is_a_plain_rectangle_and_full_radius_a_stadium() {
-    let sharp = ParametricShape::new(
-        ShapeParams::RoundedRectangle { width: 10.0, height: 6.0, radius: 0.0 },
-        Affine::IDENTITY,
-    )
-    .unwrap()
-    .to_path()
-    .unwrap();
+    let sharp =
+        ParametricShape::new(ShapeParams::RoundedRectangle { width: 10.0, height: 6.0, radius: 0.0 }, Affine::IDENTITY)
+            .unwrap()
+            .to_path()
+            .unwrap();
     assert!((sharp.signed_area() - 60.0).abs() < EPS);
     assert!(sharp.subpaths()[0].segments().iter().all(|s| matches!(s, Segment::Line { .. })));
     // Radius = half the short side: stadium, area = w·h − (4 − π)·r².
-    let stadium = ParametricShape::new(
-        ShapeParams::RoundedRectangle { width: 10.0, height: 6.0, radius: 3.0 },
-        Affine::IDENTITY,
-    )
-    .unwrap()
-    .to_path()
-    .unwrap();
+    let stadium =
+        ParametricShape::new(ShapeParams::RoundedRectangle { width: 10.0, height: 6.0, radius: 3.0 }, Affine::IDENTITY)
+            .unwrap()
+            .to_path()
+            .unwrap();
     assert!((stadium.signed_area() - (60.0 - (4.0 - PI) * 9.0)).abs() < 1e-9);
 }
 

@@ -4,13 +4,14 @@
 
 mod draw;
 mod node;
+mod parametric;
 mod rectangle;
 mod select;
 
 use std::sync::Arc;
 
 use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{Affine, Bounds, NodeEdit, Path, Point, Rect, Shape};
+use burnburn_geometry::{Affine, Bounds, NodeEdit, ParametricShape, Path, Point, Rect, Shape, ShapeParamError};
 use burnburn_types::{GeometryId, Length};
 
 use crate::input::{CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerButton, PointerEvent, PointerPhase};
@@ -19,6 +20,7 @@ use crate::snap::{SnapCandidate, SnapSettings, snap_point};
 
 pub use draw::{CircleTool, EllipseTool, LineTool, PenTool, PolylineTool};
 pub use node::{NodeTarget, NodeTool, path_nodes};
+pub use parametric::{BasicShapeTool, ShapeDefaults};
 pub(crate) use rectangle::rect_from_bounds;
 pub use rectangle::{RectanglePreview, RectangleTool};
 pub use select::{Handle, SelectTool, selection_handles};
@@ -63,6 +65,11 @@ pub enum ShapeKind {
     Polyline,
     /// Pen tool: lines and cubic Béziers.
     Curve,
+    /// Parametric basic shapes (W1-L2b): regular polygon (triangle, pentagon, octagon, …).
+    Polygon,
+    Star,
+    DoubleStar,
+    RoundedRectangle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -83,6 +90,10 @@ pub enum EditCommit {
     /// Ellipse, circle, line or polyline as a domain shape (resolved with `Shape::to_path`).
     CreateShape {
         shape: Shape,
+    },
+    /// A basic shape that stays editable (W1-L2b): resolve with `ParametricShape::to_path`.
+    CreateParametric {
+        shape: ParametricShape,
     },
     /// A free curve from the pen tool.
     CreatePath {
@@ -192,6 +203,14 @@ pub enum ToolKind {
     Line,
     Polyline,
     Pen,
+    /// Basic shapes (W1-L2b); sides, points, ratio and radius come from [`ShapeDefaults`].
+    Triangle,
+    Polygon,
+    Pentagon,
+    Octagon,
+    Star,
+    DoubleStar,
+    RoundedRectangle,
 }
 
 #[derive(Debug, Clone)]
@@ -204,10 +223,11 @@ enum Active {
     Line(LineTool),
     Polyline(PolylineTool),
     Pen(PenTool),
+    Shape(BasicShapeTool),
 }
 
 impl Active {
-    fn new(kind: ToolKind) -> Self {
+    fn new(kind: ToolKind, defaults: &ShapeDefaults) -> Self {
         match kind {
             ToolKind::Select => Active::Select(SelectTool::default()),
             ToolKind::Node => Active::Node(NodeTool::default()),
@@ -217,6 +237,13 @@ impl Active {
             ToolKind::Line => Active::Line(LineTool::default()),
             ToolKind::Polyline => Active::Polyline(PolylineTool::default()),
             ToolKind::Pen => Active::Pen(PenTool::default()),
+            ToolKind::Triangle
+            | ToolKind::Polygon
+            | ToolKind::Pentagon
+            | ToolKind::Octagon
+            | ToolKind::Star
+            | ToolKind::DoubleStar
+            | ToolKind::RoundedRectangle => Active::Shape(BasicShapeTool::for_kind(kind, defaults)),
         }
     }
 
@@ -230,6 +257,7 @@ impl Active {
             Active::Line(t) => t,
             Active::Polyline(t) => t,
             Active::Pen(t) => t,
+            Active::Shape(t) => t,
         }
     }
 
@@ -243,6 +271,7 @@ impl Active {
             Active::Line(t) => t,
             Active::Polyline(t) => t,
             Active::Pen(t) => t,
+            Active::Shape(t) => t,
         }
     }
 }
@@ -252,6 +281,7 @@ impl Active {
 pub struct Editor {
     kind: ToolKind,
     active: Active,
+    defaults: ShapeDefaults,
 }
 
 impl Default for Editor {
@@ -262,7 +292,8 @@ impl Default for Editor {
 
 impl Editor {
     pub fn new() -> Self {
-        Editor { kind: ToolKind::Select, active: Active::new(ToolKind::Select) }
+        let defaults = ShapeDefaults::default();
+        Editor { kind: ToolKind::Select, active: Active::new(ToolKind::Select, &defaults), defaults }
     }
 
     pub fn tool(&self) -> ToolKind {
@@ -273,8 +304,23 @@ impl Editor {
     pub fn select_tool(&mut self, kind: ToolKind) -> ToolStep {
         let step = self.cancel();
         self.kind = kind;
-        self.active = Active::new(kind);
+        self.active = Active::new(kind, &self.defaults);
         step
+    }
+
+    pub fn shape_defaults(&self) -> &ShapeDefaults {
+        &self.defaults
+    }
+
+    /// Sides, points, ratio and corner radius the basic-shape tools draw with. An invalid set is
+    /// refused and nothing changes. Takes effect for the next gesture; one in progress is not changed.
+    pub fn set_shape_defaults(&mut self, defaults: ShapeDefaults) -> Result<(), ShapeParamError> {
+        defaults.validate()?;
+        self.defaults = defaults;
+        if let Active::Shape(tool) = &mut self.active {
+            tool.retarget(self.kind, &self.defaults);
+        }
+        Ok(())
     }
 
     pub fn input(&mut self, input: &CanvasInput, ctx: &ToolContext<'_>) -> ToolStep {
