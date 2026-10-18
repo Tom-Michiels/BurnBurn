@@ -30,7 +30,7 @@ pub use perspective::{Homography, Perspective, PerspectiveReport};
 pub use prepare::{ImageRecipe, PreparedImage, prepare};
 pub use raster::{
     BitImage, DitherAlgorithm, MAX_RASTER_PIXELS, RasterError, ToneCurve, dither, resample_area, resample_area_with,
-    tone_map,
+    resample_nearest, tone_map,
 };
 pub use scale::{PixelScale, ScaleError};
 pub use screen::{halftone, sketch, unsharp};

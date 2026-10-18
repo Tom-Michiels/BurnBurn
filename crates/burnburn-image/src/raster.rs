@@ -237,6 +237,39 @@ pub fn resample_area_with(
     Ok(GrayImage { width: out_w, height: out_h, values })
 }
 
+/// Pass-through resampling: output pixel `i` takes the source pixel under its centre,
+/// `⌊(2i + 1) · src / (2 · out)⌋`, per axis, with no filtering. Enlarging replicates pixels,
+/// shrinking skips them. Colour conversion and `crop` are as in [`resample_area_with`].
+pub fn resample_nearest(
+    src: &SourceImage,
+    crop: Option<PixelRect>,
+    alpha: AlphaPolicy,
+    conversion: GrayConversion,
+    out_w: u32,
+    out_h: u32,
+    cancel: &CancellationToken,
+) -> Result<GrayImage, RasterError> {
+    check_size(out_w, out_h)?;
+    let window = crop.unwrap_or(PixelRect { x: 0, y: 0, width: src.width(), height: src.height() });
+    window.validate_within(src.width(), src.height()).map_err(|_| RasterError::CropOutOfBounds)?;
+    let pick = |i: u32, n: u32, out: u32| -> u32 {
+        // ⌊(2i + 1) · n / (2 · out)⌋ in 128-bit integers; always below `n`.
+        let v = ((2 * u128::from(i) + 1) * u128::from(n)) / (2 * u128::from(out));
+        v.min(u128::from(n.saturating_sub(1))) as u32
+    };
+    let mut values = Vec::with_capacity(out_w as usize * out_h as usize);
+    for oy in 0..out_h {
+        cancel.check()?;
+        let sy = window.y + pick(oy, window.height, out_h);
+        for ox in 0..out_w {
+            let sx = window.x + pick(ox, window.width, out_w);
+            let g = to_gray_with(src.rgba_at(sx, sy), alpha, conversion);
+            values.push((g + 0.5).floor().clamp(0.0, 255.0));
+        }
+    }
+    Ok(GrayImage { width: out_w, height: out_h, values })
+}
+
 /// Applies `tone` to every pixel (values rounded half up to 8 bit first).
 pub fn tone_map(img: &GrayImage, tone: &ToneCurve) -> Vec<u8> {
     let table = tone.table();

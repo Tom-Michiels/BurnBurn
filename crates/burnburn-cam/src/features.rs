@@ -24,10 +24,16 @@ fn mode_features(mode: OperationMode, out: &mut Vec<Feature>) {
             }
         }
         OperationMode::OffsetFill(_) => out.push(Feature::OffsetFill),
-        OperationMode::Image(i) => out.push(match i.render() {
-            ImageRender::Dither(_) => Feature::ImageDither,
-            ImageRender::Grayscale => Feature::GrayscaleModulation,
-        }),
+        OperationMode::Image(i) => {
+            out.push(match i.render() {
+                ImageRender::Dither(_) => Feature::ImageDither,
+                ImageRender::Grayscale => Feature::GrayscaleModulation,
+            });
+            let a = i.scan_angle_deg();
+            if a != 0.0 && a != 90.0 {
+                out.push(Feature::ScanAngle);
+            }
+        }
         _ => {}
     }
 }

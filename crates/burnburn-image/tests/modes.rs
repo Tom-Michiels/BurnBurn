@@ -8,7 +8,7 @@
 use burnburn_image::{
     AlphaPolicy, BitImage, DecodeLimits, DitherAlgorithm, EngraveMode, EngraveParams, Engraved, GrayConversion,
     GrayImage, PixelRect, RasterError, Sharpen, SourceImage, ToneCurve, decode, dither, encode_png_gray8, engrave,
-    halftone, resample_area_with, sketch, unsharp,
+    halftone, resample_area_with, resample_nearest, sketch, unsharp,
 };
 use burnburn_types::CancellationToken;
 use proptest::prelude::*;
@@ -277,6 +277,36 @@ fn crop_outside_the_image_or_without_area_is_an_error() {
         let err = resample_area_with(&src, Some(rect), AlphaPolicy::default(), GrayConversion::Rec709, 1, 1, &never());
         assert_eq!(err.unwrap_err(), RasterError::CropOutOfBounds, "{rect:?}");
     }
+}
+
+#[test]
+fn nearest_resampling_replicates_and_skips_without_filtering() {
+    let src = SourceImage::from_gray8(4, 1, vec![10, 20, 30, 40]).unwrap();
+    let go = |crop, w, h| {
+        resample_nearest(&src, crop, AlphaPolicy::default(), GrayConversion::Rec709, w, h, &never()).unwrap().values
+    };
+    // 4 → 2: centres of the output pixels fall in source pixels ⌊1·4/4⌋ = 1 and ⌊3·4/4⌋ = 3.
+    assert_eq!(go(None, 2, 1), vec![20.0, 40.0]);
+    // 4 → 8 replicates each pixel twice; 4 → 4 is the identity.
+    assert_eq!(go(None, 8, 1), vec![10.0, 10.0, 20.0, 20.0, 30.0, 30.0, 40.0, 40.0]);
+    assert_eq!(go(None, 4, 1), vec![10.0, 20.0, 30.0, 40.0]);
+    // 4 → 3 : ⌊1·4/6⌋ = 0, ⌊3·4/6⌋ = 2, ⌊5·4/6⌋ = 3.
+    assert_eq!(go(None, 3, 1), vec![10.0, 30.0, 40.0]);
+    // Rows work the same way, and a crop limits the choice to the window.
+    assert_eq!(
+        go(Some(PixelRect { x: 1, y: 0, width: 2, height: 1 }), 4, 2),
+        vec![20.0, 20.0, 30.0, 30.0, 20.0, 20.0, 30.0, 30.0]
+    );
+    let bad = resample_nearest(
+        &src,
+        Some(PixelRect { x: 3, y: 0, width: 2, height: 1 }),
+        AlphaPolicy::default(),
+        GrayConversion::Rec709,
+        1,
+        1,
+        &never(),
+    );
+    assert_eq!(bad.unwrap_err(), RasterError::CropOutOfBounds);
 }
 
 // ---- engrave pipeline: order, negative, pass-through, grayscale, processed bitmap ------------
