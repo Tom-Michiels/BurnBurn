@@ -1,0 +1,134 @@
+//! Canvas input: pointer, key and camera events, and the tool step they produce.
+
+use burnburn_document::DocumentCommand;
+use burnburn_editor::{
+    CLICK_TOLERANCE_PT, CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerEvent, PointerPhase, ToolContext, ToolKind,
+    ToolStep, hit_test,
+};
+use burnburn_types::{DocumentId, RequestId};
+
+use crate::commit::{name_kind, payload};
+
+use crate::intent::{CameraIntent, CommandKey, ViewPointerEvent};
+use crate::view_model::{MessageKey, SelectionCycle};
+
+use super::geometry::trim_at;
+use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_selection, error};
+
+impl AppController {
+    pub(super) fn pointer(&mut self, document: DocumentId, event: ViewPointerEvent) -> AppUpdate {
+        let request = self.next_id::<RequestId>();
+        self.with_session(document, |s| {
+            // DR-04: the one place where canvas points become world millimetres.
+            let position = s.camera.points_to_world(&s.viewport, event.position_pt);
+            let ev = PointerEvent {
+                pointer: event.pointer,
+                phase: event.phase,
+                button: event.button,
+                position,
+                modifiers: event.modifiers,
+                click_count: event.click_count,
+                time: event.time,
+            };
+            let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+            if s.trim_mode {
+                return trim_at(s, document, &ev, request);
+            }
+            let alt_press = ev.phase == PointerPhase::Down && ev.modifiers.alt && s.editor.tool() == ToolKind::Select;
+            if ev.phase == PointerPhase::Down && !alt_press {
+                s.cycle = None; // any other press ends the "2 van 3" display
+            }
+            let update = run_tool(s, document, &CanvasInput::Pointer(ev), request);
+            if alt_press {
+                // "2 van 3": where the Alt-click cycle stands among the candidates under the pointer.
+                let hits = hit_test(&s.doc.snapshot(), position, s.camera.mm_per_point() * CLICK_TOLERANCE_PT);
+                s.cycle = s.selection.single().and_then(|sel| {
+                    hits.iter().position(|h| *h == sel).map(|i| SelectionCycle { position: i + 1, count: hits.len() })
+                });
+            }
+            update
+        })
+    }
+
+    pub(super) fn key(&mut self, document: DocumentId, key: CanvasKey, modifiers: Modifiers) -> AppUpdate {
+        let drawing_points = self.sessions.get(&document).is_some_and(|s| {
+            s.editor.is_gesture_active() && matches!(s.editor.tool(), ToolKind::Polyline | ToolKind::Pen)
+        });
+        let key = match key {
+            // Delete removes the last placed point while drawing a polyline or pen path.
+            CanvasKey::Delete if drawing_points => CanvasKey::Backspace,
+            CanvasKey::Delete => return self.invoke(Some(document), CommandKey::Delete),
+            other => other,
+        };
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && s.trim_mode
+        {
+            s.trim_mode = false;
+            return AppUpdate::redraw(document);
+        }
+        let request = self.next_id::<RequestId>();
+        self.with_session(document, |s| match request {
+            Some(request) => {
+                run_tool(s, document, &CanvasInput::Key { key, modifiers, phase: KeyPhase::Down }, request)
+            }
+            None => error(Some(document), MessageKey::CommandRejected),
+        })
+    }
+
+    pub(super) fn camera(&mut self, document: DocumentId, intent: CameraIntent) -> AppUpdate {
+        self.with_session(document, |s| match intent {
+            CameraIntent::Resized { viewport } => {
+                s.viewport = viewport;
+                AppUpdate::redraw(document)
+            }
+            // Camera pan/zoom is window state: it never becomes a document command.
+            CameraIntent::Scroll { delta_pt } => {
+                s.camera.pan_by_points(delta_pt);
+                AppUpdate::redraw(document)
+            }
+            CameraIntent::Magnify { magnification, anchor_pt } => {
+                match s.camera.zoom_at(&s.viewport, anchor_pt, 1.0 + magnification) {
+                    Ok(()) => AppUpdate::redraw(document),
+                    Err(_) => AppUpdate::default(),
+                }
+            }
+        })
+    }
+}
+
+/// Builds the tool context for one input and processes the resulting step.
+pub(super) fn run_tool(s: &mut Session, document: DocumentId, input: &CanvasInput, request: RequestId) -> AppUpdate {
+    let snapshot = s.doc.snapshot();
+    let ctx = ToolContext {
+        document: &snapshot,
+        selection: &s.selection,
+        mm_per_point: s.camera.mm_per_point(),
+        snap: &s.snap,
+    };
+    let step = s.editor.input(input, &ctx);
+    handle_step(s, document, step, request)
+}
+
+pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep, request: RequestId) -> AppUpdate {
+    match step {
+        ToolStep::Nothing => AppUpdate::default(),
+        ToolStep::Select(change) => {
+            apply_selection(s, &change);
+            s.cycle = None;
+            AppUpdate::redraw(document)
+        }
+        ToolStep::Commit(edit) => {
+            let kind = name_kind(&edit);
+            let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
+            let Some(payload) = payload(edit, name) else { return AppUpdate::redraw(document) };
+            let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
+            let result = apply_command(&s.fonts, &mut s.doc, cmd);
+            if let (Some(k), true) = (kind, result.is_ok()) {
+                *s.created.entry(k).or_insert(0) += 1;
+            }
+            after_change(s, document, result)
+        }
+        _ => AppUpdate::redraw(document),
+    }
+}

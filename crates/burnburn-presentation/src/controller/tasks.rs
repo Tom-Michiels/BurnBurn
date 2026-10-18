@@ -1,0 +1,183 @@
+//! Delivery of worker results (`AppController::task_finished`).
+
+use std::sync::Arc;
+
+use burnburn_io::{Project, SaveError};
+use burnburn_types::{CancellationSource, TaskId};
+
+use crate::field::format_mm;
+use crate::production::{JobInputs, PreparedJob};
+use crate::task::{ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
+use crate::view_model::{BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, StatusMessage};
+
+use super::import::PendingImport;
+use super::machine::Prepared;
+use super::process::Compiled;
+use super::trace::Tracer;
+use super::{AppController, AppUpdate, HostEffect, file_title};
+
+impl AppController {
+    /// Delivers a worker result. Applied only while the session is open and the task is still
+    /// pending. Revision-sensitive results must match the current revision; a save records
+    /// exactly the revision it wrote (an older one leaves the document dirty).
+    pub fn task_finished(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        if let Some((document, _)) = self.opening.remove(&outcome.id) {
+            let restored = self.restoring.remove(&outcome.id);
+            return self.opened(document, outcome, restored);
+        }
+        if self.app_tasks.remove(&outcome.id).is_some() {
+            return self.app_task_finished(outcome);
+        }
+        let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
+        let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
+        let document = outcome.document;
+        let mut update = AppUpdate { view_changed: true, ..AppUpdate::default() };
+        if kind.is_revision_sensitive() && outcome.source != s.doc.revision() {
+            return update;
+        }
+        match outcome.result {
+            Ok(TaskOutput::Measured(m)) => {
+                s.measure = Some(MeasureViewModel {
+                    revision: outcome.source,
+                    objects: m.objects,
+                    width_text: m.bounds.map(|b| format_mm(b.width())),
+                    height_text: m.bounds.map(|b| format_mm(b.height())),
+                });
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Ok(TaskOutput::Saved { path }) => {
+                s.doc.mark_saved(outcome.source);
+                if let Some(recovery) = s.recovery_path.take().filter(|_| !s.doc.is_dirty()) {
+                    s.autosaved = None;
+                    if let Ok(id) = self.ids.allocate::<TaskId>() {
+                        let request = TaskRequest {
+                            id,
+                            document,
+                            source: outcome.source,
+                            key: revision_key(TaskKind::Recovery, document, outcome.source),
+                            cancel: CancellationSource::new().token(),
+                            input: TaskInput::RemoveRecovery { path: recovery, fs: Arc::clone(&self.ports.fs) },
+                        };
+                        if self.ports.tasks.submit(request).is_ok() {
+                            self.app_tasks.insert(id, TaskKind::Recovery);
+                        }
+                    }
+                }
+                s.title = file_title(&path);
+                s.path = Some(path);
+                if s.close_after_save && !s.doc.is_dirty() {
+                    return self.close_session(document);
+                }
+            }
+            Ok(TaskOutput::Boolean { op, operands, result }) => {
+                s.boolean_preview =
+                    Some(BooleanPreview { revision: outcome.source, op, operands, result: Arc::new(result) });
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Err(TaskError::Boolean(_) | TaskError::UnknownObject(_)) => {
+                s.messages.push(StatusMessage { key: MessageKey::BooleanFailed });
+            }
+            Ok(TaskOutput::ImageLoaded { source, bytes, path }) => {
+                let media = match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+                    Some("jpg" | "jpeg") => "image/jpeg",
+                    _ => "image/png",
+                };
+                s.tracer = Some(Tracer { source, bytes, media, recipe: None, latest: None, result: None });
+            }
+            Ok(TaskOutput::Traced(result)) => {
+                if let Some(t) = s.tracer.as_mut() {
+                    let current = t.recipe.as_ref().and_then(|r| r.key(t.source.content_hash()).ok());
+                    let fresh = matches!((t.latest, current), (Some(latest), Some(key)) if result.check_fresh(latest, key).is_ok());
+                    if fresh {
+                        t.result = Some(result);
+                        update.scenes_changed.push(document);
+                    }
+                }
+            }
+            Err(TaskError::Read(_) | TaskError::Decode(_)) => {
+                s.messages.push(StatusMessage { key: MessageKey::ImageFailed });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::ImageFailed });
+            }
+            Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
+            Ok(TaskOutput::Compiled { plan, preview, report }) => {
+                s.compiled = Some(Compiled { plan, preview, report });
+                update.scenes_changed.push(document);
+            }
+            Err(TaskError::Compile(_)) => s.messages.push(StatusMessage { key: MessageKey::CompileFailed }),
+            Ok(TaskOutput::ExportedRd { plan, path, rd_hash, bytes }) => {
+                let plan_revision = s
+                    .compiled
+                    .as_ref()
+                    .filter(|c| c.plan.id() == plan)
+                    .map_or(outcome.source, |c| c.plan.source().document_revision);
+                s.export = Some(ExportViewModel { plan, plan_revision, path, rd_hash, bytes });
+            }
+            Err(TaskError::Lower(_) | TaskError::Encode(_) | TaskError::Write(_)) => {
+                s.messages.push(StatusMessage { key: MessageKey::ExportFailed });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::ExportFailed });
+            }
+            Ok(TaskOutput::ImportParsed { path, bytes, parsed }) => {
+                let media = match parsed {
+                    ParsedImport::Svg(_) => "image/svg+xml",
+                    ParsedImport::Dxf(_) => "image/vnd.dxf",
+                };
+                s.import = Some(PendingImport { file: file_title(&path), media, bytes, parsed, unit: None });
+            }
+            Err(TaskError::Parse(_) | TaskError::UnsupportedFormat) => {
+                s.messages.push(StatusMessage { key: MessageKey::ImportFailed });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::ImportFailed });
+            }
+            Ok(TaskOutput::Prepared { plan, rd, rd_hash }) => {
+                if let Some(source) = s.preparing.take().filter(|p| p.id() == plan) {
+                    let mut project = Project::new(s.uuid, (*s.doc.snapshot()).clone());
+                    project.assets = s.assets.clone();
+                    let inputs = JobInputs {
+                        plan: Arc::clone(&source),
+                        project: Arc::new(project),
+                        project_path: s.path.clone(),
+                    };
+                    let job = PreparedJob {
+                        plan,
+                        plan_revision: source.source().document_revision,
+                        profile: source.source().machine_profile.clone(),
+                        rd_hash,
+                        rd,
+                        name: s.title.clone(),
+                        inputs: Some(Arc::new(inputs)),
+                    };
+                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false });
+                }
+            }
+            Ok(TaskOutput::RecoverySaved { path }) => {
+                s.autosaved = Some(outcome.source);
+                s.recovery_path = Some(path);
+            }
+            Ok(TaskOutput::Opened { .. } | TaskOutput::RecoveryFound { .. } | TaskOutput::RecoveryRemoved { .. })
+            | Err(TaskError::Cancelled) => {}
+            Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
+                // The replace happened: this revision is on disk, only durability is unconfirmed.
+                s.doc.mark_saved(outcome.source);
+                s.messages.push(StatusMessage { key: MessageKey::SaveNotConfirmedDurable });
+                if s.close_after_save && !s.doc.is_dirty() {
+                    return self.close_session(document);
+                }
+            }
+            Err(TaskError::Save(_)) => {
+                s.close_after_save = false;
+                s.messages.push(StatusMessage { key: MessageKey::SaveFailed });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::SaveFailed });
+            }
+            Err(TaskError::Open(_)) => {}
+        }
+        update
+    }
+}

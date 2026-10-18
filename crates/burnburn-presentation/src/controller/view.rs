@@ -1,0 +1,202 @@
+//! The view models and scene a window draws.
+
+use std::sync::Arc;
+
+use burnburn_editor::{SceneRequest, SceneSnapshot, boolean_operands, build_scene};
+use burnburn_types::{DocumentId, Unit};
+
+use crate::field::format_mm;
+use crate::intent::{CommandKey, FieldKey};
+use crate::production::Role;
+use crate::view_model::{
+    AppViewModel, CommandState, DocumentViewModel, FieldViewModel, InspectorViewModel, JobCardViewModel, MessageKey,
+    ObjectRow, StatusMessage, TaskBadge,
+};
+
+use super::commands::tool_for;
+use super::geometry::current_boolean_preview;
+use super::import::import_view;
+use super::machine::Machine;
+use super::process::{plan_view, preparable};
+use super::sketch::sketch_rows;
+use super::trace::tracer_view;
+use super::{AppController, Session, layers};
+
+impl AppController {
+    pub fn view(&self) -> Arc<AppViewModel> {
+        let status = self.machine_port.as_ref().map(|p| p.status());
+        let documents = self
+            .sessions
+            .iter()
+            .map(|(id, s)| {
+                let mut vm = document_view(*id, s, self.machine.as_ref());
+                vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
+                    plan: p.job.plan,
+                    plan_revision: p.job.plan_revision,
+                    rd_hash: p.job.rd_hash,
+                    bytes: p.job.rd.len(),
+                    approved: p.approved,
+                    design_changed: p.job.plan_revision != s.doc.revision(),
+                    upload: status.as_ref().map(|st| self.upload_button(st, p)),
+                });
+                if vm.job.as_ref().is_some_and(|j| j.design_changed) {
+                    vm.messages.push(StatusMessage { key: MessageKey::DesignChangedSinceJob });
+                }
+                vm
+            })
+            .collect();
+        let active = self.active.and_then(|id| self.sessions.get(&id));
+        let commands = CommandKey::ALL
+            .iter()
+            .map(|k| {
+                let mut state = command_state(*k, active, self.machine.as_ref());
+                if self.role == Role::Operator && *k != CommandKey::Close {
+                    state.enabled = false;
+                }
+                (*k, state)
+            })
+            .collect();
+        Arc::new(AppViewModel { documents, active: self.active, commands })
+    }
+
+    /// The scene one window draws (contract §5): document revision, selection, gesture preview,
+    /// snap target, issues and boolean preview, with the window's camera.
+    pub fn scene(&self, document: DocumentId) -> Option<Arc<SceneSnapshot>> {
+        let s = self.sessions.get(&document)?;
+        let snapshot = s.doc.snapshot();
+        let preview = s.editor.preview();
+        let result_preview =
+            s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result));
+        let mut scene = build_scene(&SceneRequest {
+            document,
+            snapshot: &snapshot,
+            selection: &s.selection,
+            tool: s.editor.tool(),
+            preview: preview.as_ref(),
+            snap: s.editor.snap(),
+            issues: &s.issues,
+            result_preview,
+            camera: s.camera,
+            viewport: s.viewport,
+        });
+        layers::style_scene(s, &snapshot, &mut scene);
+        Some(Arc::new(scene))
+    }
+}
+
+pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machine>) -> DocumentViewModel {
+    let snapshot = s.doc.snapshot();
+    let objects = snapshot
+        .objects()
+        .map(|(gid, obj)| ObjectRow {
+            id: gid,
+            label: obj.name().to_owned(),
+            depth: 0,
+            selected: s.selection.contains(gid),
+            visible: true,
+        })
+        .collect();
+    let inspector = s.selection.single().and_then(|gid| snapshot.object(gid).map(|o| (gid, o))).and_then(|(gid, o)| {
+        let b = o.bounds()?;
+        let field = |key: FieldKey, mm: f64| FieldViewModel {
+            key,
+            label: MessageKey::Field(key),
+            text: format_mm(mm),
+            unit: Unit::Millimeter,
+            editable: true,
+            error: s.field_errors.get(&key).copied(),
+        };
+        Some(InspectorViewModel {
+            object: gid,
+            fields: vec![
+                field(FieldKey::X, b.min().x),
+                field(FieldKey::Y, b.min().y),
+                field(FieldKey::Width, b.width()),
+                field(FieldKey::Height, b.height()),
+                FieldViewModel { text: "0".into(), ..field(FieldKey::Rotation, 0.0) },
+            ],
+        })
+    });
+    DocumentViewModel {
+        id,
+        revision: s.doc.revision(),
+        title: s.title.clone(),
+        dirty: s.doc.is_dirty(),
+        tool: s.editor.tool(),
+        preview: s.editor.preview(),
+        objects,
+        selection: s.selection.ids().to_vec(),
+        inspector,
+        undo: s.doc.undo_label(),
+        redo: s.doc.redo_label(),
+        messages: s.messages.clone(),
+        tasks: s.pending.iter().map(|(tid, (kind, _))| TaskBadge { id: *tid, kind: *kind }).collect(),
+        measure: s.measure.clone(),
+        camera: s.camera,
+        viewport: s.viewport,
+        snap: s.editor.snap(),
+        snap_settings: s.snap,
+        selection_cycle: s.cycle,
+        align_reference: (s.selection.len() >= 2).then(|| s.selection.reference()).flatten(),
+        issues: s.issues.clone(),
+        tool_size_error: s.tool_size_error,
+        boolean_preview: current_boolean_preview(s).cloned(),
+        sketches: sketch_rows(&snapshot),
+        plan: s.compiled.as_ref().map(|c| plan_view(c, s, machine)),
+        export: s.export.clone(),
+        tracer: s.tracer.as_ref().map(|t| tracer_view(t, s)),
+        job: None,
+        problem: s.problem.clone(),
+        operations: snapshot.process().operations().map(|op| layers::operation_row(s, op)).collect(),
+        operation_error: s.operation_error,
+        cut_settings: layers::cut_settings_view(s, machine.map(|m| m.profile.capabilities())),
+        import: s.import.as_ref().map(import_view),
+    }
+}
+
+pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Option<&Machine>) -> CommandState {
+    let has_machine = machine.is_some();
+    let label = match (key, s) {
+        (CommandKey::Undo, Some(s)) => s.doc.undo_label().map_or(MessageKey::Command(key), MessageKey::UndoAction),
+        (CommandKey::Redo, Some(s)) => s.doc.redo_label().map_or(MessageKey::Command(key), MessageKey::RedoAction),
+        _ => MessageKey::Command(key),
+    };
+    let (enabled, checked) = match (key, s) {
+        (CommandKey::New, _) => (true, false),
+        (_, None) => (false, false),
+        (CommandKey::Undo, Some(s)) => (s.doc.can_undo(), false),
+        (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),
+        (CommandKey::Delete, Some(s)) => (!s.selection.is_empty(), false),
+        (CommandKey::SelectAll, Some(s)) => (!s.doc.snapshot().is_empty(), false),
+        (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
+        (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
+        (
+            CommandKey::AlignLeft
+            | CommandKey::AlignRight
+            | CommandKey::AlignTop
+            | CommandKey::AlignBottom
+            | CommandKey::AlignCenterX
+            | CommandKey::AlignCenterY,
+            Some(s),
+        ) => (s.selection.len() >= 2, false),
+        (CommandKey::DistributeHorizontal | CommandKey::DistributeVertical, Some(s)) => (s.selection.len() >= 3, false),
+        (CommandKey::BooleanUnion | CommandKey::BooleanDifference | CommandKey::BooleanIntersection, Some(s)) => {
+            (boolean_operands(&s.doc.snapshot(), &s.selection).is_ok(), false)
+        }
+        (CommandKey::ApplyPreview, Some(s)) => (current_boolean_preview(s).is_some(), false),
+        (CommandKey::Compile, Some(s)) => (has_machine && !s.doc.snapshot().process().is_empty(), false),
+        (CommandKey::ExportRd, Some(s)) => (has_machine && s.compiled.is_some(), false),
+        (CommandKey::ApplyTrace, Some(s)) => (s.tracer.as_ref().is_some_and(|t| t.result.is_some()), false),
+        (CommandKey::CloseTracer, Some(s)) => (s.tracer.is_some(), false),
+        (CommandKey::PrepareJob, Some(s)) => (preparable(s, machine), false),
+        (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
+        (CommandKey::ToolTrim, Some(s)) => (true, s.trim_mode),
+        (CommandKey::CommitImport, Some(s)) => (s.import.as_ref().is_some_and(|i| i.draft().is_ok()), false),
+        (CommandKey::CancelImport, Some(s)) => (s.import.is_some(), false),
+        (other, Some(s)) => match tool_for(other) {
+            Some(tool) => (true, !s.trim_mode && s.editor.tool() == tool),
+            None => (true, false),
+        },
+    };
+    CommandState { enabled, checked, label }
+}

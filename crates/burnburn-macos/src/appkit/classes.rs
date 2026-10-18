@@ -399,7 +399,7 @@ define_class!(
         fn camera_button(&self, sender: Option<&AnyObject>) {
             ffi_guard("cameraButton:", (), || {
                 let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
-                let Some(control) = super::window::camera_control(button.tag()) else { return };
+                let Some(control) = super::panels::camera::camera_control(button.tag()) else { return };
                 if let Some(app) = self.ivars().app.upgrade() {
                     app.camera_button_pressed(control, self.ivars().camera_devices.indexOfSelectedItem());
                 }
@@ -561,8 +561,8 @@ define_class!(
                     .and_then(|r| self.ivars().operation_rows.try_borrow().ok()?.get(r).map(|l| l.slot));
                 let Some(slot) = slot else { return };
                 cell.setDrawsBackground(true);
-                cell.setBackgroundColor(Some(&super::window::layer_colour(slot)));
-                cell.setTextColor(Some(&super::window::layer_text_colour(slot)));
+                cell.setBackgroundColor(Some(&super::panels::operations::layer_colour(slot)));
+                cell.setTextColor(Some(&super::panels::operations::layer_text_colour(slot)));
             });
         }
 
@@ -576,7 +576,7 @@ define_class!(
                 if self.is_operations(&table) {
                     return;
                 }
-                let rows = super::window::selected_rows(&table);
+                let rows = super::panels::widgets::selected_rows(&table);
                 self.send(NativeEvent::TableSelectionChanged { document: self.ivars().document, rows });
             });
         }
