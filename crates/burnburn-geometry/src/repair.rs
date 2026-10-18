@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use burnburn_types::{CancellationToken, Cancelled};
+
 use crate::intersect::segment_intersections;
 use crate::query::{nearest_on_segment, segments_of, subpath_segments};
 use crate::{
@@ -328,10 +330,20 @@ pub fn diagnose<K: Copy + Ord>(objects: &[(K, &Path)], tol: &DiagnosticTolerance
 /// moved end exactly onto its partner. Returns the repaired path and the indices of the
 /// subpaths the repair closed. Gaps above `tol` are left alone (an intended slot stays a slot).
 pub fn close_gaps(path: &Path, tol: &DiagnosticTolerance) -> (Path, Vec<usize>) {
+    close_gaps_cancellable(path, tol, &CancellationToken::never()).unwrap_or_else(|_| (path.clone(), Vec::new()))
+}
+
+/// [`close_gaps`] that polls `cancel` once per join (each join scans all open ends).
+pub(crate) fn close_gaps_cancellable(
+    path: &Path,
+    tol: &DiagnosticTolerance,
+    cancel: &CancellationToken,
+) -> Result<(Path, Vec<usize>), Cancelled> {
     let t = tol.mm();
     let mut current = path.clone();
     let mut closed_by_repair = vec![false; current.subpaths().len()];
     loop {
+        cancel.check()?;
         let subs = current.subpaths();
         let mut best: Option<(f64, EndpointRef, EndpointRef)> = None;
         let mut consider = |d: f64, a: EndpointRef, b: EndpointRef| {
@@ -377,7 +389,7 @@ pub fn close_gaps(path: &Path, tol: &DiagnosticTolerance) -> (Path, Vec<usize>) 
         }
     }
     let closed = closed_by_repair.iter().enumerate().filter(|(_, c)| **c).map(|(i, _)| i).collect();
-    (current, closed)
+    Ok((current, closed))
 }
 
 fn endpoint_index(e: EndpointRef) -> usize {
