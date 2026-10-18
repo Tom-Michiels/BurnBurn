@@ -1,4 +1,4 @@
-//! Screens on the existing view models, natively: the toolbar's tool control, the X/Y/B/H
+//! Screens on the existing view models, natively: the tool strip, the X/Y/B/H
 //! inspector and the plan preview panel (plan id, estimate, current/out of date) with its
 //! Compile and Export buttons. Export opens the RD save sheet; cancelling it writes nothing.
 
@@ -35,19 +35,22 @@ fn scenario() -> Result<(), String> {
     let s = common::start()?;
     let doc = s.new_document()?;
 
-    // Toolbar: six tool segments; choosing "Ellips" switches the tool.
-    let tools = s.app.with_window(doc, |w| w.toolbar_tools.retain()).ok_or("no toolbar tool control")?;
-    expect(|| format!("{} segments", tools.segmentCount()), tools.segmentCount() == 6)?;
-    let label = tools.labelForSegment(2).map(|l| l.to_string());
-    expect(|| format!("segment 2 label {label:?}"), label.as_deref() == Some("Ellips"))?;
-    tools.setSelectedSegment(2);
-    // SAFETY: the control's own action to its own target, as a click sends it.
-    unsafe { tools.sendAction_to(tools.action(), tools.target().as_deref()) };
+    // Tool strip: clicking the ellipse button chooses the ellipse tool; a menu command moves the
+    // pressed state along (details in tool_strip.rs).
+    let ellipse = s.app.with_window(doc, |w| w.strip.button("sketch.ellipse")).flatten().ok_or("no ellipse button")?;
+    // SAFETY: a click on our own button, as the user's click would send it.
+    unsafe { ellipse.performClick(None) };
     s.pump(0.1);
-    expect(|| "ellipse tool active".into(), s.doc(doc).is_some_and(|d| d.tool == ToolKind::Ellipse))?;
+    expect(|| "ellipse tool active".into(), s.doc(doc).is_some_and(|d| d.tool == ToolKind::EllipseAxes))?;
     s.app.dispatch(UiIntent::Invoke { document: Some(doc), command: burnburn_presentation::CommandKey::ToolRectangle });
     s.pump(0.1);
-    expect(|| "toolbar follows the tool".into(), tools.selectedSegment() == 1)?;
+    let rect_pressed = s
+        .app
+        .with_window(doc, |w| {
+            w.strip.button("sketch.rectangle.two_point").map(|b| b.state() == objc2_app_kit::NSControlStateValueOn)
+        })
+        .flatten();
+    expect(|| "strip follows the tool".into(), rect_pressed == Some(true))?;
 
     s.drag_mm(doc, (10.0, 20.0), (130.0, 100.0))?;
     for key in INSPECTOR_FIELDS {

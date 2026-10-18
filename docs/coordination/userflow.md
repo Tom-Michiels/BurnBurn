@@ -246,3 +246,70 @@ werkt eromheen met glue in de test; geen `#[ignore]` nodig):
    houdt daarom zelf per sessie de positie bij (Protocol geïnformeerd).
 
 **Aan GUI:** zie `docs/coordination/gui.md` § Integratie-productie.
+
+---
+
+# SolidCraft-look, lane S-draw (18-10-2026) — Maken-tools
+
+Log: `docs/dev-notes/solidcraft-look-draw.md`. Tools in `burnburn-editor` (`ToolKind`), constructies in `burnburn-geometry::construct`.
+
+**`tool-id → ToolKind`** (voor catalogus/werkbalk, lane S-gui):
+
+| tool-id | ToolKind | opmerking |
+|---|---|---|
+| `sketch.line` | `Line` | bestaand, alleen slepen |
+| `sketch.line.midpoint` | `LineMidpoint` | midden, dan eind |
+| `sketch.centerline` | `Centerline` | commit `CreateConstruction` — **uitgeschakeld tot het document een construction-vlag voor getekende geometrie heeft** |
+| `sketch.rectangle.two_point` | `Rectangle` | bestaand |
+| `sketch.rectangle.center` / `.three_point` / `.rounded` | `RectangleCenter` / `RectangleThreePoint` / `RectangleRounded` | rounded: `Editor::set_param(ToolParam::CornerRadius(mm))`, vastgeklemd op halve korte zijde |
+| `sketch.circle.center` | `Circle` | bestaand |
+| `sketch.circle.two_point` / `.three_point` | `CircleTwoPoint` / `CircleThreePoint` | |
+| `sketch.circle.two_tangent` / `.three_tangent` | `CircleTwoTangent` / `CircleThreeTangent` | pikt rechte segmenten (geen bogen); cirkel volgt de aanwijzer, klik bevestigt |
+| `sketch.arc.three_point` / `.center_point` / `.tangent` | `ArcThreePoint` / `ArcCenterPoint` / `ArcTangent` | center_point loopt linksom; tangent start op een vrij uiteinde van lijn/boog |
+| `sketch.ellipse` | `EllipseAxes` | midden, grote-as-eind, kleine-aspunt. De bestaande bbox-`Ellipse` blijft apart |
+| `sketch.polygon.inscribed` / `.circumscribed` / `.edge` | `PolygonInscribed` / `PolygonCircumscribed` / `PolygonEdge` | zijden: `Editor::set_param(ToolParam::Sides(n))`, n ≥ 3, standaard 6 |
+| `sketch.slot.center_to_center` / `.overall` / `.center_point` / `.arc_three_point` / `.arc_center` | `SlotCenterToCenter` / `SlotOverall` / `SlotCenterPoint` / `SlotArcThreePoint` / `SlotArcCenter` | breedte uit de laatste klik |
+| `sketch.point` | `Point` | commit `CreatePoint` — **uitgeschakeld tot het document een puntobject heeft** |
+
+**Aan Presentation/GUI:** (1) `EditCommit::CreateConstruction { shape }` en `EditCommit::CreatePoint { at }` zijn nieuw;
+`presentation/src/commit.rs::payload` geeft er nu `None` voor (geen documentcommando) — catalogus moet `sketch.centerline` en
+`sketch.point` dus "nog niet beschikbaar" tonen tot Kern daar een commando voor heeft. (2) Standaardnamen: polygonen, bogen en
+sleuven krijgen via `name_kind` nu "Curve"; graag eigen namen. (3) Nieuwe `ToolParam` + `Editor::set_param` (polygon-zijden,
+afrondingsstraal) voor een invoerveld bij de werkbalk. (4) Maat typen (`exact_size`): rechthoek-midden/afgerond (b×h),
+tweepuntscirkel (Ø), polygonen (Ø / zijlengte), middenlijn en lijn-midden (lengte), sleuf c2c/overall (lengte × breedte),
+raakcirkel-2 (Ø).
+
+---
+
+# SolidCraft-look, lane S-modify (18-10-2026) — aan S-gui / Presentation / Kern
+
+Log: `docs/dev-notes/solidcraft-look-modify.md`. Tool-id (catalogus, zonder `sketch.`-voorvoegsel) → `ToolKind`
+(`burnburn_editor::modify_tool_kind(id)` doet dezelfde mapping):
+
+| tool-id | ToolKind | instellingen (`ToolParam::Modify`) |
+|---|---|---|
+| `spline.fit_point` / `spline.control_point` / `conic` | `SplineFit` / `SplineControl` / `Conic` | `Rho` |
+| `text` / `dimension` | `Text` / `Dimension` | — |
+| `fillet` | `Fillet` | `Radius` |
+| `chamfer.equal_distance` / `.two_distance` / `.distance_angle` | `ChamferEqual` / `ChamferTwo` / `ChamferAngle` | `Distance`, `Distance2`, `AngleDeg` |
+| `trim` / `extend` / `break` / `offset` | `Trim` / `Extend` / `Break` / `Offset` | — (offset: `exact_size` = afstand) |
+| `mirror` / `move` / `scale` / `construction` | `Mirror` / `Move` / `Scale` / `Construction` | `KeepOriginal`; `Factor` |
+| `pattern.rectangular` / `pattern.circular` | `PatternRectangular` / `PatternCircular` | `Columns`, `Rows`; `Count`, `SweepDeg` |
+| `constraint.coincident` `.collinear` `.concentric` `.equal` `.fix` `.horizontal_vertical` `.midpoint` `.parallel` `.perpendicular` `.symmetry` `.tangent` | `ConstraintCoincident` … `ConstraintTangent` | — |
+| `auto_constrain` | `AutoConstrain` | — |
+
+**Aan S-gui:** zet deze ids van `Unavailable` naar `Action::Tool(..)`; constraint-/auto-/construction-tools horen bij `in_sketch`
+(de editor weigert zelf met `Rejection::NothingPicked` zonder sketch-entiteit). Toon `ToolStep::Rejected(Rejection)` als melding
+(`Unavailable::{CurvedCorner, BezierExtend, ConstructionOutsideSketch}` = "nog niet beschikbaar" met reden) en
+`ToolStep::Measured(Measurement)` als uitlezing (`distance()`, `dx()`, `dy()`). Het bestaande `trim_mode` (`CommandKey::ToolTrim`) werkt
+alleen op lijnen; `ToolKind::Trim` doet ook bogen en curven.
+
+**Aan Presentation:** `handle_step` moet `ToolStep::Rejected`/`Measured` nog verwerken (nu valt het in `_ =>` en doet alleen een redraw).
+`commit.rs::payload` mapt nu `CutCorner/Trim/Extend/Break`, `Mirror` (in place), `Sketch` (1 commando), `AddArray` (1 doel);
+`PlaceText { at }` moet het anker voor de volgende `UiIntent::InsertText` worden.
+
+**Aan Kern:** (1) een atomair meer-commando (`CommandPayload`-batch of `SketchCommand::AddConstraints`) voor collinear en auto-constrain;
+(2) een modifierketting met meerdere bronnen of een batch voor patronen op meerdere objecten; (3) een duplicate-commando voor gespiegelde kopieën.
+Nieuw in jullie bestanden: `GeometryCommand::{CutCorner, TrimAt, ExtendEnd, BreakAt}`, `EditError::{Corner, Break}`, `EditLabel::{CutCorner, Break}`,
+`SketchCommand::SetConstruction`, `SketchLabel::SetConstruction` (tests: `document/tests/modify_commands.rs`); undo-labels zonder vertaling in `macos/src/l10n.rs`:
+`EditLabel::{CutCorner, Break}`, `SketchLabel::SetConstruction`.

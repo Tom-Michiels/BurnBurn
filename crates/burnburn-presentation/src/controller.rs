@@ -14,9 +14,9 @@ use burnburn_document::{
     DocumentSession, EditError, EvalDiagnosis, EvalStatus, GeometryCommand, GeometrySource, ImportItem,
 };
 use burnburn_editor::{
-    CLICK_TOLERANCE_PT, Camera, CanvasInput, CanvasKey, Editor, GeometryIssue, KeyPhase, Modifiers, PointerEvent,
-    PointerPhase, SceneRequest, SceneSnapshot, Selection, SelectionChange, SnapSettings, ToolContext, ToolKind,
-    ToolStep, Viewport, boolean_operands, build_scene, geometry_issues, hit_test,
+    CLICK_TOLERANCE_PT, Camera, CanvasInput, CanvasKey, EditCommit, Editor, GeometryIssue, KeyPhase, Modifiers,
+    PointerEvent, PointerPhase, Rejection, SceneRequest, SceneSnapshot, Selection, SelectionChange, SnapSettings,
+    ToolContext, ToolKind, ToolStep, Unavailable, Viewport, boolean_operands, build_scene, geometry_issues, hit_test,
 };
 use burnburn_geometry::{
     Affine, AlignEdge, BooleanOp, DiagnosticTolerance, Direction, OffsetJoin, Point, ProductionTolerance, Spacing,
@@ -43,6 +43,7 @@ use burnburn_text::{FontData, FontError, FontRef, FontSource, TextEvaluator};
 use crate::camera::{
     BedCameraIntent, CameraAuthorization, CameraDeviceId, CameraFrameInfo, CameraMode, CameraPort, CameraViewModel,
 };
+use crate::catalog::{Action, ActiveTool, ToolCatalog, ToolState, ToolbarViewModel, VariantMemory, enablement};
 use crate::field::{format_mm, parse_angle, parse_length, parse_number, parse_position};
 use crate::intent::{
     CameraIntent, CloseChoice, CommandKey, DialogKind, FieldKey, ImportUnit, OperationField, OperationKind, SelectMode,
@@ -60,7 +61,8 @@ use crate::view_model::{
     AppViewModel, BooleanPreview, CommandState, DocumentViewModel, ExportViewModel, FieldViewModel, ImportViewModel,
     InspectorViewModel, JobCardViewModel, MachineButton, MachineStatusKey, MachineViewModel, MeasureViewModel,
     MessageKey, ObjectRow, OperatorJobRow, OperatorViewModel, OrderViewModel, PlanViewModel, ProblemViewModel,
-    SelectionCycle, SketchStatus, SketchViewModel, StatusMessage, TaskBadge, TraceSummary, TracerViewModel,
+    SelectionCycle, SketchStatus, SketchViewModel, StatusMessage, TaskBadge, ToolMeasurement, ToolRejection,
+    TraceSummary, TracerViewModel,
 };
 
 mod layers;
@@ -223,6 +225,9 @@ struct Session {
     field_errors: BTreeMap<FieldKey, MessageKey>,
     messages: Vec<StatusMessage>,
     measure: Option<MeasureViewModel>,
+    tool_measurement: Option<ToolMeasurement>,
+    /// Where the Text tool was clicked: the next committed text is placed there.
+    text_anchor: Option<Point>,
     pending: BTreeMap<TaskId, (TaskKind, CancellationSource)>,
     /// Default-name counters per created kind ("Rechthoek 2", "Cirkel 1").
     created: BTreeMap<NameKind, u64>,
@@ -273,6 +278,8 @@ impl Session {
             field_errors: BTreeMap::new(),
             messages: Vec::new(),
             measure: None,
+            tool_measurement: None,
+            text_anchor: None,
             pending: BTreeMap::new(),
             created: BTreeMap::new(),
             snap: SnapSettings::default(),
@@ -352,6 +359,8 @@ pub struct AppController {
     app_tasks: BTreeMap<TaskId, TaskKind>,
     /// Open tasks that restore a recovery file (the window opens unsaved and untitled).
     restoring: BTreeMap<TaskId, PathBuf>,
+    /// The last chosen variant of each toolbar group (window-independent preference).
+    toolbar_variants: VariantMemory,
 }
 
 impl AppController {
@@ -375,6 +384,7 @@ impl AppController {
             recovery_dir: None,
             app_tasks: BTreeMap::new(),
             restoring: BTreeMap::new(),
+            toolbar_variants: VariantMemory::new(),
         }
     }
 
@@ -450,7 +460,13 @@ impl AppController {
                     else {
                         return error(Some(document), MessageKey::CommandRejected);
                     };
-                    TextCommand::Create { text: Box::new(TextObject::new(text, font, size)) }
+                    let mut object = TextObject::new(text, font, size);
+                    if let Some(at) = s.text_anchor.take()
+                        && let Ok(placement) = Affine::translate(Vector { x: at.x, y: at.y })
+                    {
+                        object.placement = placement;
+                    }
+                    TextCommand::Create { text: Box::new(object) }
                 }
             };
             apply_edit(s, document, CommandPayload::Text(edit), request)
@@ -778,6 +794,8 @@ impl AppController {
             }
             UiIntent::CommitField { document, field, text } => self.commit_field(document, field, &text),
             UiIntent::CommitToolSize { document, width, height } => self.commit_tool_size(document, &width, &height),
+            UiIntent::SelectTool { document, id } => self.select_catalog_tool(document, &id, None),
+            UiIntent::SelectVariant { document, group, id } => self.select_catalog_tool(document, &id, Some(&group)),
             UiIntent::Invoke { document, command } => self.invoke(document, command),
             UiIntent::Pointer { document, event } => self.pointer(document, event),
             UiIntent::Key { document, key, modifiers } => self.key(document, key, modifiers),
@@ -1211,7 +1229,13 @@ impl AppController {
                 (*k, state)
             })
             .collect();
-        Arc::new(AppViewModel { documents, active: self.active, commands })
+        let toolbar = ToolbarViewModel::build(
+            ToolCatalog::standard(),
+            ToolState { document: active.is_some(), operator: self.role == Role::Operator, in_sketch: false },
+            ActiveTool { tool: active.map(|s| s.editor.tool()), trim: active.is_some_and(|s| s.trim_mode) },
+            &self.toolbar_variants,
+        );
+        Arc::new(AppViewModel { documents, active: self.active, commands, toolbar })
     }
 
     /// The scene one window draws (contract §5): document revision, selection, gesture preview,
@@ -1328,6 +1352,42 @@ impl AppController {
             effects: vec![HostEffect::CloseWindow { document }],
             view_changed: true,
             scenes_changed: Vec::new(),
+        }
+    }
+
+    /// Toolbar choice by catalog id. A disabled or unknown id changes nothing (no silent
+    /// substitute); `group` is set when the choice came from a drop-down.
+    fn select_catalog_tool(&mut self, document: Option<DocumentId>, id: &str, group: Option<&str>) -> AppUpdate {
+        let Some(document) = document.or(self.active) else { return AppUpdate::default() };
+        let Some(spec) = ToolCatalog::standard().get(id) else { return AppUpdate::default() };
+        if group.is_some() && spec.group != group {
+            return AppUpdate::default();
+        }
+        let state = ToolState {
+            document: self.sessions.contains_key(&document),
+            operator: self.role == Role::Operator,
+            in_sketch: false,
+        };
+        if !enablement(spec, state).is_enabled() {
+            return AppUpdate::default();
+        }
+        if let Some(name) = spec.group {
+            self.toolbar_variants.insert(name, spec.id);
+        }
+        match spec.action {
+            Action::Tool(tool) => self.with_session(document, |s| {
+                s.trim_mode = false;
+                s.editor.select_tool(tool);
+                s.tool_size_error = None;
+                clear_tool_report(s);
+                AppUpdate::redraw(document)
+            }),
+            Action::Command(command) => {
+                let mut update = self.invoke(Some(document), command);
+                update.view_changed = true;
+                update
+            }
+            Action::Unavailable | Action::Deferred => AppUpdate::default(),
         }
     }
 
@@ -2089,6 +2149,7 @@ fn invoke_in_session(
                 s.trim_mode = false;
                 s.editor.select_tool(tool);
                 s.tool_size_error = None;
+                clear_tool_report(s);
                 AppUpdate::redraw(document)
             }
             None => AppUpdate::default(),
@@ -2127,6 +2188,31 @@ fn run_tool(s: &mut Session, document: DocumentId, input: &CanvasInput, request:
     handle_step(s, document, step, request)
 }
 
+fn clear_tool_report(s: &mut Session) {
+    s.tool_measurement = None;
+    s.messages.retain(|m| !matches!(m.key, MessageKey::ToolRejected(_)));
+}
+
+fn rejection_kind(r: &Rejection) -> ToolRejection {
+    match r {
+        Rejection::NothingPicked => ToolRejection::NothingPicked,
+        Rejection::DerivedGeometry(_) => ToolRejection::DerivedGeometry,
+        Rejection::NeedsSelection => ToolRejection::NeedsSelection,
+        Rejection::InvalidSelection => ToolRejection::InvalidSelection,
+        Rejection::NothingToConstrain => ToolRejection::NothingToConstrain,
+        Rejection::InvalidValue => ToolRejection::InvalidValue,
+        Rejection::Corner(_) => ToolRejection::Corner,
+        Rejection::Trim(_) => ToolRejection::Trim,
+        Rejection::Extend(_) => ToolRejection::Extend,
+        Rejection::Break(_) => ToolRejection::Break,
+        Rejection::Offset(_) => ToolRejection::Offset,
+        Rejection::Unavailable(Unavailable::ConstructionOutsideSketch) => ToolRejection::ConstructionOutsideSketch,
+        Rejection::Unavailable(Unavailable::CurvedCorner) => ToolRejection::CurvedCorner,
+        Rejection::Unavailable(Unavailable::BezierExtend) => ToolRejection::BezierExtend,
+        _ => ToolRejection::Unavailable,
+    }
+}
+
 fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep, request: RequestId) -> AppUpdate {
     match step {
         ToolStep::Nothing => AppUpdate::default(),
@@ -2135,7 +2221,26 @@ fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep, request: R
             s.cycle = None;
             AppUpdate::redraw(document)
         }
+        ToolStep::Rejected(reason) => {
+            s.messages.clear();
+            s.messages.push(StatusMessage { key: MessageKey::ToolRejected(rejection_kind(&reason)) });
+            AppUpdate::redraw(document)
+        }
+        ToolStep::Measured(m) => {
+            s.tool_measurement = Some(ToolMeasurement {
+                distance_text: format_mm(m.distance()),
+                dx_text: format_mm(m.dx()),
+                dy_text: format_mm(m.dy()),
+            });
+            AppUpdate::redraw(document)
+        }
+        ToolStep::Commit(EditCommit::PlaceText { at }) => {
+            // The anchor of the next committed text; no document change by itself.
+            s.text_anchor = Some(at);
+            AppUpdate::redraw(document)
+        }
         ToolStep::Commit(edit) => {
+            s.tool_measurement = None;
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
             let Some(payload) = payload(edit, name) else { return AppUpdate::redraw(document) };
@@ -2198,6 +2303,7 @@ fn document_view(id: DocumentId, s: &Session, machine: Option<&Machine>) -> Docu
         messages: s.messages.clone(),
         tasks: s.pending.iter().map(|(tid, (kind, _))| TaskBadge { id: *tid, kind: *kind }).collect(),
         measure: s.measure.clone(),
+        tool_measurement: s.tool_measurement.clone(),
         camera: s.camera,
         viewport: s.viewport,
         snap: s.editor.snap(),

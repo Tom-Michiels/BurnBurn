@@ -32,9 +32,8 @@ use objc2_app_kit::{
     NSAccessibility, NSAccessibilityElement, NSAccessibilityLayoutAreaRole, NSAccessibilityLayoutItemRole,
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOn,
     NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation, NSPopUpButton, NSResponder,
-    NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate, NSTextField,
-    NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem, NSTrackingArea,
-    NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextFieldCell,
+    NSTextInputClient, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -61,9 +60,6 @@ pub(crate) fn ffi_guard<T>(what: &str, default: T, body: impl FnOnce() -> T) -> 
         }
     }
 }
-
-/// Identifier of the toolbar item holding the tool control.
-pub(crate) const TOOLS_ITEM: &str = "app.burnburn.toolbar.tools";
 
 pub(crate) struct AppIvars {
     app: RefCell<Weak<HostApp>>,
@@ -222,8 +218,6 @@ pub(crate) struct ControllerParts {
     pub(crate) app: Weak<HostApp>,
     pub(crate) document: DocumentId,
     pub(crate) fields: Vec<(FieldKey, Retained<NSTextField>)>,
-    pub(crate) tools: Retained<NSSegmentedControl>,
-    pub(crate) tools_label: String,
     pub(crate) operations_table: Retained<NSTableView>,
     /// Name, speed, power of a new operation.
     pub(crate) operation_inputs: [Retained<NSTextField>; 3],
@@ -239,8 +233,6 @@ pub(crate) struct ControllerIvars {
     app: Weak<HostApp>,
     document: DocumentId,
     fields: Vec<(FieldKey, Retained<NSTextField>)>,
-    tools: Retained<NSSegmentedControl>,
-    tools_label: String,
     operations_table: Retained<NSTableView>,
     operation_inputs: [Retained<NSTextField>; 3],
     operation_kind: Retained<NSPopUpButton>,
@@ -286,12 +278,42 @@ define_class!(
             });
         }
 
-        /// The toolbar's tool control.
-        #[unsafe(method(toolChosen:))]
-        fn tool_chosen(&self, sender: Option<&AnyObject>) {
-            ffi_guard("toolChosen:", (), || {
-                let Some(control) = sender.and_then(|s| s.downcast_ref::<NSSegmentedControl>()) else { return };
-                self.send(NativeEvent::ToolChosen { document: self.ivars().document, index: control.selectedSegment() });
+        /// A tool button of the strip: its tag is the catalog index of the tool it shows.
+        #[unsafe(method(toolButton:))]
+        fn tool_button(&self, sender: Option<&AnyObject>) {
+            ffi_guard("toolButton:", (), || {
+                let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
+                if let Some(spec) = crate::toolbar::spec_for_tag(button.tag()) {
+                    self.send(NativeEvent::ToolButton { document: self.ivars().document, id: spec.id.to_owned() });
+                }
+            });
+        }
+
+        /// The arrow next to a group's button: open the drop-down of its variants.
+        #[unsafe(method(variantMenu:))]
+        fn variant_menu(&self, sender: Option<&AnyObject>) {
+            ffi_guard("variantMenu:", (), || {
+                let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
+                let Some(group) = crate::toolbar::spec_for_tag(button.tag()).and_then(|s| s.group) else { return };
+                if let Some(app) = self.ivars().app.upgrade() {
+                    app.show_variant_menu(self.ivars().document, group, button);
+                }
+            });
+        }
+
+        /// An entry of a variant drop-down: its tag is the catalog index of the variant.
+        #[unsafe(method(variantChosen:))]
+        fn variant_chosen(&self, sender: Option<&AnyObject>) {
+            ffi_guard("variantChosen:", (), || {
+                let Some(item) = sender.and_then(|s| s.downcast_ref::<NSMenuItem>()) else { return };
+                let Some(spec) = crate::toolbar::spec_for_tag(item.tag()) else { return };
+                if let Some(group) = spec.group {
+                    self.send(NativeEvent::VariantChosen {
+                        document: self.ivars().document,
+                        group: group.to_owned(),
+                        id: spec.id.to_owned(),
+                    });
+                }
             });
         }
 
@@ -582,39 +604,72 @@ define_class!(
         }
     }
 
-    unsafe impl NSToolbarDelegate for WindowController {
-        #[unsafe(method_id(toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:))]
-        fn toolbar_item(
-            &self,
-            _toolbar: &NSToolbar,
-            identifier: &NSString,
-            _flag: bool,
-        ) -> Option<Retained<NSToolbarItem>> {
-            ffi_guard("toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:", None, || {
-                if identifier.to_string() != TOOLS_ITEM {
-                    return None;
-                }
-                let mtm = MainThreadMarker::new()?;
-                let item = NSToolbarItem::initWithItemIdentifier(NSToolbarItem::alloc(mtm), identifier);
-                let label = NSString::from_str(&self.ivars().tools_label);
-                item.setLabel(&label);
-                item.setPaletteLabel(&label);
-                item.setView(Some(&self.ivars().tools));
-                Some(item)
-            })
+);
+
+// ---------------------------------------------------------------------------------------------
+// Tool strip view: tells the host when its icons must be drawn again (light/dark, Retina).
+// ---------------------------------------------------------------------------------------------
+
+pub(crate) struct StripIvars {
+    app: Weak<HostApp>,
+    document: DocumentId,
+}
+
+define_class!(
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "BurnBurnToolStripView"]
+    #[ivars = StripIvars]
+    pub(crate) struct ToolStripView;
+
+    impl ToolStripView {
+        #[unsafe(method(isFlipped))]
+        fn is_flipped(&self) -> bool {
+            false
         }
 
-        #[unsafe(method_id(toolbarDefaultItemIdentifiers:))]
-        fn toolbar_default(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM)])
+        /// Light/dark switch (system setting or the window's own appearance).
+        #[unsafe(method(viewDidChangeEffectiveAppearance))]
+        fn view_did_change_effective_appearance(&self) {
+            ffi_guard("viewDidChangeEffectiveAppearance", (), || {
+                // SAFETY: NSView's own implementation, no arguments, initialised instance.
+                let () = unsafe { msg_send![super(self), viewDidChangeEffectiveAppearance] };
+                self.restyle();
+            });
         }
 
-        #[unsafe(method_id(toolbarAllowedItemIdentifiers:))]
-        fn toolbar_allowed(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(TOOLS_ITEM)])
+        /// Moved to a screen with another backing scale.
+        #[unsafe(method(viewDidChangeBackingProperties))]
+        fn view_did_change_backing_properties(&self) {
+            ffi_guard("viewDidChangeBackingProperties", (), || {
+                // SAFETY: NSView's own implementation, no arguments, initialised instance.
+                let () = unsafe { msg_send![super(self), viewDidChangeBackingProperties] };
+                self.restyle();
+            });
         }
     }
+
+    unsafe impl NSObjectProtocol for ToolStripView {}
 );
+
+impl ToolStripView {
+    pub(crate) fn new(
+        mtm: MainThreadMarker,
+        frame: NSRect,
+        app: Weak<HostApp>,
+        document: DocumentId,
+    ) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(StripIvars { app, document });
+        // SAFETY: NSView's designated initialiser on a freshly allocated instance with ivars set.
+        unsafe { msg_send![super(this), initWithFrame: frame] }
+    }
+
+    fn restyle(&self) {
+        if let Some(app) = self.ivars().app.upgrade() {
+            app.native(NativeEvent::ToolStripRestyle { document: self.ivars().document });
+        }
+    }
+}
 
 impl WindowController {
     pub(crate) fn new(mtm: MainThreadMarker, parts: ControllerParts) -> Retained<Self> {
@@ -622,8 +677,6 @@ impl WindowController {
             app,
             document,
             fields,
-            tools,
-            tools_label,
             operations_table,
             operation_inputs,
             operation_kind,
@@ -636,8 +689,6 @@ impl WindowController {
             app,
             document,
             fields,
-            tools,
-            tools_label,
             operations_table,
             operation_inputs,
             operation_kind,
@@ -1156,10 +1207,6 @@ pub(crate) fn table_source(controller: &WindowController) -> &ProtocolObject<dyn
 }
 
 pub(crate) fn table_delegate(controller: &WindowController) -> &ProtocolObject<dyn NSTableViewDelegate> {
-    ProtocolObject::from_ref(controller)
-}
-
-pub(crate) fn toolbar_delegate(controller: &WindowController) -> &ProtocolObject<dyn NSToolbarDelegate> {
     ProtocolObject::from_ref(controller)
 }
 

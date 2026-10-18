@@ -9,6 +9,9 @@ pub mod array;
 mod boolean;
 mod bounds;
 mod canonical;
+mod construct;
+mod corner;
+mod cutting;
 mod error;
 mod flatten;
 mod intersect;
@@ -18,16 +21,26 @@ mod path;
 mod point;
 mod query;
 mod repair;
+mod ring;
 mod segment;
 mod shapes;
 mod snap;
 mod spatial;
+mod spline;
 mod tolerance;
 
 pub use affine::Affine;
 pub use align::{AlignEdge, AlignError, AlignTo, Direction, Spacing, align_offsets, distribute_offsets};
 pub use boolean::{BooleanError, BooleanOp, BooleanOptions, FillRule, OffsetError, OffsetJoin, boolean, offset};
 pub use bounds::Bounds;
+pub use construct::{
+    Circle, ConstructError, EllipseSpec, Line, PolygonSpec, arc_center_start_end, arc_tangent, arc_through_three,
+    circle_tangent_three_lines, circle_tangent_two_lines, circle_tangent_two_lines_radius, circle_through_three,
+    ellipse_from_axes, polygon_circumscribed, polygon_from_edge, polygon_inscribed, rectangle_three_point,
+    rounded_rectangle, slot_along_arc, slot_center_to_center, slot_overall,
+};
+pub use corner::{CornerCut, CornerError};
+pub use cutting::BreakError;
 pub use error::GeometryError;
 pub use flatten::Polyline;
 pub use intersect::Intersection;

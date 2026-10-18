@@ -139,6 +139,11 @@ path = "../../tests/native/macos/recovery_offer.rs"
 harness = false
 
 [[test]]
+name = "tool_strip"
+path = "../../tests/native/macos/tool_strip.rs"
+harness = false
+
+[[test]]
 name = "layer_palette"
 path = "../../tests/native/macos/layer_palette.rs"
 harness = false
@@ -152,10 +157,14 @@ burnburn-geometry = { workspace = true }
 burnburn-image = { workspace = true }
 # StdFileSystem for AppPorts.fs until burnburn-runtime re-exports it (docs/coordination/gui.md).
 burnburn-io = { workspace = true }
+# Toolbar icons (RGBA from the SVG masters, light and dark).
+burnburn-icons = { workspace = true }
 burnburn-presentation = { workspace = true }
 # System font source for canvas text input (`fonts::first_readable_font`).
 burnburn-runtime = { workspace = true }
 burnburn-types = { workspace = true }
+# assets/l10n/tools.toml (tool labels, tooltips, panel titles).
+toml = { workspace = true }
 
 [dev-dependencies]
 # Compiling a plan in the preview-panel test needs a machine profile and a controller dialect.
@@ -179,4 +188,4 @@ objc2-av-foundation = { workspace = true, optional = true, features = ["std", "b
 objc2-core-media = { workspace = true, optional = true, features = ["std", "objc2-core-video", "CMBase", "CMFormatDescription", "CMSampleBuffer"] }
 objc2-core-video = { workspace = true, optional = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimer", "NSURL"] }
-objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow"] }
+objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSImageRep", "NSImage", "NSBox", "NSBitmapImageRep", "NSAppearance", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow"] }

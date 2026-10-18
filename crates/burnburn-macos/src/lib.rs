@@ -16,3 +16,4 @@ pub mod lifecycle;
 pub mod panels;
 pub mod tasks;
 pub mod text_input;
+pub mod toolbar;

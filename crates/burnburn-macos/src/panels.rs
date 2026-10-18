@@ -1,5 +1,5 @@
 //! What the window's panels show, from the existing presentation view models (no AppKit): the
-//! toolbar's tool control, the inspector's field order and the JobPlan preview panel.
+//! inspector's field order and the JobPlan preview panel.
 //!
 //! Panels only show and forward: tools and buttons become `UiIntent::Invoke`, field text goes to
 //! presentation unparsed (DR-05), also in the operations panel; the bed-camera section only asks
@@ -15,34 +15,9 @@ use burnburn_types::{DocumentId, OperationId};
 
 use crate::l10n::{HostText, Locale, host_text, machine_status_text, message_or_key};
 
-/// Segments of the toolbar's tool control, left to right.
-pub const TOOLBAR_TOOLS: [CommandKey; 6] = [
-    CommandKey::ToolSelect,
-    CommandKey::ToolRectangle,
-    CommandKey::ToolEllipse,
-    CommandKey::ToolLine,
-    CommandKey::ToolPen,
-    CommandKey::ToolNode,
-];
-
 /// Inspector fields, top to bottom.
 pub const INSPECTOR_FIELDS: [FieldKey; 5] =
     [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation];
-
-/// The tool command for toolbar segment `index` (AppKit's `selectedSegment`, −1 = none).
-pub fn toolbar_tool(index: isize) -> Option<CommandKey> {
-    TOOLBAR_TOOLS.get(usize::try_from(index).ok()?).copied()
-}
-
-/// The segment of the active tool (from the commands' checked state, like the menu checkmarks).
-pub fn toolbar_selected(vm: &AppViewModel) -> Option<usize> {
-    TOOLBAR_TOOLS.iter().position(|k| vm.commands.get(k).is_some_and(|c| c.checked))
-}
-
-/// Enablement per segment (same source as `validateMenuItem:`).
-pub fn toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
-    TOOLBAR_TOOLS.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
-}
 
 /// The preview panel's texts.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,0 +1,16 @@
+[package]
+name = "burnburn-icons"
+description = "UI icon rasteriser: SVG-subset masters with palette colour roles, drawn with tiny-skia"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Pure-Rust 2D rasteriser (no GPU, no C); the same configuration SolidCraft uses.
+tiny-skia = { workspace = true }
+# Palette and icon registry are TOML files.
+toml = { workspace = true }

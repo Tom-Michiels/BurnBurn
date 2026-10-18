@@ -7,9 +7,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use burnburn_geometry::{
-    Affine, AlignEdge, AlignError, AlignTo, BooleanError, BooleanOp, BooleanOptions, Bounds, DiagnosticTolerance,
-    Direction, EndpointRef, ExtendError, GeometryError, NodeEdit, NodeEditError, OffsetError, OffsetJoin, Path, Point,
-    ProductionTolerance, Shape, Spacing, TrimError, align_offsets, boolean, close_gaps, distribute_offsets, offset,
+    Affine, AlignEdge, AlignError, AlignTo, BooleanError, BooleanOp, BooleanOptions, Bounds, BreakError, CornerCut,
+    CornerError, DiagnosticTolerance, Direction, EndpointRef, ExtendError, GeometryError, NodeEdit, NodeEditError,
+    OffsetError, OffsetJoin, Path, Point, ProductionTolerance, Shape, Spacing, TrimError, align_offsets, boolean,
+    close_gaps, distribute_offsets, offset,
 };
 use burnburn_types::{CancellationToken, ContentHash, GeometryId, GroupId, IdAllocator, Length};
 
@@ -79,6 +80,30 @@ pub enum GeometryCommand {
         targets: Vec<GeometryId>,
         tolerance: DiagnosticTolerance,
     },
+    /// Fillet or chamfer the vertex of `target` nearest to `pick` (within `reach`).
+    CutCorner {
+        target: GeometryId,
+        pick: Point,
+        reach: Length,
+        cut: CornerCut,
+    },
+    /// Trim a line, arc or Bézier of `target` at `pick` between the crossings with `cutters`.
+    TrimAt {
+        target: GeometryId,
+        pick: Point,
+        cutters: Vec<GeometryId>,
+    },
+    /// Extend an open line or arc end of `target` to the nearest boundary.
+    ExtendEnd {
+        target: GeometryId,
+        end: EndpointRef,
+        boundaries: Vec<GeometryId>,
+    },
+    /// Split `target` at the point nearest to `pick`.
+    BreakAt {
+        target: GeometryId,
+        pick: Point,
+    },
     Align {
         targets: Vec<GeometryId>,
         edge: AlignEdge,
@@ -114,6 +139,8 @@ pub enum EditLabel {
     Trim,
     Extend,
     CloseGaps,
+    CutCorner,
+    Break,
     Align,
     Distribute,
     Group,
@@ -132,6 +159,10 @@ impl GeometryCommand {
             GeometryCommand::TrimLine { .. } => EditLabel::Trim,
             GeometryCommand::ExtendLine { .. } => EditLabel::Extend,
             GeometryCommand::CloseGaps { .. } => EditLabel::CloseGaps,
+            GeometryCommand::CutCorner { .. } => EditLabel::CutCorner,
+            GeometryCommand::TrimAt { .. } => EditLabel::Trim,
+            GeometryCommand::ExtendEnd { .. } => EditLabel::Extend,
+            GeometryCommand::BreakAt { .. } => EditLabel::Break,
             GeometryCommand::Align { .. } => EditLabel::Align,
             GeometryCommand::Distribute { .. } => EditLabel::Distribute,
             GeometryCommand::Group { .. } => EditLabel::Group,
@@ -153,6 +184,8 @@ pub enum EditError {
     Offset(OffsetError),
     Trim(TrimError),
     Extend(ExtendError),
+    Corner(CornerError),
+    Break(BreakError),
     Align(AlignError),
     NotEnoughTargets,
     /// The align reference must be one of the targets.
@@ -377,6 +410,30 @@ pub(crate) fn apply(cmd: GeometryCommand, mut txn: EditTxn<'_>) -> Result<(), Ed
             let b = txn.paths(&boundaries)?;
             let refs: Vec<&Path> = b.iter().map(|p| p.as_ref()).collect();
             let path = obj.path().extend_line(end, &refs).map_err(EditError::Extend)?;
+            txn.replace(target, path)?;
+        }
+        GeometryCommand::CutCorner { target, pick, reach, cut } => {
+            let obj = txn.editable(target)?;
+            let path = obj.path().cut_corner(pick, reach.mm(), cut).map_err(EditError::Corner)?;
+            txn.replace(target, path)?;
+        }
+        GeometryCommand::TrimAt { target, pick, cutters } => {
+            let obj = txn.editable(target)?;
+            let cut = txn.paths(&cutters)?;
+            let refs: Vec<&Path> = cut.iter().map(|p| p.as_ref()).collect();
+            let path = obj.path().trim_at(pick, &refs).map_err(EditError::Trim)?;
+            if path.is_empty() { txn.delete(target)? } else { txn.replace(target, path)? }
+        }
+        GeometryCommand::ExtendEnd { target, end, boundaries } => {
+            let obj = txn.editable(target)?;
+            let b = txn.paths(&boundaries)?;
+            let refs: Vec<&Path> = b.iter().map(|p| p.as_ref()).collect();
+            let path = obj.path().extend_end(end, &refs).map_err(EditError::Extend)?;
+            txn.replace(target, path)?;
+        }
+        GeometryCommand::BreakAt { target, pick } => {
+            let obj = txn.editable(target)?;
+            let path = obj.path().break_at(pick).map_err(EditError::Break)?;
             txn.replace(target, path)?;
         }
         GeometryCommand::CloseGaps { targets, tolerance } => {

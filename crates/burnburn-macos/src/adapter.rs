@@ -153,10 +153,20 @@ pub enum NativeEvent {
         key_code: u16,
         flags: usize,
     },
-    /// The toolbar's tool control: segment `index` of [`crate::panels::TOOLBAR_TOOLS`].
-    ToolChosen {
+    /// A tool button of the strip, by catalog id.
+    ToolButton {
         document: DocumentId,
-        index: isize,
+        id: String,
+    },
+    /// An entry of a variant drop-down.
+    VariantChosen {
+        document: DocumentId,
+        group: String,
+        id: String,
+    },
+    /// The strip's icons must be drawn again (light/dark or backing scale changed). No intent.
+    ToolStripRestyle {
+        document: DocumentId,
     },
     /// A toolbar/panel button that runs a command for this window's document.
     PanelCommand {
@@ -408,10 +418,10 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             };
             UiIntent::Key { document, key, modifiers: modifiers(raw) }
         }
-        E::ToolChosen { document, index } if open(document) => match crate::panels::toolbar_tool(index) {
-            Some(command) => UiIntent::Invoke { document: Some(document), command },
-            None => return Reaction::Nothing,
-        },
+        E::ToolButton { document, id } if open(document) => UiIntent::SelectTool { document: Some(document), id },
+        E::VariantChosen { document, group, id } if open(document) => {
+            UiIntent::SelectVariant { document: Some(document), group, id }
+        }
         E::PanelCommand { document, command } if open(document) => {
             UiIntent::Invoke { document: Some(document), command }
         }

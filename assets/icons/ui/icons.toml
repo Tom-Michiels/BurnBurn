@@ -1,0 +1,361 @@
+# Tool-id -> icoonbestand (SolidCraft-artwork, ongewijzigd; zie ATTRIBUTION.md).
+# category: sketch | constraint | flat. solidcraft_icon: icoon-id in SolidCraft (assets/icons/ui/design/aliases.toml).
+# missing = true: geen passend icoon in SolidCraft; file is leeg, niets getekend.
+# Kleuren komen uit palette.toml; accentvarianten (sketch_*) zijn aliassen van dezelfde tekening.
+
+[tools."sketch.line"]
+file = "line.svg"
+category = "sketch"
+solidcraft_icon = "line"
+
+[tools."sketch.line.midpoint"]
+file = "line_mid.svg"
+category = "sketch"
+solidcraft_icon = "line_mid"
+
+[tools."sketch.centerline"]
+file = "centerline.svg"
+category = "sketch"
+solidcraft_icon = "centerline"
+
+[tools."sketch.rectangle.two_point"]
+file = "rect.svg"
+category = "sketch"
+solidcraft_icon = "rect"
+
+[tools."sketch.rectangle.center"]
+file = "rect_center.svg"
+category = "sketch"
+solidcraft_icon = "rect_center"
+
+[tools."sketch.rectangle.three_point"]
+file = "rect3.svg"
+category = "sketch"
+solidcraft_icon = "rect3"
+
+[tools."sketch.rectangle.rounded"]
+file = "rect_rounded.svg"
+category = "sketch"
+solidcraft_icon = "rect_rounded"
+
+[tools."sketch.circle.center"]
+file = "circle.svg"
+category = "sketch"
+solidcraft_icon = "circle"
+
+[tools."sketch.circle.two_point"]
+file = "circle2.svg"
+category = "sketch"
+solidcraft_icon = "circle2"
+
+[tools."sketch.circle.three_point"]
+file = "circle3.svg"
+category = "sketch"
+solidcraft_icon = "circle3"
+
+[tools."sketch.circle.two_tangent"]
+file = "circle_tt.svg"
+category = "sketch"
+solidcraft_icon = "circle_tt"
+
+[tools."sketch.circle.three_tangent"]
+file = "circle_ttt.svg"
+category = "sketch"
+solidcraft_icon = "circle_ttt"
+
+[tools."sketch.arc.three_point"]
+file = "arc3.svg"
+category = "sketch"
+solidcraft_icon = "arc3"
+
+[tools."sketch.arc.center_point"]
+file = "arc_center.svg"
+category = "sketch"
+solidcraft_icon = "arc_center"
+
+[tools."sketch.arc.tangent"]
+file = "arc_tangent.svg"
+category = "sketch"
+solidcraft_icon = "arc_tangent"
+
+[tools."sketch.ellipse"]
+file = "ellipse.svg"
+category = "sketch"
+solidcraft_icon = "ellipse"
+
+[tools."sketch.polygon.inscribed"]
+file = "polygon.svg"
+category = "sketch"
+solidcraft_icon = "polygon"
+
+[tools."sketch.polygon.circumscribed"]
+file = "polygon_circumscribed.svg"
+category = "sketch"
+solidcraft_icon = "polygon_circumscribed"
+
+[tools."sketch.polygon.edge"]
+file = "polygon_edge.svg"
+category = "sketch"
+solidcraft_icon = "polygon_edge"
+
+[tools."sketch.slot.center_to_center"]
+file = "slot.svg"
+category = "sketch"
+solidcraft_icon = "slot"
+
+[tools."sketch.slot.overall"]
+file = "slot_overall.svg"
+category = "sketch"
+solidcraft_icon = "slot_overall"
+
+[tools."sketch.slot.center_point"]
+file = "slot_center.svg"
+category = "sketch"
+solidcraft_icon = "slot_center"
+
+[tools."sketch.slot.arc_three_point"]
+file = "arc_slot.svg"
+category = "sketch"
+solidcraft_icon = "arc_slot"
+
+[tools."sketch.slot.arc_center"]
+file = "arc_slot_center.svg"
+category = "sketch"
+solidcraft_icon = "arc_slot_center"
+
+[tools."sketch.spline.fit_point"]
+file = "spline.svg"
+category = "sketch"
+solidcraft_icon = "spline"
+
+[tools."sketch.spline.control_point"]
+file = "spline_cv.svg"
+category = "sketch"
+solidcraft_icon = "spline_cv"
+
+[tools."sketch.conic"]
+file = "conic.svg"
+category = "sketch"
+solidcraft_icon = "conic"
+
+[tools."sketch.point"]
+file = "point.svg"
+category = "sketch"
+solidcraft_icon = "point"
+
+[tools."sketch.text"]
+file = "text.svg"
+category = "sketch"
+solidcraft_icon = "sketch_text"
+
+[tools."sketch.dimension"]
+file = "dimension.svg"
+category = "sketch"
+solidcraft_icon = "dimension"
+
+[tools."sketch.fillet"]
+file = "sketch_fillet.svg"
+category = "sketch"
+solidcraft_icon = "sketch_fillet"
+
+[tools."sketch.chamfer.equal_distance"]
+file = "sketch_chamfer.svg"
+category = "sketch"
+solidcraft_icon = "sketch_chamfer"
+
+[tools."sketch.chamfer.two_distance"]
+file = "sketch_chamfer_two_distances.svg"
+category = "sketch"
+solidcraft_icon = "sketch_chamfer_two_distances"
+
+[tools."sketch.chamfer.distance_angle"]
+file = "sketch_chamfer_angle.svg"
+category = "sketch"
+solidcraft_icon = "sketch_chamfer_angle"
+
+[tools."sketch.trim"]
+file = "trim.svg"
+category = "sketch"
+solidcraft_icon = "trim"
+
+[tools."sketch.extend"]
+file = "extend.svg"
+category = "sketch"
+solidcraft_icon = "extend"
+
+[tools."sketch.break"]
+file = "break.svg"
+category = "sketch"
+solidcraft_icon = "sketch_break"
+
+[tools."sketch.offset"]
+file = "offset.svg"
+category = "sketch"
+solidcraft_icon = "offset"
+
+[tools."sketch.mirror"]
+file = "sketch_mirror.svg"
+category = "sketch"
+solidcraft_icon = "sketch_mirror"
+
+[tools."sketch.move"]
+file = "move.svg"
+category = "sketch"
+solidcraft_icon = "sketch_move"
+
+[tools."sketch.scale"]
+file = "scale.svg"
+category = "sketch"
+solidcraft_icon = "sketch_scale"
+
+[tools."sketch.construction"]
+file = "construction.svg"
+category = "sketch"
+solidcraft_icon = "construction"
+
+[tools."sketch.pattern.rectangular"]
+file = "pattern_rect.svg"
+category = "sketch"
+solidcraft_icon = "sketch_rect_pattern"
+
+[tools."sketch.pattern.circular"]
+file = "pattern_circ.svg"
+category = "sketch"
+solidcraft_icon = "sketch_circ_pattern"
+
+[tools."sketch.constraint.coincident"]
+file = "c_coincident.svg"
+category = "constraint"
+solidcraft_icon = "c_coincident"
+
+[tools."sketch.constraint.collinear"]
+file = "c_collinear.svg"
+category = "constraint"
+solidcraft_icon = "c_collinear"
+
+[tools."sketch.constraint.concentric"]
+file = "c_concentric.svg"
+category = "constraint"
+solidcraft_icon = "c_concentric"
+
+[tools."sketch.constraint.equal"]
+file = "c_equal.svg"
+category = "constraint"
+solidcraft_icon = "c_equal"
+
+[tools."sketch.constraint.fix"]
+file = "c_fix.svg"
+category = "constraint"
+solidcraft_icon = "c_fix"
+
+[tools."sketch.constraint.horizontal_vertical"]
+file = "c_hv.svg"
+category = "constraint"
+solidcraft_icon = "c_hv"
+
+[tools."sketch.constraint.midpoint"]
+file = "c_midpoint.svg"
+category = "constraint"
+solidcraft_icon = "c_midpoint"
+
+[tools."sketch.constraint.parallel"]
+file = "c_parallel.svg"
+category = "constraint"
+solidcraft_icon = "c_parallel"
+
+[tools."sketch.constraint.perpendicular"]
+file = "c_perpendicular.svg"
+category = "constraint"
+solidcraft_icon = "c_perpendicular"
+
+[tools."sketch.constraint.symmetry"]
+file = "c_symmetry.svg"
+category = "constraint"
+solidcraft_icon = "c_symmetry"
+
+[tools."sketch.constraint.tangent"]
+file = "c_tangent.svg"
+category = "constraint"
+solidcraft_icon = "c_tangent"
+
+[tools."sketch.auto_constrain"]
+file = "auto_constrain.svg"
+category = "sketch"
+solidcraft_icon = "auto_constrain"
+
+[tools."sketch.insert_svg"]
+file = "svg.svg"
+category = "sketch"
+solidcraft_icon = "svg"
+
+[tools."sketch.insert_dxf"]
+file = "dxf.svg"
+category = "sketch"
+solidcraft_icon = "sketch_dxf"
+
+[tools."select"]
+file = "select.svg"
+category = "flat"
+solidcraft_icon = "select"
+
+[tools."node"]
+file = ""
+category = "flat"
+solidcraft_icon = ""
+missing = true
+
+[tools."pan"]
+file = "pan.svg"
+category = "flat"
+solidcraft_icon = "pan"
+
+[tools."fit"]
+file = "fit.svg"
+category = "flat"
+solidcraft_icon = "fit"
+
+[tools."zoom"]
+file = "zoom.svg"
+category = "flat"
+solidcraft_icon = "zoom"
+
+[tools."undo"]
+file = "undo.svg"
+category = "flat"
+solidcraft_icon = "undo"
+
+[tools."redo"]
+file = "redo.svg"
+category = "flat"
+solidcraft_icon = "redo"
+
+[tools."save"]
+file = "save.svg"
+category = "flat"
+solidcraft_icon = "save"
+
+[tools."open"]
+file = "open.svg"
+category = "flat"
+solidcraft_icon = "open"
+
+[tools."new"]
+file = "new.svg"
+category = "flat"
+solidcraft_icon = "new"
+
+[tools."delete"]
+file = "delete.svg"
+category = "flat"
+solidcraft_icon = "delete"
+
+[tools."copy"]
+file = "copy.svg"
+category = "flat"
+solidcraft_icon = "copy"
+
+[tools."paste"]
+file = "paste.svg"
+category = "flat"
+solidcraft_icon = "paste"
+

@@ -16,6 +16,8 @@ pub enum GeometryError {
     MissingStart,
     /// A shape needs more points, sides or star tips than given.
     TooFewPoints,
+    /// A shape parameter (a conic's rho, for example) lies outside its valid range.
+    InvalidParameter,
 }
 
 impl fmt::Display for GeometryError {
@@ -27,6 +29,7 @@ impl fmt::Display for GeometryError {
             GeometryError::DegenerateArc => f.write_str("arc is degenerate"),
             GeometryError::MissingStart => f.write_str("path segment has no start point"),
             GeometryError::TooFewPoints => f.write_str("shape has too few points"),
+            GeometryError::InvalidParameter => f.write_str("shape parameter is out of range"),
         }
     }
 }

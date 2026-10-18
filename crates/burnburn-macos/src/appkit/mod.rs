@@ -14,6 +14,7 @@ mod canvas;
 // `define_class!` and `msg_send!` need unsafe; the invariants are in the module's doc comment.
 #[allow(unsafe_code)]
 mod classes;
+mod toolstrip;
 mod window;
 
 use std::process::ExitCode;
@@ -25,6 +26,7 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{HostApp, HostOptions, QuitOutcome, WindowParts};
+pub use toolstrip::{ToolStrip, image_pixels};
 pub use window::CanvasStatus;
 
 /// The UI language from the user's preferred languages (`NSLocale.preferredLanguages`), as menus

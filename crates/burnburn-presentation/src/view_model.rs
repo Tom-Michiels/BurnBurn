@@ -14,6 +14,7 @@ use burnburn_types::{DocumentId, GeometryId, OperationId, RevisionId, TaskId, Un
 
 use burnburn_machine::{ExecutionId, ExecutionState, MachineId};
 
+use crate::catalog::ToolbarViewModel;
 use crate::field::FieldError;
 use crate::intent::{CommandKey, FieldKey, ImportUnit, OperationField, OperationKind};
 use crate::production::{ActionId, MachineAction, OrderId};
@@ -27,6 +28,8 @@ pub struct AppViewModel {
     pub active: Option<DocumentId>,
     /// Enablement for the active document; drives `validateMenuItem:` and the toolbar.
     pub commands: BTreeMap<CommandKey, CommandState>,
+    /// The tool register as the toolbar draws it: panels, groups, selection and enablement.
+    pub toolbar: ToolbarViewModel,
 }
 
 impl AppViewModel {
@@ -55,6 +58,8 @@ pub struct DocumentViewModel {
     pub tasks: Vec<TaskBadge>,
     /// Result of the latest Measure task that matched the then-current revision.
     pub measure: Option<MeasureViewModel>,
+    /// Readout of the measuring tool, cleared by the next tool choice or edit.
+    pub tool_measurement: Option<ToolMeasurement>,
     pub camera: Camera,
     pub viewport: Viewport,
     /// Named snap target under the pointer (cursor label "Eindpunt", E04).
@@ -417,6 +422,59 @@ pub struct TaskBadge {
     pub kind: TaskKind,
 }
 
+/// Why the active tool refused its gesture (the document is unchanged); hosts say it in words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ToolRejection {
+    NothingPicked,
+    DerivedGeometry,
+    NeedsSelection,
+    InvalidSelection,
+    NothingToConstrain,
+    InvalidValue,
+    Corner,
+    Trim,
+    Extend,
+    Break,
+    Offset,
+    /// Construction geometry exists only inside a sketch.
+    ConstructionOutsideSketch,
+    /// Fillet and chamfer need two straight sides.
+    CurvedCorner,
+    /// Only lines and arcs can be extended.
+    BezierExtend,
+    /// Not available for another reason that the tool names itself.
+    Unavailable,
+}
+
+impl ToolRejection {
+    pub const ALL: [ToolRejection; 15] = [
+        ToolRejection::NothingPicked,
+        ToolRejection::DerivedGeometry,
+        ToolRejection::NeedsSelection,
+        ToolRejection::InvalidSelection,
+        ToolRejection::NothingToConstrain,
+        ToolRejection::InvalidValue,
+        ToolRejection::Corner,
+        ToolRejection::Trim,
+        ToolRejection::Extend,
+        ToolRejection::Break,
+        ToolRejection::Offset,
+        ToolRejection::ConstructionOutsideSketch,
+        ToolRejection::CurvedCorner,
+        ToolRejection::BezierExtend,
+        ToolRejection::Unavailable,
+    ];
+}
+
+/// The readout of a measuring tool (Dimension outside a sketch); a readout, never document data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolMeasurement {
+    pub distance_text: String,
+    pub dx_text: String,
+    pub dy_text: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeasureViewModel {
     pub revision: RevisionId,
@@ -430,6 +488,8 @@ pub struct MeasureViewModel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum MessageKey {
+    /// The active tool refused its gesture; nothing changed.
+    ToolRejected(ToolRejection),
     /// Text input without any font to draw it with.
     NoFontAvailable,
     /// Operations-panel text that is not a valid number for that field.

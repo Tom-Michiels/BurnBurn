@@ -13,6 +13,7 @@ use burnburn_document::{EditLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
     CommandKey, Feature, FieldError, FieldKey, MachineAction, MachineStatusKey, MessageKey, OperationField, Outcome,
+    ToolRejection,
 };
 
 /// UI language. Physical values never depend on it (fields accept both decimal signs, DR-05).
@@ -625,6 +626,37 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             "Bewaard, maar het systeem bevestigde niet dat het bestand veilig op schijf staat.",
             "Saved, but the system did not confirm the file is safely on disk.",
         ),
+        M::ToolRejected(r) => match r {
+            ToolRejection::NothingPicked => ("Hier is niets om te kiezen.", "Nothing to pick here."),
+            ToolRejection::DerivedGeometry => (
+                "Dit komt uit een schets of generator; pas de bron aan.",
+                "This comes from a sketch or generator; edit its source.",
+            ),
+            ToolRejection::NeedsSelection => ("Selecteer eerst iets.", "Select something first."),
+            ToolRejection::InvalidSelection => {
+                ("Deze selectie past niet bij dit gereedschap.", "This selection does not fit the tool.")
+            }
+            ToolRejection::NothingToConstrain => ("Er is niets om te beperken.", "Nothing to constrain."),
+            ToolRejection::InvalidValue => ("Ongeldige waarde.", "Invalid value."),
+            ToolRejection::Corner => ("Deze hoek kan niet worden bewerkt.", "This corner cannot be modified."),
+            ToolRejection::Trim => ("Inkorten is hier niet mogelijk.", "Trimming is not possible here."),
+            ToolRejection::Extend => ("Verlengen is hier niet mogelijk.", "Extending is not possible here."),
+            ToolRejection::Break => ("Splitsen is hier niet mogelijk.", "Breaking is not possible here."),
+            ToolRejection::Offset => ("Deze verschuiving is niet mogelijk.", "This offset is not possible."),
+            ToolRejection::ConstructionOutsideSketch => (
+                "Nog niet beschikbaar: hulplijnen bestaan alleen in een schets.",
+                "Not available yet: construction geometry exists only in a sketch.",
+            ),
+            ToolRejection::CurvedCorner => (
+                "Nog niet beschikbaar: afronden en afschuinen vragen twee rechte zijden.",
+                "Not available yet: fillet and chamfer need two straight sides.",
+            ),
+            ToolRejection::BezierExtend => (
+                "Nog niet beschikbaar: alleen lijnen en bogen kunnen worden verlengd.",
+                "Not available yet: only lines and arcs can be extended.",
+            ),
+            _ => ("Nog niet beschikbaar.", "Not available yet."),
+        },
         M::NoFontAvailable => {
             ("Er is geen lettertype beschikbaar om tekst te plaatsen.", "No font is available to place text.")
         }
@@ -772,6 +804,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::InvalidNumber),
     );
     keys.push(MessageKey::SelectObjectsFirst);
+    keys.extend(ToolRejection::ALL.map(MessageKey::ToolRejected));
     keys.extend(Feature::ALL.map(MessageKey::MissingCapability));
     keys.extend(Outcome::ALL.map(|o| MessageKey::MachineAction(MachineAction::RecordOutcome(o))));
     keys.extend(

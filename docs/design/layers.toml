@@ -66,6 +66,17 @@ allow = ["burnburn-types"]
 forbid = []
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 
+# UI icon rasteriser (SVG subset + tiny-skia, SolidCraft look). No workspace deps, no GUI/GPU; used by the
+# presentation layer and the native hosts to turn tool icons into RGBA images.
+[crates.burnburn-icons]
+layer = 1
+kind = "core"
+owner = "gui"
+unsafe = "forbid"
+allow = []
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
 # ---------------------------------------------------------------------------------------------
 # Layer 2: data models that do not evaluate each other
 # ---------------------------------------------------------------------------------------------
@@ -204,7 +215,7 @@ owner = "user-flow"
 unsafe = "forbid"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
          "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-text", "burnburn-ruida", "burnburn-io",
-         "burnburn-editor", "burnburn-machine", "burnburn-generators"]
+         "burnburn-editor", "burnburn-machine", "burnburn-generators", "burnburn-icons"]
 forbid = []
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 
@@ -259,7 +270,7 @@ kind = "host"
 owner = "gui"
 unsafe = "adapter"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
-         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image"]
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons"]
 forbid = ["windows_native", "ui_toolkit", "foreign_kernel"]
 forbid_transitive = ["ui_toolkit", "foreign_kernel"]
 
@@ -269,7 +280,7 @@ kind = "host"
 owner = "gui"
 unsafe = "adapter"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
-         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image"]
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons"]
 forbid = ["apple_native", "ui_toolkit", "foreign_kernel"]
 forbid_transitive = ["ui_toolkit", "foreign_kernel"]
 
