@@ -27,6 +27,7 @@ use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
 use super::panels::import::{ImportSheet, import_sheet};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
+use super::panels::sketch::{SketchSection, sketch_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
 use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_rows, window_title};
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
@@ -70,6 +71,7 @@ pub(crate) struct DocWindow {
     pub(crate) operations: OperationsSection,
     pub(crate) cut_settings: CutSettingsSheet,
     pub(crate) camera: CameraSection,
+    pub(crate) sketch: SketchSection,
     pub(crate) canvas_status: CanvasStatus,
     /// The sheet currently shown for this window (tests drive it like a user would).
     pub(crate) save_panel: Option<Retained<NSSavePanel>>,
@@ -132,6 +134,7 @@ impl DocWindow {
         let canvas_view = CanvasView::new(mtm, rect(0.0, 0.0, canvas_width, h - STRIP_HEIGHT), app.clone(), document);
         let (strip, operations, camera) = production_strip(mtm, canvas_width, locale);
         let cut_settings = cut_settings_sheet(mtm, locale);
+        let sketch = sketch_section(mtm, locale);
 
         // Toolbar tool control (segments in TOOLBAR_TOOLS order).
         let tools = NSSegmentedControl::new(mtm);
@@ -186,6 +189,11 @@ impl DocWindow {
                 cut_fields: cut_settings.fields.clone(),
                 cut_toggles: [cut_settings.output.clone(), cut_settings.visible.clone()],
                 camera_devices: camera.devices.clone(),
+                sketch_table: sketch.table.clone(),
+                sketch_params_table: sketch.params_table.clone(),
+                param_inputs: sketch.param_inputs.clone(),
+                sketch_tools: sketch.toolbar.clone(),
+                sketch_tools_label: host_text(HostText::MenuSketch, locale).to_owned(),
             },
         );
         let target: &AnyObject = controller.as_ref();
@@ -268,6 +276,32 @@ impl DocWindow {
             // SAFETY: as above.
             unsafe { b.setAction(Some(sel!(cameraButton:))) };
         }
+        for (_, b) in &sketch.buttons {
+            // SAFETY: as above; the sketch panel's command buttons use `panelButton:` (tag = menu tag).
+            unsafe { b.setTarget(Some(target)) };
+            // SAFETY: as above.
+            unsafe { b.setAction(Some(sel!(panelButton:))) };
+        }
+        for (b, action) in [
+            (&sketch.problem, sel!(sketchProblemClicked:)),
+            (&sketch.role, sel!(sketchRoleClicked:)),
+            (&sketch.param_set, sel!(sketchParameterSet:)),
+        ] {
+            // SAFETY: as above.
+            unsafe { b.setTarget(Some(target)) };
+            // SAFETY: as above.
+            unsafe { b.setAction(Some(action)) };
+        }
+        // SAFETY: as above; `sketchToolbar:` takes the sender.
+        unsafe { sketch.toolbar.setTarget(Some(target)) };
+        // SAFETY: as above.
+        unsafe { sketch.toolbar.setAction(Some(sel!(sketchToolbar:))) };
+        for t in [&sketch.table, &sketch.params_table] {
+            // SAFETY: data source and delegate are weak; cleared in Drop before the controller goes.
+            unsafe { t.setDataSource(Some(table_source(&controller))) };
+            // SAFETY: as above.
+            unsafe { t.setDelegate(Some(table_delegate(&controller))) };
+        }
         // SAFETY: data source and delegate are weak; cleared in Drop before the controller goes.
         unsafe { operations.table.setDataSource(Some(table_source(&controller))) };
         // SAFETY: as above.
@@ -328,6 +362,7 @@ impl DocWindow {
             operations,
             cut_settings,
             camera,
+            sketch,
             canvas_status,
             save_panel: None,
             export_panel: None,
@@ -403,6 +438,7 @@ impl DocWindow {
         self.refresh_operations(vm, document);
         self.refresh_cut_settings(vm, document);
         self.refresh_camera(camera);
+        self.refresh_sketch(vm, document);
 
         let selected = toolbar_selected(vm).map_or(-1, |i| i as isize);
         if self.toolbar_tools.selectedSegment() != selected {
@@ -481,6 +517,25 @@ impl Drop for DocWindow {
             unsafe { b.setTarget(None) };
         }
         self.toolbar.setDelegate(None);
+        for (_, b) in &self.sketch.buttons {
+            // SAFETY: as above.
+            unsafe { b.setTarget(None) };
+        }
+        for b in [&self.sketch.problem, &self.sketch.role, &self.sketch.param_set] {
+            // SAFETY: as above.
+            unsafe { b.setTarget(None) };
+        }
+        // SAFETY: as above.
+        unsafe { self.sketch.toolbar.setTarget(None) };
+        for t in [&self.sketch.table, &self.sketch.params_table] {
+            // SAFETY: nil data source / delegate cannot dangle.
+            unsafe { t.setDataSource(None) };
+            // SAFETY: as above.
+            unsafe { t.setDelegate(None) };
+        }
+        if self.sketch.shown {
+            self.sketch.panel.orderOut(None);
+        }
         // SAFETY: nil data source / delegate cannot dangle.
         unsafe { self.table.setDataSource(None) };
         // SAFETY: as above.

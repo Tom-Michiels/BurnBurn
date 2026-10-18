@@ -18,6 +18,7 @@ mod import;
 mod machine;
 mod operations;
 mod plan;
+mod sketch;
 
 pub use camera::*;
 pub use cut_settings::*;
@@ -25,6 +26,7 @@ pub use import::*;
 pub use machine::*;
 pub use operations::*;
 pub use plan::*;
+pub use sketch::*;
 
 /// Segments of the toolbar's tool control, left to right.
 pub const TOOLBAR_TOOLS: [CommandKey; 6] = [
@@ -34,6 +36,34 @@ pub const TOOLBAR_TOOLS: [CommandKey; 6] = [
     CommandKey::ToolLine,
     CommandKey::ToolPen,
     CommandKey::ToolNode,
+];
+
+/// Segments of the toolbar's Schets control (momentary), left to right.
+pub const SKETCH_TOOLBAR: [CommandKey; 4] =
+    [CommandKey::SketchNew, CommandKey::SketchFromSelection, CommandKey::SketchEdit, CommandKey::SketchFinish];
+
+/// The command for Schets toolbar segment `index`.
+pub fn sketch_toolbar_command(index: isize) -> Option<CommandKey> {
+    SKETCH_TOOLBAR.get(usize::try_from(index).ok()?).copied()
+}
+
+/// Enablement per Schets toolbar segment (same source as `validateMenuItem:`).
+pub fn sketch_toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
+    SKETCH_TOOLBAR.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
+}
+
+/// The commands of the sketch panel's button grid, row by row (relations, then Maat and Verwijder).
+pub const SKETCH_BUTTONS: [CommandKey; 10] = [
+    CommandKey::SketchHorizontal,
+    CommandKey::SketchVertical,
+    CommandKey::SketchCoincident,
+    CommandKey::SketchParallel,
+    CommandKey::SketchPerpendicular,
+    CommandKey::SketchEqual,
+    CommandKey::SketchTangent,
+    CommandKey::SketchFix,
+    CommandKey::SketchDimension,
+    CommandKey::SketchRemoveConstraint,
 ];
 
 /// Inspector fields, top to bottom.

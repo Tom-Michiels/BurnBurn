@@ -158,6 +158,8 @@ pub(super) fn sync(s: &mut Session) {
     match snapshot.sketch(id) {
         None => leave(s),
         Some(sketch) => {
+            // The sketch is edited through its entities: no object handles on its derived contours.
+            s.selection = Selection::default();
             s.sketch.entities.retain(|e| sketch.entity(*e).is_some());
             s.sketch.constraints.retain(|c| sketch.constraint(*c).is_some());
         }
