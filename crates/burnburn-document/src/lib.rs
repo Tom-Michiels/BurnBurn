@@ -24,7 +24,7 @@ pub use command::{
     Anchor, Axis, ChangeSet, CommandError, CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, UndoLabel,
     ValueError,
 };
-pub use edit::{AlignTarget, EditError, EditLabel, GeometryCommand, ImportItem};
+pub use edit::{AlignTarget, EditError, EditLabel, GeometryCommand, ImportItem, OpsCommand};
 pub use object::{EdgeKey, EdgeKeyError, EdgeKeys, GeometryObject, GeometrySource, ObjectKind};
 pub use patch::{
     DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DerivedRecord, DocumentPatch, EvalDiagnosis, EvalStatus,
