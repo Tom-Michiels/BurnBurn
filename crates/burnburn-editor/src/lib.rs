@@ -24,9 +24,9 @@ pub use scene::{
 pub use selection::{Selection, SelectionChange, hit_test, next_in_cycle, objects_inside};
 pub use snap::{SnapCandidate, SnapKind, SnapSettings, snap_candidates, snap_point};
 pub use tool::{
-    CLICK_TOLERANCE_PT, CircleTool, DRAG_THRESHOLD_PT, EditCommit, Editor, EllipseTool, HANDLE_RADIUS_PT, Handle,
-    LineTool, NodeTarget, NodeTool, PenTool, PolylineTool, ROTATE_HANDLE_OFFSET_PT, RectanglePreview, RectangleTool,
-    SelectTool, ShapeKind, Tool, ToolContext, ToolKind, ToolPreview, ToolStep, TransformKind, path_nodes,
-    selection_handles,
+    BasicShapeTool, CLICK_TOLERANCE_PT, CircleTool, DRAG_THRESHOLD_PT, EditCommit, Editor, EllipseTool,
+    HANDLE_RADIUS_PT, Handle, LineTool, NodeTarget, NodeTool, PenTool, PolylineTool, ROTATE_HANDLE_OFFSET_PT,
+    RectanglePreview, RectangleTool, SelectTool, ShapeDefaults, ShapeKind, Tool, ToolContext, ToolKind, ToolPreview,
+    ToolStep, TransformKind, path_nodes, selection_handles,
 };
 pub use view::{Camera, ViewError, Viewport};

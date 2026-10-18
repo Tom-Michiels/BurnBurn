@@ -243,8 +243,7 @@ impl EditTxn<'_> {
         }
         let m = Affine::translate(v).map_err(EditError::Shape)?;
         let obj = self.editable(id)?;
-        let moved = obj.path().transform(&m);
-        self.objects.insert(id, Arc::new(obj.with_path(moved)));
+        self.objects.insert(id, Arc::new(obj.transformed(&m)));
         self.mark_modified(id);
         Ok(())
     }

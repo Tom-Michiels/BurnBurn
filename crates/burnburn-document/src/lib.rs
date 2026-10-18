@@ -14,6 +14,7 @@ mod object;
 mod patch;
 pub mod process;
 mod session;
+mod shape_edit;
 pub mod sketch;
 mod snapshot;
 pub mod structure;
@@ -25,10 +26,14 @@ pub use command::{
     ValueError,
 };
 pub use edit::{AlignTarget, EditError, EditLabel, GeometryCommand, ImportItem};
-pub use object::{EdgeKey, EdgeKeyError, EdgeKeys, GeometryObject, GeometrySource, ObjectKind};
+pub use object::{
+    DEFINITION_TOLERANCE_MM, DefinitionError, EdgeKey, EdgeKeyError, EdgeKeys, GeometryObject, GeometrySource,
+    ObjectKind,
+};
 pub use patch::{
     DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DerivedRecord, DocumentPatch, EvalDiagnosis, EvalStatus,
     Evaluator, ModifierFailure, OwnerSolution,
 };
 pub use session::DocumentSession;
+pub use shape_edit::{ShapeCommand, ShapeError, ShapeLabel};
 pub use snapshot::{DocumentSnapshot, PlateView, SnapshotError};

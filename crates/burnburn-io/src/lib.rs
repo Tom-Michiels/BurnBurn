@@ -23,6 +23,8 @@ mod process_map;
 mod profile;
 mod project;
 pub mod search;
+pub mod shape_dto;
+mod shape_map;
 pub mod sketch_dto;
 mod sketch_map;
 pub mod std_fs;

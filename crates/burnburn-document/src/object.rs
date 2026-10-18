@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use burnburn_geometry::{Bounds, Path, Point, Segment, Subpath};
+use burnburn_geometry::{Affine, Bounds, GeometryError, ParametricShape, Path, Point, Segment, ShapeParams, Subpath};
 use burnburn_types::{ContentHash, GeometryId, GroupId};
 
 /// Where a geometry object came from. Kept through edits, undo, save and reopen.
@@ -29,6 +29,45 @@ pub enum ObjectKind {
     Polyline,
 }
 
+impl ObjectKind {
+    /// What a parametric basic shape is called in the inspector and in files.
+    pub fn of_shape(params: &ShapeParams) -> ObjectKind {
+        match params {
+            ShapeParams::Polygon { .. } => ObjectKind::Polygon,
+            ShapeParams::Star { .. } | ShapeParams::DoubleStar { .. } => ObjectKind::Star,
+            ShapeParams::RoundedRectangle { .. } => ObjectKind::Rectangle,
+            _ => ObjectKind::Path,
+        }
+    }
+}
+
+/// Largest distance (mm) between a stored outline and the outline its definition resolves to.
+pub const DEFINITION_TOLERANCE_MM: f64 = 1e-6;
+
+/// Why a stored definition cannot belong to a stored outline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DefinitionError {
+    /// The definition does not resolve (non-finite coordinates).
+    Unresolvable(GeometryError),
+    /// The outline differs from the definition's outline.
+    OutlineMismatch,
+}
+
+/// Same structure (subpaths, segment kinds) and every start and end point within the tolerance.
+fn outlines_agree(a: &Path, b: &Path) -> bool {
+    a.subpaths().len() == b.subpaths().len()
+        && a.subpaths().iter().zip(b.subpaths()).all(|(x, y)| {
+            x.is_closed() == y.is_closed()
+                && x.segments().len() == y.segments().len()
+                && x.start().distance(y.start()) <= DEFINITION_TOLERANCE_MM
+                && x.segments().iter().zip(y.segments()).all(|(p, q)| {
+                    std::mem::discriminant(p) == std::mem::discriminant(q)
+                        && p.end().distance(q.end()) <= DEFINITION_TOLERANCE_MM
+                })
+        })
+}
+
 /// One design object: stable identity, name, provenance and resolved geometry (world mm).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeometryObject {
@@ -41,6 +80,9 @@ pub struct GeometryObject {
     groups: Arc<[GroupId]>,
     /// Stable per-segment edge keys (DR-20). `None`: the default numbering 0..n.
     edge_keys: Option<Arc<EdgeKeys>>,
+    /// The editable definition of a basic shape (W1-L2b); `path` is always its resolved outline.
+    /// Any edit that changes the outline without a matching definition drops it.
+    parametric: Option<Arc<ParametricShape>>,
 }
 
 /// Stable identity of one edge of a drawn object (DR-20), unique within the object and never
@@ -220,7 +262,44 @@ impl EdgeKeys {
 
 impl GeometryObject {
     pub fn new(id: GeometryId, name: String, kind: ObjectKind, source: GeometrySource, path: Path) -> Self {
-        GeometryObject { id, name, kind, source, path: Arc::new(path), groups: Arc::from([]), edge_keys: None }
+        GeometryObject {
+            id,
+            name,
+            kind,
+            source,
+            path: Arc::new(path),
+            groups: Arc::from([]),
+            edge_keys: None,
+            parametric: None,
+        }
+    }
+
+    /// A basic shape that stays editable: its outline is the resolved definition.
+    pub fn new_parametric(
+        id: GeometryId,
+        name: String,
+        kind: ObjectKind,
+        source: GeometrySource,
+        shape: ParametricShape,
+    ) -> Result<Self, GeometryError> {
+        let path = shape.to_path()?;
+        Ok(GeometryObject { parametric: Some(Arc::new(shape)), ..GeometryObject::new(id, name, kind, source, path) })
+    }
+
+    /// Attaches a stored definition to a loaded object. The stored outline stays as it is but must
+    /// be the definition's outline (within [`DEFINITION_TOLERANCE_MM`]); a file that disagrees with
+    /// itself is refused instead of silently preferring one of the two.
+    pub fn with_definition(self, shape: ParametricShape) -> Result<Self, DefinitionError> {
+        let resolved = shape.to_path().map_err(DefinitionError::Unresolvable)?;
+        if !outlines_agree(&resolved, &self.path) {
+            return Err(DefinitionError::OutlineMismatch);
+        }
+        Ok(GeometryObject { parametric: Some(Arc::new(shape)), ..self })
+    }
+
+    /// The editable definition of a basic shape, or `None` for a plain path.
+    pub fn parametric(&self) -> Option<&ParametricShape> {
+        self.parametric.as_deref()
     }
 
     /// Stable edge keys of every drawn segment (DR-20).
@@ -246,7 +325,8 @@ impl GeometryObject {
     /// New geometry with explicitly maintained edge keys (node edits that know their mapping).
     pub(crate) fn with_path_and_keys(&self, path: Path, keys: EdgeKeys) -> Self {
         let keys = (keys != EdgeKeys::sequential(&path)).then(|| Arc::new(keys));
-        GeometryObject { path: Arc::new(path), edge_keys: keys, ..self.clone() }
+        // An outline edit without a matching definition ends the parametric form (W1-L2b).
+        GeometryObject { path: Arc::new(path), edge_keys: keys, parametric: None, ..self.clone() }
     }
 
     pub fn id(&self) -> GeometryId {
@@ -289,6 +369,30 @@ impl GeometryObject {
     pub(crate) fn with_path(&self, path: Path) -> Self {
         let keys = self.edge_keys().remap(&self.path, &path);
         self.with_path_and_keys(path, keys)
+    }
+
+    /// The same object as another parametric shape: the outline is regenerated, the kind follows
+    /// the parameters and edge keys follow conservatively.
+    pub(crate) fn with_shape(&self, shape: ParametricShape) -> Result<Self, GeometryError> {
+        let path = shape.to_path()?;
+        let moved = self.with_path(path);
+        Ok(GeometryObject { kind: ObjectKind::of_shape(shape.params()), parametric: Some(Arc::new(shape)), ..moved })
+    }
+
+    /// The same object without its definition: the outline and everything else stay.
+    pub(crate) fn without_definition(&self) -> Self {
+        GeometryObject { parametric: None, ..self.clone() }
+    }
+
+    /// The object after an affine edit: a parametric shape stays parametric when its family
+    /// allows the map, otherwise (or when the outline cannot be regenerated) it becomes a plain path.
+    pub(crate) fn transformed(&self, m: &Affine) -> Self {
+        if let Some(moved) = self.parametric().and_then(|shape| shape.transformed(m))
+            && let Ok(object) = self.with_shape(moved)
+        {
+            return object;
+        }
+        self.with_path(self.path.transform(m))
     }
 
     pub(crate) fn with_name(&self, name: String) -> Self {

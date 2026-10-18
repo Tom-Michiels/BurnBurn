@@ -66,6 +66,8 @@ pub enum CommandPayload {
     Trace(TraceCommand),
     /// A generator definition edit (IM22). With `apply_with`, the outputs follow in the same transaction.
     Generator(GeneratorCommand),
+    /// Parametric basic shapes: create, edit parameters, convert to path (W1-L2b).
+    Shape(crate::shape_edit::ShapeCommand),
 }
 
 impl CommandPayload {
@@ -84,6 +86,7 @@ impl CommandPayload {
             CommandPayload::ApplyPatch(_) => UndoLabel::ApplyPatch,
             CommandPayload::Trace(t) => UndoLabel::Trace(t.label()),
             CommandPayload::Generator(g) => UndoLabel::Generator(g.label()),
+            CommandPayload::Shape(s) => UndoLabel::Shape(s.label()),
         }
     }
 }
@@ -119,6 +122,7 @@ pub enum UndoLabel {
     ApplyPatch,
     Trace(TraceLabel),
     Generator(GeneratorLabel),
+    Shape(crate::shape_edit::ShapeLabel),
 }
 
 /// Which objects a committed command (or undo/redo) created, modified or deleted.
@@ -237,6 +241,8 @@ pub enum CommandError {
     Text(TextError),
     /// A trace or generator command was rejected (C-9, IM22); nothing changed.
     Engine(EngineError),
+    /// A parametric shape command was rejected (W1-L2b); nothing changed.
+    Shape(crate::shape_edit::ShapeError),
 }
 
 impl fmt::Display for CommandError {
@@ -266,6 +272,7 @@ impl fmt::Display for CommandError {
             }
             CommandError::Text(e) => write!(f, "text: {e}"),
             CommandError::Engine(e) => write!(f, "{e}"),
+            CommandError::Shape(e) => write!(f, "shape: {e}"),
         }
     }
 }

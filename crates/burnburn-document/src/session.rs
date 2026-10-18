@@ -429,6 +429,16 @@ impl Txn {
                 }
                 Ok(())
             }
+            CommandPayload::Shape(cmd) => crate::shape_edit::apply(
+                cmd,
+                crate::shape_edit::ShapeTxn {
+                    objects: &mut self.objects,
+                    ids: &mut self.ids,
+                    changes: &mut self.changes,
+                    warnings: &mut self.warnings,
+                },
+            )
+            .map_err(CommandError::Shape),
             CommandPayload::Rename { target, name } => {
                 let obj = self.get(target)?;
                 self.warn_duplicate_name(&name, target);
@@ -446,7 +456,7 @@ impl Txn {
 
     fn transform(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
         let obj = self.get(id)?;
-        let moved = obj.with_path(obj.path().transform(m));
+        let moved = obj.transformed(m);
         self.objects.insert(id, Arc::new(moved));
         if !self.changes.modified.contains(&id) {
             self.changes.modified.push(id);
