@@ -97,9 +97,29 @@ Stand: **D** = domein bestaat, **UI** = bedienbaar, **–** = ontbreekt. Pakket-
 - W1-HW (gebruiker): echte Ruida aansluiten en het wire-dialect bewijzen (`docs/hardware/`); zonder dit blijft
   uitvoeren geweigerd.
 
-**Golf 2**: L1 in 2–3 parallelle sessies op aparte modules (laservenster, previewvenster, transformeren/arrays,
-beeld-/tracerpaneel, Cut Settings-uitbreidingen) uit de wachtrij; L2 align/dock/print-and-cut; L3 optimalisatie,
-material/interval test, rotary; L4 device settings/rotary/feeder; L5 barcodes, camera-calibratie; L6 bibliotheken.
+**Golf 2 (na merge golf 1; UI-lane gesplitst nu `controller/` en `appkit/panels/` modulair zijn)**
+Elke L1-sessie werkt in eigen modules; gedeelde bestanden (`intent.rs`, `view_model.rs`, `l10n.rs`, menu in
+`appkit/app.rs`) alleen additief — de plannende sessie lost append-conflicten op bij de merge.
+- W2-L1-tekenen (Sonnet): wachtrij W1-L2a + W1-L2b: payload-mapping `EditCommit::Ops`, knoopwerkbalk (smooth/corner/
+  symmetric, lijn/kromme, sluiten/verbinden, break, delete), Round Corners, Cut Shapes, Start Point, richting,
+  Optimize Shapes, basisvormtools + parameterpaneel + Convert to Path, undo-labels.
+- W2-L1-cut (Sonnet): wachtrij W1-L3a/b + W1-L5a: Cut Settings Line (tabs, leads, overcut, perforatie, dot), Fill
+  (scan angle, cross-hatch, flood, grouping, ramp), Image-modus + opties + scherm, capability-uitgrijzen met reden.
+- W2-L1-beeld (Sonnet): Adjust Image-paneel met live preview, crop, mask, Save Processed Bitmap, tracer-paneel (F16).
+- W2-L1-laser (Sonnet): wachtrij W1-L4a: laservenster (frame rechthoek/rubber band, start-from + 3×3, cut selected,
+  jog/move/position laser, set origin, home, pause/resume, stop, positie, save/run RD, file list, diagnose-export),
+  inclusief de `MachineService`/`HistoryStore`-aansluiting van live-acties.
+- W2-L1-bewerken (Sonnet): Edit-menu en klembord (cut/copy/paste/paste in place/duplicate/delete duplicates),
+  tekenvolgorde (push forward/backward/front/back), transform (%-schaal, aspectlock, spiegelen, shear, 3×3-referentie),
+  groeperen/break apart, align/distribute-knoppen voor de bestaande `CommandKey`s, recente projecten.
+- W2-L2 (Sonnet): align dock/move together, print-and-cut + center finder (registratie), tangent circle, warp/deform.
+- W2-L3 (Sonnet): optimalisatie-instellingen (order layer/group/priority, remove overlapping, backlash), material test,
+  interval test, rotary-transform; RD-lowering voor cross-hatch, dot mode en ramp (nu getypeerd geweigerd).
+- W2-L5 (Sonnet): tekstopties (W1-L5b) en variabele tekst (W1-L5c), ontbrekende barcodes, camera-lenskalibratie.
+- W2-L6 (Sonnet): import PDF/AI, HPGL/PLT, bitmap-DPI-flow, meer LBRN2 (W1-L6a, nog niet gestart); bibliotheken.
+- W2-L7 (Haiku): matrix + story-coverage bijwerken na de merge van golf 2; l10n-tekstvoorstellen voor nieuwe sleutels.
+Beslissingen nodig (gebruiker): scope van tweede laser (S92–S96), OMTech Polar, Trocen PPI, Print (Black Only/Keep
+Colors), Cuttle, OS-diensten (M002–M013) — voorstel: buiten golf 2, in golf 4 heroverwegen.
 
 **Golf 3**: resterende panelen (bibliotheken, variabele tekst, nesting, camera-overlay, voorkeuren/hotkeys),
 Windows-host op pariteit (L8), acceptatieplan `research/lightburn/05-acceptatieplan.md` doorlopen.
