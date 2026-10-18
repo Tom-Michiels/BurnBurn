@@ -118,6 +118,10 @@ pub mod v1 {
         /// Stable edge keys (DR-20). Omitted when they are the default 0..n.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub edge_keys: Option<crate::structure_dto::EdgeKeys>,
+        /// Editable definition of a basic shape (W1-L2b). Omitted for plain paths, so older files
+        /// stay byte-identical. The subpaths stay the outline of record.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub parametric: Option<crate::shape_dto::Parametric>,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -45,6 +45,7 @@ pub(crate) fn document_to_dto(doc: &DocumentSnapshot) -> Result<v1::Document, Sa
                     _ => v1::Kind::Path,
                 },
                 groups: o.groups().iter().map(|g| g.raw()).collect(),
+                parametric: o.parametric().map(crate::shape_map::shape_to_dto).transpose()?,
                 edge_keys: o.stored_edge_keys().map(|k| crate::structure_dto::EdgeKeys {
                     next: k.next(),
                     subpaths: k.subpaths().iter().map(|s| s.iter().map(|e| e.0).collect()).collect(),
@@ -256,6 +257,13 @@ pub(crate) fn document_from_dto(
             obj = obj.with_edge_keys(keys).map_err(|e| LoadError::InvalidValue {
                 path: format!("{}.edge_keys", opath()),
                 reason: format!("{e:?}"),
+            })?;
+        }
+        if let Some(p) = &o.parametric {
+            let shape = crate::shape_map::shape_from_dto(&|| format!("{}.parametric", opath()), p)?;
+            obj = obj.with_definition(shape).map_err(|e| LoadError::InvalidValue {
+                path: format!("{}.parametric", opath()),
+                reason: crate::shape_map::definition_reason(e),
             })?;
         }
         objects.push(obj);

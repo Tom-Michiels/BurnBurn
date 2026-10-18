@@ -26,7 +26,7 @@ pub use command::{
     ValueError,
 };
 pub use edit::{AlignTarget, EditError, EditLabel, GeometryCommand, ImportItem};
-pub use object::{EdgeKey, EdgeKeyError, EdgeKeys, GeometryObject, GeometrySource, ObjectKind};
+pub use object::{DEFINITION_TOLERANCE_MM, DefinitionError, EdgeKey, EdgeKeyError, EdgeKeys, GeometryObject, GeometrySource, ObjectKind};
 pub use patch::{
     DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DerivedRecord, DocumentPatch, EvalDiagnosis, EvalStatus,
     Evaluator, ModifierFailure, OwnerSolution,

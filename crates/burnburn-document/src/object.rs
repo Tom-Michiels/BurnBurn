@@ -41,6 +41,33 @@ impl ObjectKind {
     }
 }
 
+/// Largest distance (mm) between a stored outline and the outline its definition resolves to.
+pub const DEFINITION_TOLERANCE_MM: f64 = 1e-6;
+
+/// Why a stored definition cannot belong to a stored outline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DefinitionError {
+    /// The definition does not resolve (non-finite coordinates).
+    Unresolvable(GeometryError),
+    /// The outline differs from the definition's outline.
+    OutlineMismatch,
+}
+
+/// Same structure (subpaths, segment kinds) and every start and end point within the tolerance.
+fn outlines_agree(a: &Path, b: &Path) -> bool {
+    a.subpaths().len() == b.subpaths().len()
+        && a.subpaths().iter().zip(b.subpaths()).all(|(x, y)| {
+            x.is_closed() == y.is_closed()
+                && x.segments().len() == y.segments().len()
+                && x.start().distance(y.start()) <= DEFINITION_TOLERANCE_MM
+                && x.segments().iter().zip(y.segments()).all(|(p, q)| {
+                    std::mem::discriminant(p) == std::mem::discriminant(q)
+                        && p.end().distance(q.end()) <= DEFINITION_TOLERANCE_MM
+                })
+        })
+}
+
 /// One design object: stable identity, name, provenance and resolved geometry (world mm).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeometryObject {
@@ -248,6 +275,17 @@ impl GeometryObject {
     ) -> Result<Self, GeometryError> {
         let path = shape.to_path()?;
         Ok(GeometryObject { parametric: Some(Arc::new(shape)), ..GeometryObject::new(id, name, kind, source, path) })
+    }
+
+    /// Attaches a stored definition to a loaded object. The stored outline stays as it is but must
+    /// be the definition's outline (within [`DEFINITION_TOLERANCE_MM`]); a file that disagrees with
+    /// itself is refused instead of silently preferring one of the two.
+    pub fn with_definition(self, shape: ParametricShape) -> Result<Self, DefinitionError> {
+        let resolved = shape.to_path().map_err(DefinitionError::Unresolvable)?;
+        if !outlines_agree(&resolved, &self.path) {
+            return Err(DefinitionError::OutlineMismatch);
+        }
+        Ok(GeometryObject { parametric: Some(Arc::new(shape)), ..self })
     }
 
     /// The editable definition of a basic shape, or `None` for a plain path.
