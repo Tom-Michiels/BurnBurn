@@ -123,6 +123,20 @@ pub enum ScanDirection {
     Unidirectional,
 }
 
+/// Which shapes of one operation are scanned together (LightBurn "Fill Grouping").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum FillGrouping {
+    /// One scan over all targets: overlaps and enclosed areas follow the even-odd rule across
+    /// shapes ("Fill All Shapes at Once"). The default.
+    #[default]
+    AllShapes,
+    /// Shapes of the same outermost group are scanned together, one group after the other;
+    /// an ungrouped shape is its own group ("Fill Groups Together").
+    Groups,
+    /// Every target geometry is scanned on its own ("Fill Shapes Individually").
+    Individual,
+}
+
 /// Fill (scan) parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FillSettings {
@@ -131,6 +145,10 @@ pub struct FillSettings {
     direction: ScanDirection,
     overscan: Length,
     angle_deg: f64,
+    cross_hatch: bool,
+    grouping: FillGrouping,
+    flood_fill: bool,
+    ramp_mm: f64,
 }
 
 impl FillSettings {
@@ -149,7 +167,17 @@ impl FillSettings {
         if !(overscan.mm() >= 0.0) {
             return Err(ProcessError::OutOfRange { field: "overscan" });
         }
-        Ok(FillSettings { interval, axis, direction, overscan, angle_deg: 0.0 })
+        Ok(FillSettings {
+            interval,
+            axis,
+            direction,
+            overscan,
+            angle_deg: 0.0,
+            cross_hatch: false,
+            grouping: FillGrouping::AllShapes,
+            flood_fill: false,
+            ramp_mm: 0.0,
+        })
     }
 
     /// The same fill with scan lines rotated by `degrees` (counter-clockwise) from `axis`,
@@ -161,6 +189,52 @@ impl FillSettings {
         let a = degrees.rem_euclid(180.0);
         self.angle_deg = if a >= 180.0 { 0.0 } else { a };
         Ok(self)
+    }
+
+    /// A second scan pass perpendicular to the first (needs the `CrossHatch` capability).
+    pub fn with_cross_hatch(mut self, on: bool) -> Self {
+        self.cross_hatch = on;
+        self
+    }
+
+    /// Which shapes are scanned together (anything but `AllShapes` needs `FillGrouping`).
+    pub fn with_grouping(mut self, grouping: FillGrouping) -> Self {
+        self.grouping = grouping;
+        self
+    }
+
+    /// Scans each connected region completely before the next (needs `FloodFill`).
+    pub fn with_flood_fill(mut self, on: bool) -> Self {
+        self.flood_fill = on;
+        self
+    }
+
+    /// Power ramps from minimum to maximum over `ramp` at both ends of each run; zero = off
+    /// (needs `RampLength` when positive).
+    pub fn with_ramp(mut self, ramp: Length) -> Result<Self, ProcessError> {
+        if !(ramp.mm().is_finite() && ramp.mm() >= 0.0) {
+            return Err(ProcessError::OutOfRange { field: "ramp length" });
+        }
+        self.ramp_mm = ramp.mm();
+        Ok(self)
+    }
+
+    pub fn cross_hatch(&self) -> bool {
+        self.cross_hatch
+    }
+    pub fn grouping(&self) -> FillGrouping {
+        self.grouping
+    }
+    pub fn flood_fill(&self) -> bool {
+        self.flood_fill
+    }
+    pub fn ramp_mm(&self) -> f64 {
+        self.ramp_mm
+    }
+
+    /// Whether any option beyond interval, axis, direction, overscan and angle is set.
+    pub fn has_extras(&self) -> bool {
+        self.cross_hatch || self.flood_fill || self.ramp_mm != 0.0 || self.grouping != FillGrouping::AllShapes
     }
 
     /// Scan-line rotation from `axis` in degrees, `[0, 180)`.

@@ -43,6 +43,7 @@ fn every_option() -> AdvancedOptions {
             lead_out: Some(Lead::new(mm(0.75)).unwrap()),
             overcut: Some(Overcut::new(mm(0.5)).unwrap()),
             perforation: Some(Perforation::new(mm(2.0), mm(0.5)).unwrap()),
+            ..Default::default()
         },
         z_step: Some(ZStep::new(mm(-0.2)).unwrap()),
         sub_operations: vec![

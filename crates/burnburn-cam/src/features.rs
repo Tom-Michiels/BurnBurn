@@ -1,6 +1,6 @@
 //! Which capability features an operation needs (IM25 feature matrix).
 
-use burnburn_document::process::{ImageRender, Operation, OperationMode, ScanAxis};
+use burnburn_document::process::{FillGrouping, ImageRender, Operation, OperationMode, ScanAxis};
 use burnburn_job::{Feature, MachineProfile};
 
 use crate::CompileError;
@@ -21,6 +21,18 @@ fn mode_features(mode: OperationMode, out: &mut Vec<Feature>) {
             let a = effective_angle(&f);
             if a != 0.0 && a != 90.0 {
                 out.push(Feature::ScanAngle);
+            }
+            if f.cross_hatch() {
+                out.push(Feature::CrossHatch);
+            }
+            if f.flood_fill() {
+                out.push(Feature::FloodFill);
+            }
+            if f.grouping() != FillGrouping::AllShapes {
+                out.push(Feature::FillGrouping);
+            }
+            if f.ramp_mm() > 0.0 {
+                out.push(Feature::RampLength);
             }
         }
         OperationMode::OffsetFill(_) => out.push(Feature::OffsetFill),
@@ -49,6 +61,9 @@ pub fn required_features(op: &Operation) -> Vec<Feature> {
     }
     if l.perforation.is_some() {
         out.push(Feature::Perforation);
+    }
+    if l.dot.is_some() {
+        out.push(Feature::DotMode);
     }
     if a.z_step.is_some() {
         out.push(Feature::ZStep);

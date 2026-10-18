@@ -66,6 +66,9 @@ pub enum PlanMode {
     /// Power-modulated scanning along X: `PowerRun` events, each at its own power (grayscale).
     /// Needs the `GrayscaleModulation` capability; no backend lowers it yet.
     GrayscaleScan { interval_mm: f64, bidirectional: bool },
+    /// Discrete laser pulses: `Dot` events, each firing for `dwell_ms` at the head position.
+    /// Needs the `DotMode` capability; no backend lowers it yet.
+    Dots { dwell_ms: f64 },
 }
 
 impl PlanMode {
@@ -95,6 +98,12 @@ impl OperationSettings {
         }
         let interval = match self.mode {
             PlanMode::Line => None,
+            PlanMode::Dots { dwell_ms } => {
+                if !(dwell_ms.is_finite() && dwell_ms > 0.0) {
+                    return Err(PlanError::OutOfRange("dwell"));
+                }
+                None
+            }
             PlanMode::Scan { interval_mm, .. } | PlanMode::GrayscaleScan { interval_mm, .. } => Some(interval_mm),
             PlanMode::AngledScan { interval_mm, angle_deg, .. } => {
                 if !(angle_deg > 0.0 && angle_deg < 180.0 && angle_deg != 90.0) {
@@ -170,6 +179,12 @@ pub enum PlanEvent {
     PowerRun { line: ScanLine, power: PowerRatio, origin: Option<SourceRef> },
     /// Focus (Z) offset from the start focus for the following motion, mm (positive = deeper).
     FocusOffset { z_mm: f64 },
+    /// One laser pulse at the current head position (Dots mode only).
+    Dot { origin: Option<SourceRef> },
+    /// A scan run whose power ramps linearly from the settings' minimum to maximum power over
+    /// the first and the last `ramp_mm` of the run (each at most half the run), Scan/AngledScan
+    /// modes only. Needs the `RampLength` capability; no backend lowers it yet.
+    RampRun { line: ScanLine, ramp_mm: f64, origin: Option<SourceRef> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

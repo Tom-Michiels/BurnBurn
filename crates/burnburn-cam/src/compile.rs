@@ -1,6 +1,6 @@
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    ImageRender, LineOptions, Operation, OperationMode, ProcessSettings, ScanDirection, SharedEdgePolicy,
+    FillGrouping, ImageRender, LineOptions, Operation, OperationMode, ProcessSettings, ScanDirection, SharedEdgePolicy,
 };
 use burnburn_geometry::{Bounds, OffsetError, OffsetJoin, Path, Point, Vector, math, offset};
 use burnburn_job::{
@@ -31,6 +31,17 @@ pub(crate) enum Step {
         to: Point,
         source: GeometryId,
     },
+    /// A scan run with power ramps of `ramp_mm` at both ends.
+    RampScan {
+        from: Point,
+        to: Point,
+        ramp_mm: f64,
+        source: GeometryId,
+    },
+    /// One laser pulse at the head position (Dots mode).
+    Dot {
+        source: GeometryId,
+    },
     /// Grayscale run: toned gray `level` (0 = black = maximum power).
     PowerScan {
         from: Point,
@@ -49,6 +60,9 @@ struct Unit<'a> {
     line: LineOptions,
     shared: SharedEdgePolicy,
     contours: Vec<Contour>,
+    /// Indices into `contours` that are scanned together (fill grouping); one bucket with all
+    /// of them unless the fill groups its shapes.
+    buckets: Vec<Vec<usize>>,
 }
 
 /// Compiles `snapshot` for `profile` without image sources (image operations fail with
@@ -89,7 +103,12 @@ pub fn compile_with(
         blocks.extend(a.sub_operations.iter().map(|s| (s.mode, s.settings, LineOptions::default())));
         for (mode, settings, line) in blocks {
             let contours = contours_for(snapshot, op, mode, options, cancel)?;
-            units.push(Unit { op, mode, settings, line, shared: a.shared_edges, contours });
+            let grouping = match mode {
+                OperationMode::Fill(f) => f.grouping(),
+                _ => FillGrouping::AllShapes,
+            };
+            let buckets = group_buckets(snapshot, &contours, grouping);
+            units.push(Unit { op, mode, settings, line, shared: a.shared_edges, contours, buckets });
         }
     }
 
@@ -112,11 +131,21 @@ pub fn compile_with(
         machine_profile: profile.revision().clone(),
         compiler_version: COMPILER_VERSION.to_owned(),
     };
+    let tolerance_mm = options.tolerance.mm();
     let mut plan = JobPlanBuilder::new(source, frame, frame.to_machine(head)?);
     for unit in &units {
         let id = unit.op.id();
-        let block = plan_settings(id, unit.mode, &unit.settings)?;
+        let block = plan_settings(id, unit.mode, &unit.settings, &unit.line)?;
         let settings = plan.add_settings(block)?;
+        // Cross-hatch: a second scan block perpendicular to the first, run in every pass.
+        let hatch = match unit.mode {
+            OperationMode::Fill(f) if f.cross_hatch() => {
+                let angle = (effective_angle(&f) + 90.0).rem_euclid(180.0);
+                let second = OperationSettings { mode: fill_mode(&f, angle), ..block };
+                Some((plan.add_settings(second)?, angle))
+            }
+            _ => None,
+        };
         for pass in 0..unit.settings.passes.get() {
             cancel.check()?;
             plan.push(PlanEvent::OperationBoundary { operation: id, settings, pass })?;
@@ -127,8 +156,19 @@ pub fn compile_with(
             }
             let (steps, overscan) = match unit.mode {
                 OperationMode::Line { .. } => {
-                    let steps =
-                        line::plan(&unit.contours, Order::Containment, &unit.line, unit.shared, &mut head, id, cancel)?;
+                    // The overcut is cut once, on the last pass.
+                    let last_pass = pass + 1 == unit.settings.passes.get();
+                    let line = if last_pass { unit.line } else { LineOptions { overcut: None, ..unit.line } };
+                    let steps = line::plan(
+                        &unit.contours,
+                        Order::Containment,
+                        &line,
+                        unit.shared,
+                        &mut head,
+                        id,
+                        tolerance_mm,
+                        cancel,
+                    )?;
                     (steps, 0.0)
                 }
                 OperationMode::OffsetFill(_) => {
@@ -140,19 +180,22 @@ pub fn compile_with(
                         SharedEdgePolicy::CutPerRegion,
                         &mut head,
                         id,
+                        tolerance_mm,
                         cancel,
                     )?;
                     (steps, 0.0)
                 }
                 OperationMode::Fill(f) => {
-                    let rows = Rows {
-                        interval_mm: f.interval().mm(),
-                        bidirectional: f.direction() == ScanDirection::Bidirectional,
-                    };
-                    (
-                        fill::plan(&unit.contours, rows, scan_frame(effective_angle(&f)), &mut head, id, cancel)?,
-                        f.overscan().mm(),
-                    )
+                    let steps = fill_steps(unit, &f, effective_angle(&f), &mut head, cancel)?;
+                    if let Some((second, angle)) = hatch {
+                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
+                        plan.push(PlanEvent::OperationBoundary { operation: id, settings: second, pass })?;
+                        let steps = fill_steps(unit, &f, angle, &mut head, cancel)?;
+                        let block = OperationSettings { mode: fill_mode(&f, angle), ..block };
+                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
+                        continue;
+                    }
+                    (steps, f.overscan().mm())
                 }
                 OperationMode::Image(i) => {
                     (image::plan(&unit.contours, &i, rasters, &mut head, id, cancel)?, i.overscan_mm())
@@ -216,6 +259,70 @@ fn kerf_path(
     })
 }
 
+/// The scan steps of one pass of a fill at `angle_deg`, bucket by bucket (fill grouping).
+fn fill_steps(
+    unit: &Unit<'_>,
+    f: &burnburn_document::process::FillSettings,
+    angle_deg: f64,
+    head: &mut Point,
+    cancel: &CancellationToken,
+) -> Result<Vec<Step>, CompileError> {
+    let rows = Rows {
+        interval_mm: f.interval().mm(),
+        bidirectional: f.direction() == ScanDirection::Bidirectional,
+        flood: f.flood_fill(),
+        ramp_mm: f.ramp_mm(),
+    };
+    let mut steps = Vec::new();
+    for bucket in &unit.buckets {
+        let contours: Vec<&Contour> = bucket.iter().map(|&i| &unit.contours[i]).collect();
+        steps.extend(fill::plan(&contours, rows, scan_frame(angle_deg), head, unit.op.id(), cancel)?);
+    }
+    Ok(steps)
+}
+
+/// Which contours are scanned together. `AllShapes`: one bucket; `Individual`: one per target
+/// geometry; `Groups`: one per outermost group, an ungrouped geometry being its own bucket.
+/// Buckets keep the order in which their first contour appears (target order).
+fn group_buckets(snapshot: &DocumentSnapshot, contours: &[Contour], grouping: FillGrouping) -> Vec<Vec<usize>> {
+    #[derive(PartialEq)]
+    enum Key {
+        Geometry(GeometryId),
+        Group(burnburn_types::GroupId),
+    }
+    if grouping == FillGrouping::AllShapes {
+        return vec![(0..contours.len()).collect()];
+    }
+    let mut buckets: Vec<(Key, Vec<usize>)> = Vec::new();
+    for (i, c) in contours.iter().enumerate() {
+        let key = match grouping {
+            FillGrouping::Groups => snapshot
+                .object(c.geometry)
+                .and_then(|o| o.groups().first().copied())
+                .map_or(Key::Geometry(c.geometry), Key::Group),
+            _ => Key::Geometry(c.geometry),
+        };
+        match buckets.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, members)) => members.push(i),
+            None => buckets.push((key, vec![i])),
+        }
+    }
+    buckets.into_iter().map(|(_, members)| members).collect()
+}
+
+/// The plan mode of a fill scanning at `angle_deg` from bed X.
+fn fill_mode(f: &burnburn_document::process::FillSettings, angle_deg: f64) -> PlanMode {
+    let bidirectional = f.direction() == ScanDirection::Bidirectional;
+    let interval_mm = f.interval().mm();
+    if angle_deg == 0.0 {
+        PlanMode::Scan { interval_mm, axis: ScanAxis::X, bidirectional }
+    } else if angle_deg == 90.0 {
+        PlanMode::Scan { interval_mm, axis: ScanAxis::Y, bidirectional }
+    } else {
+        PlanMode::AngledScan { interval_mm, angle_deg, bidirectional }
+    }
+}
+
 fn scan_frame(angle_deg: f64) -> ScanFrame {
     if angle_deg == 0.0 {
         ScanFrame::X
@@ -231,21 +338,15 @@ fn plan_settings(
     operation: OperationId,
     mode: OperationMode,
     s: &ProcessSettings,
+    line: &LineOptions,
 ) -> Result<OperationSettings, CompileError> {
     let mode = match mode {
-        OperationMode::Fill(f) => {
-            let bidirectional = f.direction() == ScanDirection::Bidirectional;
-            let interval_mm = f.interval().mm();
-            let angle_deg = effective_angle(&f);
-            if angle_deg == 0.0 {
-                PlanMode::Scan { interval_mm, axis: ScanAxis::X, bidirectional }
-            } else if angle_deg == 90.0 {
-                PlanMode::Scan { interval_mm, axis: ScanAxis::Y, bidirectional }
-            } else {
-                PlanMode::AngledScan { interval_mm, angle_deg, bidirectional }
-            }
-        }
-        OperationMode::Line { .. } | OperationMode::OffsetFill(_) => PlanMode::Line,
+        OperationMode::Fill(f) => fill_mode(&f, effective_angle(&f)),
+        OperationMode::Line { .. } => match line.dot {
+            Some(dot) => PlanMode::Dots { dwell_ms: dot.dwell_ms() },
+            None => PlanMode::Line,
+        },
+        OperationMode::OffsetFill(_) => PlanMode::Line,
         OperationMode::Image(i) => {
             let interval_mm = i.line_interval().mm();
             let bidirectional = i.direction() == ScanDirection::Bidirectional;
@@ -286,7 +387,10 @@ fn emit(
             Step::Cut { to, source } => {
                 plan.push(PlanEvent::Cut { to: frame.to_machine(to)?, origin: origin(source) })?
             }
-            Step::Scan { from, to, source } | Step::PowerScan { from, to, source, .. } => {
+            Step::Dot { source } => plan.push(PlanEvent::Dot { origin: origin(source) })?,
+            Step::Scan { from, to, source }
+            | Step::PowerScan { from, to, source, .. }
+            | Step::RampScan { from, to, source, .. } => {
                 let from = frame.to_machine(from)?;
                 if from != plan.position() {
                     plan.push(PlanEvent::Travel { to: from })?;
@@ -298,6 +402,7 @@ fn emit(
                         let power = PowerRatio::new(lo + (hi - lo) * (1.0 - f64::from(level) / 255.0))?;
                         PlanEvent::PowerRun { line, power, origin: origin(source) }
                     }
+                    Step::RampScan { ramp_mm, .. } => PlanEvent::RampRun { line, ramp_mm, origin: origin(source) },
                     _ => PlanEvent::ScanRun { line, origin: origin(source) },
                 })?;
             }

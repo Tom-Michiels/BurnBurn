@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use burnburn_document::process::{LineOptions, SharedEdgePolicy};
-use burnburn_geometry::{Bounds, Point, Vector};
+use burnburn_document::process::{LeadStyle, LineOptions, SharedEdgePolicy, TabPlacement, TabSpec};
+use burnburn_geometry::{Bounds, Point, Vector, math};
 use burnburn_types::{CancellationToken, GeometryId, OperationId};
 
 use crate::CompileError;
@@ -57,6 +57,7 @@ pub(crate) fn plan(
     shared: SharedEdgePolicy,
     head: &mut Point,
     operation: OperationId,
+    tolerance_mm: f64,
     cancel: &CancellationToken,
 ) -> Result<Vec<Step>, CompileError> {
     let usable: Vec<&Contour> = contours.iter().filter(|c| c.points.len() >= 2).collect();
@@ -91,7 +92,7 @@ pub(crate) fn plan(
         let Some((i, e)) = chosen else { break };
         done[i] = true;
         let waste_inside = depth[i] % 2 == 1;
-        emit(usable[i], &e, options, waste_inside, &mut steps, head, operation)?;
+        emit(usable[i], &e, options, waste_inside, tolerance_mm, &mut steps, head, operation)?;
     }
     if shared == SharedEdgePolicy::CutOnce {
         let start = start_of(&steps);
@@ -149,6 +150,7 @@ fn emit(
     e: &Entry,
     options: &LineOptions,
     waste_inside: bool,
+    tolerance_mm: f64,
     steps: &mut Vec<Step>,
     head: &mut Point,
     operation: OperationId,
@@ -183,11 +185,11 @@ fn emit(
     if let Some(t) = options.tabs
         && c.closed
     {
-        let count = f64::from(t.count());
-        if t.width_mm() * count >= perimeter {
+        let Some(n) = tab_count(&t, perimeter) else {
             return Err(CompileError::InvalidTabs { operation, geometry: c.geometry });
-        }
-        for i in 0..t.count() {
+        };
+        let count = f64::from(n);
+        for i in 0..n {
             let centre = (f64::from(i) + 0.5) * perimeter / count;
             gaps.push((centre - t.width_mm() / 2.0, centre + t.width_mm() / 2.0));
         }
@@ -203,13 +205,28 @@ fn emit(
     }
 
     let (Some(&first), Some(&last)) = (path.first(), path.last()) else { return Ok(()) };
+    if let Some(dot) = options.dot {
+        return emit_dots(&path, c, dot.spacing_mm(), steps, head, operation);
+    }
     let lead_dir_in = path.get(1).map_or(Vector::ZERO, |p| unit(*p - first));
     match options.lead_in {
         Some(l) => {
-            // Open paths: the lead continues the path backwards; closed: perpendicular, waste side.
-            let d = if c.closed { waste(lead_dir_in) } else { lead_dir_in * -1.0 };
-            steps.push(Step::Travel(first + d * l.length_mm()));
-            steps.push(Step::Cut { to: first, source: c.geometry });
+            // Open paths: the lead continues the path backwards; closed: waste side.
+            let lead = if c.closed {
+                lead_points(first, lead_dir_in, waste(lead_dir_in), &l, true, tolerance_mm)
+            } else if l.style() == LeadStyle::Arc {
+                return Err(CompileError::ArcLeadOnOpenContour { operation, geometry: c.geometry });
+            } else {
+                vec![first + lead_dir_in * -1.0 * l.length_mm()]
+            };
+            let mut points = lead.into_iter();
+            if let Some(start) = points.next() {
+                steps.push(Step::Travel(start));
+                for p in points {
+                    steps.push(Step::Cut { to: p, source: c.geometry });
+                }
+                steps.push(Step::Cut { to: first, source: c.geometry });
+            }
         }
         None => steps.push(Step::Travel(first)),
     }
@@ -219,12 +236,122 @@ fn emit(
     if let Some(l) = options.lead_out {
         let k = path.len();
         let d_last = if k >= 2 { unit(path[k - 1] - path[k - 2]) } else { Vector::ZERO };
-        let d = if c.closed { waste(d_last) } else { d_last };
-        let end = last + d * l.length_mm();
-        steps.push(Step::Cut { to: end, source: c.geometry });
-        *head = end;
+        let lead = if c.closed {
+            lead_points(last, d_last, waste(d_last), &l, false, tolerance_mm)
+        } else if l.style() == LeadStyle::Arc {
+            return Err(CompileError::ArcLeadOnOpenContour { operation, geometry: c.geometry });
+        } else {
+            vec![last + d_last * l.length_mm()]
+        };
+        for p in lead {
+            steps.push(Step::Cut { to: p, source: c.geometry });
+            *head = p;
+        }
     }
     Ok(())
+}
+
+/// Number of tabs on a closed contour of `perimeter`, or `None` when they cannot be placed:
+/// the tabs would cover the whole contour, or the spacing asks for more than
+/// [`TabSpec::MAX_COUNT`] of them.
+pub(crate) fn tab_count(t: &TabSpec, perimeter: f64) -> Option<u32> {
+    let n = match t.placement() {
+        TabPlacement::Count(n) => n,
+        TabPlacement::Spacing(spacing) => {
+            let n = (perimeter / spacing).round().max(1.0);
+            if n > f64::from(TabSpec::MAX_COUNT) {
+                return None;
+            }
+            n as u32
+        }
+    };
+    (t.width_mm() * f64::from(n) < perimeter).then_some(n)
+}
+
+/// The points of a lead on the waste side `w` of a closed contour at `at`, where the contour
+/// runs along `t` (the direction of travel). For a lead-in (`entering`) the points lead up to
+/// `at`, which is not included; for a lead-out they lead away from it. A line lead is one point
+/// at `angle` to the tangent (90° = perpendicular); an arc lead is a quarter circle of radius
+/// `length`, tangent to the contour at `at`, flattened within `tolerance_mm`.
+fn lead_points(
+    at: Point,
+    t: Vector,
+    w: Vector,
+    lead: &burnburn_document::process::Lead,
+    entering: bool,
+    tolerance_mm: f64,
+) -> Vec<Point> {
+    let len = lead.length_mm();
+    match lead.style() {
+        LeadStyle::Line => {
+            let d = if lead.angle_deg() == 90.0 {
+                w
+            } else {
+                let (sin, cos) = math::sin_cos(lead.angle_deg().to_radians());
+                let along = if entering { t * -cos } else { t * cos };
+                w * sin + along
+            };
+            vec![at + d * len]
+        }
+        LeadStyle::Arc => {
+            // Centre c = at + r·w; points c + r(−w·cosθ + t·sinθ): θ = 0 is `at`, tangent +t.
+            let centre = at + w * len;
+            let step = if tolerance_mm >= len { 1.0 } else { (1.0 - tolerance_mm / len).acos() };
+            let n = ((std::f64::consts::FRAC_PI_2 / step).ceil() as usize).clamp(4, 512);
+            let on_circle = |theta: f64| {
+                let (sin, cos) = math::sin_cos(theta);
+                centre + (w * -cos + t * sin) * len
+            };
+            if entering {
+                (0..n).map(|k| on_circle(-std::f64::consts::FRAC_PI_2 * (1.0 - k as f64 / n as f64))).collect()
+            } else {
+                (1..=n).map(|k| on_circle(std::f64::consts::FRAC_PI_2 * k as f64 / n as f64)).collect()
+            }
+        }
+    }
+}
+
+/// Dot mode: a pulse every `spacing` of arc length from the entry point. A closed contour does
+/// not repeat its start; an open one gets a dot on its end only when it falls on the spacing.
+fn emit_dots(
+    path: &[Point],
+    c: &Contour,
+    spacing: f64,
+    steps: &mut Vec<Step>,
+    head: &mut Point,
+    operation: OperationId,
+) -> Result<(), CompileError> {
+    let ratio = length(path) / spacing;
+    let whole = (ratio + 1e-9).floor();
+    // On a closed contour the last position coincides with the first when the spacing divides it.
+    let closes_exactly = c.closed && (ratio - ratio.round()).abs() < 1e-9;
+    let count = if closes_exactly { whole } else { whole + 1.0 };
+    if !(count <= MAX_DOTS as f64) {
+        return Err(CompileError::TooManyDots { operation, dots: count as u64 });
+    }
+    for k in 0..count as u64 {
+        let at = point_at(path, k as f64 * spacing);
+        steps.push(Step::Travel(at));
+        steps.push(Step::Dot { source: c.geometry });
+        *head = at;
+    }
+    Ok(())
+}
+
+/// Upper bound on dots per contour pass; keeps one setting from making a compile unbounded.
+pub(crate) const MAX_DOTS: u64 = 1_000_000;
+
+/// The point `distance` along `path` (clamped to its end).
+fn point_at(path: &[Point], distance: f64) -> Point {
+    let mut left = distance;
+    for w in path.windows(2) {
+        let d = w[0].distance(w[1]);
+        if d >= left {
+            return w[0].lerp(w[1], if d > 0.0 { left / d } else { 0.0 });
+        }
+        left -= d;
+    }
+    path.last().copied().unwrap_or(Point::new(0.0, 0.0))
 }
 
 fn length(path: &[Point]) -> f64 {
@@ -311,10 +438,11 @@ fn cut_shared_edges_once(steps: Vec<Step>, start: Option<Point>) -> Vec<Step> {
                 out.push(step);
                 at = Some(p);
             }
-            Step::Scan { to, .. } | Step::PowerScan { to, .. } => {
+            Step::Scan { to, .. } | Step::PowerScan { to, .. } | Step::RampScan { to, .. } => {
                 out.push(step);
                 at = Some(to);
             }
+            Step::Dot { .. } => out.push(step),
         }
     }
     // Merge consecutive travels: only the last target matters.

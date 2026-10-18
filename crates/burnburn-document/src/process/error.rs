@@ -17,6 +17,11 @@ pub enum ProcessError {
         field: &'static str,
     },
     MinPowerAboveMax,
+    /// Two options that cannot be combined.
+    ConflictingOptions {
+        first: &'static str,
+        second: &'static str,
+    },
     UnknownOperation(OperationId),
     UnknownGeometry(GeometryId),
     UnknownRecipe(RecipeId),
@@ -47,6 +52,7 @@ impl fmt::Display for ProcessError {
             ProcessError::NotPositive { field } => write!(f, "{field} must be a finite, positive number"),
             ProcessError::OutOfRange { field } => write!(f, "{field} is out of range"),
             ProcessError::MinPowerAboveMax => f.write_str("minimum power is above maximum power"),
+            ProcessError::ConflictingOptions { first, second } => write!(f, "{first} cannot be combined with {second}"),
             ProcessError::UnknownOperation(id) => write!(f, "no operation {id}"),
             ProcessError::UnknownGeometry(id) => write!(f, "no geometry {id}"),
             ProcessError::UnknownRecipe(id) => write!(f, "no material recipe {id}"),
