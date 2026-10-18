@@ -186,11 +186,16 @@ impl HeadlessEditorHarness {
         self.pointer(document, PointerPhase::Up, at_mm, modifiers)
     }
 
-    /// The second press of a double click (after a first `click`).
+    /// The second press of a double click (after a first `click`); the update merges both phases.
     pub fn double_click(&mut self, document: DocumentId, at_mm: (f64, f64)) -> AppUpdate {
         let p = Some(PointerButton::Primary);
-        self.pointer_event(document, PointerPhase::Down, at_mm, Modifiers::default(), p, 2);
-        self.pointer_event(document, PointerPhase::Up, at_mm, Modifiers::default(), p, 2)
+        let mut down = self.pointer_event(document, PointerPhase::Down, at_mm, Modifiers::default(), p, 2);
+        let up = self.pointer_event(document, PointerPhase::Up, at_mm, Modifiers::default(), p, 2);
+        // Both phases' effects, so a press that asks the host for something is not lost.
+        down.effects.extend(up.effects);
+        down.view_changed |= up.view_changed;
+        down.scenes_changed.extend(up.scenes_changed);
+        down
     }
 
     /// Press at `from`, move halfway and to `to`, but do not release.

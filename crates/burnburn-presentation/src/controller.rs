@@ -109,6 +109,14 @@ pub enum HostEffect {
         document: DocumentId,
         suggested_name: String,
     },
+    /// Start editing a sketch dimension's text in the constraint list (double-click on its label,
+    /// or right after "Maat" added it). The host answers with `SetSketchDimension`.
+    EditSketchDimension {
+        document: DocumentId,
+        sketch: burnburn_document::sketch::SketchId,
+        constraint: burnburn_document::sketch::ConstraintId,
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -172,6 +180,8 @@ struct Session {
     uuid: ProjectUuid,
     assets: AssetStore,
     close_after_save: bool,
+    /// Sketch mode: the open sketch and its selection (window state, never document data).
+    sketch: sketch::SketchState,
 }
 
 impl Session {
@@ -218,6 +228,7 @@ impl Session {
             uuid: project.0,
             assets: project.1,
             close_after_save: false,
+            sketch: sketch::SketchState::default(),
         })
     }
 
@@ -466,6 +477,14 @@ impl AppController {
                     _ => error(None, MessageKey::MachineActionRefused),
                 }
             }
+            UiIntent::SketchSelect { document, entities, constraints, mode } => {
+                self.sketch_select(document, entities, constraints, mode)
+            }
+            UiIntent::AddSketchDimension { document, kind, text } => self.add_sketch_dimension(document, kind, text),
+            UiIntent::SetSketchDimensionRole { document, sketch, constraint, role } => {
+                self.sketch_edit(document, SketchCommand::SetDimensionRole { sketch, constraint, role })
+            }
+            UiIntent::SelectSketchProblem { document } => self.select_sketch_problem(document),
             UiIntent::SetSketchParameter { document, sketch, name, text } => {
                 self.sketch_edit(document, SketchCommand::SetParameter { sketch, name, text })
             }
@@ -544,6 +563,7 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             s.messages.clear();
             s.problem = None;
             layers::sync(s);
+            sketch::sync(s);
             AppUpdate::redraw(document)
         }
         Err(_) => {
@@ -595,6 +615,10 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::OpenTraceSource { document, .. }
         | UiIntent::SetTraceRecipe { document, .. }
         | UiIntent::SetSketchParameter { document, .. }
+        | UiIntent::SketchSelect { document, .. }
+        | UiIntent::AddSketchDimension { document, .. }
+        | UiIntent::SetSketchDimensionRole { document, .. }
+        | UiIntent::SelectSketchProblem { document }
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),

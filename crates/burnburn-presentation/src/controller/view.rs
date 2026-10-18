@@ -18,6 +18,7 @@ use super::geometry::current_boolean_preview;
 use super::import::import_view;
 use super::machine::Machine;
 use super::process::{plan_view, preparable};
+use super::sketch;
 use super::sketch::sketch_rows;
 use super::trace::tracer_view;
 use super::{AppController, Session, layers};
@@ -67,6 +68,7 @@ impl AppController {
         let preview = s.editor.preview();
         let result_preview =
             s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result));
+        let sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         let mut scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
@@ -75,6 +77,7 @@ impl AppController {
             preview: preview.as_ref(),
             snap: s.editor.snap(),
             issues: &s.issues,
+            extra: &sketch_overlays,
             result_preview,
             camera: s.camera,
             viewport: s.viewport,
@@ -151,6 +154,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         operation_error: s.operation_error,
         cut_settings: layers::cut_settings_view(s, machine.map(|m| m.profile.capabilities())),
         import: s.import.as_ref().map(import_view),
+        sketch_mode: sketch::mode_view(s, &snapshot),
     }
 }
 
@@ -191,6 +195,23 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::PrepareJob, Some(s)) => (preparable(s, machine), false),
         (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
         (CommandKey::ToolTrim, Some(s)) => (true, s.trim_mode),
+        (
+            CommandKey::SketchNew
+            | CommandKey::SketchFromSelection
+            | CommandKey::SketchEdit
+            | CommandKey::SketchFinish
+            | CommandKey::SketchCoincident
+            | CommandKey::SketchHorizontal
+            | CommandKey::SketchVertical
+            | CommandKey::SketchParallel
+            | CommandKey::SketchPerpendicular
+            | CommandKey::SketchEqual
+            | CommandKey::SketchTangent
+            | CommandKey::SketchFix
+            | CommandKey::SketchDimension
+            | CommandKey::SketchRemoveConstraint,
+            Some(s),
+        ) => (sketch::command_enabled(key, s), false),
         (CommandKey::CommitImport, Some(s)) => (s.import.as_ref().is_some_and(|i| i.draft().is_ok()), false),
         (CommandKey::CancelImport, Some(s)) => (s.import.is_some(), false),
         (other, Some(s)) => match tool_for(other) {

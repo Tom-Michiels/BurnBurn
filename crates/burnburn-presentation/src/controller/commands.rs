@@ -12,6 +12,7 @@ use crate::task::TaskKind;
 use crate::view_model::MessageKey;
 
 use super::geometry::current_boolean_preview;
+use super::sketch;
 use super::{
     AppController, AppUpdate, DEFAULT_SNAP_GRID_MM, HostEffect, Session, after_change, apply_edit, apply_selection,
     error,
@@ -104,6 +105,23 @@ pub(super) fn invoke_in_session(
                 Err(CommandError::NothingToUndo | CommandError::NothingToRedo) => AppUpdate::redraw(document),
                 other => after_change(s, document, other),
             }
+        }
+        CommandKey::SketchNew => sketch::new_sketch(s, document, request),
+        CommandKey::SketchFromSelection => sketch::from_selection(s, document, request),
+        CommandKey::SketchEdit => sketch::edit_selected(s, document),
+        CommandKey::SketchFinish => sketch::finish(s, document),
+        CommandKey::SketchRemoveConstraint => sketch::remove_selected(s, document, request),
+        CommandKey::SketchDimension => sketch::apply_dimension_command(s, document, request),
+        CommandKey::SketchCoincident
+        | CommandKey::SketchHorizontal
+        | CommandKey::SketchVertical
+        | CommandKey::SketchParallel
+        | CommandKey::SketchPerpendicular
+        | CommandKey::SketchEqual
+        | CommandKey::SketchTangent
+        | CommandKey::SketchFix => sketch::apply_relation(s, document, command, request),
+        CommandKey::Delete if s.sketch.active.is_some() && !s.sketch.constraints.is_empty() => {
+            sketch::remove_selected(s, document, request)
         }
         CommandKey::Delete => {
             if s.selection.is_empty() {

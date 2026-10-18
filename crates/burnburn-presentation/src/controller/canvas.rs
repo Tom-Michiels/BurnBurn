@@ -2,8 +2,8 @@
 
 use burnburn_document::DocumentCommand;
 use burnburn_editor::{
-    CLICK_TOLERANCE_PT, CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerEvent, PointerPhase, ToolContext, ToolKind,
-    ToolStep, hit_test,
+    CLICK_TOLERANCE_PT, CanvasInput, CanvasKey, EditCommit, KeyPhase, Modifiers, PointerEvent, PointerPhase,
+    ToolContext, ToolKind, ToolStep, hit_test,
 };
 use burnburn_types::{DocumentId, RequestId};
 
@@ -13,6 +13,7 @@ use crate::intent::{CameraIntent, CommandKey, ViewPointerEvent};
 use crate::view_model::{MessageKey, SelectionCycle};
 
 use super::geometry::trim_at;
+use super::sketch;
 use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_selection, error};
 
 impl AppController {
@@ -33,6 +34,9 @@ impl AppController {
             let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
             if s.trim_mode {
                 return trim_at(s, document, &ev, request);
+            }
+            if let Some(update) = sketch::pointer(s, document, &ev, request) {
+                return update;
             }
             let alt_press = ev.phase == PointerPhase::Down && ev.modifiers.alt && s.editor.tool() == ToolKind::Select;
             if ev.phase == PointerPhase::Down && !alt_press {
@@ -65,6 +69,16 @@ impl AppController {
             && s.trim_mode
         {
             s.trim_mode = false;
+            return AppUpdate::redraw(document);
+        }
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && s.sketch.active.is_some()
+            && s.editor.tool() == ToolKind::Select
+            && !(s.sketch.entities.is_empty() && s.sketch.constraints.is_empty())
+        {
+            s.sketch.entities.clear();
+            s.sketch.constraints.clear();
             return AppUpdate::redraw(document);
         }
         let request = self.next_id::<RequestId>();
@@ -118,6 +132,10 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
             s.cycle = None;
             AppUpdate::redraw(document)
         }
+        ToolStep::Commit(
+            edit
+            @ (EditCommit::CreateRectangle { .. } | EditCommit::CreateShape { .. } | EditCommit::CreatePath { .. }),
+        ) if s.sketch.active.is_some() => sketch::commit_shape(s, document, &edit, request),
         ToolStep::Commit(edit) => {
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
