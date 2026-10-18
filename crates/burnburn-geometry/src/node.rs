@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use crate::{Path, Point, Segment, Subpath};
+use crate::{Path, Point, Segment, Subpath, Winding, fillet, node_ops};
 
 /// One node of one subpath.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,6 +45,26 @@ pub enum HandleMode {
 pub enum EndpointRef {
     Start(usize),
     End(usize),
+}
+
+/// The tangent behaviour a node is converted to (`NodeEdit::SetNodeKind`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NodeKind {
+    /// Sharp corner: the handles at this node are retracted onto it (straight tangent breaks).
+    Corner,
+    /// Collinear handles (tangent continuity); each keeps its own length.
+    Smooth,
+    /// Collinear handles of equal length.
+    Symmetric,
+}
+
+/// What a segment is converted to (`NodeEdit::SetSegmentKind`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SegmentKind {
+    /// A straight line between the segment's ends.
+    Line,
+    /// A cubic Bézier; a line becomes a straight cubic with its handles at the thirds.
+    Curve,
 }
 
 /// A node-level edit as data, so documents can validate and record it as one command.
@@ -91,6 +111,34 @@ pub enum NodeEdit {
     ConvertToCubic {
         subpath: usize,
     },
+    /// Converts the tangent behaviour of one node (smooth / symmetric / corner).
+    SetNodeKind {
+        node: NodeRef,
+        kind: NodeKind,
+    },
+    /// Converts one segment to a straight line or a cubic. `segment == len` addresses the
+    /// implicit closing line of a closed subpath.
+    SetSegmentKind {
+        subpath: usize,
+        segment: usize,
+        kind: SegmentKind,
+    },
+    /// Rotates a closed subpath so that it starts (and is cut) at `node`; the outline is unchanged.
+    SetStartPoint {
+        node: NodeRef,
+    },
+    /// Makes a closed subpath run in the given direction (reverses it when it does not).
+    /// The start node stays where it is. `Winding::Degenerate` is not a direction.
+    SetWinding {
+        subpath: usize,
+        winding: Winding,
+    },
+    /// Replaces the corner at `node` by a circular arc of `radius` (limited to what fits on the
+    /// two adjacent straight segments).
+    RoundCorner {
+        node: NodeRef,
+        radius: f64,
+    },
 }
 
 /// Why a node edit was rejected. The input path is never partially modified.
@@ -119,6 +167,11 @@ pub enum NodeEditError {
     SubpathClosed(usize),
     /// The subpath is already in the requested state (for example closing a closed subpath).
     NoChange,
+    /// The edit needs a closed subpath.
+    SubpathOpen(usize),
+    /// The node is not a rounded-corner candidate: it is an open end, tangent-continuous, or
+    /// touches a curve (only straight corners are rounded).
+    NotACorner(NodeRef),
 }
 
 impl fmt::Display for NodeEditError {
@@ -131,26 +184,26 @@ impl std::error::Error for NodeEditError {}
 
 /// A mutable working copy of one subpath.
 #[derive(Clone)]
-struct Parts {
-    start: Point,
-    segs: Vec<Segment>,
-    closed: bool,
+pub(crate) struct Parts {
+    pub(crate) start: Point,
+    pub(crate) segs: Vec<Segment>,
+    pub(crate) closed: bool,
 }
 
 impl Parts {
-    fn of(sp: &Subpath) -> Parts {
+    pub(crate) fn of(sp: &Subpath) -> Parts {
         Parts { start: sp.start(), segs: sp.segments().to_vec(), closed: sp.is_closed() }
     }
 
-    fn build(self) -> Result<Subpath, NodeEditError> {
+    pub(crate) fn build(self) -> Result<Subpath, NodeEditError> {
         Subpath::new(self.start, self.segs, self.closed).map_err(|_| NodeEditError::NotFinite)
     }
 
-    fn node_point(&self, i: usize) -> Point {
+    pub(crate) fn node_point(&self, i: usize) -> Point {
         if i == 0 { self.start } else { self.segs[i - 1].end() }
     }
 
-    fn end(&self) -> Point {
+    pub(crate) fn end(&self) -> Point {
         self.segs.last().map_or(self.start, Segment::end)
     }
 
@@ -179,7 +232,7 @@ impl Parts {
     }
 
     /// The closed subpath as a cycle of segments with an explicit closing line.
-    fn ring(&self) -> Vec<Segment> {
+    pub(crate) fn ring(&self) -> Vec<Segment> {
         let mut ring = self.segs.clone();
         if self.end() != self.start {
             ring.push(Segment::Line { to: self.start });
@@ -188,7 +241,7 @@ impl Parts {
     }
 
     /// The cycle rotated to start at node `k` (an index into `ring`).
-    fn rotated(start: Point, ring: &[Segment], k: usize) -> (Point, Vec<Segment>) {
+    pub(crate) fn rotated(start: Point, ring: &[Segment], k: usize) -> (Point, Vec<Segment>) {
         let begin = if k == 0 { start } else { ring[k - 1].end() };
         let mut segs = ring[k..].to_vec();
         segs.extend_from_slice(&ring[..k]);
@@ -196,14 +249,14 @@ impl Parts {
     }
 
     /// Back from a ring: a trailing line to the start becomes the implicit closing line.
-    fn from_ring(start: Point, mut segs: Vec<Segment>) -> Parts {
+    pub(crate) fn from_ring(start: Point, mut segs: Vec<Segment>) -> Parts {
         if segs.len() > 1 && matches!(segs.last(), Some(Segment::Line { to }) if *to == start) {
             segs.pop();
         }
         Parts { start, segs, closed: true }
     }
 
-    fn reversed(&self) -> Parts {
+    pub(crate) fn reversed(&self) -> Parts {
         let mut segs = Vec::with_capacity(self.segs.len());
         let mut from = self.start;
         let mut forward = Vec::with_capacity(self.segs.len());
@@ -218,7 +271,7 @@ impl Parts {
     }
 }
 
-fn merge(a: Segment, b: Segment) -> Segment {
+pub(crate) fn merge(a: Segment, b: Segment) -> Segment {
     match (a, b) {
         (Segment::Cubic { c1, .. }, Segment::Cubic { c2, to, .. }) => Segment::Cubic { c1, c2, to },
         _ => Segment::Line { to: b.end() },
@@ -367,6 +420,27 @@ impl Path {
             }
             NodeEdit::ReverseSubpath { subpath } => {
                 subs[subpath] = get(subpath)?.reversed().build()?;
+            }
+            NodeEdit::SetNodeKind { node, kind } => {
+                let p = get(node.subpath)?;
+                subs[node.subpath] = node_ops::set_node_kind(&p, node, kind)?.build()?;
+            }
+            NodeEdit::SetSegmentKind { subpath, segment, kind } => {
+                let p = get(subpath)?;
+                subs[subpath] = node_ops::set_segment_kind(&p, subpath, segment, kind)?.build()?;
+            }
+            NodeEdit::SetStartPoint { node } => {
+                let p = get(node.subpath)?;
+                subs[node.subpath] = node_ops::set_start_point(&p, node)?.build()?;
+            }
+            NodeEdit::SetWinding { subpath, winding } => {
+                let p = get(subpath)?;
+                let sp = &self.subpaths()[subpath];
+                subs[subpath] = node_ops::set_winding(&p, sp, subpath, winding)?.build()?;
+            }
+            NodeEdit::RoundCorner { node, radius } => {
+                let p = get(node.subpath)?;
+                subs[node.subpath] = fillet::round_single(&p, node, radius)?.build()?;
             }
             NodeEdit::ConvertToCubic { subpath } => {
                 let mut p = get(subpath)?;

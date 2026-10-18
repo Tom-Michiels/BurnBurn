@@ -10,10 +10,12 @@ mod boolean;
 mod bounds;
 mod canonical;
 mod error;
+mod fillet;
 mod flatten;
 mod intersect;
 pub mod math;
 mod node;
+mod node_ops;
 mod path;
 mod point;
 mod query;
@@ -29,9 +31,12 @@ pub use align::{AlignEdge, AlignError, AlignTo, Direction, Spacing, align_offset
 pub use boolean::{BooleanError, BooleanOp, BooleanOptions, FillRule, OffsetError, OffsetJoin, boolean, offset};
 pub use bounds::Bounds;
 pub use error::GeometryError;
+pub use fillet::{RoundError, RoundOutcome};
 pub use flatten::Polyline;
 pub use intersect::Intersection;
-pub use node::{EndpointRef, HandleMode, HandleRef, HandleSide, NodeEdit, NodeEditError, NodeRef};
+pub use node::{
+    EndpointRef, HandleMode, HandleRef, HandleSide, NodeEdit, NodeEditError, NodeKind, NodeRef, SegmentKind,
+};
 pub use path::{Path, PathBuilder, Rect, Subpath, Winding};
 pub use point::{Point, Vector};
 pub use query::{HitKind, Nearest, SegmentRef};
