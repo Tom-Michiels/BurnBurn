@@ -11,7 +11,8 @@ use std::fmt;
 
 use burnburn_types::{CancellationToken, Cancelled};
 
-use crate::gray::{AlphaPolicy, GrayImage, to_gray};
+use crate::adjust::PixelRect;
+use crate::gray::{AlphaPolicy, GrayConversion, GrayImage, to_gray_with};
 use crate::source::SourceImage;
 
 /// Upper bound on output pixels of one raster (keeps a setting from making a compile unbounded).
@@ -33,6 +34,10 @@ pub enum RasterError {
         width: u32,
         height: u32,
     },
+    /// A crop rectangle with no area or outside the source image.
+    CropOutOfBounds,
+    /// The PNG encoder rejected the pixels.
+    EncodeFailed,
     Cancelled,
 }
 
@@ -48,6 +53,8 @@ impl fmt::Display for RasterError {
             RasterError::InvalidTone { field } => write!(f, "tone {field} is out of range"),
             RasterError::UnsupportedOrderedSize { size } => write!(f, "ordered dither size {size} is not 2, 4 or 8"),
             RasterError::BadOutputSize { width, height } => write!(f, "raster output {width}×{height} is not allowed"),
+            RasterError::EncodeFailed => f.write_str("the processed bitmap could not be encoded"),
+            RasterError::CropOutOfBounds => f.write_str("crop rectangle is empty or outside the image"),
             RasterError::Cancelled => f.write_str("raster cancelled"),
         }
     }
@@ -134,6 +141,10 @@ pub struct BitImage {
 }
 
 impl BitImage {
+    /// `bits` holds `width × height` entries, row-major, top row first; `None` on a length mismatch.
+    pub fn new(width: u32, height: u32, bits: Vec<bool>) -> Option<Self> {
+        (u64::from(width) * u64::from(height) == bits.len() as u64).then_some(BitImage { width, height, bits })
+    }
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -170,13 +181,30 @@ pub fn resample_area(
     out_h: u32,
     cancel: &CancellationToken,
 ) -> Result<GrayImage, RasterError> {
+    resample_area_with(src, None, alpha, GrayConversion::Rec709, out_w, out_h, cancel)
+}
+
+/// [`resample_area`] over the `crop` window of `src` (the whole image for `None`), converting
+/// colour with `conversion`. A crop is a pixel rectangle of the original; no pixel outside it
+/// contributes.
+pub fn resample_area_with(
+    src: &SourceImage,
+    crop: Option<PixelRect>,
+    alpha: AlphaPolicy,
+    conversion: GrayConversion,
+    out_w: u32,
+    out_h: u32,
+    cancel: &CancellationToken,
+) -> Result<GrayImage, RasterError> {
     check_size(out_w, out_h)?;
-    let (sw, sh) = (u64::from(src.width()), u64::from(src.height()));
+    let window = crop.unwrap_or(PixelRect { x: 0, y: 0, width: src.width(), height: src.height() });
+    window.validate_within(src.width(), src.height()).map_err(|_| RasterError::CropOutOfBounds)?;
+    let (sw, sh) = (u64::from(window.width), u64::from(window.height));
     let (ow, oh) = (u64::from(out_w), u64::from(out_h));
     let mut gray = Vec::with_capacity((sw * sh) as usize);
-    for y in 0..src.height() {
-        for x in 0..src.width() {
-            let g = to_gray(src.rgba_at(x, y), alpha);
+    for y in window.y..window.y + window.height {
+        for x in window.x..window.x + window.width {
+            let g = to_gray_with(src.rgba_at(x, y), alpha, conversion);
             gray.push((g + 0.5).floor().clamp(0.0, 255.0) as u8);
         }
     }
