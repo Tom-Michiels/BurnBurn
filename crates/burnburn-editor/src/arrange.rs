@@ -20,6 +20,8 @@ pub enum ArrangeError {
     /// Booleans need closed contours; this object has an open subpath.
     OpenContour(GeometryId),
     UnknownObject(GeometryId),
+    /// Join needs at least one open path among the selected objects.
+    NoOpenPath,
 }
 
 impl fmt::Display for ArrangeError {
@@ -29,6 +31,7 @@ impl fmt::Display for ArrangeError {
             ArrangeError::EmptyGeometry(id) => write!(f, "object {id} has no geometry"),
             ArrangeError::OpenContour(id) => write!(f, "object {id} is not closed"),
             ArrangeError::UnknownObject(id) => write!(f, "no object {id}"),
+            ArrangeError::NoOpenPath => f.write_str("none of the selected objects is an open path"),
         }
     }
 }

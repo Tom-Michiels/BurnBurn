@@ -7,14 +7,19 @@ use std::fmt;
 use std::sync::Arc;
 
 use burnburn_geometry::{
-    Affine, AlignEdge, AlignError, AlignTo, BooleanError, BooleanOp, BooleanOptions, Bounds, DiagnosticTolerance,
-    Direction, EndpointRef, ExtendError, GeometryError, NodeEdit, NodeEditError, OffsetError, OffsetJoin, Path, Point,
-    ProductionTolerance, Shape, Spacing, TrimError, align_offsets, boolean, close_gaps, distribute_offsets, offset,
+    Affine, AlignEdge, AlignError, AlignTo, BooleanError, BooleanOp, BooleanOptions, Bounds, CutError,
+    DiagnosticTolerance, Direction, EndpointRef, ExtendError, GeometryError, JoinError, NodeEdit, NodeEditError,
+    OffsetError, OffsetJoin, Path, PathOpError, Point, ProductionTolerance, Shape, Spacing, TrimError, align_offsets,
+    boolean, close_gaps, distribute_offsets, offset,
 };
 use burnburn_types::{CancellationToken, ContentHash, GeometryId, GroupId, IdAllocator, Length};
 
 use crate::command::{ChangeSet, CommandWarning};
+
+mod ops;
+
 use crate::object::{GeometryObject, GeometrySource, ObjectKind};
+pub use ops::OpsCommand;
 
 /// Reference for [`GeometryCommand::Align`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -100,6 +105,8 @@ pub enum GeometryCommand {
         asset: ContentHash,
         items: Vec<ImportItem>,
     },
+    /// Whole-selection operations: round corners, optimize, cut shapes, join, node sets (W1-L2a).
+    Ops(OpsCommand),
 }
 
 /// Undo/redo label (localisation key).
@@ -119,6 +126,12 @@ pub enum EditLabel {
     Group,
     Ungroup,
     Import,
+    RoundCorners,
+    OptimizeShapes,
+    CutShapes,
+    JoinShapes,
+    /// Reverse or set the direction of contours.
+    Direction,
 }
 
 impl GeometryCommand {
@@ -137,6 +150,7 @@ impl GeometryCommand {
             GeometryCommand::Group { .. } => EditLabel::Group,
             GeometryCommand::Ungroup { .. } => EditLabel::Ungroup,
             GeometryCommand::Import { .. } => EditLabel::Import,
+            GeometryCommand::Ops(ops) => ops.label(),
         }
     }
 }
@@ -154,6 +168,9 @@ pub enum EditError {
     Trim(TrimError),
     Extend(ExtendError),
     Align(AlignError),
+    PathOp(PathOpError),
+    Cut(CutError),
+    Join(JoinError),
     NotEnoughTargets,
     /// The align reference must be one of the targets.
     ReferenceNotInTargets(GeometryId),
@@ -442,6 +459,7 @@ pub(crate) fn apply(cmd: GeometryCommand, mut txn: EditTxn<'_>) -> Result<(), Ed
             }
             txn.changes.groups.push(group);
         }
+        GeometryCommand::Ops(ops) => ops::apply(ops, &mut txn)?,
         GeometryCommand::Import { asset, items } => {
             if items.is_empty() {
                 return Err(EditError::NothingChanged);
