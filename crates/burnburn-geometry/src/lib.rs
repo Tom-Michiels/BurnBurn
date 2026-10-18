@@ -19,6 +19,7 @@ pub mod math;
 mod node;
 mod node_ops;
 mod path;
+mod path_op;
 mod point;
 mod query;
 mod repair;
@@ -43,6 +44,7 @@ pub use node::{
     EndpointRef, HandleMode, HandleRef, HandleSide, NodeEdit, NodeEditError, NodeKind, NodeRef, SegmentKind,
 };
 pub use path::{Path, PathBuilder, Rect, Subpath, Winding};
+pub use path_op::{NodeSetOp, PathOp, PathOpError};
 pub use point::{Point, Vector};
 pub use query::{HitKind, Nearest, SegmentRef};
 pub use repair::{ExtendError, GeometryIssue, IssueKind, TrimError, close_gaps, diagnose};

@@ -1,7 +1,7 @@
 //! Node-type, segment-type, start-point and direction conversions (W1-L2a). All of them work on
 //! a single subpath and leave every span they do not name bit-identical.
 
-use crate::node::{NodeEditError, NodeRef, Parts};
+use crate::node::{NodeEditError, NodeRef, Parts, merge};
 use crate::{NodeKind, Point, Segment, SegmentKind, Subpath, Vector, Winding};
 
 /// A direction below this length (mm) is "no direction"; a float-noise bound, not a user tolerance.
@@ -180,4 +180,91 @@ pub(crate) fn set_winding(p: &Parts, sp: &Subpath, subpath: usize, winding: Wind
     let ring = Parts { start: p.start, segs: p.ring(), closed: true };
     let rev = ring.reversed();
     Ok(Parts::from_ring(rev.start, rev.segs))
+}
+
+/// Folds the spans `a..b` (indices into the working list, cyclic when `b < a`) into one span.
+fn fold_spans(segs: &[Segment], a: usize, b: usize) -> Segment {
+    let m = segs.len();
+    let count = if b > a { b - a } else { b + m - a };
+    (1..count).fold(segs[a], |acc, k| merge(acc, segs[(a + k) % m]))
+}
+
+/// Normalised, sorted, unique node indices of the working list; `None` names a node that does not exist.
+fn normalised(p: &Parts, nodes: &[usize]) -> Option<Vec<usize>> {
+    let m = working(p).len();
+    let mut v = Vec::with_capacity(nodes.len());
+    for &j in nodes {
+        if j > p.segs.len() {
+            return None;
+        }
+        v.push(if p.closed && j >= m { 0 } else { j });
+    }
+    v.sort_unstable();
+    v.dedup();
+    Some(v)
+}
+
+/// Removes several nodes at once; indices refer to the subpath as given.
+pub(crate) fn delete_nodes(p: &Parts, subpath: usize, nodes: &[usize]) -> Result<Parts, NodeEditError> {
+    let bad = |j: usize| NodeEditError::NoSuchNode(NodeRef { subpath, node: j });
+    let del =
+        normalised(p, nodes).ok_or_else(|| bad(nodes.iter().copied().find(|&j| j > p.segs.len()).unwrap_or(0)))?;
+    let segs = working(p);
+    let m = segs.len();
+    let node_count = if p.closed { m } else { m + 1 };
+    let kept: Vec<usize> = (0..node_count).filter(|j| del.binary_search(j).is_err()).collect();
+    if kept.len() < 2 {
+        return Err(NodeEditError::TooFewNodes);
+    }
+    let start = point_of(p.start, &segs, kept[0]);
+    let mut out: Vec<Segment> = kept.windows(2).map(|w| fold_spans(&segs, w[0], w[1])).collect();
+    if p.closed {
+        let (last, first) = (kept[kept.len() - 1], kept[0]);
+        out.push(fold_spans(&segs, last, first));
+        return Ok(Parts::from_ring(start, out));
+    }
+    Ok(Parts { start, segs: out, closed: false })
+}
+
+/// Cuts a subpath at several nodes: the pieces replace the subpath in order.
+pub(crate) fn break_nodes(p: &Parts, subpath: usize, nodes: &[usize]) -> Result<Vec<Parts>, NodeEditError> {
+    let cut = normalised(p, nodes).ok_or_else(|| {
+        NodeEditError::NoSuchNode(NodeRef { subpath, node: nodes.iter().copied().max().unwrap_or(0) })
+    })?;
+    let segs = working(p);
+    let m = segs.len();
+    if p.closed {
+        if cut.is_empty() {
+            return Err(NodeEditError::NoChange);
+        }
+        let piece = |a: usize, b: usize| {
+            let count = if b > a { b - a } else { b + m - a };
+            let list: Vec<Segment> = (0..count).map(|k| segs[(a + k) % m]).collect();
+            Parts { start: point_of(p.start, &segs, a), segs: list, closed: false }
+        };
+        let k = cut.len();
+        return Ok((0..k).map(|i| piece(cut[i], cut[(i + 1) % k])).collect());
+    }
+    let interior: Vec<usize> = cut.into_iter().filter(|&j| j > 0 && j < m).collect();
+    if interior.is_empty() {
+        return Err(NodeEditError::NoChange);
+    }
+    let mut bounds = vec![0];
+    bounds.extend(interior);
+    bounds.push(m);
+    Ok(bounds
+        .windows(2)
+        .map(|w| Parts { start: point_of(p.start, &segs, w[0]), segs: segs[w[0]..w[1]].to_vec(), closed: false })
+        .collect())
+}
+
+/// Reverses the travel direction. A closed subpath keeps its start node (a plain reversal would
+/// start at the last node).
+pub(crate) fn reverse_in_place(p: &Parts) -> Parts {
+    if p.closed {
+        let ring = Parts { start: p.start, segs: p.ring(), closed: true }.reversed();
+        Parts::from_ring(ring.start, ring.segs)
+    } else {
+        p.reversed()
+    }
 }

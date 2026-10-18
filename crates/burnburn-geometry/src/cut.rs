@@ -2,10 +2,10 @@
 
 use std::fmt;
 
-use burnburn_types::{CancellationToken, Length};
+use burnburn_types::CancellationToken;
 
 use crate::{
-    BooleanError, BooleanOp, BooleanOptions, HitKind, HitTestTolerance, Path, Point, Segment, Subpath, boolean,
+    BooleanError, BooleanOp, BooleanOptions, Path, Point, Segment, Subpath, boolean, query::contains_even_odd,
 };
 
 /// Which side of the cutter a piece lies on.
@@ -129,19 +129,9 @@ fn cut_one(
     Ok(CutResult { changed, pieces })
 }
 
-fn on_outline_tolerance() -> HitTestTolerance {
-    // A positive constant; the conversions cannot fail.
-    match Length::from_mm(ON_OUTLINE_MM).ok().and_then(|l| HitTestTolerance::new(l).ok()) {
-        Some(t) => t,
-        None => unreachable!("1e-9 mm is a valid length and tolerance"),
-    }
-}
-
 fn side_of(cutter: &Path, q: Point) -> CutSide {
-    match cutter.hit(q, &on_outline_tolerance()) {
-        Some(HitKind::Interior) => CutSide::Inside,
-        _ => CutSide::Outside,
-    }
+    let on_outline = cutter.nearest(q).is_some_and(|n| n.distance <= ON_OUTLINE_MM);
+    if !on_outline && contains_even_odd(cutter, q, ON_OUTLINE_MM * 0.1) { CutSide::Inside } else { CutSide::Outside }
 }
 
 /// Splits closed output contours into islands: each outer contour with the holes inside it.
@@ -150,14 +140,13 @@ fn islands(path: &Path) -> Vec<Path> {
     let area = |i: usize| subs[i].signed_area().unwrap_or(0.0);
     let outers: Vec<usize> = (0..subs.len()).filter(|&i| area(i) > 0.0).collect();
     let outer_paths: Vec<Path> = outers.iter().map(|&i| Path::from_subpaths(vec![subs[i].clone()])).collect();
-    let tol = on_outline_tolerance();
     let mut members: Vec<Vec<Subpath>> = outers.iter().map(|&i| vec![subs[i].clone()]).collect();
     let mut loose: Vec<Path> = Vec::new();
     for h in (0..subs.len()).filter(|&i| area(i) <= 0.0) {
         let host = outers
             .iter()
             .enumerate()
-            .filter(|(k, _)| outer_paths[*k].hit(subs[h].start(), &tol).is_some())
+            .filter(|(k, _)| contains_even_odd(&outer_paths[*k], subs[h].start(), ON_OUTLINE_MM * 0.1))
             .min_by(|(_, a), (_, b)| area(**a).total_cmp(&area(**b)))
             .map(|(k, _)| k);
         match host {
@@ -215,12 +204,12 @@ fn split_open(sp: &Subpath, cutter: &Path) -> Vec<(Subpath, CutSide)> {
         let ((k0, t0), (k1, t1)) = (w[0], w[1]);
         let mut start = None;
         let mut segs = Vec::new();
-        for k in k0..=k1 {
+        for (k, (&from_k, seg_k)) in froms.iter().zip(sp.segments()).enumerate().take(k1 + 1).skip(k0) {
             let (a, b) = (if k == k0 { t0 } else { 0.0 }, if k == k1 { t1 } else { 1.0 });
             if b - a <= END_EPS {
                 continue;
             }
-            let (from, seg) = sub_segment(froms[k], &sp.segments()[k], a, b);
+            let (from, seg) = sub_segment(from_k, seg_k, a, b);
             start.get_or_insert(from);
             segs.push(seg);
         }
