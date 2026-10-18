@@ -11,6 +11,7 @@ mod input;
 mod issues;
 mod scene;
 mod selection;
+mod sketch;
 mod snap;
 mod tool;
 mod view;
@@ -22,6 +23,11 @@ pub use scene::{
     MIN_GRID_SPACING_PT, Overlay, SceneItem, SceneRequest, SceneSnapshot, StyleRole, build_scene, grid_spacing_mm,
 };
 pub use selection::{Selection, SelectionChange, hit_test, next_in_cycle, objects_inside};
+pub use sketch::{
+    PlanError, PointFreedom, ShapePlan, SketchGeometry, SketchGlyph, SketchMark, SketchOverlays, SketchView,
+    Suggestion, SuggestionKind, glyph_of, pick_constraint, pick_entity, plan_commit, sketch_from_paths,
+    sketch_overlays, suggest_preview,
+};
 pub use snap::{SnapCandidate, SnapKind, SnapSettings, snap_candidates, snap_point};
 pub use tool::{
     CLICK_TOLERANCE_PT, CircleTool, DRAG_THRESHOLD_PT, EditCommit, Editor, EllipseTool, HANDLE_RADIUS_PT, Handle,
