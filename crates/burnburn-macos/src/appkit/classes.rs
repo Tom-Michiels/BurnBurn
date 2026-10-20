@@ -131,7 +131,7 @@ define_class!(
                 if !title.is_empty() {
                     menu_item_obj.setTitle(&NSString::from_str(&title));
                 }
-                menu_item_obj.setState(if menu_checked(item, &vm) { NSControlStateValueOn } else { NSControlStateValueOff });
+                menu_item_obj.setState(if menu_checked(item, &vm) || app.app_menu_checked(item) { NSControlStateValueOn } else { NSControlStateValueOff });
                 menu_enabled_with_recent(item, &vm, app.recent_count())
             })
         }
@@ -1157,6 +1157,15 @@ define_class!(
                         app.canvas_key(self.ivars().document, event.keyCode(), event.modifierFlags().0)
                     });
                     if handled {
+                        return;
+                    }
+                    // A tool or command shortcut from the shortcut register (plain letters are
+                    // text while the Text tool is active: presentation says so).
+                    let chars = event.charactersIgnoringModifiers().map(|s| s.to_string()).unwrap_or_default();
+                    let shortcut = self.ivars().app.upgrade().is_some_and(|app| {
+                        app.canvas_shortcut(self.ivars().document, &chars, event.keyCode(), event.modifierFlags().0)
+                    });
+                    if shortcut {
                         return;
                     }
                     let flags = crate::adapter::modifiers(event.modifierFlags().0);

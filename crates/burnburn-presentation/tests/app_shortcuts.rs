@@ -251,3 +251,18 @@ fn the_operator_cannot_switch_tools_with_a_key() {
     h.controller().set_role(burnburn_presentation::Role::Operator);
     assert_eq!(h.controller().shortcut_intent(doc, &key("R")), None);
 }
+
+#[test]
+fn the_shortcut_revision_moves_on_every_real_change_and_only_then() {
+    let mut h = started(Arc::new(MemoryFileSystem::new()));
+    let r0 = h.controller().shortcuts_revision();
+    assign(&mut h, "cmd.FlipHorizontal", "Cmd+Opt+F", false);
+    let r1 = h.controller().shortcuts_revision();
+    assert_ne!(r0, r1);
+    assign(&mut h, "cmd.Save", "Cmd+Z", false); // a conflict: nothing changes
+    assert_eq!(h.controller().shortcuts_revision(), r1);
+    assign(&mut h, "cmd.FlipHorizontal", "Cmd+Opt+F", false); // the same again
+    assert_eq!(h.controller().shortcuts_revision(), r1, "assigning what it already is changes nothing");
+    h.send(UiIntent::App(AppIntent::ResetAllShortcuts));
+    assert_ne!(h.controller().shortcuts_revision(), r1);
+}

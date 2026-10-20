@@ -265,6 +265,11 @@ fn effective(overrides: &BTreeMap<String, String>, entry: &Entry) -> Option<KeyB
 }
 
 impl AppController {
+    /// Moves whenever the effective bindings may have changed: hosts re-apply them to their menus.
+    pub fn shortcuts_revision(&self) -> u64 {
+        self.app.shortcuts_revision
+    }
+
     pub fn shortcuts_view(&self) -> ShortcutsViewModel {
         let overrides = &self.app.settings.shortcuts;
         let rows = entries()
@@ -314,6 +319,7 @@ impl AppController {
 
     /// Stores (or removes) the override of `id` and writes the user file.
     fn shortcut_changed(&mut self) -> AppUpdate {
+        self.app.shortcuts_revision += 1;
         self.app.shortcut_error = None;
         self.app.load_problem = false;
         self.persist_settings()

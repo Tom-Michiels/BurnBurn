@@ -6,17 +6,20 @@ use burnburn_document::{Anchor, Axis, CommandPayload, DocumentCommand};
 use burnburn_geometry::{Affine, Bounds, Point, Vector};
 use burnburn_types::{Angle, DocumentId, RequestId};
 
-use crate::field::{parse_angle, parse_length, parse_percent, parse_position, parse_shear};
+use crate::field::{parse_angle, parse_percent, parse_shear};
 use crate::intent::FieldKey;
 use crate::view_model::MessageKey;
 
 use super::arrange::reference_in;
 use super::canvas::handle_step;
+use super::prefs::{LengthUnit, parse_length_in_unit, parse_position_in_unit};
 use super::{AppController, AppUpdate, Session, after_change, apply_command, error};
 
 impl AppController {
     pub(super) fn commit_field(&mut self, document: DocumentId, field: FieldKey, text: &str) -> AppUpdate {
         let request = self.next_id::<RequestId>();
+        // A bare number is in the display unit (X03).
+        let units = self.app.prefs.units;
         self.with_session(document, |s| {
             if s.selection.is_empty() {
                 return AppUpdate::default();
@@ -25,8 +28,8 @@ impl AppController {
             let Some(bounds) = s.selection.bounds(&snapshot) else { return AppUpdate::default() };
             let outcome = match field {
                 FieldKey::Rotation => rotation(s, &bounds, text),
-                FieldKey::X | FieldKey::Y => position(s, &bounds, field, text),
-                FieldKey::Width | FieldKey::Height => size(s, &bounds, field, text),
+                FieldKey::X | FieldKey::Y => position(s, &bounds, field, text, units),
+                FieldKey::Width | FieldKey::Height => size(s, &bounds, field, text, units),
                 FieldKey::ScaleX | FieldKey::ScaleY => percent(s, &bounds, field, text),
                 FieldKey::ShearX | FieldKey::ShearY => shear(s, &bounds, field, text),
             };
@@ -54,12 +57,13 @@ impl AppController {
 
     pub(super) fn commit_tool_size(&mut self, document: DocumentId, width: &str, height: &str) -> AppUpdate {
         let request = self.next_id::<RequestId>();
+        let units = self.app.prefs.units;
         self.with_session(document, |s| {
             if !s.editor.is_gesture_active() {
                 return AppUpdate::default();
             }
-            let w = parse_length(width);
-            let h = if height.trim().is_empty() { w } else { parse_length(height) };
+            let w = parse_length_in_unit(width, units);
+            let h = if height.trim().is_empty() { w } else { parse_length_in_unit(height, units) };
             let (w, h) = match (w, h) {
                 (Ok(w), Ok(h)) => (w, h),
                 (Err(e), _) | (_, Err(e)) => {
@@ -104,8 +108,8 @@ fn transform(s: &Session, matrix: Result<Affine, burnburn_geometry::GeometryErro
     }
 }
 
-fn position(s: &Session, bounds: &Bounds, field: FieldKey, text: &str) -> Outcome {
-    let value = match parse_position(text) {
+fn position(s: &Session, bounds: &Bounds, field: FieldKey, text: &str, units: LengthUnit) -> Outcome {
+    let value = match parse_position_in_unit(text, units) {
         Ok(v) => v.mm(),
         Err(e) => return Outcome::Invalid(e),
     };
@@ -117,8 +121,8 @@ fn position(s: &Session, bounds: &Bounds, field: FieldKey, text: &str) -> Outcom
     transform(s, Affine::translate(d))
 }
 
-fn size(s: &Session, bounds: &Bounds, field: FieldKey, text: &str) -> Outcome {
-    let value = match parse_length(text) {
+fn size(s: &Session, bounds: &Bounds, field: FieldKey, text: &str, units: LengthUnit) -> Outcome {
+    let value = match parse_length_in_unit(text, units) {
         Ok(v) => v,
         Err(e) => return Outcome::Invalid(e),
     };

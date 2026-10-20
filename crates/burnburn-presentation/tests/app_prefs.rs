@@ -305,3 +305,23 @@ fn a_locked_object_is_not_nudged() {
     assert_eq!(position(&h, doc), before);
     assert!(!update.effects.is_empty(), "the refusal is reported");
 }
+
+#[test]
+fn the_stored_preferences_can_be_read_before_any_controller_exists() {
+    // The host needs the language to build its menus, before the first window.
+    let fs = Arc::new(MemoryFileSystem::new());
+    assert_eq!(
+        burnburn_presentation::AppController::read_preferences(fs.as_ref(), Path::new(USER_DIR)),
+        burnburn_presentation::Preferences::default(),
+        "no file: defaults"
+    );
+    fs.insert(&user_file(), b"burnburn-preferences 1\nlanguage = en\nautosave_seconds = 120\n".to_vec());
+    let prefs = burnburn_presentation::AppController::read_preferences(fs.as_ref(), Path::new(USER_DIR));
+    assert_eq!((prefs.language, prefs.autosave_seconds), (LanguageChoice::English, 120));
+    fs.insert(&user_file(), b"garbage".to_vec());
+    assert_eq!(
+        burnburn_presentation::AppController::read_preferences(fs.as_ref(), Path::new(USER_DIR)),
+        burnburn_presentation::Preferences::default(),
+        "a damaged file: defaults"
+    );
+}

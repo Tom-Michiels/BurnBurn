@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 
 use burnburn_editor::SnapSettings;
 
-use crate::field::{FieldError, format_mm, parse_length, parse_number};
+use burnburn_types::Length;
+
+use crate::field::{FieldError, format_mm, parse_length, parse_number, parse_position};
 
 /// Length unit of the display and of bare numbers typed in length fields. The physical value
 /// is always kept in millimetres.
@@ -233,10 +235,25 @@ pub fn format_length(mm: f64, unit: LengthUnit) -> String {
 /// A length typed in a preference: a unit suffix (`mm`, `cm`, `in`, `"`) always wins; a bare
 /// number is in the display unit. Zero and negative lengths are out of range, not "not a number".
 pub fn parse_length_in(text: &str, default: LengthUnit) -> Result<f64, PrefProblem> {
-    let lower = text.trim().to_ascii_lowercase();
-    let has_unit = ["mm", "cm", "in", "\""].iter().any(|s| lower.ends_with(s));
     let mm = parse_length(text).map_err(problem_of)?.mm();
-    Ok(if has_unit { mm } else { mm * default.mm_per_unit() })
+    Ok(if has_unit_suffix(text) { mm } else { mm * default.mm_per_unit() })
+}
+
+/// [`parse_length`] where a bare number is in `unit` (an explicit unit suffix always wins).
+pub(super) fn parse_length_in_unit(text: &str, unit: LengthUnit) -> Result<Length, FieldError> {
+    let mm = parse_length(text)?.mm();
+    Length::from_mm(if has_unit_suffix(text) { mm } else { mm * unit.mm_per_unit() }).map_err(|_| FieldError::NotFinite)
+}
+
+/// [`parse_position`] where a bare number is in `unit`.
+pub(super) fn parse_position_in_unit(text: &str, unit: LengthUnit) -> Result<Length, FieldError> {
+    let mm = parse_position(text)?.mm();
+    Length::from_mm(if has_unit_suffix(text) { mm } else { mm * unit.mm_per_unit() }).map_err(|_| FieldError::NotFinite)
+}
+
+fn has_unit_suffix(text: &str) -> bool {
+    let lower = text.trim().to_ascii_lowercase();
+    ["mm", "cm", "in", "\""].iter().any(|s| lower.ends_with(s))
 }
 
 fn problem_of(e: FieldError) -> PrefProblem {

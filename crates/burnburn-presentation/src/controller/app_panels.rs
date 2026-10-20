@@ -104,6 +104,7 @@ pub(super) struct AppPanels {
     pub(super) settings: UserSettings,
     error: Option<PrefError>,
     pub(super) shortcut_error: Option<super::shortcuts::ShortcutError>,
+    pub(super) shortcuts_revision: u64,
     pub(super) load_problem: bool,
     save_failed: bool,
     /// The write in flight, and whether the settings changed again while it ran: writes are
@@ -134,8 +135,18 @@ impl AppController {
             app.load_problem = loaded.damaged;
             app.prefs = loaded.settings.prefs;
             app.settings = loaded.settings;
+            app.shortcuts_revision += 1;
         }
         AppUpdate { view_changed: true, ..AppUpdate::default() }
+    }
+
+    /// The preferences stored in `dir`, read without a controller (defaults for a missing or
+    /// damaged file). The host needs the language before it builds its first menu.
+    pub fn read_preferences(fs: &dyn burnburn_io::fs::FileSystem, dir: &Path) -> Preferences {
+        match fs.read(&dir.join(USER_FILE), MAX_USER_FILE_BYTES) {
+            Ok(bytes) => UserSettings::parse(&bytes).settings.prefs,
+            Err(_) => Preferences::default(),
+        }
     }
 
     pub fn preferences(&self) -> &Preferences {

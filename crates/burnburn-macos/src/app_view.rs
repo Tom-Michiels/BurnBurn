@@ -3,7 +3,7 @@
 
 use burnburn_presentation::{
     HistoryViewModel, LengthUnit, MessageKey, MoveKind, PartialMove, PlaybackSpeed, PrefKey, PrefProblem, PrefUnit,
-    PrefValue, PrefsViewModel, PreviewViewModel, RdInspectViewModel, ShortcutProblem, ShortcutTarget,
+    PrefValue, Preferences, PrefsViewModel, PreviewViewModel, RdInspectViewModel, ShortcutProblem, ShortcutTarget,
     ShortcutsViewModel,
 };
 
@@ -63,6 +63,14 @@ fn choice_title(id: &str, locale: Locale) -> String {
         other => return other.to_owned(),
     };
     app_text(text, locale).to_owned()
+}
+
+/// The stable id of item `index` of a choice preference's pop-up, as presentation lists them.
+pub fn pref_choice_id(key: PrefKey, index: usize) -> Option<&'static str> {
+    match Preferences::default().row(key).value {
+        PrefValue::Choice { options, .. } => options.get(index).copied(),
+        _ => None,
+    }
 }
 
 fn problem_text(problem: PrefProblem, locale: Locale) -> &'static str {

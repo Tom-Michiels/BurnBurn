@@ -319,6 +319,41 @@ fn a_refused_value_marks_its_field_and_says_why_in_words() {
     assert_eq!(panel.banner.as_deref(), Some("The value is outside the allowed range."));
 }
 
+#[test]
+fn a_popup_item_is_the_id_presentation_lists_at_that_position() {
+    use burnburn_macos::app_view::pref_choice_id;
+    assert_eq!((pref_choice_id(PrefKey::Units, 0), pref_choice_id(PrefKey::Units, 1)), (Some("mm"), Some("inch")));
+    assert_eq!(pref_choice_id(PrefKey::Language, 2), Some("en"));
+    assert_eq!(pref_choice_id(PrefKey::Quality, 0), Some("coarse"));
+    assert_eq!(pref_choice_id(PrefKey::Quality, 2), None);
+    assert_eq!(pref_choice_id(PrefKey::GridSnap, 0), None, "a number field has no items");
+    // The pop-up titles and the ids stay in step.
+    let mut h = HeadlessEditorHarness::new();
+    for row in prefs_panel(&h.controller().prefs_view(), Locale::En).rows {
+        if let PrefsControl::Choice { titles, ids, .. } = row.control {
+            assert_eq!(titles.len(), ids.len(), "{:?}", row.key);
+            for (i, id) in ids.iter().enumerate() {
+                assert_eq!(pref_choice_id(row.key, i), Some(*id));
+            }
+        }
+    }
+}
+
+#[test]
+fn the_inspector_caption_names_the_unit_the_field_is_shown_in() {
+    use burnburn_macos::panels::field_unit_for;
+    use burnburn_presentation::FieldKey;
+    use burnburn_types::Unit;
+    for key in [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height] {
+        assert_eq!(field_unit_for(key, Unit::Millimeter, Locale::Nl), "mm");
+        assert_eq!(field_unit_for(key, Unit::Inch, Locale::Nl), "in");
+        assert_eq!(field_unit_for(key, Unit::Inch, Locale::En), "in");
+    }
+    // Angles and percentages are not lengths.
+    assert_eq!(field_unit_for(FieldKey::Rotation, Unit::Inch, Locale::En), "°");
+    assert_eq!(field_unit_for(FieldKey::ScaleX, Unit::Inch, Locale::En), "%");
+}
+
 // ---- shortcut editor lines ----------------------------------------------------------------------
 
 #[test]

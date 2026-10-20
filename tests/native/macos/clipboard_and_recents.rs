@@ -248,6 +248,7 @@ fn arrange_and_view() -> Result<(), String> {
                 "Beeld",
                 "Productie",
                 "Laser",
+                "Venster",
                 "Help",
             ]
             .map(String::from),

@@ -6,6 +6,9 @@
 //! resulting intents to the one `AppController` and performs its `HostEffect`s.
 
 mod app;
+// `define_class!` and `msg_send!` need unsafe; the invariants are in `classes.rs`'s doc comment.
+#[allow(unsafe_code)]
+mod app_panels;
 // AVFoundation camera adapter (IM27); unsafe FFI with the invariants in its module doc.
 #[cfg(feature = "camera")]
 #[allow(unsafe_code)]
@@ -28,7 +31,8 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{HostApp, HostOptions, QuitOutcome, WindowParts};
-pub use canvas::canvas_packet;
+pub use app::{MenuKeyReport, app_user_dir};
+pub use canvas::{canvas_packet, canvas_packet_with};
 pub use panels::laser::LaserParts;
 pub use toolstrip::{ToolStrip, image_pixels};
 pub use window::CanvasStatus;
@@ -105,7 +109,23 @@ pub fn run_app() -> ExitCode {
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     // The delegate is installed before `run` finishes launching, so it sees the launch's
     // `application:openURLs:` and `applicationDidFinishLaunching:`.
-    let host = HostApp::new(mtm, Arc::new(burnburn_io::std_fs::StdFileSystem), HostOptions::app());
+    // The language preference decides the menus' language, so it is read before the first menu is
+    // built; the rest of the settings are loaded by the host right after.
+    let user_dir = app_user_dir();
+    let mut options = HostOptions::app();
+    if let Some(dir) = &user_dir {
+        use burnburn_presentation::LanguageChoice;
+        let prefs = burnburn_presentation::AppController::read_preferences(&burnburn_io::std_fs::StdFileSystem, dir);
+        options.locale = match prefs.language {
+            LanguageChoice::Dutch => Some(crate::l10n::Locale::Nl),
+            LanguageChoice::English => Some(crate::l10n::Locale::En),
+            LanguageChoice::System => None,
+        };
+    }
+    let host = HostApp::new(mtm, Arc::new(burnburn_io::std_fs::StdFileSystem), options);
+    if let Some(dir) = user_dir {
+        host.use_user_dir(dir);
+    }
     // The bed camera is attached, never started: the window's camera section asks for access
     // and starts it only on the user's click.
     #[cfg(feature = "camera")]

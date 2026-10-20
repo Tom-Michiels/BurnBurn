@@ -24,6 +24,13 @@ pub fn canvas_packet(scene: &SceneSnapshot, wireframe: bool) -> RenderPacket {
     build_packet(scene, &theme)
 }
 
+/// As [`canvas_packet`], with curves flattened to within `tolerance_px` device pixels (the
+/// display-quality preference).
+pub fn canvas_packet_with(scene: &SceneSnapshot, wireframe: bool, tolerance_px: f64) -> RenderPacket {
+    let theme = if wireframe { Theme::light().wireframe() } else { Theme::light() };
+    build_packet(scene, &theme.with_tolerance_px(tolerance_px))
+}
+
 pub(crate) struct Canvas {
     inner: SurfaceCanvas,
 }
