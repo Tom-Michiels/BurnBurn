@@ -395,6 +395,11 @@ impl GeometryObject {
         self.with_path(self.path.transform(m))
     }
 
+    /// The same object, no longer owned by an evaluator: it is drawn geometry from now on.
+    pub(crate) fn detached(&self) -> Self {
+        GeometryObject { source: GeometrySource::Drawn, ..self.clone() }
+    }
+
     pub(crate) fn with_name(&self, name: String) -> Self {
         GeometryObject { name, ..self.clone() }
     }

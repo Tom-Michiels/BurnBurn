@@ -5,12 +5,14 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
-use burnburn_geometry::{GeometryError, Path, Point};
-use burnburn_types::ContentHash;
+use burnburn_geometry::{
+    BooleanOp, BooleanOptions, FillRule, GeometryError, Path, Point, ProductionTolerance, Subpath,
+};
+use burnburn_types::{CancellationToken, ContentHash, Length};
 use harfrust::{Buffer, Direction, Feature, ShapeOptions, ShaperFont, Tag};
 
 use crate::font::{FontData, FontError, FontSource};
-use crate::model::{Align, MissingGlyph, TextMode, TextObject};
+use crate::model::{Align, MissingGlyph, TextMode, TextObject, VAlign};
 use crate::outline::{UnitMap, glyph_subpaths, path_of};
 use crate::single_line::{self, glyph_strokes};
 
@@ -65,6 +67,8 @@ pub enum TextError {
     /// The shaper rejected the run (malformed font tables).
     Shaping,
     Geometry(GeometryError),
+    /// Welding the glyphs of a line failed (coordinates out of range for the boolean).
+    Weld,
 }
 
 impl fmt::Display for TextError {
@@ -74,6 +78,7 @@ impl fmt::Display for TextError {
             TextError::InvalidLayout => f.write_str("line spacing must be positive and letter spacing finite"),
             TextError::Shaping => f.write_str("the font could not shape this text"),
             TextError::Geometry(e) => write!(f, "{e}"),
+            TextError::Weld => f.write_str("the glyph outlines could not be welded"),
         }
     }
 }
@@ -100,7 +105,10 @@ impl From<GeometryError> for TextError {
 /// Bidirectional reordering is not part of v1.
 pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, TextError> {
     let layout = &obj.layout;
-    if !(layout.line_spacing.is_finite() && layout.line_spacing > 0.0) || !layout.letter_spacing_mm.is_finite() {
+    if !(layout.line_spacing.is_finite() && layout.line_spacing > 0.0)
+        || !layout.letter_spacing_mm.is_finite()
+        || !layout.v_space_mm.is_finite()
+    {
         return Err(TextError::InvalidLayout);
     }
     let em = obj.size.em_mm();
@@ -123,12 +131,30 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
     let mut used = vec![false; chain.len()];
     let mut all = Vec::new();
     let mut offset = 0;
+    let pitch = layout.line_spacing * em + layout.v_space_mm;
+    let line_count = obj.content.split('\n').count();
+    let (ascent, descent) = match (obj.mode, chain.first()) {
+        (TextMode::Outline, Some(f)) => {
+            let scale = em / f64::from(f.units_per_em());
+            let (a, d) = f.ascent_descent_units();
+            (a * scale, d * scale)
+        }
+        _ => (single_line::CAP_HEIGHT_EM * em, 0.0),
+    };
+    // Shift of the whole block so that it hangs on y = 0 as `valign` asks.
+    let last_baseline = -((line_count - 1) as f64) * pitch;
+    let block_dy = match layout.valign {
+        VAlign::Baseline => 0.0,
+        VAlign::Top => -ascent,
+        VAlign::Middle => -(ascent + (last_baseline - descent)) / 2.0,
+        VAlign::Bottom => descent - last_baseline,
+    };
     for (line_index, line) in obj.content.split('\n').enumerate() {
         let bytes = offset..offset + line.len();
         offset += line.len() + 1;
         let raw = match obj.mode {
             TextMode::Outline => shape_line(line, bytes.start, &chain, layout, em)?,
-            TextMode::SingleLine => single_line_glyphs(line, bytes.start, em),
+            TextMode::SingleLine => single_line_glyphs(line, bytes.start, em, layout.uppercase),
         };
         for m in raw.missing {
             out.missing.push(MissingGlyph { ch: m.0, byte: m.1, line: line_index });
@@ -149,7 +175,7 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
             Align::Center => -width / 2.0,
             Align::Right => -width,
         };
-        let baseline_y = -(line_index as f64) * layout.line_spacing * em;
+        let baseline_y = -(line_index as f64) * pitch + block_dy;
         let mut subpaths = Vec::new();
         for (g, pen) in raw.glyphs.iter().zip(pens) {
             let origin = Point::new(start_x + pen + g.offset.0, baseline_y + g.offset.1);
@@ -178,6 +204,9 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
                 advance_mm: g.advance,
             });
         }
+        if layout.welded && obj.mode == TextMode::Outline {
+            subpaths = weld(subpaths, em)?;
+        }
         let line_path = path_of(subpaths).transform(&obj.placement);
         all.extend(line_path.subpaths().iter().cloned());
         out.line_outlines.push(line_path);
@@ -205,23 +234,62 @@ struct RawLine {
     missing: Vec<(char, usize)>,
 }
 
-fn single_line_glyphs(line: &str, base: usize, em: f64) -> RawLine {
+fn single_line_glyphs(line: &str, base: usize, em: f64, uppercase: bool) -> RawLine {
     let advance = single_line::ADVANCE_UNITS * em / single_line::UNITS_PER_EM;
     let mut raw = RawLine { glyphs: Vec::new(), missing: Vec::new() };
-    for (i, ch) in line.char_indices() {
+    let (text, map) = case_mapped(line, uppercase);
+    for (i, ch) in text.char_indices() {
+        let source = base + map.get(i).copied().unwrap_or(0);
         if single_line::single_line_supports(ch) {
             raw.glyphs.push(RawGlyph {
                 font: 0,
                 glyph_id: u32::from(ch),
-                cluster: base + i,
+                cluster: source,
                 advance,
                 offset: (0.0, 0.0),
             });
         } else if ch != '\r' {
-            raw.missing.push((ch, base + i));
+            raw.missing.push((ch, source));
         }
     }
     raw
+}
+
+/// The text to draw and, per byte of it, the byte offset in `line` of the source character it
+/// came from (`ß` → `SS` gives both `S` the offset of `ß`). Without `uppercase` it is the line.
+fn case_mapped(line: &str, uppercase: bool) -> (String, Vec<usize>) {
+    if !uppercase {
+        return (line.to_owned(), (0..line.len()).collect());
+    }
+    let mut text = String::with_capacity(line.len());
+    let mut map = Vec::with_capacity(line.len());
+    for (i, ch) in line.char_indices() {
+        for up in ch.to_uppercase() {
+            text.push(up);
+            map.extend(std::iter::repeat_n(i, up.len_utf8()));
+        }
+    }
+    (text, map)
+}
+
+/// Union of overlapping contours (non-zero fill: counters wind opposite to their outer contour
+/// and stay open). Polygonal result within a tenth of the em's thousandth.
+fn weld(subpaths: Vec<Subpath>, em: f64) -> Result<Vec<Subpath>, TextError> {
+    if subpaths.is_empty() {
+        return Ok(subpaths);
+    }
+    let tolerance = ProductionTolerance::new(Length::from_mm((em / 2000.0).max(1e-4)).map_err(|_| TextError::Weld)?)
+        .map_err(|_| TextError::Weld)?;
+    let options = BooleanOptions { fill: FillRule::NonZero, tolerance };
+    let merged = burnburn_geometry::boolean(
+        &Path::from_subpaths(subpaths),
+        &Path::default(),
+        BooleanOp::Union,
+        &options,
+        &CancellationToken::never(),
+    )
+    .map_err(|_| TextError::Weld)?;
+    Ok(merged.subpaths().to_vec())
 }
 
 fn shape_line(
@@ -232,7 +300,10 @@ fn shape_line(
     em: f64,
 ) -> Result<RawLine, TextError> {
     let mut raw = RawLine { glyphs: Vec::new(), missing: Vec::new() };
-    // Runs of (font index, byte range within the line).
+    // The text to draw (upper-cased on request) and, per byte, its source offset in `line`.
+    let (line, map) = case_mapped(line, layout.uppercase);
+    let line = line.as_str();
+    // Runs of (font index, byte range within the drawn line).
     let mut runs: Vec<(usize, Range<usize>)> = Vec::new();
     for (i, ch) in line.char_indices() {
         if ch == '\r' {
@@ -244,7 +315,7 @@ fn shape_line(
                 Some((f, r)) if *f == font && r.end == i => r.end = end,
                 _ => runs.push((font, i..end)),
             },
-            None => raw.missing.push((ch, base + i)),
+            None => raw.missing.push((ch, base + map.get(i).copied().unwrap_or(0))),
         }
     }
     let mut features = Vec::new();
@@ -270,7 +341,7 @@ fn shape_line(
             raw.glyphs.push(RawGlyph {
                 font: font_index,
                 glyph_id: info.glyph_id,
-                cluster: base + range.start + info.cluster as usize,
+                cluster: base + map.get(range.start + info.cluster as usize).copied().unwrap_or(0),
                 advance: f64::from(pos.x_advance) * scale,
                 offset: (f64::from(pos.x_offset) * scale, f64::from(pos.y_offset) * scale),
             });

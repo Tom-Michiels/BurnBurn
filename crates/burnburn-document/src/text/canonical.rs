@@ -3,7 +3,7 @@
 
 use burnburn_types::{CanonicalEncode, CanonicalWriter};
 
-use super::{Align, TextMode, TextObject};
+use super::{Align, TextMode, TextObject, VAlign};
 
 fn font_ref(r: &super::FontRef, out: &mut CanonicalWriter) {
     out.str(&r.family);
@@ -42,5 +42,24 @@ impl CanonicalEncode for TextObject {
             TextMode::Outline => "outline",
             TextMode::SingleLine => "single-line",
         });
+        // Options added later are written only when set, so text that does not use them keeps the
+        // hash (and the project hash) it always had.
+        let l = &self.layout;
+        if l.uppercase || l.valign != VAlign::Baseline || l.v_space_mm != 0.0 || l.welded {
+            out.tag("layout-options");
+            out.bool(l.uppercase);
+            out.tag(match l.valign {
+                VAlign::Baseline => "baseline",
+                VAlign::Top => "top",
+                VAlign::Middle => "middle",
+                VAlign::Bottom => "bottom",
+            });
+            out.f64(l.v_space_mm);
+            out.bool(l.welded);
+        }
+        if let Some(v) = self.variable {
+            out.tag("variable-text");
+            out.u64(u64::from_le_bytes(v.offset.to_le_bytes()));
+        }
     }
 }

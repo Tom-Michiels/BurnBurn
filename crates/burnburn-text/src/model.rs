@@ -3,5 +3,5 @@
 
 pub use burnburn_document::text::{
     Align, FontRef, FontSize, FontSizeError, FontStyle, MM_PER_POINT, MissingGlyph, TextId, TextLayout, TextMode,
-    TextObject,
+    TextObject, VAlign, VariableText,
 };
