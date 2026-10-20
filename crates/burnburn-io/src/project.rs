@@ -105,6 +105,23 @@ pub struct Project {
     pub profiles: Vec<MachineProfile>,
     /// Frozen production revisions (P08), oldest first; numbers are never reused.
     pub revisions: Vec<FrozenRevision>,
+    /// Which library entry each project recipe was made from (C08). Provenance only: it is not
+    /// part of the canonical project hash and never changes any setting.
+    pub library_links: Vec<LibraryLink>,
+}
+
+/// A project recipe that came from a material-library entry: the library, the entry and the
+/// entry revision the recipe was copied from. A later library update is *reported* against it
+/// ([`crate::material_library::link_status`]) and never applied on its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryLink {
+    /// The project's recipe (`RecipeId::raw`).
+    pub recipe: u64,
+    /// Identity of the library the entry lives in.
+    pub library: String,
+    pub entry: u64,
+    /// Entry revision at the time of copying.
+    pub revision: u32,
 }
 
 /// A frozen copy of the design at one moment ("opnieuw maken als revisie X").
@@ -119,7 +136,14 @@ pub struct FrozenRevision {
 
 impl Project {
     pub fn new(uuid: ProjectUuid, document: DocumentSnapshot) -> Self {
-        Project { uuid, document, assets: AssetStore::default(), profiles: Vec::new(), revisions: Vec::new() }
+        Project {
+            uuid,
+            document,
+            assets: AssetStore::default(),
+            profiles: Vec::new(),
+            revisions: Vec::new(),
+            library_links: Vec::new(),
+        }
     }
 
     /// Freezes the current document as the next revision and returns its number. Later edits
@@ -138,7 +162,14 @@ impl Project {
 
     /// `document` with this project's uuid and assets, without profiles or revisions.
     pub(crate) fn frozen_project(&self, document: DocumentSnapshot) -> Project {
-        Project { uuid: self.uuid, document, assets: self.assets.clone(), profiles: Vec::new(), revisions: Vec::new() }
+        Project {
+            uuid: self.uuid,
+            document,
+            assets: self.assets.clone(),
+            profiles: Vec::new(),
+            revisions: Vec::new(),
+            library_links: Vec::new(),
+        }
     }
 
     pub fn revision(&self, number: u32) -> Option<&FrozenRevision> {

@@ -27,6 +27,7 @@ fn project_with(session: &DocumentSession) -> Project {
         assets: AssetStore::default(),
         profiles: Vec::new(),
         revisions: Vec::new(),
+        library_links: Vec::new(),
     }
 }
 
@@ -200,6 +201,7 @@ fn a_plain_object_with_a_shape_kind_still_loads_without_definition() {
         assets: AssetStore::default(),
         profiles: Vec::new(),
         revisions: Vec::new(),
+        library_links: Vec::new(),
     };
     let back = decode_container(&encode_container(&project).unwrap()).unwrap();
     assert!(back.document.object(GeometryId::from_raw(1)).unwrap().parametric().is_none());

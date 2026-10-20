@@ -179,3 +179,44 @@ proptest! {
         let _ = burnburn_io::import::parse_lbrn2(xml.as_bytes());
     }
 }
+
+fn material_seed() -> Vec<u8> {
+    use burnburn_document::process::{
+        Kerf, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, RecipeDraft, Speed,
+    };
+    let mut lib = burnburn_io::material_library::MaterialLibrary::new("seed");
+    let p = PowerPercent::new(50.0).unwrap();
+    lib.add(RecipeDraft {
+        name: "Snijden".into(),
+        material: "Acryl".into(),
+        thickness: burnburn_types::Length::from_mm(3.0).unwrap(),
+        machine: "m".into(),
+        notes: String::new(),
+        mode: OperationMode::Line { kerf: Kerf::NONE },
+        settings: ProcessSettings {
+            speed: Speed::mm_per_s(10.0).unwrap(),
+            power: PowerRange::new(p, p).unwrap(),
+            passes: Passes::new(1).unwrap(),
+            air_assist: false,
+        },
+    })
+    .unwrap();
+    burnburn_io::material_library::encode_material_library(&lib).unwrap()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+
+    #[test]
+    fn material_library_random_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
+        let _ = burnburn_io::material_library::decode_material_library(&bytes);
+    }
+
+    #[test]
+    fn material_library_mutated_file_never_panics_and_valid_ones_reencode(b in mutate(material_seed())) {
+        if let Ok(lib) = burnburn_io::material_library::decode_material_library(&b) {
+            let again = burnburn_io::material_library::encode_material_library(&lib).unwrap();
+            prop_assert_eq!(burnburn_io::material_library::decode_material_library(&again).unwrap(), lib);
+        }
+    }
+}

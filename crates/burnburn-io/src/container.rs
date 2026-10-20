@@ -22,6 +22,8 @@ const DOCUMENT: &str = "document.json";
 const PROFILES: &str = "profiles.json";
 /// Frozen production revisions (IM28); only present when the project has some.
 const REVISIONS: &str = "revisions.json";
+/// Material-library provenance of recipes (W2-L6, C08); only present when the project has some.
+const LIBRARY_LINKS: &str = "library-links.json";
 const ASSET_DIR: &str = "assets/";
 const PREVIEW_DIR: &str = "previews/";
 
@@ -77,6 +79,15 @@ pub fn encode_container(project: &Project) -> Result<Vec<u8>, SaveError> {
         zip.start_file(REVISIONS, json).map_err(|e| enc(&e))?;
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
+    if !project.library_links.is_empty() {
+        let dtos: Vec<LinkDto> = project
+            .library_links
+            .iter()
+            .map(|l| LinkDto { recipe: l.recipe, library: l.library.clone(), entry: l.entry, revision: l.revision })
+            .collect();
+        zip.start_file(LIBRARY_LINKS, json).map_err(|e| enc(&e))?;
+        zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
+    }
     for (h, a) in project.assets.iter() {
         zip.start_file(format!("{ASSET_DIR}{}", asset_key(h)), options(CompressionMethod::Stored))
             .map_err(|e| enc(&e))?;
@@ -104,6 +115,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let mut document_bytes = None;
     let mut profile_bytes = None;
     let mut revision_bytes = None;
+    let mut link_bytes = None;
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
@@ -114,6 +126,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             DOCUMENT => (Some(&mut document_bytes), MAX_JSON_BYTES),
             PROFILES => (Some(&mut profile_bytes), MAX_JSON_BYTES),
             REVISIONS => (Some(&mut revision_bytes), MAX_JSON_BYTES),
+            LIBRARY_LINKS => (Some(&mut link_bytes), MAX_JSON_BYTES),
             n if n.starts_with(ASSET_DIR) && !n[ASSET_DIR.len()..].contains('/') => (None, MAX_ASSET_BYTES),
             n if n.starts_with(PREVIEW_DIR) && !n.contains("..") => continue,
             _ => return Err(LoadError::UnexpectedEntry(name)),
@@ -182,12 +195,34 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let dto: v1::Document = serde_json::from_slice(&document_bytes).map_err(|e| json_error(DOCUMENT, &e))?;
     let schema = u32::try_from(schema).unwrap_or(u32::MAX);
     let document = document_from_dto(&dto, schema, &|h| assets.get(h).is_some())?;
-    let mut project = Project { uuid, document, assets, profiles: Vec::new(), revisions: Vec::new() };
+    let mut project =
+        Project { uuid, document, assets, profiles: Vec::new(), revisions: Vec::new(), library_links: Vec::new() };
     if let Some(bytes) = profile_bytes {
         let dtos: Vec<crate::profile::ProfileDto> =
             serde_json::from_slice(&bytes).map_err(|e| json_error(PROFILES, &e))?;
         for (i, d) in dtos.iter().enumerate() {
             project.profiles.push(crate::profile::profile_from_dto(i, d)?);
+        }
+    }
+    if let Some(bytes) = link_bytes {
+        let dtos: Vec<LinkDto> = serde_json::from_slice(&bytes).map_err(|e| json_error(LIBRARY_LINKS, &e))?;
+        if dtos.is_empty() || dtos.len() > MAX_ENTRIES {
+            return Err(LoadError::InvalidValue { path: "library-links".into(), reason: "empty or too long".into() });
+        }
+        for l in dtos {
+            let known = project.document.process().recipes().any(|r| burnburn_types::StableId::raw(r.id()) == l.recipe);
+            if !known {
+                return Err(LoadError::InvalidValue {
+                    path: "library-links".into(),
+                    reason: format!("no recipe {} in this project", l.recipe),
+                });
+            }
+            project.library_links.push(crate::LibraryLink {
+                recipe: l.recipe,
+                library: l.library,
+                entry: l.entry,
+                revision: l.revision,
+            });
         }
     }
     if let Some(bytes) = revision_bytes {
@@ -223,4 +258,14 @@ struct RevisionDto {
     label: String,
     project_hash: String,
     document: v1::Document,
+}
+
+/// One library link on disk.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkDto {
+    recipe: u64,
+    library: String,
+    entry: u64,
+    revision: u32,
 }

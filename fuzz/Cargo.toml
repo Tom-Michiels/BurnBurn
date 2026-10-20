@@ -92,3 +92,10 @@ path = "fuzz_targets/io_parse_pdf.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "io_material_library"
+path = "fuzz_targets/io_material_library.rs"
+test = false
+doc = false
+bench = false

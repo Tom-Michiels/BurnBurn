@@ -18,6 +18,7 @@ eigen `[workspace]` en een eigen lockfile die bij de eerste run ontstaat. Nightl
 | `io_parse_dxf` | `parse_dxf` + `to_draft(None)` en `to_draft(Some(inch))` | `Ok` of `ParseError`/`ImportError` |
 | `io_parse_hpgl` | `parse_hpgl` | `Ok` met eindige geometrie of `ParseError` |
 | `io_parse_pdf` | `parse_pdf` + `to_draft(All)` | `Ok` of `ParseError`; begrensd door decode-caps en operator-/segmentlimieten |
+| `io_material_library` | `decode_material_library` (+ re-encode) | `Ok` of `LoadError` |
 | `image_decode` | `burnburn_image::decode` + `io::import::inspect_raster` (standaardlimieten) | `Ok` of getypeerde fout, begrensd |
 
 ## Draaien
