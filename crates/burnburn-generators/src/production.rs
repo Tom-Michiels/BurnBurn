@@ -279,6 +279,46 @@ impl ProductionCounters {
         self.advance(true)
     }
 
+    /// Steps serial and row back by hand (the panel's Previous button); the row stops at 0.
+    /// Nothing changes on an error.
+    pub fn step_back_manually(&mut self) -> Result<(), VariableError> {
+        let mut serial = self.serial;
+        if let Some(s) = serial.as_mut() {
+            s.step_back()?;
+        }
+        self.serial = serial;
+        self.row = self.row.saturating_sub(1);
+        self.generation += 1;
+        Ok(())
+    }
+
+    /// Back to the start value and the first row (the panel's Reset button).
+    pub fn reset(&mut self) {
+        if let Some(s) = self.serial.as_mut() {
+            s.reset();
+        }
+        self.row = 0;
+        self.generation += 1;
+    }
+
+    /// Chooses the data row of the next job.
+    pub fn set_row(&mut self, row: usize) {
+        self.row = row;
+        self.generation += 1;
+    }
+
+    /// Replaces the serial series (Start/End/Advance by or the current value changed by hand).
+    pub fn set_serial(&mut self, serial: Option<SerialCounter>) {
+        self.serial = serial;
+        self.generation += 1;
+    }
+
+    /// Chooses the event the counters advance on.
+    pub fn set_policy(&mut self, policy: AdvancePolicy) {
+        self.policy = policy;
+        self.generation += 1;
+    }
+
     fn advance(&mut self, with_row: bool) -> Result<(), VariableError> {
         let mut serial = self.serial;
         if let Some(s) = serial.as_mut() {

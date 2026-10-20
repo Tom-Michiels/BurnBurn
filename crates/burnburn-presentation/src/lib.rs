@@ -4,6 +4,7 @@
 //! Native hosts (AppKit, Windows), the CLI and the [`HeadlessEditorHarness`] all drive the same
 //! controller. No AppKit, Windows or GPU type appears here.
 
+mod barcode_panel;
 mod cam_dialogs;
 mod camera;
 mod catalog;
@@ -20,8 +21,16 @@ mod nest_task;
 mod production;
 mod schikken;
 mod task;
+mod text_panel;
+mod variable_panel;
 mod view_model;
 
+pub use barcode_panel::{
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
+    BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
+};
+/// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).
+pub use burnburn_generators::JobClock;
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
@@ -71,6 +80,14 @@ pub use schikken::*;
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,
+};
+pub use text_panel::{
+    Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
+    TextToolbarViewModel, VAlign,
+};
+pub use variable_panel::{
+    AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
+    VariablePanelViewModel, VariableProblem,
 };
 pub use view_model::{
     AppViewModel, BooleanPreview, CommandState, ConstraintHealth, ConstraintRow, CutSettingsViewModel,

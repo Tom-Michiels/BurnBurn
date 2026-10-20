@@ -30,6 +30,7 @@ use crate::view_model::{
 };
 
 mod arrange;
+mod barcode;
 mod camera;
 mod canvas;
 mod clipboard;
@@ -56,6 +57,7 @@ mod tasks;
 mod tests_gen;
 mod text;
 mod trace;
+mod variable;
 mod view;
 
 use geometry::{offset_selection, repair_issue};
@@ -222,6 +224,12 @@ struct Session {
     nest: nest::NestState,
     /// The Print and Cut and Center Finder panels (window state).
     registration: registration::RegState,
+    /// Text toolbar refusals and the text-on-path dialog (window state).
+    text: text::TextState,
+    /// Serial counters, data rows and the record the last compile was bound to (window state).
+    variable: variable::VariableState,
+    /// The barcode dialog and the barcodes this window created (window state).
+    barcode: barcode::BarcodeState,
 }
 
 impl Session {
@@ -278,6 +286,9 @@ impl Session {
             cam: process::CamState::default(),
             nest: nest::NestState::default(),
             registration: registration::RegState::default(),
+            text: text::TextState::default(),
+            variable: variable::VariableState::default(),
+            barcode: barcode::BarcodeState::default(),
         })
     }
 
@@ -341,6 +352,8 @@ pub struct AppController {
     laser: laser::LaserState,
     /// The last Copy or Cut: all windows paste from it; the host mirrors it to the OS pasteboard.
     clipboard: Option<burnburn_io::clipboard::Clipboard>,
+    /// The job clock for `{date}` in variable text (injected; none: dates cannot be resolved).
+    clock: Option<Arc<dyn Fn() -> Option<burnburn_generators::JobClock> + Send + Sync>>,
     /// Archief ▸ Recente projecten, most recent first; the host persists it.
     recent: Vec<PathBuf>,
     /// The path each pending open task was asked for (to forget it when it fails).
@@ -374,6 +387,7 @@ impl AppController {
             laser: laser::LaserState::default(),
             clipboard: None,
             recent: Vec::new(),
+            clock: None,
             opening_paths: BTreeMap::new(),
             device: device::DeviceState::default(),
         }
@@ -383,6 +397,14 @@ impl AppController {
         if self.role == Role::Operator && !operator_may(&intent) {
             return error(intent_document(&intent), MessageKey::NotAllowedForRole);
         }
+        // Job events the machine reported since the last intent reach the counters first.
+        let production = self.sync_production();
+        let mut update = self.dispatch(intent);
+        update.view_changed |= production.view_changed;
+        update
+    }
+
+    fn dispatch(&mut self, intent: UiIntent) -> AppUpdate {
         match intent {
             UiIntent::NewDocument => self.new_document(),
             UiIntent::Open { path } => self.open(path),
@@ -597,6 +619,26 @@ impl AppController {
             UiIntent::OpenCamDialog { document, dialog } => self.cam_open(document, dialog),
             UiIntent::SetCamField { document, dialog, field, value } => self.cam_set(document, dialog, field, value),
             UiIntent::CamDialogAction { document, dialog, action } => self.cam_action(document, dialog, action),
+            UiIntent::Text { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                self.with_session(document, |s| text::edit(s, document, fonts.as_ref(), edit, request))
+            }
+            UiIntent::Variable { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                let clock = self.clock.as_ref().and_then(|c| c());
+                self.with_session(document, |s| variable::edit(s, document, fonts.as_ref(), clock, edit, request))
+            }
+            UiIntent::Barcode { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| barcode::edit(s, document, edit, request))
+            }
+            UiIntent::TextPath { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                self.with_session(document, |s| text::path_edit(s, document, fonts.as_ref(), edit, request))
+            }
             UiIntent::CommitShapeParam { document, key, text } => {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
@@ -754,6 +796,10 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Key { document, .. }
         | UiIntent::SetReferencePoint { document, .. }
         | UiIntent::SetAspectLock { document, .. }
+        | UiIntent::Text { document, .. }
+        | UiIntent::TextPath { document, .. }
+        | UiIntent::Variable { document, .. }
+        | UiIntent::Barcode { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
         UiIntent::Schikken(intent) => Some(intent.document()),

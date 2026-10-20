@@ -33,6 +33,7 @@ impl AppController {
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref());
+                vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
                     plan_revision: p.job.plan_revision,
@@ -208,6 +209,11 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             print_and_cut: super::registration::print_and_cut_view(s),
             center_finder: super::registration::center_finder_view(s, machine),
         },
+        text_toolbar: super::text::toolbar_view(s),
+        text_on_path: super::text::path_view(s),
+        variable_panel: None,
+        barcode_dialog: super::barcode::dialog_view(s),
+        barcode_scale_warning: super::barcode::scale_warning(s),
     }
 }
 
@@ -287,6 +293,8 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::NodeStartPoint,
             Some(s),
         ) => (shapes::command_enabled(key, s).unwrap_or(false), false),
+        (CommandKey::TextOnPath, Some(s)) => (super::text::path_ready(s), false),
+        (CommandKey::BarcodeNew, Some(_)) => (true, false),
         (CommandKey::CommitImport, Some(s)) => {
             (s.import.as_ref().is_some_and(|i| i.draft().is_ok()) || super::image::commit_enabled(s), false)
         }

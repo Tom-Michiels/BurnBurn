@@ -23,6 +23,7 @@ use super::classes::{
     CanvasView, ControllerParts, WindowController, table_delegate, table_source, toolbar_delegate, window_delegate,
 };
 use super::panels::arrange::arrange_toolbar;
+use super::panels::barcode::{BarcodeSection, barcode_section};
 use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
 use super::panels::image::{ImageSheets, image_sheets};
@@ -34,6 +35,8 @@ use super::panels::production::{STRIP_HEIGHT, production_strip};
 use super::panels::schikken::{SchikkenSection, schikken_section};
 use super::panels::shapes::{ShapesSection, shapes_section};
 use super::panels::sketch::{SketchSection, sketch_section};
+use super::panels::text::{TextSection, text_section};
+use super::panels::variable::{VariableSection, variable_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
 use super::toolstrip::{STRIP_HEIGHT as TOOL_STRIP_HEIGHT, ToolStrip};
 use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_rows, window_title};
@@ -86,6 +89,10 @@ pub(crate) struct DocWindow {
     pub(crate) shapes: ShapesSection,
     /// The Schikken panel: options, dialogs and panels of the arrange flows (W3-UI-schikken).
     pub(crate) schikken: SchikkenSection,
+    /// The text toolbar, the text-on-path sheet, the variable-text panel and the barcode sheet.
+    pub(crate) text: TextSection,
+    pub(crate) variable: VariableSection,
+    pub(crate) barcode: BarcodeSection,
     /// The laser window (floating panel, shown from the Laser menu).
     pub(crate) laser: LaserSection,
     pub(crate) canvas_status: CanvasStatus,
@@ -153,6 +160,9 @@ impl DocWindow {
         let sketch = sketch_section(mtm, locale);
         let shapes = shapes_section(mtm, app.clone(), document, locale);
         let schikken = schikken_section(mtm, app.clone(), document, locale);
+        let text = text_section(mtm, app.clone(), document, locale);
+        let variable = variable_section(mtm, app.clone(), document, locale);
+        let barcode = barcode_section(mtm, app.clone(), document, locale);
         let laser = laser_section(mtm, app.clone(), document, locale);
         let arrange_tools = arrange_toolbar(mtm, locale);
 
@@ -403,6 +413,9 @@ impl DocWindow {
             sketch,
             shapes,
             schikken,
+            text,
+            variable,
+            barcode,
             laser,
             canvas_status,
             save_panel: None,
@@ -490,6 +503,9 @@ impl DocWindow {
         self.refresh_sketch(vm, document);
         self.refresh_shapes(vm, document);
         self.refresh_schikken(vm, document);
+        self.refresh_text(vm, document);
+        self.refresh_variable(vm, document);
+        self.refresh_barcode(vm, document);
 
         // The view model's toolbar is the active document's: another window keeps what it had.
         if vm.active == Some(document) {
@@ -616,6 +632,12 @@ impl Drop for DocWindow {
         self.shapes.hide(&self.window);
         self.schikken.clear_targets();
         self.schikken.hide();
+        self.text.clear_targets();
+        self.text.hide(&self.window);
+        self.variable.clear_targets();
+        self.variable.hide();
+        self.barcode.clear_targets();
+        self.barcode.hide(&self.window);
         self.image.end_all(&self.window);
         if !self.closing {
             self.controller.allow_close();

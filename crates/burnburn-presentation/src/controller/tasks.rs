@@ -46,6 +46,7 @@ impl AppController {
         let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
         let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
         let document = outcome.document;
+        let record = s.variable.take_record(outcome.id);
         let mut update = AppUpdate { view_changed: true, effects: recent, ..AppUpdate::default() };
         if kind.is_revision_sensitive() && outcome.source != s.doc.revision() {
             return update;
@@ -137,12 +138,12 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
-                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0 });
+                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
-                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key });
+                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record });
                 update.scenes_changed.push(document);
             }
             Err(TaskError::Placement(why)) => {
@@ -203,7 +204,9 @@ impl AppController {
                         .filter(|c| c.plan.id() == source.id())
                         .and_then(|c| c.placement.as_ref())
                         .and_then(|p| p.from_position_um);
-                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false, placed_from });
+                    let record =
+                        s.compiled.as_ref().filter(|c| c.plan.id() == source.id()).and_then(|c| c.record.clone());
+                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false, placed_from, record });
                 }
             }
             Ok(TaskOutput::RecoverySaved { path }) => {

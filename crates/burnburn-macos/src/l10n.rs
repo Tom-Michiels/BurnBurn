@@ -919,6 +919,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ZoomIn => ("Zoom in", "Zoom In"),
         C::ZoomOut => ("Zoom uit", "Zoom Out"),
         C::ViewWireframe => ("Draadmodel", "Wireframe"),
+        C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
+        C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
         other => return l10n_schikken::command_pair(other),
     })
 }

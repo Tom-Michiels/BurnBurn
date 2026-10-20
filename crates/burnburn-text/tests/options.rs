@@ -193,3 +193,23 @@ fn welded_text_merges_overlapping_glyphs_into_one_contour() {
     single.layout.welded = true;
     assert!(shape(&single, &src).unwrap().outlines.subpaths().iter().all(|s| !s.is_closed()));
 }
+
+#[test]
+fn a_font_source_lists_its_families_sorted_and_once_and_a_bare_source_lists_none() {
+    // The text toolbar's font choice is this list (W3-UI-tekst).
+    let mut src = MemoryFontSource::new();
+    let data = font("LiberationSans-Regular.ttf");
+    src.insert("Zeta Sans", FontStyle::Regular, data.clone());
+    src.insert("Alpha Sans", FontStyle::Bold, data.clone());
+    src.insert("Alpha Sans", FontStyle::Regular, data);
+    assert_eq!(src.families(), ["Alpha Sans", "Zeta Sans"]);
+    assert_eq!(src.available_styles("Alpha Sans"), [FontStyle::Regular, FontStyle::Bold]);
+
+    struct Bare;
+    impl FontSource for Bare {
+        fn load(&self, f: &FontRef) -> Result<Arc<FontData>, FontError> {
+            Err(FontError::NotFound(f.clone()))
+        }
+    }
+    assert!(Bare.families().is_empty(), "a source that cannot enumerate says so; nothing is invented");
+}

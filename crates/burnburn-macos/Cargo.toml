@@ -44,6 +44,11 @@ path = "src/main.rs"
 # AppKit lifecycle on the main thread with the real event loop: libtest's harness would run the
 # test on a worker thread, so each test brings its own main (one scenario per process, ADR 0002).
 [[test]]
+name = "text_panels_native"
+path = "../../tests/native/macos/text_panels.rs"
+harness = false
+
+[[test]]
 name = "native_dimension_commit"
 path = "../../tests/native/macos/native_dimension_commit.rs"
 harness = false
@@ -219,6 +224,9 @@ burnburn-job = { workspace = true }
 burnburn-ruida = { workspace = true }
 # Machine panel test: execution states and machine ids as the view model carries them.
 burnburn-machine = { workspace = true }
+# Text panels: a font source with several faces and the OFL test fonts (W3-UI-tekst).
+burnburn-test-support = { workspace = true }
+burnburn-text = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 burnburn-render = { workspace = true }
@@ -234,5 +242,5 @@ dispatch2 = { workspace = true }
 objc2-av-foundation = { workspace = true, optional = true, features = ["std", "block2", "dispatch2", "objc2-core-media", "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureSession", "AVCaptureSessionPreset", "AVCaptureVideoDataOutput", "AVMediaFormat"] }
 objc2-core-media = { workspace = true, optional = true, features = ["std", "objc2-core-video", "CMBase", "CMFormatDescription", "CMSampleBuffer"] }
 objc2-core-video = { workspace = true, optional = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
-objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimer", "NSURL", "NSData"] }
+objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimeZone", "NSTimer", "NSURL", "NSData"] }
 objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSImageRep", "NSImage", "NSImageView", "NSImageCell", "NSBox", "NSBitmapImageRep", "NSAppearance", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow", "NSPasteboard"] }

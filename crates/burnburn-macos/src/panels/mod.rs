@@ -24,6 +24,7 @@ mod plan;
 mod schikken;
 mod shapes;
 mod sketch;
+mod text;
 
 pub use cam::*;
 pub use camera::*;
@@ -37,6 +38,7 @@ pub use plan::*;
 pub use schikken::*;
 pub use shapes::*;
 pub use sketch::*;
+pub use text::*;
 
 /// Segments of the toolbar's Schets control (momentary), left to right.
 pub const SKETCH_TOOLBAR: [CommandKey; 4] =

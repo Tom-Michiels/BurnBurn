@@ -9,11 +9,14 @@ use burnburn_ruida::RuidaProfile;
 use burnburn_trace::TraceRecipe;
 use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
+use crate::barcode_panel::BarcodeEdit;
 use crate::camera::BedCameraIntent;
 use crate::cut_options::CutExtras;
 use crate::image_panel::{ImageAdjustInput, TraceFormInput, TracePreset};
 use crate::laser::{LaserCommand, LaserSetup};
 use crate::production::{ActionId, OrderDraft, OrderId};
+use crate::text_panel::{TextEdit, TextPathEdit};
+use crate::variable_panel::VariableEdit;
 
 /// A semantic user action. Native hosts translate OS events into these; they never change
 /// document fields and never parse field text themselves. Menu, toolbar, shortcut and command
@@ -419,6 +422,26 @@ pub enum UiIntent {
     /// Schikken (W3-UI-schikken): dock, move together, reshape, slots, nesting and registration
     /// options and answers; see [`crate::SchikkenIntent`].
     Schikken(crate::schikken::SchikkenIntent),
+    /// The text toolbar (W3-UI-tekst): one edit of the selected text object, one undo step.
+    Text {
+        document: DocumentId,
+        edit: TextEdit,
+    },
+    /// The text-on-path dialog: choose Distort, start, offset, direction; apply or cancel.
+    TextPath {
+        document: DocumentId,
+        edit: TextPathEdit,
+    },
+    /// The variable-text panel: type, serial counter, auto-advance, data rows, Test and Bake.
+    Variable {
+        document: DocumentId,
+        edit: VariableEdit,
+    },
+    /// The barcode dialog: type, payload, parameters, width; Create makes the symbol.
+    Barcode {
+        document: DocumentId,
+        edit: BarcodeEdit,
+    },
 }
 
 /// A numeric (or on/off) setting of a basic shape or of a tool; the host shows one row per key
@@ -865,6 +888,10 @@ pub enum CommandKey {
     PrintAndCut,
     /// Laser ▸ Center Finder: find the centre of a round object from points on its edge (panel).
     CenterFinder,
+    /// Bewerken ▸ Tekst op pad…: the selected text follows the selected guide (dialog with Distort).
+    TextOnPath,
+    /// Tekenen ▸ Streepjescode…: the barcode dialog (type, payload, size, readability).
+    BarcodeNew,
 }
 
 impl CommandKey {
@@ -997,6 +1024,8 @@ impl CommandKey {
         CommandKey::NestSelected,
         CommandKey::PrintAndCut,
         CommandKey::CenterFinder,
+        CommandKey::TextOnPath,
+        CommandKey::BarcodeNew,
     ];
 }
 
