@@ -7,6 +7,7 @@
 //! This crate has no GUI, GPU, filesystem or network dependency: bytes come in, values go out.
 
 mod adjust;
+pub mod calib;
 mod decode;
 mod engrave;
 mod error;

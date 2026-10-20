@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
-use burnburn_macos::calib::{
+use burnburn_image::calib::{
     CalibError, CalibParams, CameraConfigKey, CameraDeviceId, CameraMode, CameraPixelFormat, Invalidity, LensModel,
     MarkObservation, MarkRole, calibrate,
 };
@@ -18,19 +18,23 @@ const G: [[f64; 3]; 3] = [[2.9, 0.15, 110.0], [-0.08, 2.4, 60.0], [0.000_12, 0.0
 fn key(width: u32, height: u32) -> CameraConfigKey {
     CameraConfigKey {
         device: CameraDeviceId("cam-A".into()),
-        mode: CameraMode { width, height, pixel_format: CameraPixelFormat::Bgra8 },
+        mode: CameraMode { width, height, pixel_format: CameraPixelFormat::Bgra8, frame_rate_mhz: 30_000 },
         lens: "standard".into(),
     }
 }
 
 fn project(bed: [f64; 2], k1: f64) -> [f64; 2] {
+    project2(bed, k1, 0.0)
+}
+
+fn project2(bed: [f64; 2], k1: f64, k2: f64) -> [f64; 2] {
     let w = G[2][0] * bed[0] + G[2][1] * bed[1] + G[2][2];
     let u = [(G[0][0] * bed[0] + G[0][1] * bed[1] + G[0][2]) / w, (G[1][0] * bed[0] + G[1][1] * bed[1] + G[1][2]) / w];
     let c = [W / 2.0, H / 2.0];
     let radius = (c[0] * c[0] + c[1] * c[1]).sqrt();
     let d = [u[0] - c[0], u[1] - c[1]];
     let r2 = (d[0] * d[0] + d[1] * d[1]) / (radius * radius);
-    [c[0] + d[0] * (1.0 + k1 * r2), c[1] + d[1] * (1.0 + k1 * r2)]
+    [c[0] + d[0] * (1.0 + k1 * r2 + k2 * r2 * r2), c[1] + d[1] * (1.0 + k1 * r2 + k2 * r2 * r2)]
 }
 
 fn mark(bed: [f64; 2], role: MarkRole, k1: f64) -> MarkObservation {
@@ -74,6 +78,16 @@ fn calibration_is_invalid_after_camera_resolution_changes() {
 }
 
 #[test]
+fn calibration_is_invalid_after_camera_frame_rate_changes() {
+    let cal = calibrate(&observations(0.0), key(1920, 1080), params(LensModel::Fixed { k1: 0.0 })).unwrap();
+    let mut slower = key(1920, 1080);
+    slower.mode.frame_rate_mhz = 15_000;
+    assert_eq!(cal.validity(&slower), Err(Invalidity::FrameRateChanged));
+    assert_eq!(cal.pixel_to_bed(&slower, [960.0, 540.0]), Err(Invalidity::FrameRateChanged));
+    assert_eq!(cal.validity(&key(1920, 1080)), Ok(()));
+}
+
+#[test]
 fn bed_positions_are_recovered_and_check_points_report_their_error_in_mm() {
     let cal = calibrate(&observations(0.0), key(1920, 1080), params(LensModel::Fixed { k1: 0.0 })).unwrap();
     for bed in [[37.0, 291.0], [580.0, 12.0], [300.0, 200.0]] {
@@ -114,6 +128,42 @@ fn radial_lens_distortion_is_modelled_and_estimated() {
     assert!(est.residuals_mm.max_mm < 0.01, "{:?}", est.residuals_mm);
     let got = est.pixel_to_bed(&key(1920, 1080), project([520.0, 380.0], k1)).unwrap();
     assert!((got[0] - 520.0).abs() < 0.01 && (got[1] - 380.0).abs() < 0.01, "{got:?}");
+}
+
+#[test]
+fn fixed_radial_lens_with_k1_and_k2_recovers_bed_positions() {
+    let (k1, k2) = (-0.11, 0.04);
+    let obs: Vec<MarkObservation> =
+        observations(0.0).into_iter().map(|o| MarkObservation { pixel: project2(o.bed_mm, k1, k2), ..o }).collect();
+    let cfg = key(1920, 1080);
+    // A one-coefficient model cannot explain the k2 term: millimetres of error remain.
+    let k1_only =
+        calibrate(&obs, cfg.clone(), CalibParams { lens: LensModel::Fixed { k1 }, max_fit_residual_mm: 50.0 }).unwrap();
+    assert!(k1_only.residuals_mm.max_mm > 0.05, "{:?}", k1_only.residuals_mm);
+    let full = calibrate(&obs, cfg.clone(), params(LensModel::FixedRadial { k1, k2 })).unwrap();
+    assert!(full.residuals_mm.max_mm < 1e-6, "{:?}", full.residuals_mm);
+    assert_eq!((full.intrinsics.k1, full.intrinsics.k2), (k1, k2));
+    let got = full.pixel_to_bed(&cfg, project2([520.0, 380.0], k1, k2)).unwrap();
+    assert!((got[0] - 520.0).abs() < 1e-6 && (got[1] - 380.0).abs() < 1e-6, "{got:?}");
+    assert_eq!(calibrate(&obs, cfg, params(LensModel::FixedRadial { k1, k2: f64::NAN })), Err(CalibError::NonFinite));
+}
+
+#[test]
+fn bed_to_pixel_is_the_inverse_of_pixel_to_bed_including_the_lens() {
+    let (k1, k2) = (-0.11, 0.04);
+    let obs: Vec<MarkObservation> =
+        observations(0.0).into_iter().map(|o| MarkObservation { pixel: project2(o.bed_mm, k1, k2), ..o }).collect();
+    let cfg = key(1920, 1080);
+    let cal = calibrate(&obs, cfg.clone(), params(LensModel::FixedRadial { k1, k2 })).unwrap();
+    for bed in [[10.0, 20.0], [300.0, 200.0], [590.0, 395.0]] {
+        // Independent oracle: the synthetic forward projection used to make the marks.
+        let want = project2(bed, k1, k2);
+        let got = cal.bed_to_pixel(&cfg, bed).unwrap().unwrap();
+        assert!((got[0] - want[0]).abs() < 1e-6 && (got[1] - want[1]).abs() < 1e-6, "{got:?} vs {want:?}");
+        let back = cal.pixel_to_bed(&cfg, got).unwrap();
+        assert!((back[0] - bed[0]).abs() < 1e-6 && (back[1] - bed[1]).abs() < 1e-6);
+    }
+    assert_eq!(cal.bed_to_pixel(&key(1280, 720), [10.0, 10.0]), Err(Invalidity::ResolutionChanged));
 }
 
 #[test]
