@@ -4,8 +4,8 @@
 
 use burnburn_document::EditLabel;
 use burnburn_presentation::{
-    CommandKey, MessageKey, NestFailure, NestField, NestSkipReason, NestUnplacedReason, PlaceFailure, ReshapeProblem,
-    SchikkenMessage, SlotField, SlotsFailure,
+    CenterProblem, CommandKey, MessageKey, NestFailure, NestField, NestSkipReason, NestUnplacedReason, PlaceFailure,
+    RegistrationFailure, RegistrationField, ReshapeProblem, SchikkenMessage, SlotField, SlotsFailure,
 };
 
 use super::{Locale, pick};
@@ -26,6 +26,8 @@ pub(super) fn command_pair(key: CommandKey) -> Option<(&'static str, &'static st
         C::ResizeSlots => ("Sleuven aanpassen…", "Resize Slots…"),
         C::QuickNest => ("Snel nesten…", "Quick Nest…"),
         C::NestSelected => ("Nest selectie…", "Nest Selected…"),
+        C::PrintAndCut => ("Print en snij…", "Print and Cut…"),
+        C::CenterFinder => ("Middelpuntzoeker…", "Center Finder…"),
         _ => return None,
     })
 }
@@ -155,6 +157,83 @@ fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
     }
 }
 
+const REGISTRATION_FAILURES: [RegistrationFailure; 12] = [
+    RegistrationFailure::InvalidField(RegistrationField::X),
+    RegistrationFailure::InvalidField(RegistrationField::Y),
+    RegistrationFailure::InvalidField(RegistrationField::MaxDeviation),
+    RegistrationFailure::TargetNotSet,
+    RegistrationFailure::NotMeasured,
+    RegistrationFailure::PositionUnknown,
+    RegistrationFailure::NoMachine,
+    RegistrationFailure::NoMachineProfile,
+    RegistrationFailure::DesignTargetsTooClose,
+    RegistrationFailure::MeasuredTargetsTooClose,
+    RegistrationFailure::ScaleOutOfRange,
+    RegistrationFailure::NeedsAbsoluteCoordinates,
+];
+
+fn registration_pair(f: RegistrationFailure) -> (&'static str, &'static str) {
+    match f {
+        RegistrationFailure::InvalidField(RegistrationField::X) => {
+            ("De X-waarde is geen getal.", "The X value is not a number.")
+        }
+        RegistrationFailure::InvalidField(RegistrationField::Y) => {
+            ("De Y-waarde is geen getal.", "The Y value is not a number.")
+        }
+        RegistrationFailure::InvalidField(RegistrationField::MaxDeviation) => (
+            "De toegestane afwijking moet een getal van 0 of meer zijn (0,05 = 5 %).",
+            "The allowed deviation must be a number of 0 or more (0.05 = 5 %).",
+        ),
+        RegistrationFailure::TargetNotSet => {
+            ("Kies eerst beide doelpunten in het ontwerp.", "Choose both targets in the design first.")
+        }
+        RegistrationFailure::NotMeasured => {
+            ("Meet eerst beide doelpunten met de laser.", "Measure both targets with the laser first.")
+        }
+        RegistrationFailure::PositionUnknown => (
+            "De laserpositie is onbekend; lees eerst de positie uit.",
+            "The laser position is unknown; read the position first.",
+        ),
+        RegistrationFailure::NoMachine => ("Er is geen machine aangesloten.", "No machine is connected."),
+        RegistrationFailure::NoMachineProfile => {
+            ("Er is geen machineprofiel gekozen.", "No machine profile is chosen.")
+        }
+        RegistrationFailure::DesignTargetsTooClose => (
+            "De doelpunten in het ontwerp liggen te dicht bij elkaar.",
+            "The targets in the design are too close together.",
+        ),
+        RegistrationFailure::MeasuredTargetsTooClose => {
+            ("De gemeten doelpunten liggen te dicht bij elkaar.", "The measured targets are too close together.")
+        }
+        RegistrationFailure::ScaleOutOfRange => (
+            "De schaal valt buiten de toegestane afwijking; er is niets toegepast.",
+            "The scale is outside the allowed deviation; nothing was applied.",
+        ),
+        RegistrationFailure::NeedsAbsoluteCoordinates => (
+            "Print en snij werkt met Absolute coördinaten; zet Start vanaf daarop.",
+            "Print and Cut works with Absolute Coordinates; set Start From to that.",
+        ),
+        RegistrationFailure::Refused => {
+            ("De registratie is geweigerd; er is niets gewijzigd.", "The registration was refused; nothing changed.")
+        }
+    }
+}
+
+/// What is wrong with the Center Finder's points.
+pub fn center_problem_text(p: CenterProblem, locale: Locale) -> String {
+    pick(
+        match p {
+            CenterProblem::Coincident => {
+                ("Minstens drie verschillende punten zijn nodig.", "At least three distinct points are needed.")
+            }
+            CenterProblem::Collinear => {
+                ("De punten liggen op één lijn: er is geen cirkel.", "The points lie on one line: there is no circle.")
+            }
+        },
+        locale,
+    )
+}
+
 /// Why a part was not placed (the report of a finished nest).
 pub fn nest_unplaced_text(reason: NestUnplacedReason, locale: Locale) -> String {
     pick(
@@ -187,6 +266,7 @@ pub(super) fn message(m: SchikkenMessage, locale: Locale) -> String {
         SchikkenMessage::Dock(f) | SchikkenMessage::MoveTogether(f) => pick(failure_pair(f), locale),
         SchikkenMessage::Slots(f) => pick(slots_pair(f), locale),
         SchikkenMessage::Nest(f) => pick(nest_pair(f), locale),
+        SchikkenMessage::Registration(f) => pick(registration_pair(f), locale),
         SchikkenMessage::InvalidGap => pick(
             ("De tussenruimte moet een getal van 0 of meer zijn.", "The gap must be a number of 0 or more."),
             locale,
@@ -234,6 +314,8 @@ pub(super) fn known_keys() -> Vec<MessageKey> {
     keys.push(MessageKey::Schikken(SchikkenMessage::InvalidGap));
     keys.extend(SLOT_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Slots(f))));
     keys.extend(NEST_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Nest(f))));
+    keys.extend(REGISTRATION_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Registration(f))));
+    keys.push(MessageKey::Schikken(SchikkenMessage::Registration(RegistrationFailure::Refused)));
     for label in EDIT_LABELS {
         let label = burnburn_document::UndoLabel::Edit(label);
         keys.push(MessageKey::UndoAction(label));

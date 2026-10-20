@@ -75,6 +75,8 @@ impl AppController {
             SchikkenIntent::CancelSlots { document } => self.with_session(document, |s| {
                 if s.arrange.slots.take().is_some() { AppUpdate::redraw(document) } else { AppUpdate::default() }
             }),
+            SchikkenIntent::PrintAndCut(intent) => self.print_and_cut_intent(intent),
+            SchikkenIntent::CenterFinder(intent) => self.center_finder_intent(intent),
             intent @ (SchikkenIntent::SetNestOptions { .. }
             | SchikkenIntent::StartNest { .. }
             | SchikkenIntent::CancelNest { .. }

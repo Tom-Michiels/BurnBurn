@@ -203,6 +203,8 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             reshape: super::reshape::view(s),
             slots: super::arrange::slots_view(s),
             nest: super::nest::view(s, machine),
+            print_and_cut: super::registration::print_and_cut_view(s),
+            center_finder: super::registration::center_finder_view(s, machine),
         },
     }
 }
@@ -297,6 +299,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SaveProcessedBitmap,
             Some(s),
         ) => (super::image::command_enabled(key, s), false),
+        (CommandKey::PrintAndCut | CommandKey::CenterFinder, Some(_)) => (true, false),
         (other, Some(s)) if super::nest::command_enabled(other, s).is_some() => {
             (super::nest::command_enabled(other, s).unwrap_or(false), false)
         }

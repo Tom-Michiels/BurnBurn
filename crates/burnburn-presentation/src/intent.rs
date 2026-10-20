@@ -839,6 +839,10 @@ pub enum CommandKey {
     QuickNest,
     /// Schikken ▸ Nest Selected: pack the selection, avoiding what stays (panel).
     NestSelected,
+    /// Laser ▸ Print and Cut: register the design on a printed sheet (panel).
+    PrintAndCut,
+    /// Laser ▸ Center Finder: find the centre of a round object from points on its edge (panel).
+    CenterFinder,
 }
 
 impl CommandKey {
@@ -969,6 +973,8 @@ impl CommandKey {
         CommandKey::ResizeSlots,
         CommandKey::QuickNest,
         CommandKey::NestSelected,
+        CommandKey::PrintAndCut,
+        CommandKey::CenterFinder,
     ];
 }
 

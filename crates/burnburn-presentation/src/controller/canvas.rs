@@ -39,6 +39,9 @@ impl AppController {
                 time: event.time,
             };
             let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+            if let Some(update) = super::registration::pick(s, document, position, &event) {
+                return update;
+            }
             if s.trim_mode {
                 return trim_at(s, document, &ev, request);
             }
@@ -92,6 +95,13 @@ impl AppController {
         {
             s.sketch.entities.clear();
             s.sketch.constraints.clear();
+            return AppUpdate::redraw(document);
+        }
+        // Escape first ends a Print and Cut / Center Finder pick.
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && super::registration::end_pick(s)
+        {
             return AppUpdate::redraw(document);
         }
         // Escape ends a Warp/Deform session whatever the handles show: the tool is done.

@@ -24,7 +24,6 @@ use burnburn_text::{FontRef, TextEvaluator};
 use crate::camera::{CameraDeviceId, CameraMode, CameraPort};
 use crate::intent::{CloseChoice, CommandKey, DialogKind, FieldKey, SelectMode, UiIntent};
 use crate::production::{ActionSubject, HistoryStore, MachinePort, OrderId, Role};
-use crate::schikken::SchikkenIntent;
 use crate::task::{TaskKind, TaskPort, TaskRequest};
 use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
@@ -48,6 +47,7 @@ mod nest;
 mod process;
 mod recent;
 mod recovery;
+mod registration;
 mod reshape;
 mod shapes;
 mod sketch;
@@ -216,6 +216,8 @@ struct Session {
     arrange: arrange::ArrangeState,
     /// The nest panel (Quick Nest, Nest Selected) and its result (window state).
     nest: nest::NestState,
+    /// The Print and Cut and Center Finder panels (window state).
+    registration: registration::RegState,
 }
 
 impl Session {
@@ -270,6 +272,7 @@ impl Session {
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
             nest: nest::NestState::default(),
+            registration: registration::RegState::default(),
         })
     }
 
@@ -737,20 +740,9 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Key { document, .. }
         | UiIntent::SetReferencePoint { document, .. }
         | UiIntent::SetAspectLock { document, .. }
-        | UiIntent::Schikken(
-            SchikkenIntent::SetPlaceOptions { document, .. }
-            | SchikkenIntent::SetWarpKind { document, .. }
-            | SchikkenIntent::ApplySlots { document, .. }
-            | SchikkenIntent::CancelSlots { document }
-            | SchikkenIntent::SetNestOptions { document, .. }
-            | SchikkenIntent::StartNest { document }
-            | SchikkenIntent::CancelNest { document }
-            | SchikkenIntent::ApplyNest { document }
-            | SchikkenIntent::SelectNestUnplaced { document }
-            | SchikkenIntent::CloseNest { document },
-        )
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
+        UiIntent::Schikken(intent) => Some(intent.document()),
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {
             *document
         }

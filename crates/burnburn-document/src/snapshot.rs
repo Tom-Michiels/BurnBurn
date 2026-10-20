@@ -473,6 +473,25 @@ impl DocumentSnapshot {
         )
     }
 
+    /// The document as it is cut with a registration (Print and Cut) active: every outline moved
+    /// by `m`, everything else shared and unchanged. The snapshot keeps this one's revision, so a
+    /// plan compiled from it is not stale for the document; the document itself is untouched.
+    pub fn transformed(&self, m: &burnburn_geometry::Affine) -> DocumentSnapshot {
+        let objects: BTreeMap<GeometryId, Arc<GeometryObject>> =
+            self.objects.iter().map(|(id, o)| (*id, Arc::new(o.transformed(m)))).collect();
+        DocumentSnapshot::from_txn(
+            self.revision,
+            Arc::new(objects),
+            self.next_id,
+            Arc::clone(&self.process),
+            Arc::clone(&self.sketches),
+            Arc::clone(&self.structure),
+            Arc::clone(&self.texts),
+            Arc::clone(&self.engines),
+        )
+        .with_arrange_layer(Arc::clone(&self.arrange))
+    }
+
     /// Sketch definitions and derived-output records.
     pub fn sketch_layer(&self) -> &SketchLayer {
         &self.sketches

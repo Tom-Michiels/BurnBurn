@@ -314,10 +314,199 @@ pub struct NestPanelViewModel {
     pub can_apply: bool,
 }
 
+/// Whether Print and Cut may change the size of the design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PrintCutScale {
+    /// No scaling: the scale is exactly 1; disagreement shows up as residuals.
+    #[default]
+    Fixed,
+    /// A uniform scale within `1 ± max deviation`; anything else is refused.
+    Uniform,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RegistrationField {
+    X,
+    Y,
+    MaxDeviation,
+}
+
+/// Why Print and Cut or the Center Finder did nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RegistrationFailure {
+    InvalidField(RegistrationField),
+    /// Not both design targets are set.
+    TargetNotSet,
+    /// Not both targets have been measured.
+    NotMeasured,
+    /// The head position is not (fully) known; it is never taken as 0.
+    PositionUnknown,
+    NoMachine,
+    NoMachineProfile,
+    /// The design targets lie too close together to determine a rotation.
+    DesignTargetsTooClose,
+    /// The measured targets lie too close together.
+    MeasuredTargetsTooClose,
+    /// The best uniform scale is outside the allowed deviation.
+    ScaleOutOfRange,
+    /// Print and Cut works with Absolute Coordinates: another start would move the registered job.
+    NeedsAbsoluteCoordinates,
+    /// Any other refusal of the registration.
+    Refused,
+}
+
+/// A position in mm, document (bed view) coordinates.
+pub type PointMm = (f64, f64);
+
+/// What a finished registration says.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegistrationResultView {
+    /// Counter-clockwise rotation of the design on the bed.
+    pub rotation_deg: f64,
+    pub scale: f64,
+    /// Distance between each transformed design target and where it was measured (mm).
+    pub residuals_mm: Vec<f64>,
+    pub rms_mm: f64,
+}
+
+/// The Print and Cut panel while it is open.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrintAndCutViewModel {
+    /// The two design targets (document coordinates).
+    pub targets: [Option<PointMm>; 2],
+    /// Where the targets were found on the bed.
+    pub measured: [Option<PointMm>; 2],
+    /// A canvas click sets this design target.
+    pub picking: Option<usize>,
+    pub scale: PrintCutScale,
+    /// The allowed deviation of the scale (`0,05` = 5 %), shown with `Uniform`.
+    pub max_deviation: String,
+    /// Present while the registration is in force: the next compile uses it.
+    pub result: Option<RegistrationResultView>,
+    pub error: Option<SchikkenMessage>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CenterProblem {
+    /// Fewer than three distinct points.
+    Coincident,
+    /// The points lie on one line: there is no circle.
+    Collinear,
+}
+
+/// A fitted circle with its misfit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CenterFitView {
+    pub center: PointMm,
+    /// The centre in the machine frame, for "go to centre".
+    pub center_machine: Option<PointMm>,
+    pub radius_mm: f64,
+    /// Per point: distance from the centre minus the radius (outside is positive).
+    pub residuals_mm: Vec<f64>,
+    pub rms_mm: f64,
+    pub max_residual_mm: f64,
+    /// The part of the circle the points cover (radians).
+    pub arc_span_rad: f64,
+    /// The points cover too little of the circle: the centre is badly determined.
+    pub poorly_determined: bool,
+}
+
+/// The Center Finder panel while it is open.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CenterFinderViewModel {
+    pub points: Vec<PointMm>,
+    /// How many more points a circle needs.
+    pub needed: usize,
+    /// A canvas click adds a point.
+    pub picking: bool,
+    pub fit: Option<CenterFitView>,
+    pub problem: Option<CenterProblem>,
+    pub error: Option<SchikkenMessage>,
+}
+
+/// The arc a Center Finder fit must span (radians) to count as well determined.
+pub const POOR_ARC_SPAN_RAD: f64 = 0.5;
+
+/// Print and Cut actions. `index` is the design target, 0 or 1.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PrintAndCutIntent {
+    /// The next canvas click (snapped to the geometry) sets this design target.
+    PickTarget {
+        document: burnburn_types::DocumentId,
+        index: usize,
+    },
+    /// A design target as typed coordinates (mm).
+    SetTarget {
+        document: burnburn_types::DocumentId,
+        index: usize,
+        x: String,
+        y: String,
+    },
+    /// Where target `index` was found: the laser's position. Refused while it is unknown.
+    MeasureTarget {
+        document: burnburn_types::DocumentId,
+        index: usize,
+    },
+    /// Where target `index` was found, typed (bed view, mm).
+    SetMeasured {
+        document: burnburn_types::DocumentId,
+        index: usize,
+        x: String,
+        y: String,
+    },
+    SetScale {
+        document: burnburn_types::DocumentId,
+        scale: PrintCutScale,
+        max_deviation: String,
+    },
+    /// Compute the registration and put it in force.
+    Register {
+        document: burnburn_types::DocumentId,
+    },
+    /// Forget targets, measurements and the registration; the next compile is unregistered.
+    Reset {
+        document: burnburn_types::DocumentId,
+    },
+    Close {
+        document: burnburn_types::DocumentId,
+    },
+}
+
+/// Center Finder actions.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum CenterFinderIntent {
+    /// Canvas clicks add points until the finder is closed or Escape is pressed.
+    PickPoints {
+        document: burnburn_types::DocumentId,
+    },
+    AddPoint {
+        document: burnburn_types::DocumentId,
+        x: String,
+        y: String,
+    },
+    /// The laser's position as an edge point. Refused while it is unknown.
+    MeasurePoint {
+        document: burnburn_types::DocumentId,
+    },
+    UndoLast {
+        document: burnburn_types::DocumentId,
+    },
+    Clear {
+        document: burnburn_types::DocumentId,
+    },
+    Close {
+        document: burnburn_types::DocumentId,
+    },
+}
+
 /// Messages of this module's flows (localised by the host).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SchikkenMessage {
+    /// Print and Cut or the Center Finder did nothing.
+    Registration(RegistrationFailure),
     /// A nest did not run or gave nothing.
     Nest(NestFailure),
     /// Resize Slots refused.
@@ -373,6 +562,10 @@ pub struct SchikkenViewModel {
     pub slots: Option<SlotsDialogViewModel>,
     /// The nest panel while it is open.
     pub nest: Option<NestPanelViewModel>,
+    /// The Print and Cut panel while it is open.
+    pub print_and_cut: Option<PrintAndCutViewModel>,
+    /// The Center Finder panel while it is open.
+    pub center_finder: Option<CenterFinderViewModel>,
 }
 
 /// A user action of this module (everything but the command keys, which carry no payload).
@@ -423,4 +616,42 @@ pub enum SchikkenIntent {
     CloseNest {
         document: burnburn_types::DocumentId,
     },
+    PrintAndCut(PrintAndCutIntent),
+    CenterFinder(CenterFinderIntent),
+}
+
+impl SchikkenIntent {
+    /// The window the intent is for.
+    pub fn document(&self) -> burnburn_types::DocumentId {
+        match self {
+            SchikkenIntent::SetPlaceOptions { document, .. }
+            | SchikkenIntent::SetWarpKind { document, .. }
+            | SchikkenIntent::ApplySlots { document, .. }
+            | SchikkenIntent::CancelSlots { document }
+            | SchikkenIntent::SetNestOptions { document, .. }
+            | SchikkenIntent::StartNest { document }
+            | SchikkenIntent::CancelNest { document }
+            | SchikkenIntent::ApplyNest { document }
+            | SchikkenIntent::SelectNestUnplaced { document }
+            | SchikkenIntent::CloseNest { document } => *document,
+            SchikkenIntent::PrintAndCut(i) => match i {
+                PrintAndCutIntent::PickTarget { document, .. }
+                | PrintAndCutIntent::SetTarget { document, .. }
+                | PrintAndCutIntent::MeasureTarget { document, .. }
+                | PrintAndCutIntent::SetMeasured { document, .. }
+                | PrintAndCutIntent::SetScale { document, .. }
+                | PrintAndCutIntent::Register { document }
+                | PrintAndCutIntent::Reset { document }
+                | PrintAndCutIntent::Close { document } => *document,
+            },
+            SchikkenIntent::CenterFinder(i) => match i {
+                CenterFinderIntent::PickPoints { document }
+                | CenterFinderIntent::AddPoint { document, .. }
+                | CenterFinderIntent::MeasurePoint { document }
+                | CenterFinderIntent::UndoLast { document }
+                | CenterFinderIntent::Clear { document }
+                | CenterFinderIntent::Close { document } => *document,
+            },
+        }
+    }
 }
