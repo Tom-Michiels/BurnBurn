@@ -158,6 +158,81 @@ pub enum FilesIntent {
         item: u64,
         at: Option<(f64, f64)>,
     },
+    /// Archief ▸ Bundels ▸ Exporteren: opens the dialog that lists what can go in a bundle.
+    OpenBundleExport {
+        document: DocumentId,
+    },
+    /// Include or leave out one item.
+    ToggleBundleItem {
+        document: DocumentId,
+        item: BundleItem,
+        selected: bool,
+    },
+    /// Include or leave out everything of one kind.
+    SetBundleKind {
+        document: DocumentId,
+        kind: BundleKind,
+        selected: bool,
+    },
+    /// Write the bundle to the file the user chose (nothing selected is refused).
+    ExportBundle {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// Archief ▸ Bundels ▸ Importeren: the bundle file the user chose is read and compared with
+    /// what is here; nothing changes before `ApplyBundleImport`.
+    OpenBundleImport {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    SetBundleConflict {
+        document: DocumentId,
+        choice: BundleConflict,
+    },
+    /// Whether a machine profile that differs locally is replaced (default: it is not).
+    SetBundleProfileReplace {
+        document: DocumentId,
+        profile: String,
+        replace: bool,
+    },
+    ApplyBundleImport {
+        document: DocumentId,
+    },
+    CloseBundle {
+        document: DocumentId,
+    },
+}
+
+/// What a bundle can hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BundleKind {
+    Materials,
+    Art,
+    Profiles,
+    Templates,
+}
+
+/// One thing that can go in a bundle.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BundleItem {
+    Material(u64),
+    Art(u64),
+    /// A machine profile by its id.
+    Profile(String),
+    /// A template by its name (the file name without extension).
+    Template(String),
+}
+
+/// What happens to a bundle item that exists here with other content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BundleConflict {
+    /// Keep what is here.
+    #[default]
+    Skip,
+    /// Take the bundle's version.
+    Replace,
+    /// Keep both: the incoming one gets " (bundel)" behind its name.
+    KeepBoth,
 }
 
 /// What a template keeps of the design.
@@ -310,6 +385,14 @@ pub enum FilesMessage {
     ArtNothingSelected,
     /// The library holds as many items as it may.
     ArtLibraryFull,
+    /// Nothing is selected for the bundle.
+    BundleNothingSelected,
+    /// The bundle file cannot be read (damaged, from a newer version, or not a bundle); nothing changed.
+    BundleUnreadable,
+    /// The bundle file could not be written.
+    BundleWriteFailed,
+    /// The bundle could not be applied; nothing changed.
+    BundleApplyFailed,
 }
 
 /// Everything the file panels of one window show.
@@ -317,6 +400,7 @@ pub enum FilesMessage {
 pub struct FilesViewModel {
     pub material: Option<MaterialPanelViewModel>,
     pub art: Option<ArtPanelViewModel>,
+    pub bundle: Option<BundleDialogViewModel>,
 }
 
 /// The Material Library panel (M217): search, the entries found and what each layer's settings came from.
@@ -441,4 +525,100 @@ pub struct ArtThumbnail {
     pub width: u32,
     pub height: u32,
     pub coverage: Vec<u8>,
+}
+
+/// The bundle dialog (M032/M033, P07): either what to put in a bundle, or what a bundle would change.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundleDialogViewModel {
+    /// The libraries or the bundle are being read on a worker.
+    pub loading: bool,
+    /// A bundle is being written or applied.
+    pub busy: bool,
+    pub issue: Option<MessageKey>,
+    pub mode: BundleMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BundleMode {
+    Export(BundleExportView),
+    Import(BundleImportView),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundleChoice<T> {
+    pub id: T,
+    pub label: String,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BundleExportView {
+    pub materials: Vec<BundleChoice<u64>>,
+    pub art: Vec<BundleChoice<u64>>,
+    pub profiles: Vec<BundleChoice<String>>,
+    pub templates: Vec<BundleChoice<String>>,
+    /// The file the bundle was written to.
+    pub written: Option<PathBuf>,
+}
+
+/// How an incoming item relates to what is here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BundleChange {
+    New,
+    Identical,
+    Conflict,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BundleProfileChange {
+    New,
+    Identical,
+    /// Same machine, other content; these fields differ.
+    Differs {
+        fields: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundleRow {
+    pub label: String,
+    pub change: BundleChange,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundleProfileRow {
+    pub id: String,
+    pub bundle_revision: u32,
+    pub local_revision: Option<u32>,
+    pub change: BundleProfileChange,
+    /// The user wants the local profile replaced (only a differing one can be).
+    pub replace: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct BundleImportView {
+    pub file: String,
+    pub materials: Vec<BundleRow>,
+    pub art: Vec<BundleRow>,
+    pub templates: Vec<BundleRow>,
+    pub profiles: Vec<BundleProfileRow>,
+    pub conflict: BundleConflict,
+    /// Something exists here with other content: the choice above matters.
+    pub has_conflicts: bool,
+    /// What the import did, after `ApplyBundleImport`.
+    pub report: Option<BundleReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BundleReport {
+    pub materials_added: usize,
+    pub materials_replaced: usize,
+    pub art_added: usize,
+    pub art_replaced: usize,
+    pub templates_written: usize,
+    pub profiles_added: usize,
+    pub profiles_replaced: usize,
+    /// Differing profiles the user did not choose to replace.
+    pub profiles_pending: Vec<String>,
+    pub skipped: usize,
 }

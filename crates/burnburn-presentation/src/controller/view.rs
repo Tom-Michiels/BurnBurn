@@ -33,7 +33,7 @@ impl AppController {
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref());
-                vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs);
+                vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
                     plan_revision: p.job.plan_revision,

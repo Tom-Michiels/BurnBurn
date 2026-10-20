@@ -600,7 +600,7 @@ const MAX_IMAGE_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Temp file in the target directory, write, flush, atomic replace, directory sync (the IM04
 /// pattern). A failure leaves any previous file at `path` intact and removes the temp file.
-fn write_atomically(fs: &dyn FileSystem, path: &std::path::Path, bytes: &[u8]) -> Result<(), FsError> {
+pub(crate) fn write_atomically(fs: &dyn FileSystem, path: &std::path::Path, bytes: &[u8]) -> Result<(), FsError> {
     let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     let stem = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let temp = fs.create_temp_in(dir, &format!(".{stem}"))?;

@@ -6,6 +6,7 @@
 //! be read is never overwritten.
 
 mod art;
+mod bundle;
 mod material;
 
 use std::collections::BTreeMap;
@@ -46,6 +47,19 @@ pub(super) enum FilesJob {
         document: DocumentId,
         at: Option<Point>,
     },
+    Thumbnails,
+    ReadBundle {
+        document: DocumentId,
+        serial: u64,
+    },
+    WriteBundle {
+        document: DocumentId,
+        serial: u64,
+    },
+    WriteTemplates {
+        document: DocumentId,
+        serial: u64,
+    },
 }
 
 /// Window state of the file panels (never document data).
@@ -53,6 +67,7 @@ pub(super) enum FilesJob {
 pub(super) struct FilesUi {
     pub(in crate::controller) material: Option<material::MaterialUi>,
     pub(in crate::controller) art: Option<art::ArtUi>,
+    pub(in crate::controller) bundle: Option<bundle::BundleUi>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,6 +104,8 @@ pub(super) struct Libraries {
     art_generation: u64,
     /// Workers that add or place art (the panel shows it is busy).
     art_busy: usize,
+    /// Machine profiles a bundle brought in (the active machine is kept by the controller).
+    profiles: Vec<Arc<burnburn_job::MachineProfile>>,
 }
 
 impl Libraries {
@@ -128,6 +145,15 @@ impl AppController {
             | FilesIntent::MoveArtItem { .. }
             | FilesIntent::RemoveArtItem { .. }
             | FilesIntent::PlaceArt { .. }) => self.art_intent(intent),
+            intent @ (FilesIntent::OpenBundleExport { .. }
+            | FilesIntent::ToggleBundleItem { .. }
+            | FilesIntent::SetBundleKind { .. }
+            | FilesIntent::ExportBundle { .. }
+            | FilesIntent::OpenBundleImport { .. }
+            | FilesIntent::SetBundleConflict { .. }
+            | FilesIntent::SetBundleProfileReplace { .. }
+            | FilesIntent::ApplyBundleImport { .. }
+            | FilesIntent::CloseBundle { .. }) => self.bundle_intent(intent),
             intent => self.material_intent(intent),
         }
     }
@@ -142,6 +168,10 @@ impl AppController {
             FilesJob::SaveArt => self.art_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
+            FilesJob::Thumbnails => self.thumbnails_made(outcome),
+            FilesJob::ReadBundle { document, serial } => self.bundle_read(document, serial, outcome),
+            FilesJob::WriteBundle { document, serial } => self.bundle_written(document, serial, outcome),
+            FilesJob::WriteTemplates { document, serial } => self.bundle_templates_written(document, serial, outcome),
         }
     }
 
@@ -313,6 +343,15 @@ fn save_failed() -> HostEffect {
 }
 
 /// What the file panels of one window show.
-pub(super) fn files_view(s: &Session, machine: Option<&Machine>, libs: &Libraries) -> FilesViewModel {
-    FilesViewModel { material: material::panel_view(s, machine, libs), art: art::panel_view(s, libs) }
+pub(super) fn files_view(
+    s: &Session,
+    machine: Option<&Machine>,
+    libs: &Libraries,
+    recent_templates: &[PathBuf],
+) -> FilesViewModel {
+    FilesViewModel {
+        material: material::panel_view(s, machine, libs),
+        art: art::panel_view(s, libs),
+        bundle: bundle::panel_view(s, machine, libs, recent_templates),
+    }
 }

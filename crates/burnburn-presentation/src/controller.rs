@@ -354,6 +354,8 @@ pub struct AppController {
     files_jobs: BTreeMap<TaskId, library::FilesJob>,
     /// Material and art libraries (shared by all windows).
     libs: library::Libraries,
+    /// Counts openings of the bundle dialog (a worker result for an older one is dropped).
+    bundle_serial: u64,
     /// The path each pending open task was asked for (to forget it when it fails).
     opening_paths: BTreeMap<TaskId, PathBuf>,
 }
@@ -386,6 +388,7 @@ impl AppController {
             recent_templates: Vec::new(),
             files_jobs: BTreeMap::new(),
             libs: library::Libraries::default(),
+            bundle_serial: 0,
             opening_paths: BTreeMap::new(),
         }
     }

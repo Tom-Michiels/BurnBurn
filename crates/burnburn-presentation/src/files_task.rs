@@ -8,11 +8,13 @@ use std::sync::Arc;
 use burnburn_io::art_library::{
     ArtError, ArtFormat, ArtLibrary, ArtPlacement, NewArt, load_art_library, save_art_library,
 };
+use burnburn_io::bundle::{Bundle, BundleContents, BundleTemplate, decode_bundle, encode_bundle};
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
+use burnburn_job::MachineProfile;
 use burnburn_types::CancellationToken;
 
 use crate::files::ArtThumbnail;
@@ -36,6 +38,26 @@ pub enum FilesTask {
     AddArt(Box<AddArt>),
     /// The drawing of one library item, ready to insert (`library` holds just that item).
     PlaceArt { library: Box<ArtLibrary>, item: u64 },
+    /// Thumbnails for these items of the art library (after a bundle brought them in).
+    ArtThumbnails { library: Box<ArtLibrary>, items: Vec<u64> },
+    /// Read a bundle, and the templates already in `templates_dir` to compare with.
+    ReadBundle { path: PathBuf, templates_dir: Option<PathBuf>, fs: Arc<dyn FileSystem> },
+    /// Read the chosen templates, pack everything and write the bundle atomically.
+    WriteBundle(Box<WriteBundle>),
+    /// Write templates (from an imported bundle) into a folder; an existing file of that name is replaced.
+    WriteTemplates { dir: PathBuf, templates: Vec<BundleTemplate>, fs: Arc<dyn FileSystem> },
+}
+
+/// What goes into a bundle.
+#[derive(Clone)]
+pub struct WriteBundle {
+    pub materials: Option<MaterialLibrary>,
+    pub art: Option<ArtLibrary>,
+    pub profiles: Vec<MachineProfile>,
+    /// Template name and the file to read it from.
+    pub templates: Vec<(String, PathBuf)>,
+    pub path: PathBuf,
+    pub fs: Arc<dyn FileSystem>,
 }
 
 /// Where the drawing of a new art item comes from.
@@ -84,6 +106,12 @@ impl fmt::Debug for FilesTask {
             FilesTask::SaveArtLibrary { path, .. } => write!(f, "SaveArtLibrary({})", path.display()),
             FilesTask::AddArt(add) => write!(f, "AddArt({:?} to {:?})", add.name, add.group),
             FilesTask::PlaceArt { item, .. } => write!(f, "PlaceArt({item})"),
+            FilesTask::ArtThumbnails { items, .. } => write!(f, "ArtThumbnails({} items)", items.len()),
+            FilesTask::ReadBundle { path, .. } => write!(f, "ReadBundle({})", path.display()),
+            FilesTask::WriteBundle(w) => write!(f, "WriteBundle({})", w.path.display()),
+            FilesTask::WriteTemplates { dir, templates, .. } => {
+                write!(f, "WriteTemplates({} to {})", templates.len(), dir.display())
+            }
         }
     }
 }
@@ -113,6 +141,19 @@ pub enum FilesOutput {
     ArtPlaced {
         placement: Box<ArtPlacement>,
     },
+    ArtThumbnails {
+        thumbnails: Vec<(u64, ArtThumbnail)>,
+    },
+    BundleRead {
+        bundle: Box<Bundle>,
+        local_templates: Vec<BundleTemplate>,
+    },
+    BundleWritten {
+        path: PathBuf,
+    },
+    TemplatesWritten {
+        count: usize,
+    },
 }
 
 /// What reading one library file gave.
@@ -137,6 +178,10 @@ pub enum FilesError {
     ArtRead(FsError),
     /// The extension is none of SVG, DXF, HP-GL, PDF or AI.
     ArtFormat,
+    /// The bundle file cannot be read or is not a bundle.
+    BundleUnreadable(String),
+    /// The bundle (or a template in a bundle) could not be written.
+    BundleWrite(String),
 }
 
 impl fmt::Display for FilesError {
@@ -147,6 +192,8 @@ impl fmt::Display for FilesError {
             FilesError::Art(e) => write!(f, "art library: {e}"),
             FilesError::ArtRead(e) => write!(f, "art file: {e}"),
             FilesError::ArtFormat => f.write_str("not a drawing file"),
+            FilesError::BundleUnreadable(e) => write!(f, "bundle: {e}"),
+            FilesError::BundleWrite(e) => write!(f, "bundle: {e}"),
         }
     }
 }
@@ -214,6 +261,71 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             let thumbnail = thumbnail_of(&library, id);
             Ok(FilesOutput::ArtAdded { library: Box::new(library), id, thumbnail })
         }
+        FilesTask::ArtThumbnails { library, items } => {
+            let mut thumbnails = Vec::new();
+            for id in items {
+                cancelled(cancel)?;
+                if let Some(t) = thumbnail_of(&library, id) {
+                    thumbnails.push((id, t));
+                }
+            }
+            Ok(FilesOutput::ArtThumbnails { thumbnails })
+        }
+        FilesTask::ReadBundle { path, templates_dir, fs } => {
+            let unreadable = |e: &dyn fmt::Display| TaskError::Files(FilesError::BundleUnreadable(e.to_string()));
+            let bytes = fs.read(&path, BUNDLE_LIMIT).map_err(|e| unreadable(&format!("{e:?}")))?;
+            cancelled(cancel)?;
+            let bundle = decode_bundle(&bytes).map_err(|e| unreadable(&e))?;
+            let mut local_templates = Vec::new();
+            if let Some(dir) = templates_dir
+                && let Ok(files) = fs.list_dir(&dir)
+            {
+                for file in files {
+                    let is_template = file
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| e.eq_ignore_ascii_case(burnburn_io::template::TEMPLATE_EXTENSION));
+                    let name = file.file_stem().map(|n| n.to_string_lossy().into_owned());
+                    if let (true, Some(name)) = (is_template, name)
+                        && let Ok(bytes) = fs.read(&file, BUNDLE_LIMIT)
+                    {
+                        local_templates.push(BundleTemplate { name, bytes });
+                    }
+                }
+            }
+            Ok(FilesOutput::BundleRead { bundle: Box::new(bundle), local_templates })
+        }
+        FilesTask::WriteBundle(write) => {
+            let failed = |e: &dyn fmt::Display| TaskError::Files(FilesError::BundleWrite(e.to_string()));
+            let mut templates = Vec::new();
+            for (name, file) in &write.templates {
+                cancelled(cancel)?;
+                let bytes =
+                    write.fs.read(file, BUNDLE_LIMIT).map_err(|e| failed(&format!("{}: {e:?}", file.display())))?;
+                templates.push(BundleTemplate { name: name.clone(), bytes });
+            }
+            let contents = BundleContents {
+                materials: write.materials.as_ref(),
+                art: write.art.as_ref(),
+                profiles: &write.profiles,
+                templates: &templates,
+            };
+            let bytes = encode_bundle(&contents).map_err(|e| failed(&e))?;
+            cancelled(cancel)?;
+            crate::task::write_atomically(write.fs.as_ref(), &write.path, &bytes)
+                .map_err(|e| failed(&format!("{e:?}")))?;
+            Ok(FilesOutput::BundleWritten { path: write.path })
+        }
+        FilesTask::WriteTemplates { dir, templates, fs } => {
+            let failed = |e: &dyn fmt::Display| TaskError::Files(FilesError::BundleWrite(e.to_string()));
+            fs.create_dir_all(&dir).map_err(|e| failed(&format!("{e:?}")))?;
+            for t in &templates {
+                cancelled(cancel)?;
+                let file = dir.join(format!("{}.{}", t.name, burnburn_io::template::TEMPLATE_EXTENSION));
+                crate::task::write_atomically(fs.as_ref(), &file, &t.bytes).map_err(|e| failed(&format!("{e:?}")))?;
+            }
+            Ok(FilesOutput::TemplatesWritten { count: templates.len() })
+        }
         FilesTask::PlaceArt { library, item } => {
             let placement = library.place(item).map_err(|e| TaskError::Files(FilesError::Art(e)))?;
             Ok(FilesOutput::ArtPlaced { placement: Box::new(placement) })
@@ -223,6 +335,8 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
 
 /// Largest drawing file the library takes (the importers have their own, tighter limits).
 const ART_FILE_LIMIT: u64 = 64 << 20;
+/// Largest bundle or template file read here.
+const BUNDLE_LIMIT: u64 = 1 << 30;
 
 fn read_library<T, E: fmt::Display>(
     fs: &dyn FileSystem,
