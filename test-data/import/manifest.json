@@ -50,6 +50,14 @@
       "sha256": "7a1dc297a5ce5e3eddd153355fd7d56bda46c8634b40fbd1a22ab8cdbf2a8cb3",
       "origin": "Written by hand 2026-10-20 (W2-L6); expectations derived by hand in crates/burnburn-io/tests/hpgl.rs.",
       "content": "Plotter units (0.025 mm). Pen 1: closed 10 x 10 mm square. Pen 2: CI100 = circle r 2.5 mm at (5,5) mm; then PU600,0 PD800,0 AA600,0,90 = a line from (15,0) to (20,0) mm followed by a quarter arc about (15,0) ending at (15,5) mm. LB label is reported."
+    },
+    {
+      "file": "plate-layers.pdf",
+      "format": "pdf",
+      "bytes": 1207,
+      "sha256": "ff47a72e74889d5ca5b49ef3343bcd8b96f8d50a3cea14a3774ed9ec24d8cb7a",
+      "origin": "Written by a one-off script 2026-10-20 (W2-L6, classic xref table, uncompressed content); expectations derived by hand in crates/burnburn-io/tests/pdf.rs.",
+      "content": "A4 page, optional-content layers 'Cut' (on) and 'Guide' (off). Cut: blue stroked rectangle 20,20..120,70 mm and a four-Bezier circle r 5 mm at (40,45) mm; Guide: a red 150 mm line (hidden, reported). TEXT 'Plate' is reported."
     }
   ]
 }

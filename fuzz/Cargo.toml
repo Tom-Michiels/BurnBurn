@@ -85,3 +85,10 @@ path = "fuzz_targets/io_parse_hpgl.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "io_parse_pdf"
+path = "fuzz_targets/io_parse_pdf.rs"
+test = false
+doc = false
+bench = false
