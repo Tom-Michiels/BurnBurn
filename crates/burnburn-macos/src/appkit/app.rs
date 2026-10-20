@@ -421,6 +421,11 @@ impl HostApp {
         self.refresh();
     }
 
+    /// A control of the Cut Settings sheet changed which option rows exist or are greyed.
+    pub(crate) fn cut_option_changed(&self) {
+        self.refresh();
+    }
+
     /// A camera button with device pop-up item `device_index` chosen.
     pub(crate) fn camera_button_pressed(&self, control: CameraControl, device_index: isize) {
         let camera = self.controller.try_borrow().ok().and_then(|c| c.camera_view());
@@ -925,6 +930,7 @@ impl HostApp {
             cut_error: &w.cut_settings.error,
             cut_ok: &w.cut_settings.ok,
             cut_cancel: &w.cut_settings.cancel,
+            cut_options: w.cut_settings.options.iter().map(|o| o.part()).collect(),
             camera_labels: [&w.camera.labels[0], &w.camera.labels[1], &w.camera.labels[2]],
             camera_devices: &w.camera.devices,
             camera_buttons: [&w.camera.buttons[0], &w.camera.buttons[1], &w.camera.buttons[2]],
@@ -1040,6 +1046,8 @@ pub struct WindowParts<'a> {
     pub cut_error: &'a objc2_app_kit::NSTextField,
     pub cut_ok: &'a objc2_app_kit::NSButton,
     pub cut_cancel: &'a objc2_app_kit::NSButton,
+    /// The option controls of the sheet (tabs, leads, fill and image options), in sheet order.
+    pub cut_options: Vec<super::panels::cut_settings::CutOptionPart<'a>>,
     /// Bed camera: status, frame, note; device pop-up; request access, start, stop.
     pub camera_labels: [&'a objc2_app_kit::NSTextField; 3],
     pub camera_devices: &'a objc2_app_kit::NSPopUpButton,

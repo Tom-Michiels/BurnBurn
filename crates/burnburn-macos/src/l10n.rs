@@ -121,6 +121,7 @@ pub enum HostText {
     CutSettingsKerf,
     CutSettingsOutput,
     CutSettingsVisible,
+    CutSettingsOptions,
     CutSettingsOk,
     CutSettingsCancel,
     CameraTitle,
@@ -239,6 +240,7 @@ impl HostText {
         HostText::CutSettingsKerf,
         HostText::CutSettingsOutput,
         HostText::CutSettingsVisible,
+        HostText::CutSettingsOptions,
         HostText::CutSettingsOk,
         HostText::CutSettingsCancel,
         HostText::CameraTitle,
@@ -380,6 +382,7 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::CutSettingsKerf => ("Kerfcompensatie (mm)", "Kerf offset (mm)"),
         T::CutSettingsOutput => ("Uitvoer aan (komt in de job)", "Output enabled (goes into the job)"),
         T::CutSettingsVisible => ("Zichtbaar op het canvas", "Visible on the canvas"),
+        T::CutSettingsOptions => ("Opties van deze modus", "Options of this mode"),
         T::CutSettingsOk => ("OK", "OK"),
         T::CutSettingsCancel => ("Annuleer", "Cancel"),
         T::CameraTitle => ("Bedcamera", "Bed camera"),
@@ -616,8 +619,87 @@ fn pick(pair: (&str, &str), locale: Locale) -> String {
 
 /// The text for a view-model message; `None` for a key this catalogue does not know yet (a test
 /// failure for every key in [`known_message_keys`]).
+pub fn option_caption(field: burnburn_presentation::CutField, locale: Locale) -> &'static str {
+    use burnburn_presentation::CutField as F;
+    let (nl, en) = match field {
+        F::TabsEnabled => ("Tabs / bruggen", "Tabs / bridges"),
+        F::TabsMode => ("Tabs per", "Tabs by"),
+        F::TabsValue => ("Aantal of afstand (mm)", "Count or spacing (mm)"),
+        F::TabsWidth => ("Tabbreedte (mm)", "Tab width (mm)"),
+        F::LeadInEnabled => ("Aanloop (lead-in)", "Lead-in"),
+        F::LeadInLength => ("Aanloop, lengte (mm)", "Lead-in length (mm)"),
+        F::LeadInShape => ("Aanloop, vorm", "Lead-in shape"),
+        F::LeadInAngle => ("Aanloop, hoek (°)", "Lead-in angle (°)"),
+        F::LeadOutEnabled => ("Uitloop (lead-out)", "Lead-out"),
+        F::LeadOutLength => ("Uitloop, lengte (mm)", "Lead-out length (mm)"),
+        F::LeadOutShape => ("Uitloop, vorm", "Lead-out shape"),
+        F::LeadOutAngle => ("Uitloop, hoek (°)", "Lead-out angle (°)"),
+        F::Overcut => ("Overcut (mm, 0 = uit)", "Overcut (mm, 0 = off)"),
+        F::PerforationEnabled => ("Perforatie", "Perforation"),
+        F::PerforationOn => ("Perforatie, aan (mm)", "Perforation on (mm)"),
+        F::PerforationOff => ("Perforatie, uit (mm)", "Perforation off (mm)"),
+        F::DotEnabled => ("Dot-modus (puls per afstand)", "Dot mode (pulse per spacing)"),
+        F::DotSpacing => ("Dot-afstand (mm)", "Dot spacing (mm)"),
+        F::DotDwell => ("Puls (ms)", "Pulse (ms)"),
+        F::FillInterval => ("Lijnafstand (mm)", "Line interval (mm)"),
+        F::FillAngle => ("Scanhoek (°)", "Scan angle (°)"),
+        F::FillBidirectional => ("Bidirectioneel", "Bidirectional"),
+        F::FillOverscan => ("Overscan (mm)", "Overscan (mm)"),
+        F::FillCrossHatch => ("Kruisarcering", "Cross-hatch"),
+        F::FillFloodFill => ("Flood fill", "Flood fill"),
+        F::FillGrouping => ("Vormen vullen", "Fill grouping"),
+        F::FillRamp => ("Ramp-lengte (mm, 0 = uit)", "Ramp length (mm, 0 = off)"),
+        F::ImageMode => ("Beeldmodus", "Image mode"),
+        F::ImageLevel => ("Drempel (0–255)", "Threshold (0–255)"),
+        F::ImageMatrix => ("Matrixgrootte (2, 4 of 8)", "Matrix size (2, 4 or 8)"),
+        F::ImageNegative => ("Negatief beeld", "Negative image"),
+        F::ImageDotWidth => ("Dot-breedtecorrectie (mm)", "Dot width correction (mm)"),
+        F::ImageAngle => ("Scanhoek (°)", "Scan angle (°)"),
+        F::ImageInterval => ("Lijnafstand (mm of dpi)", "Line interval (mm or dpi)"),
+        F::ImageDotPitch => ("Puntafstand (mm of dpi)", "Dot pitch (mm or dpi)"),
+        F::ImageBidirectional => ("Bidirectioneel", "Bidirectional"),
+        F::ImageOverscan => ("Overscan (mm)", "Overscan (mm)"),
+        F::ScreenCell => ("Rastercel (mm)", "Screen cell (mm)"),
+        F::ScreenAngle => ("Rasterhoek (°)", "Screen angle (°)"),
+        _ => ("", ""),
+    };
+    match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    }
+}
+
+pub fn choice_label(choice: burnburn_presentation::CutChoice, locale: Locale) -> &'static str {
+    use burnburn_presentation::CutChoice as C;
+    let (nl, en) = match choice {
+        C::TabsByCount => ("Aantal", "Count"),
+        C::TabsBySpacing => ("Afstand", "Spacing"),
+        C::LeadLine => ("Lijn", "Line"),
+        C::LeadArc => ("Boog", "Arc"),
+        C::GroupAllShapes => ("Alle vormen tegelijk vullen", "Fill all shapes at once"),
+        C::GroupGroups => ("Groepen samen vullen", "Fill groups together"),
+        C::GroupIndividual => ("Vormen apart vullen", "Fill shapes individually"),
+        C::Threshold => ("Drempel", "Threshold"),
+        C::Ordered => ("Geordend", "Ordered"),
+        C::Atkinson => ("Atkinson", "Atkinson"),
+        C::Dither => ("Dither", "Dither"),
+        C::Stucki => ("Stucki", "Stucki"),
+        C::Jarvis => ("Jarvis", "Jarvis"),
+        C::Newsprint => ("Krantenraster", "Newsprint"),
+        C::Halftone => ("Halftoon", "Halftone"),
+        C::Sketch => ("Schets", "Sketch"),
+        C::Grayscale => ("Grijswaarden", "Grayscale"),
+        C::PassThrough => ("Doorgeven", "Pass-through"),
+        _ => ("", ""),
+    };
+    match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    }
+}
+
 fn cut_caption(field: burnburn_presentation::CutField, locale: Locale) -> &'static str {
-    crate::panels::option_caption(field, locale)
+    option_caption(field, locale)
 }
 
 pub fn message(key: MessageKey, locale: Locale) -> Option<String> {

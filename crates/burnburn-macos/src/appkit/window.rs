@@ -174,6 +174,7 @@ impl DocWindow {
                 cut_mode: cut_settings.mode.clone(),
                 cut_fields: cut_settings.fields.clone(),
                 cut_toggles: [cut_settings.output.clone(), cut_settings.visible.clone()],
+                cut_options: cut_settings.options.iter().map(|w| (w.field, w.control.clone())).collect(),
                 camera_devices: camera.devices.clone(),
                 sketch_table: sketch.table.clone(),
                 sketch_params_table: sketch.params_table.clone(),
@@ -267,6 +268,9 @@ impl DocWindow {
         unsafe { cut_settings.mode.setTarget(Some(target)) };
         // SAFETY: as above.
         unsafe { cut_settings.mode.setAction(Some(sel!(cutSettingsModeChosen:))) };
+        for w in &cut_settings.options {
+            w.control.set_target(Some(target));
+        }
         for b in &camera.buttons {
             // SAFETY: as above.
             unsafe { b.setTarget(Some(target)) };
@@ -490,6 +494,9 @@ impl Drop for DocWindow {
         unsafe { self.import.units.setTarget(None) };
         // SAFETY: as above.
         unsafe { self.cut_settings.mode.setTarget(None) };
+        for w in &self.cut_settings.options {
+            w.control.set_target(None);
+        }
         // SAFETY: as above.
         unsafe { self.operations.table.setTarget(None) };
         for b in [

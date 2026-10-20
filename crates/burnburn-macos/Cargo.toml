@@ -149,6 +149,11 @@ path = "../../tests/native/macos/layer_palette.rs"
 harness = false
 
 [[test]]
+name = "cut_settings_options"
+path = "../../tests/native/macos/cut_settings_options.rs"
+harness = false
+
+[[test]]
 name = "sketch_mode"
 path = "../../tests/native/macos/sketch_mode.rs"
 harness = false
