@@ -10,6 +10,7 @@ use burnburn_trace::TraceRecipe;
 use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
 use crate::camera::BedCameraIntent;
+use crate::cut_options::CutExtras;
 use crate::production::{ActionId, OrderDraft, OrderId};
 
 /// A semantic user action. Native hosts translate OS events into these; they never change
@@ -319,6 +320,9 @@ pub struct CutSettingsInput {
     pub kerf: String,
     pub output_enabled: bool,
     pub visible: bool,
+    /// The option fields the sheet shows (tabs, leads, fill and image options); fields that are
+    /// absent keep their stored value.
+    pub extras: CutExtras,
 }
 
 /// Kind of operation offered by the operations panel.
@@ -329,7 +333,9 @@ pub enum OperationKind {
     Fill,
     /// Concentric offset rings (needs `Feature::OffsetFill` in the machine profile).
     OffsetFill,
-    /// Shown for operations the panel cannot edit (image, offset fill, …).
+    /// Image engraving (modes, dithering, screen); an image operation keeps this mode.
+    Image,
+    /// Shown for operations the panel cannot edit.
     Other,
 }
 

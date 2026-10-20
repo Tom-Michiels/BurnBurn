@@ -32,6 +32,7 @@ use crate::view_model::{
 mod camera;
 mod canvas;
 mod commands;
+mod cut_options;
 mod document;
 mod fields;
 mod geometry;
@@ -464,10 +465,13 @@ impl AppController {
                 self.with_session(document, |s| layers::open_cut_settings(s, operation))
             }
             UiIntent::ApplyCutSettings { document, operation, settings } => {
-                let request = self.next_id::<RequestId>();
+                // Mode settings and line options are two document commands: two request ids.
+                let requests = [self.next_id::<RequestId>(), self.next_id::<RequestId>()];
+                let mut requests = requests.into_iter();
                 let capabilities = self.machine.as_ref().map(|m| m.profile.capabilities().clone());
                 self.with_session(document, |s| {
-                    layers::apply_cut_settings(s, document, operation, &settings, capabilities.as_ref(), request)
+                    let mut next = || requests.next().flatten();
+                    layers::apply_cut_settings(s, document, operation, &settings, capabilities.as_ref(), &mut next)
                 })
             }
             UiIntent::CancelCutSettings { document } => self.with_session(document, layers::cancel_cut_settings),

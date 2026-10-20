@@ -8,6 +8,7 @@ mod camera;
 mod catalog;
 mod commit;
 mod controller;
+mod cut_options;
 mod field;
 mod harness;
 mod intent;
@@ -26,6 +27,9 @@ pub use catalog::{
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
 pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
+pub use cut_options::{
+    CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
+};
 pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use intent::{
