@@ -11,6 +11,7 @@ use burnburn_types::{CancellationSource, DocumentId, RequestId, RevisionId, Task
 use crate::task::{TaskInput, TaskOutcome, TaskRequest, revision_key};
 
 use super::prefs::{PrefError, PrefKey, Preferences, PrefsViewModel, UserSettings};
+use super::shortcuts::KeyBinding;
 use crate::view_model::MessageKey;
 
 use super::{AppController, AppUpdate, apply_edit, error};
@@ -43,6 +44,22 @@ pub enum AppIntent {
         document: DocumentId,
         position: usize,
     },
+    /// Shortcut editor: bind `id` to `binding`. A key another entry has is a conflict unless
+    /// `replace` takes it over (the other entry is then left without a shortcut).
+    SetShortcut {
+        id: String,
+        binding: KeyBinding,
+        replace: bool,
+    },
+    /// Shortcut editor: `id` gets no shortcut.
+    ClearShortcut {
+        id: String,
+    },
+    /// Shortcut editor: back to the default of `id`.
+    ResetShortcut {
+        id: String,
+    },
+    ResetAllShortcuts,
 }
 
 /// Which way an arrow key points on screen (world y is up).
@@ -69,9 +86,10 @@ pub(super) struct AppPanels {
     /// Where the user file lives; `None`: nothing is read or written (changes last for this run).
     user_dir: Option<PathBuf>,
     /// What else the user file holds (shortcut overrides, keys of a newer version).
-    settings: UserSettings,
+    pub(super) settings: UserSettings,
     error: Option<PrefError>,
-    load_problem: bool,
+    pub(super) shortcut_error: Option<super::shortcuts::ShortcutError>,
+    pub(super) load_problem: bool,
     save_failed: bool,
     /// The write in flight, and whether the settings changed again while it ran: writes are
     /// serialized so an older text can never land after a newer one.
@@ -140,6 +158,10 @@ impl AppController {
             }
             AppIntent::Nudge { document, direction, step } => self.nudge(document, direction, step),
             AppIntent::HistoryJump { document, position } => self.history_jump(document, position),
+            AppIntent::SetShortcut { id, binding, replace } => self.set_shortcut(&id, binding, replace),
+            AppIntent::ClearShortcut { id } => self.clear_shortcut(&id),
+            AppIntent::ResetShortcut { id } => self.reset_shortcut(&id),
+            AppIntent::ResetAllShortcuts => self.reset_all_shortcuts(),
         }
     }
 

@@ -133,8 +133,7 @@ fn preferences_are_never_part_of_a_project_file() {
         fs.create_dir_all_for_test(Path::new("/work"));
         h.send(UiIntent::Save { document: doc, path: Some(path.clone()) });
         h.run_tasks();
-        let bytes = burnburn_io::fs::FileSystem::read(fs.as_ref(), &path, u64::MAX).expect("project written");
-        bytes
+        burnburn_io::fs::FileSystem::read(fs.as_ref(), &path, u64::MAX).expect("project written")
     };
     assert_eq!(save_with("120"), save_with("900"), "the project does not depend on any preference");
 }

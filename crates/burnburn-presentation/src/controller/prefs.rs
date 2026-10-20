@@ -391,7 +391,11 @@ impl UserSettings {
             };
             let (key, value) = (key.trim(), value.trim());
             if let Some(id) = key.strip_prefix(SHORTCUT_PREFIX) {
-                settings.shortcuts.insert(id.to_owned(), value.to_owned());
+                if super::shortcuts::override_is_valid(value) {
+                    settings.shortcuts.insert(id.to_owned(), value.to_owned());
+                } else {
+                    damaged = true;
+                }
             } else if let Some(known) = PrefKey::ALL.iter().find(|k| k.id() == key) {
                 // Stored lengths are millimetres whatever the display unit is.
                 match settings.prefs.with_stored(*known, value) {

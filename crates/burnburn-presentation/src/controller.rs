@@ -50,6 +50,7 @@ mod process;
 mod recent;
 mod recovery;
 mod shapes;
+mod shortcuts;
 mod sketch;
 mod tasks;
 mod text;
@@ -62,6 +63,7 @@ pub use prefs::{
     DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
     Preferences, PrefsViewModel,
 };
+pub use shortcuts::{KeyBinding, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel};
 
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
