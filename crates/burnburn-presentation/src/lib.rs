@@ -10,6 +10,8 @@ mod commit;
 mod controller;
 mod cut_options;
 mod field;
+mod files;
+mod files_task;
 mod harness;
 mod image_panel;
 mod image_task;
@@ -38,6 +40,10 @@ pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
 };
 pub use field::{FieldError, format_mm, parse_length, parse_position};
+pub use files::{
+    FilesIntent, FilesMessage, ImportKind, ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState,
+    Lbrn2LayerRow, Lbrn2ReportViewModel, Lbrn2Warning, TemplateScope,
+};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,

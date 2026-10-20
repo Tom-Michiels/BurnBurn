@@ -98,9 +98,13 @@ impl AppController {
         if command == CommandKey::New {
             return self.new_document();
         }
+        if command == CommandKey::NewFromTemplate {
+            return AppUpdate { effects: vec![HostEffect::ShowTemplateOpenPanel], ..AppUpdate::default() };
+        }
         let Some(document) = document.or(self.active) else { return AppUpdate::default() };
         match command {
             CommandKey::Save | CommandKey::SaveAs => self.save(document, None),
+            CommandKey::SaveAsTemplate => self.ask_template_file(document),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
             CommandKey::Compile => self.submit_compile(document),
@@ -123,6 +127,11 @@ impl AppController {
                 if self.sessions.get(&document).is_some_and(|s| s.image.pending.is_some()) =>
             {
                 self.image_command(document, command)
+            }
+            CommandKey::CommitImport
+                if self.sessions.get(&document).and_then(|s| s.import.as_ref()).is_some_and(|i| i.is_project()) =>
+            {
+                self.commit_project_import(document)
             }
             CommandKey::AdjustImage
             | CommandKey::ApplyImageAdjust
@@ -283,7 +292,7 @@ pub(super) fn invoke_in_session(
             apply_edit(s, document, CommandPayload::Edit(GeometryCommand::Import { asset, items }), request)
         }
         CommandKey::CommitImport => {
-            let Some(pending) = s.import.as_ref() else { return AppUpdate::default() };
+            let Some(pending) = s.import.as_ref().filter(|i| i.ready()) else { return AppUpdate::default() };
             let Ok(draft) = pending.draft() else { return AppUpdate::default() };
             let asset = s.assets.add(pending.media, &pending.bytes);
             let Ok(edit) = draft.into_command(asset) else { return error(Some(document), MessageKey::ImportFailed) };

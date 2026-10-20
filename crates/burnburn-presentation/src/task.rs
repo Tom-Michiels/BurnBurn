@@ -7,7 +7,10 @@ use burnburn_document::DocumentSnapshot;
 use burnburn_geometry::{BooleanError, BooleanOp, Bounds, Path, boolean};
 use burnburn_image::{DecodeError, DecodeLimits, RasterError, SourceImage, decode};
 use burnburn_io::fs::{FileSystem, FsError};
-use burnburn_io::import::{DxfDocument, ImportDraft, ParseError, parse_dxf, parse_svg};
+use burnburn_io::import::{
+    Analysis, AnalyzeError, DxfDocument, ImportDraft, ImportFormat, Lbrn2Draft, ParseError, PdfDocument, PdfPages,
+    analyze,
+};
 use burnburn_io::{AssetStore, LoadError, Project, SaveError, load_project, save_project};
 use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
 use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
@@ -16,6 +19,7 @@ use burnburn_types::{
     CancellationToken, ContentHash, DocumentId, GeometryId, HashDomain, RevisionId, StableId, TaskId,
 };
 
+use crate::files_task::{FilesError, FilesOutput, FilesTask};
 use crate::image_panel::ImagePreview;
 use crate::image_task::{BitmapInput, BitmapJob};
 
@@ -72,6 +76,10 @@ pub enum TaskInput {
     Trace(Box<TraceRequest>),
     /// Read and parse an SVG/DXF for the import preview (P03); nothing is committed.
     ParseImport { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// A job of the file features: templates, libraries, bundles and exports.
+    Files(FilesTask),
+    /// The objects of other pages of a PDF/AI file already parsed for the import preview.
+    ImportPages { pdf: Arc<PdfDocument>, pages: PdfPages },
     /// Lower exactly this plan to RD bytes for the prepared job (C1); same lowering as `ExportRd`.
     PrepareJob { plan: Arc<JobPlan>, ruida: RuidaProfile },
     /// Read and decode a bitmap for the image flows: import, replace/refresh, or the pixels of an
@@ -119,6 +127,8 @@ impl fmt::Debug for TaskInput {
             TaskInput::SaveBitmap { path, .. } => write!(f, "SaveBitmap({})", path.display()),
             TaskInput::Centerline(r) => write!(f, "Centerline(task {})", r.task),
             TaskInput::ParseImport { path, .. } => write!(f, "ParseImport({})", path.display()),
+            TaskInput::ImportPages { pages, .. } => write!(f, "ImportPages({pages:?})"),
+            TaskInput::Files(task) => write!(f, "Files({task:?})"),
             TaskInput::SaveRecovery { path, .. } => write!(f, "SaveRecovery({})", path.display()),
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
             TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
@@ -144,6 +154,8 @@ impl TaskInput {
             TaskInput::SaveBitmap { .. } => TaskKind::SaveBitmap,
             TaskInput::Centerline(_) => TaskKind::Centerline,
             TaskInput::ParseImport { .. } => TaskKind::ParseImport,
+            TaskInput::ImportPages { .. } => TaskKind::ImportPages,
+            TaskInput::Files(_) => TaskKind::Files,
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
             TaskInput::WriteText { .. } => TaskKind::TextExport,
@@ -168,6 +180,10 @@ pub enum TaskKind {
     PrepareJob,
     /// Reads a file; independent of the document revision.
     ParseImport,
+    /// The objects of the chosen PDF pages; freshness by task identity (only the newest choice counts).
+    ImportPages,
+    /// Template, library, bundle and export jobs; not tied to a document revision.
+    Files,
     /// Reads a bitmap; independent of the document revision (the controller keeps the purpose).
     LoadBitmap,
     /// Freshness is by task identity: only the newest preview of the open Adjust Image panel counts.
@@ -264,6 +280,13 @@ pub enum TaskOutput {
         bytes: Arc<[u8]>,
         parsed: ParsedImport,
     },
+    /// The result of a file-feature job.
+    Files(FilesOutput),
+    /// The objects of the chosen pages of a PDF/AI import.
+    ImportPagesDrafted {
+        pages: PdfPages,
+        draft: Box<ImportDraft>,
+    },
     RecoverySaved {
         path: PathBuf,
     },
@@ -280,9 +303,44 @@ pub enum TaskOutput {
 
 /// A parsed import file. A DXF stays in drawing units until the unit decision.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ParsedImport {
     Svg(Box<ImportDraft>),
     Dxf(Box<DxfDocument>),
+    /// HP-GL/PLT: plotter units, so no unit question.
+    Hpgl(Box<ImportDraft>),
+    /// PDF or Illustrator: the pages, and the objects of the first one.
+    Pdf(Box<PdfImport>),
+    /// A LightBurn project: shapes, layer proposals and the report.
+    Lbrn2(Box<Lbrn2Import>),
+}
+
+/// A PDF/AI file read for the import preview.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PdfImport {
+    pub doc: Arc<PdfDocument>,
+    /// The objects of page 1 (the preview starts there).
+    pub first: ImportDraft,
+}
+
+/// A LightBurn project read for the import preview, with its embedded bitmaps decoded.
+#[derive(Debug, Clone)]
+pub struct Lbrn2Import {
+    pub draft: Lbrn2Draft,
+    /// The decoded pixels of `draft.report.assets[i]`; `None` when the asset has no readable bitmap.
+    pub images: Vec<Option<Arc<SourceImage>>>,
+}
+
+impl PartialEq for Lbrn2Import {
+    fn eq(&self, other: &Self) -> bool {
+        self.draft == other.draft
+            && self.images.len() == other.images.len()
+            && self.images.iter().zip(&other.images).all(|(a, b)| match (a, b) {
+                (Some(a), Some(b)) => a.content_hash() == b.content_hash(),
+                (None, None) => true,
+                _ => false,
+            })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -315,6 +373,8 @@ pub enum TaskError {
     SourceMissing,
     /// Neither `.svg` nor `.dxf`.
     UnsupportedFormat,
+    /// A file-feature job failed.
+    Files(FilesError),
 }
 
 impl fmt::Display for TaskError {
@@ -337,6 +397,7 @@ impl fmt::Display for TaskError {
             TaskError::Raster(e) => write!(f, "image processing failed: {e:?}"),
             TaskError::SourceMissing => f.write_str("source image not in the project"),
             TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
+            TaskError::Files(e) => write!(f, "{e}"),
         }
     }
 }
@@ -432,15 +493,45 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
         }
         TaskInput::ParseImport { path, fs } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
-            let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+            let format = path.extension().and_then(|e| e.to_str()).and_then(ImportFormat::from_extension);
             let bytes = fs.read(&path, MAX_IMPORT_BYTES).map_err(TaskError::Read)?;
             cancel.check().map_err(|_| TaskError::Cancelled)?;
-            let parsed = match ext.as_deref() {
-                Some("svg") => ParsedImport::Svg(Box::new(parse_svg(&bytes).map_err(TaskError::Parse)?)),
-                Some("dxf") => ParsedImport::Dxf(Box::new(parse_dxf(&bytes).map_err(TaskError::Parse)?)),
+            let Some(format) = format else { return Err(TaskError::UnsupportedFormat) };
+            let analysis = analyze(format, &bytes).map_err(|e| match e {
+                AnalyzeError::Parse(e) => TaskError::Parse(e),
+                _ => TaskError::UnsupportedFormat,
+            })?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let parsed = match (format, analysis) {
+                (ImportFormat::Hpgl, Analysis::Vector(d)) => ParsedImport::Hpgl(Box::new(d)),
+                (_, Analysis::Vector(d)) => ParsedImport::Svg(Box::new(d)),
+                (_, Analysis::Dxf(d)) => ParsedImport::Dxf(Box::new(d)),
+                (_, Analysis::Pdf(doc)) => {
+                    let first = doc.to_draft(PdfPages::One(0)).map_err(TaskError::Parse)?;
+                    ParsedImport::Pdf(Box::new(PdfImport { doc: Arc::new(doc), first }))
+                }
+                (_, Analysis::Lbrn2(draft)) => {
+                    let images = draft
+                        .report
+                        .assets
+                        .iter()
+                        .map(|a| {
+                            let bitmap = a.data.as_ref()?;
+                            decode(&bitmap.bytes, DecodeLimits::default()).ok().map(Arc::new)
+                        })
+                        .collect();
+                    ParsedImport::Lbrn2(Box::new(Lbrn2Import { draft, images }))
+                }
                 _ => return Err(TaskError::UnsupportedFormat),
             };
             Ok(TaskOutput::ImportParsed { path, bytes: Arc::from(bytes), parsed })
+        }
+        TaskInput::Files(task) => crate::files_task::run(task, cancel).map(TaskOutput::Files),
+        TaskInput::ImportPages { pdf, pages } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let draft = pdf.to_draft(pages).map_err(TaskError::Parse)?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            Ok(TaskOutput::ImportPagesDrafted { pages, draft: Box::new(draft) })
         }
         TaskInput::LoadBitmap { input } => crate::image_task::load_bitmap(input, cancel),
         TaskInput::ImagePreview(job) => crate::image_task::render_preview(&job, cancel),
@@ -584,6 +675,8 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::SaveBitmap => 15,
         TaskKind::Centerline => 16,
         TaskKind::TextExport => 17,
+        TaskKind::ImportPages => 18,
+        TaskKind::Files => 19,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

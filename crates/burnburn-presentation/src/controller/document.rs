@@ -4,12 +4,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use burnburn_document::DocumentSession;
+use burnburn_io::template::{TEMPLATE_EXTENSION, TemplateContent, TemplateError};
 use burnburn_io::{AssetStore, Project};
 use burnburn_types::{CancellationSource, DocumentId, RevisionId, TaskId};
 
+use crate::files::TemplateScope;
+use crate::files_task::{FilesError, FilesTask};
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
-use crate::view_model::MessageKey;
+use crate::view_model::{MessageKey, StatusMessage};
 
+use super::library::FilesJob;
 use super::{AppController, AppUpdate, HostEffect, Session, error, file_title};
 
 impl AppController {
@@ -21,7 +25,7 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Opened { project, path }) => {
-                let Project { uuid, document: snapshot, assets, .. } = *project;
+                let Project { uuid, document: snapshot, assets, library_links, .. } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let session = match &restored {
                     // A recovered document is unsaved and untitled: Save asks for a location and
@@ -44,6 +48,7 @@ impl AppController {
                 };
                 let mut session = session;
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                session.library_links = library_links;
                 self.sessions.insert(document, session);
                 self.active = Some(document);
                 self.warm_images(document);
@@ -131,6 +136,7 @@ impl AppController {
             let source = snapshot.revision();
             let mut project = Project::new(s.uuid, (*snapshot).clone());
             project.assets = s.assets.clone();
+            project.library_links = s.library_links.clone();
             let cancel = CancellationSource::new();
             let request = TaskRequest {
                 id,
@@ -170,6 +176,153 @@ impl AppController {
             effects: vec![HostEffect::CloseWindow { document }],
             view_changed: true,
             scenes_changed: Vec::new(),
+        }
+    }
+}
+
+/// File name of a new template: the document's title without its project extension.
+fn template_name(title: &str) -> String {
+    let stem = title.strip_suffix(".burnburn").unwrap_or(title);
+    format!("{stem}.{TEMPLATE_EXTENSION}")
+}
+
+fn has_template_extension(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case(TEMPLATE_EXTENSION))
+}
+
+impl AppController {
+    /// Archief ▸ Bewaar als template…: asks the host for the file (and what the template holds).
+    pub(super) fn ask_template_file(&mut self, document: DocumentId) -> AppUpdate {
+        self.with_session(document, |s| AppUpdate {
+            effects: vec![HostEffect::ShowTemplateSavePanel { document, suggested_name: template_name(&s.title) }],
+            ..AppUpdate::default()
+        })
+    }
+
+    /// Writes the template on a worker. The project, its title and its dirty state stay as they are.
+    pub(super) fn save_as_template(&mut self, document: DocumentId, path: PathBuf, scope: TemplateScope) -> AppUpdate {
+        if !has_template_extension(&path) {
+            return self.with_session(document, |s| {
+                s.messages
+                    .push(StatusMessage { key: MessageKey::Files(crate::files::FilesMessage::TemplateWrongExtension) });
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            });
+        }
+        let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::CommandRejected) };
+        let (tasks, fs) = (Arc::clone(&self.ports.tasks), Arc::clone(&self.ports.fs));
+        let Some(s) = self.sessions.get(&document) else { return AppUpdate::default() };
+        let snapshot = s.doc.snapshot();
+        let source = snapshot.revision();
+        let mut project = Project::new(s.uuid, (*snapshot).clone());
+        project.assets = s.assets.clone();
+        project.library_links = s.library_links.clone();
+        let content = match scope {
+            TemplateScope::Everything => TemplateContent::Everything,
+            TemplateScope::SettingsOnly => TemplateContent::SettingsOnly,
+        };
+        let request = TaskRequest {
+            id,
+            document,
+            source,
+            key: revision_key(TaskKind::Files, document, source),
+            cancel: CancellationSource::new().token(),
+            input: TaskInput::Files(FilesTask::SaveTemplate { project: Box::new(project), path, content, fs }),
+        };
+        match tasks.submit(request) {
+            Ok(()) => {
+                self.files_jobs.insert(id, FilesJob::SaveTemplate { document });
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            Err(_) => error(Some(document), MessageKey::Files(crate::files::FilesMessage::TemplateSaveFailed)),
+        }
+    }
+
+    /// Reads a template on a worker; an untitled window opens with its content when it is read.
+    pub(super) fn new_from_template(&mut self, path: PathBuf) -> AppUpdate {
+        let (Some(document), Some(id)) = (self.next_id::<DocumentId>(), self.next_id::<TaskId>()) else {
+            return error(None, MessageKey::Files(crate::files::FilesMessage::TemplateOpenFailed));
+        };
+        let uuid = (self.ports.new_project_uuid)();
+        let source = burnburn_types::RevisionId::INITIAL;
+        let request = TaskRequest {
+            id,
+            document,
+            source,
+            key: revision_key(TaskKind::Files, document, source),
+            cancel: CancellationSource::new().token(),
+            input: TaskInput::Files(FilesTask::OpenTemplate {
+                path: path.clone(),
+                uuid,
+                fs: Arc::clone(&self.ports.fs),
+            }),
+        };
+        match self.ports.tasks.submit(request) {
+            Ok(()) => {
+                self.files_jobs.insert(id, FilesJob::OpenTemplate { document, path });
+                AppUpdate::default()
+            }
+            Err(_) => error(None, MessageKey::Files(crate::files::FilesMessage::TemplateOpenFailed)),
+        }
+    }
+
+    pub(super) fn template_saved(&mut self, document: DocumentId, outcome: TaskOutcome) -> AppUpdate {
+        match outcome.result {
+            Ok(TaskOutput::Files(crate::files_task::FilesOutput::TemplateSaved { path })) => {
+                let effects = self.note_recent_template(&path);
+                AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+            }
+            Err(TaskError::Cancelled) => AppUpdate::default(),
+            result => {
+                let key = match result {
+                    Err(TaskError::Files(FilesError::Template(TemplateError::WrongExtension { .. }))) => {
+                        crate::files::FilesMessage::TemplateWrongExtension
+                    }
+                    _ => crate::files::FilesMessage::TemplateSaveFailed,
+                };
+                self.with_session(document, |s| {
+                    s.messages.push(StatusMessage { key: MessageKey::Files(key) });
+                    AppUpdate {
+                        effects: vec![HostEffect::ShowError {
+                            document: Some(document),
+                            message: MessageKey::Files(key),
+                        }],
+                        view_changed: true,
+                        ..AppUpdate::default()
+                    }
+                })
+            }
+        }
+    }
+
+    /// The template was read: an untitled, unsaved window with its content (Save asks for a location).
+    pub(super) fn template_opened(&mut self, document: DocumentId, path: PathBuf, outcome: TaskOutcome) -> AppUpdate {
+        match outcome.result {
+            Ok(TaskOutput::Files(crate::files_task::FilesOutput::TemplateOpened { project, .. })) => {
+                let Project { uuid, document: snapshot, assets, library_links, .. } = *project;
+                let mut doc = DocumentSession::from_snapshot(document, snapshot);
+                let unsaved = RevisionId::from_raw(doc.revision().raw().wrapping_add(1));
+                doc.mark_saved(unsaved);
+                self.untitled += 1;
+                let title =
+                    if self.untitled == 1 { "Naamloos".to_owned() } else { format!("Naamloos {}", self.untitled) };
+                let Some(mut session) = Session::new(doc, title, None, (uuid, assets)) else {
+                    return error(None, MessageKey::Files(crate::files::FilesMessage::TemplateOpenFailed));
+                };
+                session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                session.library_links = library_links;
+                self.sessions.insert(document, session);
+                self.active = Some(document);
+                self.warm_images(document);
+                let mut effects = vec![HostEffect::OpenWindow { document }];
+                effects.extend(self.note_recent_template(&path));
+                AppUpdate { effects, view_changed: true, scenes_changed: vec![document] }
+            }
+            Err(TaskError::Cancelled) => AppUpdate::default(),
+            _ => {
+                let mut update = error(None, MessageKey::Files(crate::files::FilesMessage::TemplateOpenFailed));
+                update.effects.extend(self.forget_recent_template(&path));
+                update
+            }
         }
     }
 }

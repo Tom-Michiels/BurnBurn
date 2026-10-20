@@ -109,6 +109,8 @@ pub struct AssetNote {
     pub placement: Option<Path>,
     /// Image adjustments stored on the shape (`Gamma`, `Contrast`, …) as written: carried, not applied.
     pub adjustments: Vec<(String, String)>,
+    /// The `CutIndex` the bitmap shape was drawn with: the image cut setting that turns it into an operation.
+    pub cut_index: Option<u32>,
 }
 
 /// Decoded pixels of a `Bitmap` shape: the original file bytes, verified by their magic number.
@@ -616,6 +618,7 @@ impl Ctx<'_> {
                     size_mm: size,
                     placement,
                     adjustments,
+                    cut_index: cut,
                 });
                 self.note(NoteKind::NotConverted, "Bitmap".to_owned());
                 None

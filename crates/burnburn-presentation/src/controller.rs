@@ -42,6 +42,7 @@ mod image;
 mod import;
 mod laser;
 mod layers;
+mod library;
 mod machine;
 mod process;
 mod recent;
@@ -135,6 +136,18 @@ pub enum HostEffect {
     RecentProjectsChanged {
         paths: Vec<PathBuf>,
     },
+    /// Save panel for a template (`.burnburntemplate`, never the project file); the host also asks
+    /// what the template holds and answers with `FilesIntent::SaveAsTemplate`.
+    ShowTemplateSavePanel {
+        document: DocumentId,
+        suggested_name: String,
+    },
+    /// Open panel for a template; the host answers with `FilesIntent::NewFromTemplate`.
+    ShowTemplateOpenPanel,
+    /// The recent-templates list changed: the host stores it and rebuilds the menu.
+    RecentTemplatesChanged {
+        paths: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -211,6 +224,8 @@ struct Session {
     image: image::ImageState,
     /// Inspector reference point, aspect lock and wireframe view (window state).
     arrange: arrange::ArrangeState,
+    /// Which library entry each recipe was copied from (provenance, saved with the project).
+    library_links: Vec<burnburn_io::LibraryLink>,
 }
 
 impl Session {
@@ -264,6 +279,7 @@ impl Session {
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
+            library_links: Vec::new(),
         })
     }
 
@@ -329,6 +345,10 @@ pub struct AppController {
     clipboard: Option<burnburn_io::clipboard::Clipboard>,
     /// Archief ▸ Recente projecten, most recent first; the host persists it.
     recent: Vec<PathBuf>,
+    /// Archief ▸ Recente templates, most recent first; the host persists it.
+    recent_templates: Vec<PathBuf>,
+    /// Worker jobs of the file features that wait for their result.
+    files_jobs: BTreeMap<TaskId, library::FilesJob>,
     /// The path each pending open task was asked for (to forget it when it fails).
     opening_paths: BTreeMap<TaskId, PathBuf>,
 }
@@ -358,6 +378,8 @@ impl AppController {
             laser: laser::LaserState::default(),
             clipboard: None,
             recent: Vec::new(),
+            recent_templates: Vec::new(),
+            files_jobs: BTreeMap::new(),
             opening_paths: BTreeMap::new(),
         }
     }
@@ -452,6 +474,7 @@ impl AppController {
             UiIntent::SetTraceForm { document, input } => self.set_trace_form(document, *input),
             UiIntent::ApplyTracePreset { document, preset } => self.apply_trace_preset(document, preset),
             UiIntent::SetImportUnit { document, unit } => self.set_import_unit(document, unit),
+            UiIntent::Files(intent) => self.files(intent),
             UiIntent::Offset { document, distance } => {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| offset_selection(s, document, &distance, request))

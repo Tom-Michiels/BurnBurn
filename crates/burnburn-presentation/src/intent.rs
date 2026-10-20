@@ -213,6 +213,8 @@ pub enum UiIntent {
         document: DocumentId,
         unit: ImportUnit,
     },
+    /// The file features: import pages, templates, libraries, bundles and the export dialog.
+    Files(crate::files::FilesIntent),
     /// Offset panel (E05): signed distance as typed (`2 mm` outward, `-1,5 mm` inward) for the
     /// selected objects; sources are kept.
     Offset {
@@ -814,6 +816,12 @@ pub enum CommandKey {
     ZoomOut,
     /// Weergave ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
     ViewWireframe,
+    /// Archief ▸ Bewaar als template…: the host asks for a file and what the template holds, then
+    /// sends `FilesIntent::SaveAsTemplate`.
+    SaveAsTemplate,
+    /// Archief ▸ Nieuw van template…: the host asks for a template, then sends
+    /// `FilesIntent::NewFromTemplate`.
+    NewFromTemplate,
 }
 
 impl CommandKey {
@@ -931,6 +939,8 @@ impl CommandKey {
         CommandKey::ZoomIn,
         CommandKey::ZoomOut,
         CommandKey::ViewWireframe,
+        CommandKey::SaveAsTemplate,
+        CommandKey::NewFromTemplate,
     ];
 }
 

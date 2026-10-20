@@ -7,7 +7,7 @@ use burnburn_types::{CancellationSource, TaskId};
 
 use crate::field::format_mm;
 use crate::production::{JobInputs, PreparedJob};
-use crate::task::{ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
+use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::{BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, StatusMessage};
 
 use super::import::PendingImport;
@@ -34,6 +34,9 @@ impl AppController {
             let mut update = self.opened(document, outcome, restored);
             update.effects.extend(recent);
             return update;
+        }
+        if let Some(job) = self.files_jobs.remove(&outcome.id) {
+            return self.files_finished(job, outcome);
         }
         let saved_path = match &outcome.result {
             Ok(TaskOutput::Saved { path }) => Some(path.clone()),
@@ -159,13 +162,18 @@ impl AppController {
                     .push(HostEffect::ShowError { document: Some(document), message: MessageKey::ExportFailed });
             }
             Ok(TaskOutput::ImportParsed { path, bytes, parsed }) => {
-                let media = match parsed {
-                    ParsedImport::Svg(_) => "image/svg+xml",
-                    ParsedImport::Dxf(_) => "image/vnd.dxf",
-                };
-                s.import = Some(PendingImport { file: file_title(&path), media, bytes, parsed, unit: None });
+                s.import = Some(PendingImport::new(file_title(&path), bytes, parsed));
             }
-            Err(TaskError::Parse(_) | TaskError::UnsupportedFormat) => {
+            Ok(TaskOutput::ImportPagesDrafted { pages, draft }) => {
+                super::import::pages_drafted(s, outcome.id, pages, *draft);
+            }
+            Err(TaskError::Parse(e)) => {
+                let message = super::import::parse_failure(&e);
+                super::import::pages_failed(s, outcome.id);
+                s.messages.push(StatusMessage { key: message });
+                update.effects.push(HostEffect::ShowError { document: Some(document), message });
+            }
+            Err(TaskError::UnsupportedFormat) => {
                 s.messages.push(StatusMessage { key: MessageKey::ImportFailed });
                 update
                     .effects
@@ -209,9 +217,13 @@ impl AppController {
                 | TaskOutput::TextWritten { .. }
                 | TaskOutput::Centerlined(_)
                 | TaskOutput::ImagePreview { .. }
-                | TaskOutput::BitmapSaved { .. },
+                | TaskOutput::BitmapSaved { .. }
+                // File jobs are delivered by `files_finished` before a session is looked up.
+                | TaskOutput::Files(_),
             )
-            | Err(TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing) => {}
+            | Err(
+                TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing | TaskError::Files(_),
+            ) => {}
             Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
                 // The replace happened: this revision is on disk, only durability is unconfirmed.
                 s.doc.mark_saved(outcome.source);
