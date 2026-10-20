@@ -280,3 +280,20 @@ fn layer_palette_has_thirty_distinct_opaque_colours() {
     assert!(t.process_layers.iter().all(|c| c.a == 1.0));
     assert_ne!(key(&t.process_layers[0]), key(&t.background), "a layer colour equal to the background");
 }
+
+/// W2-L1-bewerken: the wireframe view draws outlines only; the strokes stay as they are.
+#[test]
+fn the_wireframe_theme_draws_no_fills_but_the_same_strokes() {
+    let viewport = Viewport::new(100.0, 100.0, 1.0).unwrap();
+    let camera = Camera::new(Point::new(0.0, 0.0), 1.0).unwrap();
+    let items = vec![(rect_path(0.0, 0.0, 10.0, 10.0), StyleRole::Design), (rect_path(5.0, 5.0, 10.0, 10.0), StyleRole::Selected)];
+    let sc = scene(camera, viewport, items, Vec::new());
+    let count = |packet: &burnburn_render::RenderPacket, fills: bool| {
+        packet.primitives.iter().filter(|p| matches!(p, Primitive::Fill { .. }) == fills).count()
+    };
+    let filled = build_packet(&sc, &theme());
+    let wire = build_packet(&sc, &theme().wireframe());
+    assert_eq!(count(&filled, true), 2);
+    assert_eq!(count(&wire, true), 0, "no fill in wireframe");
+    assert_eq!(count(&wire, false), count(&filled, false), "every outline is still drawn");
+}
