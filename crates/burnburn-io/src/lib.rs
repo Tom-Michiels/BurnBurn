@@ -8,6 +8,7 @@
 //!
 //! No GUI, GPU or network dependency.
 
+pub mod art_library;
 mod container;
 pub mod dto;
 pub mod engine_dto;

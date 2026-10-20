@@ -267,3 +267,39 @@ proptest! {
         prop_assert_eq!(back.items.len(), 2);
     }
 }
+
+fn art_seed() -> Vec<u8> {
+    use burnburn_io::art_library::{ArtFormat, ArtLibrary, NewArt, encode_art_library};
+    let mut lib = ArtLibrary::new("seed");
+    lib.add_group("G").unwrap();
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10mm" height="10mm"><rect x="1" y="1" width="5" height="5"/></svg>"#;
+    lib.add_item(NewArt {
+        name: "A",
+        group: "G",
+        tags: vec!["t".into()],
+        format: ArtFormat::Svg,
+        bytes: svg,
+        dxf_scale: None,
+    })
+    .unwrap();
+    encode_art_library(&lib).unwrap()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    #[test]
+    fn art_library_random_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
+        let _ = burnburn_io::art_library::decode_art_library(&bytes);
+    }
+
+    #[test]
+    fn art_library_mutated_file_never_panics_and_valid_ones_work(b in mutate(art_seed())) {
+        if let Ok(lib) = burnburn_io::art_library::decode_art_library(&b) {
+            for item in lib.items() {
+                let _ = lib.thumbnail(item.id());
+                let _ = lib.place(item.id());
+            }
+        }
+    }
+}
