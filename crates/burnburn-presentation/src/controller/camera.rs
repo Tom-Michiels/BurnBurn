@@ -70,3 +70,43 @@ impl AppController {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The camera workspace (W3-UI-camera)
+// ---------------------------------------------------------------------------------------------
+
+use burnburn_image::calib::CalibrationStore;
+
+use crate::camera_workspace::{CameraWorkspaceIntent, CameraWorkspaceView};
+
+/// Runs a job off the UI thread. The default spawns a thread; tests inject their own.
+pub type CameraSpawner = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
+
+#[derive(Default)]
+pub(super) struct Workspace {
+    pub(super) store: CalibrationStore,
+}
+
+impl AppController {
+    pub fn camera_workspace_view(&self) -> Option<CameraWorkspaceView> {
+        None
+    }
+
+    pub fn attach_calibrations(&mut self, store: CalibrationStore) {
+        self.camera_ws.store = store;
+    }
+
+    pub fn calibrations(&self) -> &CalibrationStore {
+        &self.camera_ws.store
+    }
+
+    pub fn set_camera_spawner(&mut self, _spawner: CameraSpawner) {}
+
+    pub fn poll_camera_work(&mut self) -> AppUpdate {
+        AppUpdate::default()
+    }
+
+    pub(super) fn camera_workspace(&mut self, _intent: CameraWorkspaceIntent) -> AppUpdate {
+        AppUpdate::default()
+    }
+}

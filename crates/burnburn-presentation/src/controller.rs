@@ -53,6 +53,7 @@ mod text;
 mod trace;
 mod view;
 
+pub use camera::CameraSpawner;
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
 use machine::{Machine, Order, Prepared};
@@ -315,6 +316,8 @@ pub struct AppController {
     /// Bed camera port and the device/mode it was started with (IM27).
     camera: Option<Arc<dyn CameraPort>>,
     camera_active: Option<(CameraDeviceId, CameraMode)>,
+    /// Camera picture on the bed, calibrations and their wizards (W3-UI-camera).
+    camera_ws: camera::Workspace,
     /// Where autosave writes recovery files.
     recovery_dir: Option<PathBuf>,
     /// Tasks without a window: recovery list/remove (task → kind).
@@ -351,6 +354,7 @@ impl AppController {
             fonts: None,
             camera: None,
             camera_active: None,
+            camera_ws: camera::Workspace::default(),
             recovery_dir: None,
             app_tasks: BTreeMap::new(),
             restoring: BTreeMap::new(),
@@ -525,6 +529,7 @@ impl AppController {
             }
             UiIntent::CancelCutSettings { document } => self.with_session(document, layers::cancel_cut_settings),
             UiIntent::BedCamera(intent) => self.bed_camera(intent),
+            UiIntent::CameraWorkspace(intent) => self.camera_workspace(intent),
             UiIntent::Autosave => self.autosave(),
             UiIntent::CheckRecovery => self.check_recovery(),
             UiIntent::RestoreRecovery { path } => self.restore_recovery(path),

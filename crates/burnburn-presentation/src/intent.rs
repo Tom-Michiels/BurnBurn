@@ -335,6 +335,8 @@ pub enum UiIntent {
     },
     /// Bed camera panel (IM27).
     BedCamera(BedCameraIntent),
+    /// Camera picture on the bed, lens and alignment wizards, stored calibrations (W3-UI-camera).
+    CameraWorkspace(crate::camera_workspace::CameraWorkspaceIntent),
     /// Host timer (and crash guard): write recovery files for documents changed since the
     /// last autosave. Never writes the project file, never marks a document saved.
     Autosave,
