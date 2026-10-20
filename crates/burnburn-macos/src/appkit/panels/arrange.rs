@@ -13,7 +13,7 @@ use crate::panels::{ARRANGE_TOOLBAR, arrange_toolbar_enabled};
 
 /// SF Symbols for the segments (same order as `ARRANGE_TOOLBAR`). A segment whose symbol the
 /// system does not know shows the command's name instead, so it is never blank.
-const SYMBOLS: [&str; 8] = [
+const SYMBOLS: [&str; 14] = [
     "align.horizontal.left",
     "align.horizontal.center",
     "align.horizontal.right",
@@ -22,6 +22,12 @@ const SYMBOLS: [&str; 8] = [
     "align.vertical.bottom",
     "distribute.horizontal.center",
     "distribute.vertical.center",
+    "arrow.left.to.line",
+    "arrow.right.to.line",
+    "arrow.up.to.line",
+    "arrow.down.to.line",
+    "arrow.right.and.line.vertical.and.arrow.left",
+    "arrow.up.and.line.horizontal.and.arrow.down",
 ];
 
 pub(crate) fn arrange_toolbar(mtm: MainThreadMarker, locale: Locale) -> Retained<NSSegmentedControl> {

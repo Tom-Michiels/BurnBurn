@@ -7,7 +7,7 @@ use burnburn_cam::nest::{
 };
 use burnburn_document::{DocumentSnapshot, GeometrySource};
 use burnburn_editor::expand_to_groups;
-use burnburn_geometry::{Affine, Path, Point, ProductionTolerance, Rect};
+use burnburn_geometry::{Affine, Bounds, Path, Point, ProductionTolerance, Rect};
 use burnburn_types::{CancellationToken, GeometryId, GroupId, Length};
 
 use crate::schikken::{
@@ -146,21 +146,42 @@ pub fn classify(snapshot: &DocumentSnapshot, scope: NestScope, selection: &[Geom
     Classified { movable, skipped }
 }
 
-/// The sheet a nest of `movable` would go on: the bed, or the bounds of the parts.
-pub fn sheet_of(
+impl NestSettings {
+    /// How far the sheet without a bed reaches beyond the parts' bounds: the margin the nest keeps
+    /// clear, the padding and one raster step, so that what is there now fits again.
+    fn allowance_mm(&self) -> f64 {
+        self.edge_buffer_mm + self.padding_mm + self.step_mm
+    }
+}
+
+/// The bounds of the sheet a nest of `movable` would go on: the bed, or the area of the parts
+/// grown by [`NestSettings::allowance_mm`].
+fn sheet_bounds(
     snapshot: &DocumentSnapshot,
     movable: &[Vec<GeometryId>],
+    settings: &NestSettings,
     bed: Option<(f64, f64)>,
-) -> Option<NestSheetView> {
+) -> Option<(Bounds, bool)> {
     match bed {
-        Some((width_mm, height_mm)) => Some(NestSheetView { width_mm, height_mm, is_bed: true }),
+        Some((w, h)) => Some((Bounds::from_corners(Point::ORIGIN, Point::new(w, h)), true)),
         None => movable
             .iter()
             .flatten()
             .filter_map(|id| snapshot.object(*id)?.bounds())
             .reduce(|a, b| a.union(b))
-            .map(|b| NestSheetView { width_mm: b.width(), height_mm: b.height(), is_bed: false }),
+            .map(|b| (b.expanded(settings.allowance_mm()), false)),
     }
+}
+
+/// The sheet a nest of `movable` would go on, for the panel.
+pub fn sheet_of(
+    snapshot: &DocumentSnapshot,
+    movable: &[Vec<GeometryId>],
+    settings: &NestSettings,
+    bed: Option<(f64, f64)>,
+) -> Option<NestSheetView> {
+    let (b, is_bed) = sheet_bounds(snapshot, movable, settings, bed)?;
+    Some(NestSheetView { width_mm: b.width(), height_mm: b.height(), is_bed })
 }
 
 /// Makes the job for `scope` over `selection`. `bed` is the machine's bed (width, height in mm)
@@ -206,24 +227,10 @@ pub fn build_job(
         .map(|o| o.path().as_ref().clone())
         .collect();
     let length = |mm: f64| Length::from_mm(mm).map_err(|_| BuildError::Geometry);
-    let outline = match sheet_of(snapshot, &movable, bed) {
-        Some(sheet) if sheet.is_bed => Path::rectangle(
-            Rect::new(Point::ORIGIN, length(sheet.width_mm)?, length(sheet.height_mm)?)
-                .map_err(|_| BuildError::Geometry)?,
-        ),
-        Some(_) => {
-            let bounds = parts
-                .iter()
-                .filter_map(|p| p.outline.bounds())
-                .reduce(|a, b| a.union(b))
-                .ok_or(BuildError::Geometry)?;
-            Path::rectangle(
-                Rect::new(bounds.min(), length(bounds.width())?, length(bounds.height())?)
-                    .map_err(|_| BuildError::Geometry)?,
-            )
-        }
-        None => return Err(BuildError::Geometry),
-    };
+    let (sheet, _) = sheet_bounds(snapshot, &movable, settings, bed).ok_or(BuildError::Geometry)?;
+    let outline = Path::rectangle(
+        Rect::new(sheet.min(), length(sheet.width())?, length(sheet.height())?).map_err(|_| BuildError::Geometry)?,
+    );
     let params = NestParams {
         spacing: length(settings.padding_mm)?,
         edge_margin: length(settings.edge_buffer_mm)?,

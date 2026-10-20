@@ -274,7 +274,8 @@ fn without_a_machine_the_sheet_is_the_bounds_of_the_parts_and_says_so() {
     let p = nest(&mut h, doc, CommandKey::QuickNest);
     let sheet = p.sheet.expect("sheet");
     assert!(!sheet.is_bed);
-    assert!((sheet.width_mm - 120.0).abs() < 1e-9 && (sheet.height_mm - 20.0).abs() < 1e-9);
+    // The area of the parts, grown by edge buffer + padding + one step (1 + 1 + 1 mm per side).
+    assert!((sheet.width_mm - 126.0).abs() < 1e-9 && (sheet.height_mm - 26.0).abs() < 1e-9, "{sheet:?}");
     assert!(p.report.is_some());
     let _ = ids;
 }

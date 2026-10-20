@@ -6,7 +6,7 @@ use burnburn_macos::panels::{ARRANGE_TOOLBAR, arrange_toolbar_command, arrange_t
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness};
 
 #[test]
-fn the_control_has_the_six_align_and_two_distribute_commands_in_menu_order() {
+fn the_control_has_the_align_distribute_dock_and_move_together_commands_in_menu_order() {
     assert_eq!(
         ARRANGE_TOOLBAR,
         [
@@ -18,21 +18,28 @@ fn the_control_has_the_six_align_and_two_distribute_commands_in_menu_order() {
             CommandKey::AlignBottom,
             CommandKey::DistributeHorizontal,
             CommandKey::DistributeVertical,
+            CommandKey::DockLeft,
+            CommandKey::DockRight,
+            CommandKey::DockUp,
+            CommandKey::DockDown,
+            CommandKey::MoveTogetherHorizontal,
+            CommandKey::MoveTogetherVertical,
         ]
     );
     for (i, key) in ARRANGE_TOOLBAR.iter().enumerate() {
         assert_eq!(arrange_toolbar_command(i as isize), Some(*key));
     }
-    assert_eq!(arrange_toolbar_command(8), None);
+    assert_eq!(arrange_toolbar_command(14), None);
     assert_eq!(arrange_toolbar_command(-1), None, "AppKit reports -1 when no segment is selected");
 }
 
-/// Enablement comes from the same command table as the menu: align needs two objects, distribute three.
+/// Enablement comes from the same command table as the menu: align, dock and move together need two
+/// objects, distribute three.
 #[test]
 fn segments_are_enabled_exactly_as_the_view_model_enables_the_commands() {
     let mut h = HeadlessEditorHarness::new();
     let doc = h.new_document().unwrap();
-    assert_eq!(arrange_toolbar_enabled(&h.view()), vec![false; 8], "no document");
+    assert_eq!(arrange_toolbar_enabled(&h.view()), vec![false; 14], "no document");
     h.invoke(doc, CommandKey::ToolRectangle);
     for i in 0..3 {
         let x = f64::from(i) * 60.0;

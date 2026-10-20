@@ -164,6 +164,11 @@ path = "../../tests/native/macos/shape_tools.rs"
 harness = false
 
 [[test]]
+name = "schikken_panel_native"
+path = "../../tests/native/macos/schikken_panel.rs"
+harness = false
+
+[[test]]
 name = "image_sheets"
 path = "../../tests/native/macos/image_sheets.rs"
 harness = false

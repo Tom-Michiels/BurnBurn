@@ -309,7 +309,7 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         error: panel.error,
         run,
         parts: classified.movable.len(),
-        sheet: sheet_of(&snapshot, &classified.movable, bed),
+        sheet: sheet_of(&snapshot, &classified.movable, &panel.settings, bed),
         report,
         can_apply: run == NestRun::Done && s.nest.done.as_ref().is_some_and(|d| !d.output.placements.is_empty()),
     })

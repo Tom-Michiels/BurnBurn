@@ -10,6 +10,9 @@ pub(crate) mod inspector;
 pub(crate) mod laser;
 pub(crate) mod operations;
 pub(crate) mod production;
+// `define_class!` and `msg_send!` need unsafe (the Schikken panel has its own small target object).
+#[allow(unsafe_code)]
+pub(crate) mod schikken;
 // `define_class!` and `msg_send!` need unsafe (the shape panel has its own small target object).
 #[allow(unsafe_code)]
 pub(crate) mod shapes;
