@@ -220,3 +220,50 @@ proptest! {
         }
     }
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// Whatever the option combination, what we write we can read back: item count and (for SVG
+    /// with exact decimals) closedness survive.
+    #[test]
+    fn export_options_always_produce_files_our_importers_read(
+        unit in 0u8..3, decimals in proptest::option::of(0u8..8), group in any::<bool>(), colours in any::<bool>(),
+        dxf_unit in 0u8..2, layers in 0u8..3, flatten in proptest::option::of(0.001f64..1.0),
+    ) {
+        use burnburn_geometry::{PathBuilder, Point};
+        use burnburn_io::export::{DxfCurves, DxfLayers, DxfOptions, DxfUnit, ExportItem, SvgOptions, SvgUnit, export_dxf_with, export_svg_with};
+        let blob = PathBuilder::new()
+            .move_to(Point::new(0.0, 0.0))
+            .cubic_to(Point::new(0.0, 30.0), Point::new(40.0, 30.0), Point::new(40.0, 0.0))
+            .close()
+            .build()
+            .unwrap();
+        let line = burnburn_geometry::Path::line(Point::new(5.0, -5.0), Point::new(35.0, -5.0)).unwrap();
+        let items = [
+            ExportItem::new("blob", &blob).with_layer("A").with_color([200, 10, 10]),
+            ExportItem::new("line", &line).with_layer("B"),
+        ];
+        let svg = SvgOptions {
+            unit: [SvgUnit::Mm, SvgUnit::Inch, SvgUnit::Pixel][usize::from(unit)],
+            decimals,
+            group_layers: group,
+            use_item_colors: colours,
+            ..SvgOptions::default()
+        };
+        let (text, _) = export_svg_with(&items, &svg).unwrap();
+        let back = burnburn_io::import::parse_svg(text.as_bytes()).unwrap();
+        prop_assert_eq!(back.items.len(), 2);
+        prop_assert!(back.items[0].path.subpaths()[0].is_closed());
+        let dxf = DxfOptions {
+            unit: [DxfUnit::Mm, DxfUnit::Inch][usize::from(dxf_unit)],
+            layers: [DxfLayers::ItemName, DxfLayers::ItemLayerOrName, DxfLayers::Single][usize::from(layers)],
+            curves: flatten.map_or(DxfCurves::Splines, |t| DxfCurves::Polylines { tolerance_mm: t }),
+            use_item_colors: colours,
+            ..DxfOptions::default()
+        };
+        let (text, _) = export_dxf_with(&items, &dxf).unwrap();
+        let back = burnburn_io::import::parse_dxf(text.as_bytes()).unwrap().to_draft(None).unwrap();
+        prop_assert_eq!(back.items.len(), 2);
+    }
+}

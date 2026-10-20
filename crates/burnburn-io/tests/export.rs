@@ -28,7 +28,7 @@ fn shapes() -> Vec<(&'static str, Path)> {
 }
 
 fn items<'a>(s: &'a [(&'static str, Path)]) -> Vec<ExportItem<'a>> {
-    s.iter().map(|(n, p)| ExportItem { name: n, path: p }).collect()
+    s.iter().map(|(n, p)| ExportItem::new(n, p)).collect()
 }
 
 /// Same closedness per subpath, bounds and area within `eps` (mm, mm²).
@@ -97,5 +97,5 @@ fn dxf_export_roundtrips_and_names_the_ellipse_approximation() {
 fn empty_export_is_an_error() {
     assert_eq!(export_svg(&[]).unwrap_err(), ExportError::Empty);
     let empty = Path::default();
-    assert_eq!(export_dxf(&[ExportItem { name: "x", path: &empty }]).unwrap_err(), ExportError::Empty);
+    assert_eq!(export_dxf(&[ExportItem::new("x", &empty)]).unwrap_err(), ExportError::Empty);
 }
