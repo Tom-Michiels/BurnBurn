@@ -169,6 +169,8 @@ static SPECS: &[ToolSpec] = &[
     spec("sketch.circle.three_point", Make, None, Some("sketch.circle"), Tool(ToolKind::CircleThreePoint)),
     spec("sketch.circle.two_tangent", Make, None, Some("sketch.circle"), Tool(ToolKind::CircleTwoTangent)),
     spec("sketch.circle.three_tangent", Make, None, Some("sketch.circle"), Tool(ToolKind::CircleThreeTangent)),
+    // Every circle tangent to up to three lines, circles and points (W3-UI-schikken).
+    spec("shape.tangent_circle", Make, None, Some("sketch.circle"), Tool(ToolKind::TangentCircle)),
     spec("sketch.arc.three_point", Make, Some("A"), Some("sketch.arc"), Tool(ToolKind::ArcThreePoint)),
     spec("sketch.arc.center_point", Make, None, Some("sketch.arc"), Tool(ToolKind::ArcCenterPoint)),
     spec("sketch.arc.tangent", Make, None, Some("sketch.arc"), Tool(ToolKind::ArcTangent)),

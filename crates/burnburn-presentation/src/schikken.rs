@@ -501,6 +501,32 @@ pub enum CenterFinderIntent {
     },
 }
 
+/// Why Tangent Circle has no solution to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TangentProblem {
+    /// Two targets are the same point, line or circle.
+    Coincident,
+    /// Infinitely many circles qualify (for example the diameter equals the width of a strip).
+    Degenerate,
+    /// No circle is tangent to all targets.
+    NoSolution,
+    Other,
+}
+
+/// The Tangent Circle tool while it has picked targets.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TangentViewModel {
+    /// Targets picked so far, of at most three.
+    pub picked: usize,
+    /// Solutions drawn.
+    pub candidates: usize,
+    /// A click would create the solution nearest to the pointer.
+    pub chosen: bool,
+    /// The typed diameter of a two-target circle, as a radius.
+    pub radius_mm: Option<f64>,
+    pub problem: Option<TangentProblem>,
+}
+
 /// Messages of this module's flows (localised by the host).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -566,6 +592,8 @@ pub struct SchikkenViewModel {
     pub print_and_cut: Option<PrintAndCutViewModel>,
     /// The Center Finder panel while it is open.
     pub center_finder: Option<CenterFinderViewModel>,
+    /// The Tangent Circle tool while it has picked targets.
+    pub tangent: Option<TangentViewModel>,
 }
 
 /// A user action of this module (everything but the command keys, which carry no payload).

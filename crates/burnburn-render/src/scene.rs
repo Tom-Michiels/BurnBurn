@@ -313,6 +313,25 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::Node { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt * 0.8, theme.selection, theme.selection, &proj);
             }
+            // Warp/Deform handles: hollow squares, the dragged one larger; an unusable set (a folded
+            // quadrilateral or net) is drawn in the problem colour, filled.
+            Overlay::ReshapeHandle { at, active, invalid, .. } => {
+                let size = theme.handle_size_pt * if *active { 1.4 } else { 1.0 };
+                let (fill, line) =
+                    if *invalid { (theme.issue, theme.issue) } else { (theme.background, theme.selection) };
+                marker(&mut out, *at, size, fill, line, &proj);
+            }
+            Overlay::TangentCandidate { path, chosen } => {
+                let style = if *chosen {
+                    RoleStyle { fill: None, stroke: Some(theme.selection), stroke_width_pt: 2.0 }
+                } else {
+                    RoleStyle { fill: None, stroke: Some(theme.preview), stroke_width_pt: 1.0 }
+                };
+                draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
+            }
+            Overlay::TangentContact { at } => {
+                marker(&mut out, *at, theme.handle_size_pt * 0.6, theme.snap, theme.snap, &proj);
+            }
             Overlay::SnapCandidate { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt * 0.6, theme.snap, theme.snap, &proj);
             }

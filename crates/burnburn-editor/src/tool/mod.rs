@@ -33,6 +33,7 @@ mod sketch_pick;
 mod slot;
 mod spline;
 mod start_point;
+mod tangent;
 mod text;
 mod trim;
 
@@ -66,6 +67,7 @@ pub use reshape::{PREVIEW_SEGMENT_LIMIT, ReshapeMode, ReshapePreview, ReshapeToo
 pub use round_corner::RoundCornerTool;
 pub use select::{Handle, SelectTool, selection_handles};
 pub use start_point::StartPointTool;
+pub use tangent::{TangentCirclesTool, TangentPreview};
 
 /// Hit-test tolerance for clicks, in logical screen points (independent of zoom).
 pub const CLICK_TOLERANCE_PT: f64 = 4.0;
@@ -268,6 +270,8 @@ pub enum ToolPreview {
     },
     /// Warp or Deform: the handles, their frame and the reshaped outlines.
     Reshape(ReshapePreview),
+    /// Tangent Circle: the picked targets and every solution.
+    Tangent(TangentPreview),
 }
 
 /// A tool setting that is not part of the gesture.
@@ -357,6 +361,8 @@ pub enum ToolKind {
     StartPoint,
     /// Click a corner to round it with the editor's corner radius (W1-L2a).
     RoundCorner,
+    /// Tangent Circle with every solution shown (W3-UI-schikken).
+    TangentCircle,
     /// Warp Selection: four corner handles (W3-UI-schikken).
     Warp,
     /// Deform Selection: a 4 × 4 control net (W3-UI-schikken).
@@ -429,6 +435,7 @@ enum Active {
     StartPoint(StartPointTool),
     RoundCorner(RoundCornerTool),
     Reshape(ReshapeTool),
+    Tangent(TangentCirclesTool),
     Draw(DrawTool),
     TangentCircle(TangentCircleTool),
     TangentArc(TangentArcTool),
@@ -455,6 +462,7 @@ impl Active {
             | ToolKind::RoundedRectangle => Active::Shape(BasicShapeTool::for_kind(kind, defaults)),
             ToolKind::StartPoint => Active::StartPoint(StartPointTool),
             ToolKind::RoundCorner => Active::RoundCorner(RoundCornerTool::new(round_radius_mm)),
+            ToolKind::TangentCircle => Active::Tangent(TangentCirclesTool::new()),
             ToolKind::Warp => Active::Reshape(ReshapeTool::new(ReshapeMode::Warp)),
             ToolKind::Deform => Active::Reshape(ReshapeTool::new(ReshapeMode::Deform)),
             ToolKind::CircleTwoTangent => Active::TangentCircle(TangentCircleTool::new(2)),
@@ -493,6 +501,7 @@ impl Active {
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
             Active::Reshape(t) => t,
+            Active::Tangent(t) => t,
             Active::Draw(t) => t,
             Active::TangentCircle(t) => t,
             Active::TangentArc(t) => t,
@@ -514,6 +523,7 @@ impl Active {
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
             Active::Reshape(t) => t,
+            Active::Tangent(t) => t,
             Active::Draw(t) => t,
             Active::TangentCircle(t) => t,
             Active::TangentArc(t) => t,

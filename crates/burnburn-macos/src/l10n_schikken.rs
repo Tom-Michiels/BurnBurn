@@ -219,6 +219,25 @@ fn registration_pair(f: RegistrationFailure) -> (&'static str, &'static str) {
     }
 }
 
+/// Why Tangent Circle has no solution to show.
+pub fn tangent_problem_text(p: TangentProblem, locale: Locale) -> String {
+    pick(
+        match p {
+            TangentProblem::Coincident => (
+                "Twee doelen zijn hetzelfde punt, dezelfde lijn of dezelfde cirkel.",
+                "Two targets are the same point, line or circle.",
+            ),
+            TangentProblem::Degenerate => (
+                "Oneindig veel cirkels passen; kies een andere diameter.",
+                "Infinitely many circles fit; choose another diameter.",
+            ),
+            TangentProblem::NoSolution => ("Geen cirkel raakt al deze doelen.", "No circle touches all these targets."),
+            TangentProblem::Other => ("Deze raakcirkel kan niet.", "This tangent circle is not possible."),
+        },
+        locale,
+    )
+}
+
 /// What is wrong with the Center Finder's points.
 pub fn center_problem_text(p: CenterProblem, locale: Locale) -> String {
     pick(

@@ -61,6 +61,15 @@ pub enum Overlay {
         active: bool,
         invalid: bool,
     },
+    /// One solution of Tangent Circle; the `chosen` one is what a click would create.
+    TangentCandidate {
+        path: Arc<Path>,
+        chosen: bool,
+    },
+    /// Where a tangent circle touches one of its targets (Tangent Circle, all solutions shown).
+    TangentContact {
+        at: Point,
+    },
     /// A path node or Bézier handle in node-edit mode; `selected` nodes are the ones the node
     /// buttons act on (never set for a handle).
     Node {
@@ -251,6 +260,16 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
                 active: p.active == Some(index),
                 invalid: p.error.is_some(),
             }));
+        }
+        Some(ToolPreview::Tangent(p)) => {
+            overlays.push(Overlay::DragPreview { path: Arc::clone(&p.picks), transform: Affine::IDENTITY });
+            overlays.extend(
+                p.candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(i, path)| Overlay::TangentCandidate { path: Arc::clone(path), chosen: p.chosen == Some(i) }),
+            );
+            overlays.extend(p.contacts.iter().map(|at| Overlay::TangentContact { at: *at }));
         }
         None => {}
     }

@@ -135,3 +135,25 @@ pub(super) fn view(s: &Session) -> Option<ReshapeViewModel> {
         _ => None,
     }
 }
+
+/// The Tangent Circle tool's picks and solutions.
+pub(super) fn tangent_view(s: &Session) -> Option<crate::schikken::TangentViewModel> {
+    use burnburn_geometry::TangentError;
+
+    use crate::schikken::{TangentProblem, TangentViewModel};
+    match s.editor.preview() {
+        Some(ToolPreview::Tangent(p)) => Some(TangentViewModel {
+            picked: p.picked,
+            candidates: p.candidates.len(),
+            chosen: p.chosen.is_some(),
+            radius_mm: p.radius_mm,
+            problem: p.error.map(|e| match e {
+                TangentError::Coincident => TangentProblem::Coincident,
+                TangentError::Degenerate => TangentProblem::Degenerate,
+                TangentError::NoSolution => TangentProblem::NoSolution,
+                _ => TangentProblem::Other,
+            }),
+        }),
+        _ => None,
+    }
+}

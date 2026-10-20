@@ -19,7 +19,9 @@ use burnburn_presentation::{
 
 #[path = "l10n_schikken.rs"]
 mod l10n_schikken;
-pub use l10n_schikken::{center_problem_text, nest_skip_text, nest_unplaced_text, reshape_problem_text};
+pub use l10n_schikken::{
+    center_problem_text, nest_skip_text, nest_unplaced_text, reshape_problem_text, tangent_problem_text,
+};
 
 /// UI language. Physical values never depend on it (fields accept both decimal signs, DR-05).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

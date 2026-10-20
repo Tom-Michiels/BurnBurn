@@ -203,6 +203,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             reshape: super::reshape::view(s),
             slots: super::arrange::slots_view(s),
             nest: super::nest::view(s, machine),
+            tangent: super::reshape::tangent_view(s),
             print_and_cut: super::registration::print_and_cut_view(s),
             center_finder: super::registration::center_finder_view(s, machine),
         },
