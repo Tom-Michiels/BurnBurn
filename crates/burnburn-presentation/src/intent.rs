@@ -822,6 +822,19 @@ pub enum CommandKey {
     /// Archief ▸ Nieuw van template…: the host asks for a template, then sends
     /// `FilesIntent::NewFromTemplate`.
     NewFromTemplate,
+    /// Archief ▸ Exporteren ▸ SVG: opens the export dialog.
+    ExportSvg,
+    /// Archief ▸ Exporteren ▸ DXF: opens the export dialog.
+    ExportDxf,
+    /// Archief ▸ Bundels ▸ Exporteren: opens the bundle dialog.
+    ExportBundle,
+    /// Archief ▸ Bundels ▸ Importeren: the host asks for a bundle file, then sends
+    /// `FilesIntent::OpenBundleImport`.
+    ImportBundle,
+    /// Venster ▸ Materiaalbibliotheek: shows or hides the panel.
+    ShowMaterialLibrary,
+    /// Venster ▸ Kunstbibliotheek: shows or hides the panel.
+    ShowArtLibrary,
 }
 
 impl CommandKey {
@@ -941,6 +954,12 @@ impl CommandKey {
         CommandKey::ViewWireframe,
         CommandKey::SaveAsTemplate,
         CommandKey::NewFromTemplate,
+        CommandKey::ExportSvg,
+        CommandKey::ExportDxf,
+        CommandKey::ExportBundle,
+        CommandKey::ImportBundle,
+        CommandKey::ShowMaterialLibrary,
+        CommandKey::ShowArtLibrary,
     ];
 }
 

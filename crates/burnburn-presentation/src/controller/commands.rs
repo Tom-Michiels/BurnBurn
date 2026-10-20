@@ -105,6 +105,32 @@ impl AppController {
         match command {
             CommandKey::Save | CommandKey::SaveAs => self.save(document, None),
             CommandKey::SaveAsTemplate => self.ask_template_file(document),
+            CommandKey::ExportSvg => {
+                self.files(crate::files::FilesIntent::OpenExport { document, format: crate::files::ExportFormat::Svg })
+            }
+            CommandKey::ExportDxf => {
+                self.files(crate::files::FilesIntent::OpenExport { document, format: crate::files::ExportFormat::Dxf })
+            }
+            CommandKey::ExportBundle => self.files(crate::files::FilesIntent::OpenBundleExport { document }),
+            CommandKey::ImportBundle => {
+                AppUpdate { effects: vec![HostEffect::ShowBundleOpenPanel { document }], ..AppUpdate::default() }
+            }
+            CommandKey::ShowMaterialLibrary => {
+                let open = self.sessions.get(&document).is_some_and(|s| s.files.material.is_some());
+                self.files(if open {
+                    crate::files::FilesIntent::CloseMaterialLibrary { document }
+                } else {
+                    crate::files::FilesIntent::OpenMaterialLibrary { document }
+                })
+            }
+            CommandKey::ShowArtLibrary => {
+                let open = self.sessions.get(&document).is_some_and(|s| s.files.art.is_some());
+                self.files(if open {
+                    crate::files::FilesIntent::CloseArtLibrary { document }
+                } else {
+                    crate::files::FilesIntent::OpenArtLibrary { document }
+                })
+            }
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
             CommandKey::Compile => self.submit_compile(document),

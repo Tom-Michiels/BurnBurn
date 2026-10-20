@@ -5,10 +5,15 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use burnburn_geometry::Path;
 use burnburn_io::art_library::{
     ArtError, ArtFormat, ArtLibrary, ArtPlacement, NewArt, load_art_library, save_art_library,
 };
 use burnburn_io::bundle::{Bundle, BundleContents, BundleTemplate, decode_bundle, encode_bundle};
+use burnburn_io::export::{
+    DxfOptions, ExportError, ExportItem, ExportLoss, LostSemantics, SvgOptions, export_dxf_with, export_svg_with,
+    preflight_dxf, preflight_svg,
+};
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
@@ -44,8 +49,74 @@ pub enum FilesTask {
     ReadBundle { path: PathBuf, templates_dir: Option<PathBuf>, fs: Arc<dyn FileSystem> },
     /// Read the chosen templates, pack everything and write the bundle atomically.
     WriteBundle(Box<WriteBundle>),
+    /// What an export would lose, computed without writing anything.
+    ExportPreflight(Box<ExportJob>),
+    /// Write the export atomically (refused while constraints or modifiers would be lost and the
+    /// job does not acknowledge it).
+    ExportWrite { job: Box<ExportJob>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write templates (from an imported bundle) into a folder; an existing file of that name is replaced.
     WriteTemplates { dir: PathBuf, templates: Vec<BundleTemplate>, fs: Arc<dyn FileSystem> },
+}
+
+/// Why an export wrote nothing, without the loss list (that is in the preflight).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportRefusal {
+    Empty,
+    LossesNotAcknowledged,
+    InvalidOption,
+}
+
+impl ExportRefusal {
+    fn of(error: &ExportError) -> Self {
+        match error {
+            ExportError::Empty => ExportRefusal::Empty,
+            ExportError::LossesNotAcknowledged(_) => ExportRefusal::LossesNotAcknowledged,
+            _ => ExportRefusal::InvalidOption,
+        }
+    }
+}
+
+/// One object of an export, owned so it can travel to a worker.
+#[derive(Debug, Clone)]
+pub struct OwnedExportItem {
+    pub name: String,
+    pub layer: Option<String>,
+    pub color: Option<[u8; 3]>,
+    pub lost: LostSemantics,
+    pub path: Arc<Path>,
+    /// Was selected when the dialog opened.
+    pub selected: bool,
+}
+
+/// An export to check or write: the objects, which of them, and the options of both formats.
+#[derive(Debug, Clone)]
+pub struct ExportJob {
+    pub dxf: bool,
+    pub items: Arc<Vec<OwnedExportItem>>,
+    pub selection_only: bool,
+    pub svg_options: SvgOptions,
+    pub dxf_options: DxfOptions,
+}
+
+impl ExportJob {
+    fn run<T>(&self, f: impl FnOnce(&[ExportItem<'_>]) -> Result<T, ExportError>) -> Result<T, ExportError> {
+        let items: Vec<ExportItem<'_>> = self
+            .items
+            .iter()
+            .filter(|i| !self.selection_only || i.selected)
+            .map(|i| {
+                let mut item = ExportItem::new(&i.name, &i.path).with_lost(i.lost);
+                if let Some(layer) = &i.layer {
+                    item = item.with_layer(layer);
+                }
+                if let Some(color) = i.color {
+                    item = item.with_color(color);
+                }
+                item
+            })
+            .collect();
+        f(&items)
+    }
 }
 
 /// What goes into a bundle.
@@ -109,6 +180,10 @@ impl fmt::Debug for FilesTask {
             FilesTask::ArtThumbnails { items, .. } => write!(f, "ArtThumbnails({} items)", items.len()),
             FilesTask::ReadBundle { path, .. } => write!(f, "ReadBundle({})", path.display()),
             FilesTask::WriteBundle(w) => write!(f, "WriteBundle({})", w.path.display()),
+            FilesTask::ExportPreflight(job) => write!(f, "ExportPreflight(dxf: {})", job.dxf),
+            FilesTask::ExportWrite { job, path, .. } => {
+                write!(f, "ExportWrite(dxf: {} to {})", job.dxf, path.display())
+            }
             FilesTask::WriteTemplates { dir, templates, .. } => {
                 write!(f, "WriteTemplates({} to {})", templates.len(), dir.display())
             }
@@ -154,6 +229,13 @@ pub enum FilesOutput {
     TemplatesWritten {
         count: usize,
     },
+    ExportChecked {
+        result: Result<Vec<ExportLoss>, ExportError>,
+    },
+    ExportWritten {
+        path: PathBuf,
+        losses: Vec<ExportLoss>,
+    },
 }
 
 /// What reading one library file gave.
@@ -182,6 +264,10 @@ pub enum FilesError {
     BundleUnreadable(String),
     /// The bundle (or a template in a bundle) could not be written.
     BundleWrite(String),
+    /// The export refused to write (nothing to export, or losses not acknowledged).
+    Export(ExportRefusal),
+    /// The export file could not be written.
+    ExportWrite(String),
 }
 
 impl fmt::Display for FilesError {
@@ -194,6 +280,8 @@ impl fmt::Display for FilesError {
             FilesError::ArtFormat => f.write_str("not a drawing file"),
             FilesError::BundleUnreadable(e) => write!(f, "bundle: {e}"),
             FilesError::BundleWrite(e) => write!(f, "bundle: {e}"),
+            FilesError::Export(e) => write!(f, "export: {e:?}"),
+            FilesError::ExportWrite(e) => write!(f, "export: {e}"),
         }
     }
 }
@@ -315,6 +403,27 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             crate::task::write_atomically(write.fs.as_ref(), &write.path, &bytes)
                 .map_err(|e| failed(&format!("{e:?}")))?;
             Ok(FilesOutput::BundleWritten { path: write.path })
+        }
+        FilesTask::ExportPreflight(job) => {
+            let result = if job.dxf {
+                job.run(|items| preflight_dxf(items, &job.dxf_options))
+            } else {
+                job.run(|items| preflight_svg(items, &job.svg_options))
+            };
+            cancelled(cancel)?;
+            Ok(FilesOutput::ExportChecked { result })
+        }
+        FilesTask::ExportWrite { job, path, fs } => {
+            let built = if job.dxf {
+                job.run(|items| export_dxf_with(items, &job.dxf_options))
+            } else {
+                job.run(|items| export_svg_with(items, &job.svg_options))
+            };
+            let (text, report) = built.map_err(|e| TaskError::Files(FilesError::Export(ExportRefusal::of(&e))))?;
+            cancelled(cancel)?;
+            crate::task::write_atomically(fs.as_ref(), &path, text.as_bytes())
+                .map_err(|e| TaskError::Files(FilesError::ExportWrite(format!("{e:?}"))))?;
+            Ok(FilesOutput::ExportWritten { path, losses: report.losses })
         }
         FilesTask::WriteTemplates { dir, templates, fs } => {
             let failed = |e: &dyn fmt::Display| TaskError::Files(FilesError::BundleWrite(e.to_string()));

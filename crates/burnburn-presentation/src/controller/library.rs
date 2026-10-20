@@ -7,6 +7,7 @@
 
 mod art;
 mod bundle;
+mod export;
 mod material;
 
 use std::collections::BTreeMap;
@@ -48,6 +49,13 @@ pub(super) enum FilesJob {
         at: Option<Point>,
     },
     Thumbnails,
+    ExportCheck {
+        document: DocumentId,
+        generation: u64,
+    },
+    ExportWrite {
+        document: DocumentId,
+    },
     ReadBundle {
         document: DocumentId,
         serial: u64,
@@ -68,6 +76,7 @@ pub(super) struct FilesUi {
     pub(in crate::controller) material: Option<material::MaterialUi>,
     pub(in crate::controller) art: Option<art::ArtUi>,
     pub(in crate::controller) bundle: Option<bundle::BundleUi>,
+    pub(in crate::controller) export: Option<export::ExportUi>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -106,6 +115,8 @@ pub(super) struct Libraries {
     art_busy: usize,
     /// Machine profiles a bundle brought in (the active machine is kept by the controller).
     profiles: Vec<Arc<burnburn_job::MachineProfile>>,
+    /// Colours of the layer palette, slot by slot (the host owns the palette).
+    palette: Vec<[u8; 3]>,
 }
 
 impl Libraries {
@@ -145,6 +156,11 @@ impl AppController {
             | FilesIntent::MoveArtItem { .. }
             | FilesIntent::RemoveArtItem { .. }
             | FilesIntent::PlaceArt { .. }) => self.art_intent(intent),
+            intent @ (FilesIntent::OpenExport { .. }
+            | FilesIntent::SetExportOptions { .. }
+            | FilesIntent::SetExportAcknowledged { .. }
+            | FilesIntent::ExportDrawing { .. }
+            | FilesIntent::CloseExport { .. }) => self.export_intent(intent),
             intent @ (FilesIntent::OpenBundleExport { .. }
             | FilesIntent::ToggleBundleItem { .. }
             | FilesIntent::SetBundleKind { .. }
@@ -169,6 +185,8 @@ impl AppController {
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
+            FilesJob::ExportCheck { document, generation } => self.export_checked(document, generation, outcome),
+            FilesJob::ExportWrite { document } => self.export_written(document, outcome),
             FilesJob::ReadBundle { document, serial } => self.bundle_read(document, serial, outcome),
             FilesJob::WriteBundle { document, serial } => self.bundle_written(document, serial, outcome),
             FilesJob::WriteTemplates { document, serial } => self.bundle_templates_written(document, serial, outcome),
@@ -353,5 +371,6 @@ pub(super) fn files_view(
         material: material::panel_view(s, machine, libs),
         art: art::panel_view(s, libs),
         bundle: bundle::panel_view(s, machine, libs, recent_templates),
+        export: export::panel_view(s),
     }
 }

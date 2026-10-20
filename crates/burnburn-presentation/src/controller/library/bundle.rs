@@ -495,7 +495,7 @@ pub(super) fn panel_view(
                     materials: Some(materials),
                     art: Some(art),
                     profiles: &profiles,
-                    templates: &i.data.as_ref().map_or(&[][..], |d| &d.local_templates[..]),
+                    templates: data.local_templates.as_slice(),
                 };
                 let preview: ImportPreview = preview_import(&data.bundle, &local);
                 view.materials = preview

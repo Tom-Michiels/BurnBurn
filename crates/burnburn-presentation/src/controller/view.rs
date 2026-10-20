@@ -217,6 +217,8 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::Delete, Some(s)) => (!s.selection.is_empty(), false),
         (CommandKey::SelectAll, Some(s)) => (!s.doc.snapshot().is_empty(), false),
         (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
+        (CommandKey::ShowMaterialLibrary, Some(s)) => (true, s.files.material.is_some()),
+        (CommandKey::ShowArtLibrary, Some(s)) => (true, s.files.art.is_some()),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (

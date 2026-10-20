@@ -144,6 +144,10 @@ pub enum HostEffect {
     },
     /// Open panel for a template; the host answers with `FilesIntent::NewFromTemplate`.
     ShowTemplateOpenPanel,
+    /// Open panel for a bundle file; the host answers with `FilesIntent::OpenBundleImport`.
+    ShowBundleOpenPanel {
+        document: DocumentId,
+    },
     /// The recent-templates list changed: the host stores it and rebuilds the menu.
     RecentTemplatesChanged {
         paths: Vec<PathBuf>,

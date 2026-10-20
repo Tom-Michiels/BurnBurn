@@ -201,6 +201,107 @@ pub enum FilesIntent {
     CloseBundle {
         document: DocumentId,
     },
+    /// Archief ▸ Exporteren ▸ SVG / DXF: opens the dialog with the export options and the report
+    /// of what the file cannot carry.
+    OpenExport {
+        document: DocumentId,
+        format: ExportFormat,
+    },
+    SetExportOptions {
+        document: DocumentId,
+        options: Box<ExportOptionsInput>,
+    },
+    /// "Ik begrijp dat dit verloren gaat": required before constraints or modifiers are dropped.
+    SetExportAcknowledged {
+        document: DocumentId,
+        acknowledged: bool,
+    },
+    /// Write the file the user chose with the options of the dialog.
+    ExportDrawing {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    CloseExport {
+        document: DocumentId,
+    },
+}
+
+/// The file formats of the drawing export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExportFormat {
+    Svg,
+    Dxf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportUnit {
+    #[default]
+    Millimeter,
+    Inch,
+    /// CSS pixels, 96 per inch (SVG only).
+    Pixel,
+}
+
+/// How objects are grouped into layers in the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportLayers {
+    /// One layer per object, named after it (DXF); no groups (SVG).
+    #[default]
+    Object,
+    /// The layer (operation) of the object: a group in SVG, a layer in DXF.
+    Layer,
+    /// Everything on one layer.
+    Single,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportCurves {
+    /// Cubics as SPLINEs (DXF).
+    #[default]
+    Splines,
+    /// Chords within the tolerance, for programs without SPLINE support (DXF).
+    Polylines,
+}
+
+/// What the export dialog's controls hold, as typed. The same shape comes back in the view model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportOptionsInput {
+    /// Only the objects that were selected when the dialog opened.
+    pub selection_only: bool,
+    pub unit: ExportUnit,
+    pub layers: ExportLayers,
+    /// Use the colour of an object's layer.
+    pub use_colors: bool,
+    /// SVG: line width in mm.
+    pub stroke_mm: String,
+    /// SVG: decimals of every coordinate; empty = as exact as possible.
+    pub decimals: String,
+    pub curves: ExportCurves,
+    /// DXF with polylines: largest deviation of a chord in mm.
+    pub tolerance_mm: String,
+}
+
+impl Default for ExportOptionsInput {
+    fn default() -> Self {
+        ExportOptionsInput {
+            selection_only: false,
+            unit: ExportUnit::default(),
+            layers: ExportLayers::default(),
+            use_colors: true,
+            stroke_mm: "0.1".to_owned(),
+            decimals: String::new(),
+            curves: ExportCurves::default(),
+            tolerance_mm: "0.01".to_owned(),
+        }
+    }
+}
+
+/// The option field that holds an unusable value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportField {
+    Stroke,
+    Decimals,
+    Tolerance,
 }
 
 /// What a bundle can hold.
@@ -393,6 +494,14 @@ pub enum FilesMessage {
     BundleWriteFailed,
     /// The bundle could not be applied; nothing changed.
     BundleApplyFailed,
+    /// Nothing to export (no objects, or nothing selected).
+    ExportEmpty,
+    /// Constraints or modifiers would be lost and the dialog's acknowledgement is not given.
+    ExportNeedsAcknowledgement,
+    /// An option holds an unusable value; the last good options are in use.
+    ExportInvalidOption,
+    /// The file could not be written.
+    ExportWriteFailed,
 }
 
 /// Everything the file panels of one window show.
@@ -401,6 +510,7 @@ pub struct FilesViewModel {
     pub material: Option<MaterialPanelViewModel>,
     pub art: Option<ArtPanelViewModel>,
     pub bundle: Option<BundleDialogViewModel>,
+    pub export: Option<ExportDialogViewModel>,
 }
 
 /// The Material Library panel (M217): search, the entries found and what each layer's settings came from.
@@ -621,4 +731,35 @@ pub struct BundleReport {
     /// Differing profiles the user did not choose to replace.
     pub profiles_pending: Vec<String>,
     pub skipped: usize,
+}
+
+/// The export dialog (M026, P05): options, and everything the file cannot carry, listed before
+/// anything is written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportDialogViewModel {
+    pub format: ExportFormat,
+    pub options: ExportOptionsInput,
+    /// The option field whose last input was refused.
+    pub field_error: Option<ExportField>,
+    /// Objects that go into the file.
+    pub objects: usize,
+    /// The report of what would be lost or approximated, in object order.
+    pub losses: Vec<ExportLossRow>,
+    /// Constraints or modifiers are among the losses: the file is only written after the
+    /// acknowledgement.
+    pub needs_acknowledgement: bool,
+    pub acknowledged: bool,
+    /// The report is being made on a worker.
+    pub checking: bool,
+    /// The file is being written.
+    pub busy: bool,
+    pub issue: Option<MessageKey>,
+    /// The file that was written.
+    pub written: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportLossRow {
+    pub object: String,
+    pub loss: burnburn_io::export::ExportLoss,
 }

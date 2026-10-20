@@ -74,7 +74,7 @@ fn saving_a_template_writes_the_template_and_leaves_the_document_unsaved() {
     let vm = h.document(doc).unwrap();
     assert!(vm.dirty, "the project itself is still unsaved");
     assert!(vm.title.starts_with("Naamloos"), "{}", vm.title);
-    assert_eq!(h.controller().recent_templates(), [path.clone()]);
+    assert_eq!(h.controller().recent_templates(), std::slice::from_ref(&path));
     assert!(effects(&updates).contains(&HostEffect::RecentTemplatesChanged { paths: vec![path] }));
 }
 
@@ -149,7 +149,7 @@ fn a_missing_template_opens_nothing_and_is_forgotten() {
     let doc = drawn(&mut h);
     let gone = template_path("weg");
     h.send(UiIntent::Files(FilesIntent::SetRecentTemplates { paths: vec![gone.clone()] }));
-    assert_eq!(h.controller().recent_templates(), [gone.clone()]);
+    assert_eq!(h.controller().recent_templates(), std::slice::from_ref(&gone));
     let mut updates = vec![h.send(UiIntent::Files(FilesIntent::NewFromTemplate { path: gone }))];
     updates.extend(h.run_tasks());
     assert!(!effects(&updates).iter().any(|e| matches!(e, HostEffect::OpenWindow { .. })));
