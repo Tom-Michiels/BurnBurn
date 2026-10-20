@@ -13,6 +13,7 @@ mod construct;
 mod corner;
 mod cut;
 mod cutting;
+mod dock;
 mod error;
 mod fillet;
 mod flatten;
@@ -26,15 +27,20 @@ mod path;
 mod path_op;
 mod point;
 mod query;
+mod registration;
 mod repair;
 mod ring;
 mod segment;
 mod shapes;
 mod simplify;
+mod slots;
 mod snap;
 mod spatial;
 mod spline;
+mod tangent;
+mod together;
 mod tolerance;
+mod warp;
 
 pub use affine::Affine;
 pub use align::{AlignEdge, AlignError, AlignTo, Direction, Spacing, align_offsets, distribute_offsets};
@@ -49,6 +55,7 @@ pub use construct::{
 pub use corner::{CornerCut, CornerError};
 pub use cut::{CutError, CutPiece, CutResult, CutSide, cut_shapes};
 pub use cutting::BreakError;
+pub use dock::{DockContact, DockDirection, DockError, dock_offset};
 pub use error::GeometryError;
 pub use fillet::{RoundError, RoundOutcome};
 pub use flatten::Polyline;
@@ -62,12 +69,19 @@ pub use path::{Path, PathBuilder, Rect, Subpath, Winding};
 pub use path_op::{NodeSetOp, PathOp, PathOpError};
 pub use point::{Point, Vector};
 pub use query::{HitKind, Nearest, SegmentRef};
+pub use registration::{
+    CircleFit, CircleFitError, Registration, RegistrationError, RegistrationOptions, ScaleMode, fit_circle, register,
+};
 pub use repair::{ExtendError, GeometryIssue, IssueKind, TrimError, close_gaps, diagnose};
 pub use segment::{EllipticalArc, Segment};
 pub use shapes::Shape;
 pub use simplify::{OptimizeError, OptimizeOutcome};
+pub use slots::{ResizeSlots, SlotSelect, SlotsError, SlotsOutcome};
 pub use snap::{SnapCandidate, SnapFilter, SnapKind, snap_candidates};
 pub use spatial::{HitCandidate, SpatialIndex, hit_test};
+pub use tangent::{TangentError, TangentTarget, nearest_circle, tangent_circles, tangent_circles_radius};
+pub use together::{TogetherAnchor, TogetherError, move_together_offsets};
 pub use tolerance::{
     DiagnosticTolerance, DisplayTolerance, FlatteningTolerance, HitTestTolerance, ProductionTolerance, ToleranceError,
 };
+pub use warp::{DeformGrid, PointMap, QuadWarp, WarpError, WarpKind, warp_path};
