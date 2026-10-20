@@ -75,6 +75,9 @@ pub struct PreviewViewModel {
     pub selected: Option<PreviewSelection>,
     /// The operation of the picked move, for the operations table to highlight.
     pub selected_operation: Option<OperationId>,
+    /// Width and height of the machine bed (mm), for the outline the preview draws; `None`
+    /// without a machine profile.
+    pub bed_mm: Option<[f64; 2]>,
 }
 
 /// One decoded record of the RD file this plan lowers to.
@@ -208,6 +211,7 @@ impl AppController {
             show_travel: state.show_travel,
             selected: state.selected,
             selected_operation: state.selected_operation,
+            bed_mm: self.machine.as_ref().map(|m| [m.profile.frame().width_mm(), m.profile.frame().height_mm()]),
             preview: plan.preview,
         })
     }

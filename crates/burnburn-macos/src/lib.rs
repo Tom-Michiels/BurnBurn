@@ -7,6 +7,9 @@
 
 pub mod accessibility;
 pub mod adapter;
+pub mod app_menu;
+pub mod app_text;
+pub mod app_view;
 #[cfg(target_os = "macos")]
 pub mod appkit;
 pub mod calib;

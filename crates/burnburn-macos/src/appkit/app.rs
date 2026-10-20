@@ -30,6 +30,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
+mod app_host;
 mod laser_host;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
@@ -369,6 +370,7 @@ impl HostApp {
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
             Reaction::ShowDiagnosticsPanel => self.show_diagnostics_panel(),
+            Reaction::App(action) => self.perform_app_action(action),
         }
     }
 

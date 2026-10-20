@@ -108,6 +108,7 @@ fn scrubbing_puts_the_head_on_the_plan_at_that_estimated_time() {
     let view = preview(&mut h, doc);
     let moves = &view.preview.moves;
     assert!((view.estimated_total_seconds - view.preview.estimated_seconds).abs() < 1e-12, "one clock: the plan's");
+    assert_eq!(view.bed_mm, Some([1500.0, 900.0]), "the bed outline of the machine profile");
     assert_eq!(view.estimated_position_seconds, 0.0);
     assert_eq!((view.completed_moves, view.partial), (0, None));
     assert_eq!(view.head, [moves[0].from.x_mm(), moves[0].from.y_mm()], "the head starts where the plan starts");
