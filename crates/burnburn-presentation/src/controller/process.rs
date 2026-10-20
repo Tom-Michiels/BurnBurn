@@ -58,10 +58,19 @@ impl AppController {
                 return error(Some(document), MessageKey::LaserRefused(why));
             }
         };
+        // An active Print and Cut registration moves what is cut (never the document).
+        let registration = match self.registration_for_compile(document) {
+            Ok(m) => m,
+            Err(message) => return error(Some(document), message),
+        };
         let tasks = Arc::clone(&self.ports.tasks);
         self.with_session(document, |s| {
             let snapshot = s.doc.snapshot();
             let source = snapshot.revision();
+            let snapshot = match registration {
+                Some(m) => Arc::new(snapshot.transformed(&m)),
+                None => snapshot,
+            };
             let cancel = CancellationSource::new();
             let input = match laser {
                 None => TaskInput::Compile { snapshot, profile: machine.profile, options, assets: s.assets.clone() },

@@ -46,6 +46,9 @@ pub enum PlaceCommand {
     },
     /// Closes the gaps between the units of `targets` along one axis, towards `anchor`.
     MoveTogether { targets: Vec<GeometryId>, direction: Direction, anchor: MoveAnchor, gap: Length, units: PlaceUnits },
+    /// The result of a nest: every object gets its own placement (rotation and translation, in the
+    /// object's own coordinates), all in one transaction. An object may appear only once.
+    Nest { moves: Vec<(GeometryId, burnburn_geometry::Affine)> },
 }
 
 impl PlaceCommand {
@@ -53,6 +56,7 @@ impl PlaceCommand {
         match self {
             PlaceCommand::Dock { .. } => EditLabel::Dock,
             PlaceCommand::MoveTogether { .. } => EditLabel::MoveTogether,
+            PlaceCommand::Nest { .. } => EditLabel::Nest,
         }
     }
 }
@@ -65,6 +69,7 @@ pub(super) fn apply(cmd: PlaceCommand, txn: &mut EditTxn<'_>) -> Result<(), Edit
         PlaceCommand::MoveTogether { targets, direction, anchor, gap, units } => {
             move_together(txn, &targets, direction, anchor, gap, units)
         }
+        PlaceCommand::Nest { moves } => nest(txn, &moves),
     }
 }
 
@@ -157,6 +162,25 @@ fn move_together(
         for id in body {
             txn.translate(id, v)?;
         }
+    }
+    Ok(())
+}
+
+fn nest(txn: &mut EditTxn<'_>, moves: &[(GeometryId, burnburn_geometry::Affine)]) -> Result<(), EditError> {
+    if moves.is_empty() {
+        return Err(EditError::NotEnoughTargets);
+    }
+    let mut seen: Vec<GeometryId> = Vec::with_capacity(moves.len());
+    for (id, _) in moves {
+        if seen.contains(id) {
+            return Err(EditError::DuplicateTarget(*id));
+        }
+        seen.push(*id);
+    }
+    for (id, m) in moves {
+        let obj = txn.editable(*id)?;
+        txn.objects.insert(*id, std::sync::Arc::new(obj.transformed(m)));
+        txn.mark_modified(*id);
     }
     Ok(())
 }

@@ -38,6 +38,8 @@ pub enum MenuItem {
     /// Bewerken / Laser ▸ one of the CAM dialogs (Optimalisatie-instellingen, Materiaal-, Interval-,
     /// Focustest, Apparaatinstellingen): presentation opens it for the active window.
     CamDialog(burnburn_presentation::CamDialog),
+    /// Schikken ▸ Schikkenpaneel: shows or hides the options panel of the active window.
+    SchikkenPanel,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -50,6 +52,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::LaserWindow,
         MenuItem::ExportDiagnostics,
         MenuItem::ClearRecent,
+        MenuItem::SchikkenPanel,
     ]
     .into_iter()
     .chain(burnburn_presentation::CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
@@ -65,6 +68,7 @@ const TRACE_IMAGE_TAG: isize = 1003;
 const LASER_WINDOW_TAG: isize = 1004;
 const DIAGNOSTICS_TAG: isize = 1005;
 const CLEAR_RECENT_TAG: isize = 1006;
+const SCHIKKEN_PANEL_TAG: isize = 1007;
 /// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
 const RECENT_TAG_BASE: isize = 2000;
 const RECENT_TAG_SLOTS: isize = 64;
@@ -81,6 +85,7 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::LaserWindow => LASER_WINDOW_TAG,
         MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
         MenuItem::ClearRecent => CLEAR_RECENT_TAG,
+        MenuItem::SchikkenPanel => SCHIKKEN_PANEL_TAG,
         MenuItem::Recent(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
         }
@@ -121,6 +126,9 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
         .and_then(|i| burnburn_presentation::CamDialog::ALL.get(i))
     {
         return Some(MenuItem::CamDialog(*dialog));
+    }
+    if tag == SCHIKKEN_PANEL_TAG {
+        return Some(MenuItem::SchikkenPanel);
     }
     if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
@@ -411,6 +419,13 @@ pub enum NativeEvent {
     GeometryDialogCancelled {
         document: DocumentId,
     },
+    /// A control of the Schikken panel was used. `values` are all of the panel's values at that
+    /// moment (fields as typed, a choice as its index, a check as `1`/`0`).
+    SchikkenControl {
+        document: DocumentId,
+        control: crate::panels::SchikkenControl,
+        values: Vec<(crate::panels::SchikkenControl, String)>,
+    },
     /// A shape or tool option row of the inspector edited (Return or end of editing), raw text;
     /// a checkbox sends `1` or `0`.
     ParamCommitted {
@@ -447,6 +462,8 @@ pub enum Reaction {
     ShowTracePanel,
     /// Show or hide the laser panel of the active window.
     ToggleLaserPanel,
+    /// Show or hide the Schikken options panel of the active window.
+    ToggleSchikkenPanel,
     /// Ask which private data may go into the diagnostic report, then show a save panel; the answer
     /// comes back as [`NativeEvent::DiagnosticsPanelFinished`].
     ShowDiagnosticsPanel,
@@ -514,6 +531,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::Command(CommandKey::ReplaceImage)) => return Reaction::ShowReplaceImagePanel,
         E::Menu(MenuItem::Command(CommandKey::SaveProcessedBitmap)) => return Reaction::ShowBitmapSavePanel,
         E::Menu(MenuItem::LaserWindow) => return Reaction::ToggleLaserPanel,
+        E::Menu(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
         E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
@@ -787,6 +805,12 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             Some(i) => i,
             None => return Reaction::Nothing,
         },
+        E::SchikkenControl { document, control, values } => {
+            match crate::panels::schikken_intent(vm, document, control, &values) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
         E::ParamCommitted { document, section, slot, text } => {
             match crate::panels::param_intent(vm, document, section, slot, &text) {
                 Some(i) => i,
@@ -857,7 +881,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         // Importing needs a document window to import into.
         MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => vm.active.is_some(),
         // The laser panel belongs to a window; the diagnostic export reads the journal only.
-        MenuItem::LaserWindow => vm.active.is_some(),
+        MenuItem::LaserWindow | MenuItem::SchikkenPanel => vm.active.is_some(),
         MenuItem::ExportDiagnostics => true,
         // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
         MenuItem::CamDialog(_) => vm.active.is_some(),
@@ -895,6 +919,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::ImportImage
         | MenuItem::TraceImage
         | MenuItem::LaserWindow
+        | MenuItem::SchikkenPanel
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
@@ -916,6 +941,7 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         }
         MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
+        MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).
         MenuItem::Recent(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {

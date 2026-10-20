@@ -44,9 +44,12 @@ mod import;
 mod laser;
 mod layers;
 mod machine;
+mod nest;
 mod process;
 mod recent;
 mod recovery;
+mod registration;
+mod reshape;
 mod shapes;
 mod sketch;
 mod tasks;
@@ -215,6 +218,10 @@ struct Session {
     arrange: arrange::ArrangeState,
     /// The open CAM dialogs of this window: Optimization Settings and the test generators.
     cam: process::CamState,
+    /// The nest panel (Quick Nest, Nest Selected) and its result (window state).
+    nest: nest::NestState,
+    /// The Print and Cut and Center Finder panels (window state).
+    registration: registration::RegState,
 }
 
 impl Session {
@@ -269,6 +276,8 @@ impl Session {
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
             cam: process::CamState::default(),
+            nest: nest::NestState::default(),
+            registration: registration::RegState::default(),
         })
     }
 
@@ -592,6 +601,7 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
             }
+            UiIntent::Schikken(intent) => self.schikken(intent),
         }
     }
 
@@ -746,6 +756,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetAspectLock { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
+        UiIntent::Schikken(intent) => Some(intent.document()),
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {
             *document
         }

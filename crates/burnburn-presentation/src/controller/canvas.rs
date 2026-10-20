@@ -39,6 +39,9 @@ impl AppController {
                 time: event.time,
             };
             let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+            if let Some(update) = super::registration::pick(s, document, position, &event) {
+                return update;
+            }
             if s.trim_mode {
                 return trim_at(s, document, &ev, request);
             }
@@ -92,6 +95,22 @@ impl AppController {
         {
             s.sketch.entities.clear();
             s.sketch.constraints.clear();
+            return AppUpdate::redraw(document);
+        }
+        // Escape first ends a Print and Cut / Center Finder pick.
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && super::registration::end_pick(s)
+        {
+            return AppUpdate::redraw(document);
+        }
+        // Escape ends a Warp/Deform session whatever the handles show: the tool is done.
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && super::reshape::is_reshape_tool(s.editor.tool())
+        {
+            s.editor.cancel();
+            super::reshape::leave(s);
             return AppUpdate::redraw(document);
         }
         let request = self.next_id::<RequestId>();
@@ -209,6 +228,7 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
         }
         ToolStep::Commit(edit) => {
             s.tool_measurement = None;
+            let reshaped = matches!(edit, EditCommit::Reshape(_));
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
             let snapshot = s.doc.snapshot();
@@ -221,6 +241,9 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
                 Ok(outcome) => {
                     if let Some(k) = kind {
                         *s.created.entry(k).or_insert(0) += 1;
+                    }
+                    if reshaped {
+                        super::reshape::leave(s);
                     }
                     after_change(s, document, Ok(outcome))
                 }

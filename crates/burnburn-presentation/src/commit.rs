@@ -84,6 +84,7 @@ pub(crate) fn payload(edit: EditCommit, name: String, snapshot: &DocumentSnapsho
         // The document re-applies the same domain edit; the preview path is not trusted input.
         EditCommit::EditNodes { target, edit, .. } => CommandPayload::Edit(GeometryCommand::EditNodes { target, edit }),
         EditCommit::Ops(ops) => CommandPayload::Edit(GeometryCommand::Ops(ops)),
+        EditCommit::Reshape(reshape) => CommandPayload::Edit(GeometryCommand::Reshape(reshape)),
         EditCommit::CutCorner { target, pick, reach, cut, .. } => {
             CommandPayload::Edit(GeometryCommand::CutCorner { target, pick, reach, cut })
         }

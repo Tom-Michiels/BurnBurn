@@ -17,6 +17,12 @@ use burnburn_presentation::{
     MachineStatusKey, MessageKey, OperationField, Outcome, SketchConstraintKind, ToolRejection,
 };
 
+#[path = "l10n_schikken.rs"]
+mod l10n_schikken;
+pub use l10n_schikken::{
+    center_problem_text, nest_skip_text, nest_unplaced_text, reshape_problem_text, tangent_problem_text,
+};
+
 /// UI language. Physical values never depend on it (fields accept both decimal signs, DR-05).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Locale {
@@ -913,7 +919,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ZoomIn => ("Zoom in", "Zoom In"),
         C::ZoomOut => ("Zoom uit", "Zoom Out"),
         C::ViewWireframe => ("Draadmodel", "Wireframe"),
-        _ => return None,
+        other => return l10n_schikken::command_pair(other),
     })
 }
 
@@ -957,7 +963,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             EditLabel::CutShapes => ("Vormen snijden", "Cut Shapes"),
             EditLabel::JoinShapes => ("Vormen verbinden", "Join Shapes"),
             EditLabel::Direction => ("Richting wijzigen", "Change Direction"),
-            _ => return None,
+            other => return l10n_schikken::edit_label_pair(other),
         },
         UndoLabel::Shape(l) => match l {
             ShapeLabel::Create => ("Vorm tekenen", "Draw Shape"),
@@ -1112,6 +1118,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     use MessageKey as M;
     match key {
         M::LaserRefused(why) => return Some(laser_why_text(why, locale)),
+        M::Schikken(m) => return Some(l10n_schikken::message(m, locale)),
         M::DiagnosticsFailed => {
             return Some(pick(
                 (
@@ -1491,6 +1498,7 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
 pub fn known_message_keys() -> Vec<MessageKey> {
     let mut keys: Vec<MessageKey> = CommandKey::ALL.iter().map(|k| MessageKey::Command(*k)).collect();
     keys.push(MessageKey::DiagnosticsFailed);
+    keys.extend(l10n_schikken::known_keys());
     keys.extend(all_laser_whys().into_iter().map(MessageKey::LaserRefused));
     let mut undo = vec![
         UndoLabel::CreateRectangle,

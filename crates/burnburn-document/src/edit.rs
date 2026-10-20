@@ -172,6 +172,8 @@ pub enum EditLabel {
     Warp,
     Deform,
     ResizeSlots,
+    /// The result of a nest: every object placed in one step.
+    Nest,
 }
 
 impl GeometryCommand {
@@ -228,6 +230,8 @@ pub enum EditError {
     ReferenceNotInTargets(GeometryId),
     /// A dock reference cannot also be a moving target.
     ReferenceInTargets(GeometryId),
+    /// A command that places objects individually names this one twice.
+    DuplicateTarget(GeometryId),
     NoSuchGroup(GroupId),
     /// The edit would not change the document (no history entry is made).
     NothingChanged,

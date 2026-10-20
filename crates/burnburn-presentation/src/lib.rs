@@ -16,7 +16,9 @@ mod image_panel;
 mod image_task;
 mod intent;
 mod laser;
+mod nest_task;
 mod production;
+mod schikken;
 mod task;
 mod view_model;
 
@@ -65,6 +67,7 @@ pub use production::{
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
 };
+pub use schikken::*;
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,

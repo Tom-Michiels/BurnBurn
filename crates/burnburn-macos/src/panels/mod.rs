@@ -21,6 +21,7 @@ mod laser;
 mod machine;
 mod operations;
 mod plan;
+mod schikken;
 mod shapes;
 mod sketch;
 
@@ -33,6 +34,7 @@ pub use laser::*;
 pub use machine::*;
 pub use operations::*;
 pub use plan::*;
+pub use schikken::*;
 pub use shapes::*;
 pub use sketch::*;
 
@@ -50,8 +52,9 @@ pub fn sketch_toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
     SKETCH_TOOLBAR.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
 }
 
-/// Segments of the toolbar's Uitlijnen control (momentary), left to right.
-pub const ARRANGE_TOOLBAR: [CommandKey; 8] = [
+/// Segments of the toolbar's Uitlijnen control (momentary), left to right: align, distribute, then
+/// dock and move together (W3-UI-schikken).
+pub const ARRANGE_TOOLBAR: [CommandKey; 14] = [
     CommandKey::AlignLeft,
     CommandKey::AlignCenterX,
     CommandKey::AlignRight,
@@ -60,6 +63,12 @@ pub const ARRANGE_TOOLBAR: [CommandKey; 8] = [
     CommandKey::AlignBottom,
     CommandKey::DistributeHorizontal,
     CommandKey::DistributeVertical,
+    CommandKey::DockLeft,
+    CommandKey::DockRight,
+    CommandKey::DockUp,
+    CommandKey::DockDown,
+    CommandKey::MoveTogetherHorizontal,
+    CommandKey::MoveTogetherVertical,
 ];
 
 /// The command for Uitlijnen toolbar segment `index`.

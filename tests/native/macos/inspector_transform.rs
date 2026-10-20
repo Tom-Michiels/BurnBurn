@@ -186,17 +186,18 @@ fn toolbar() -> Result<(), String> {
     let s = common::start()?;
     let doc = two_rectangles(&s)?;
     let segments = s.app.with_window(doc, |w| w.arrange_toolbar.segmentCount()).unwrap_or(0);
-    expect(|| format!("eight segments, got {segments}"), segments == 8)?;
+    expect(|| format!("fourteen segments, got {segments}"), segments == 14)?;
     let enabled: Vec<bool> = s
         .app
-        .with_window(doc, |w| (0..8).map(|i| w.arrange_toolbar.isEnabledForSegment(i)).collect())
+        .with_window(doc, |w| (0..14).map(|i| w.arrange_toolbar.isEnabledForSegment(i)).collect())
         .unwrap_or_default();
     expect(|| format!("align enabled for two objects, got {enabled:?}"), enabled[..6].iter().all(|e| *e))?;
-    expect(|| format!("distribute needs three objects, got {enabled:?}"), enabled[6..].iter().all(|e| !*e))?;
+    expect(|| format!("distribute needs three objects, got {enabled:?}"), enabled[6..8].iter().all(|e| !*e))?;
+    expect(|| format!("dock and move together need two, got {enabled:?}"), enabled[8..].iter().all(|e| *e))?;
     let shown: Vec<bool> = s
         .app
         .with_window(doc, |w| {
-            (0..8)
+            (0..14)
                 .map(|i| {
                     w.arrange_toolbar.imageForSegment(i).is_some()
                         || w.arrange_toolbar.labelForSegment(i).is_some_and(|l| !l.to_string().is_empty())

@@ -701,3 +701,24 @@ nl = "Startknoop"
 en = "Start node"
 tip_nl = "Maak de geselecteerde knoop het begin van het pad."
 tip_en = "Make the selected node the start of the path."
+
+[tools."geometry.warp"]
+panel = "shapes"
+nl = "Vervorm (4 punten)"
+en = "Warp (4 points)"
+tip_nl = "Vervorm de selectie met vier hoekgrepen; Enter past toe, Esc breekt af."
+tip_en = "Warp the selection with four corner handles; Enter applies, Esc cancels."
+
+[tools."geometry.deform"]
+panel = "shapes"
+nl = "Vervorm (16 punten)"
+en = "Deform (16 points)"
+tip_nl = "Vervorm de selectie met een net van 16 grepen; Enter past toe, Esc breekt af."
+tip_en = "Deform the selection with a net of 16 handles; Enter applies, Esc cancels."
+
+[tools."shape.tangent_circle"]
+panel = "make"
+nl = "Raakcirkel (alle oplossingen)"
+en = "Tangent circle (all solutions)"
+tip_nl = "Kies tot drie lijnen, cirkels of punten; alle raakcirkels verschijnen en een klik kiest de dichtstbijzijnde. Bij twee doelen: typ eerst de diameter."
+tip_en = "Pick up to three lines, circles or points; every tangent circle appears and a click chooses the nearest. With two targets, type the diameter first."

@@ -33,6 +33,7 @@ use objc2_foundation::{NSArray, NSString, NSTimer};
 mod cam_host;
 mod laser_host;
 pub use cam_host::CamPanelParts;
+mod schikken_host;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
@@ -373,6 +374,7 @@ impl HostApp {
             Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
+            Reaction::ToggleSchikkenPanel => self.toggle_schikken_panel(),
             Reaction::ShowDiagnosticsPanel => self.show_diagnostics_panel(),
         }
     }
@@ -1495,6 +1497,21 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
                 t(HostText::MenuDistribute),
                 [CommandKey::DistributeHorizontal, CommandKey::DistributeVertical].into_iter().map(plain).collect(),
             ),
+            submenu(
+                &crate::panels::schikken_text(crate::panels::SchikkenText::MenuDock, locale),
+                [CommandKey::DockLeft, CommandKey::DockRight, CommandKey::DockUp, CommandKey::DockDown]
+                    .into_iter()
+                    .map(plain)
+                    .collect(),
+            ),
+            submenu(
+                &crate::panels::schikken_text(crate::panels::SchikkenText::MenuMoveTogether, locale),
+                [CommandKey::MoveTogetherHorizontal, CommandKey::MoveTogetherVertical].into_iter().map(plain).collect(),
+            ),
+            sep(),
+            plain(CommandKey::QuickNest),
+            plain(CommandKey::NestSelected),
+            item(MenuItem::SchikkenPanel, "", false),
             sep(),
             item(c(CommandKey::PushForward), "]", false),
             item(c(CommandKey::PushBackward), "[", false),
@@ -1518,6 +1535,9 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::ToolPen),
             plain(CommandKey::ToolNode),
             plain(CommandKey::ToolTrim),
+            plain(CommandKey::ToolWarp),
+            plain(CommandKey::ToolDeform),
+            plain(CommandKey::ResizeSlots),
             sep(),
             plain(CommandKey::BooleanUnion),
             plain(CommandKey::BooleanDifference),
@@ -1613,6 +1633,8 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(MenuItem::CamDialog(CamDialog::MaterialTest), "", false),
             item(MenuItem::CamDialog(CamDialog::IntervalTest), "", false),
             item(MenuItem::CamDialog(CamDialog::FocusTest), "", false),
+            plain(CommandKey::PrintAndCut),
+            plain(CommandKey::CenterFinder),
         ],
     ));
     main.addItem(&submenu(

@@ -63,6 +63,10 @@ impl AppController {
                 super::tests_gen::finished(s, outcome.id, outcome.result, &mut update);
                 return update;
             }
+            TaskKind::Nest => {
+                super::nest::finished(s, document, outcome.id, outcome.source, outcome.result, &mut update);
+                return update;
+            }
             _ => {}
         }
         match outcome.result {
@@ -211,11 +215,12 @@ impl AppController {
                 | TaskOutput::RecoveryFound { .. }
                 | TaskOutput::RecoveryRemoved { .. }
                 | TaskOutput::TextWritten { .. }
+                | TaskOutput::Nested(_)
                 | TaskOutput::Centerlined(_)
                 | TaskOutput::ImagePreview { .. }
                 | TaskOutput::BitmapSaved { .. },
             )
-            | Err(TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing) => {}
+            | Err(TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing | TaskError::Nest(_)) => {}
             Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
                 // The replace happened: this revision is on disk, only durability is unconfirmed.
                 s.doc.mark_saved(outcome.source);

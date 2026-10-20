@@ -26,12 +26,14 @@ mod pick;
 mod point;
 mod rect;
 mod rectangle;
+mod reshape;
 mod round_corner;
 mod select;
 mod sketch_pick;
 mod slot;
 mod spline;
 mod start_point;
+mod tangent;
 mod text;
 mod trim;
 
@@ -39,7 +41,7 @@ use std::sync::Arc;
 
 use burnburn_document::sketch::{SketchCommand, SketchId};
 use burnburn_document::structure::Modifier;
-use burnburn_document::{DocumentSnapshot, OpsCommand};
+use burnburn_document::{DocumentSnapshot, OpsCommand, ReshapeCommand};
 use burnburn_geometry::{
     Affine, Bounds, CornerCut, EndpointRef, NodeEdit, NodeRef, ParametricShape, Path, Point, Rect, Shape,
     ShapeParamError,
@@ -61,9 +63,11 @@ pub use node::{NodeTarget, NodeTool, path_nodes};
 pub use parametric::{BasicShapeTool, PolygonConstruction, ShapeDefaults};
 pub(crate) use rectangle::rect_from_bounds;
 pub use rectangle::{RectanglePreview, RectangleTool};
+pub use reshape::{PREVIEW_SEGMENT_LIMIT, ReshapeMode, ReshapePreview, ReshapeTool};
 pub use round_corner::RoundCornerTool;
 pub use select::{Handle, SelectTool, selection_handles};
 pub use start_point::StartPointTool;
+pub use tangent::{TangentCirclesTool, TangentPreview};
 
 /// Hit-test tolerance for clicks, in logical screen points (independent of zoom).
 pub const CLICK_TOLERANCE_PT: f64 = 4.0;
@@ -216,6 +220,8 @@ pub enum EditCommit {
     /// A selection-wide geometry operation (node set, round corners, optimize, cut, join). The
     /// document recomputes the result from the same domain operation; this is its exact payload.
     Ops(OpsCommand),
+    /// Warp 4 points or Deform 16 points (`GeometryCommand::Reshape`), applied with Enter.
+    Reshape(ReshapeCommand),
 }
 
 /// What presentation must do after one input.
@@ -262,6 +268,10 @@ pub enum ToolPreview {
         path: Arc<Path>,
         dragged: NodeTarget,
     },
+    /// Warp or Deform: the handles, their frame and the reshaped outlines.
+    Reshape(ReshapePreview),
+    /// Tangent Circle: the picked targets and every solution.
+    Tangent(TangentPreview),
 }
 
 /// A tool setting that is not part of the gesture.
@@ -275,6 +285,8 @@ pub enum ToolParam {
     CornerRadius(f64),
     /// Settings of the modify, pattern and constraint tools.
     Modify(ModifyParam),
+    /// Warp 4 points: bilinear (`true`) or projective interpolation of the corners.
+    Bilinear(bool),
 }
 
 /// Common behaviour of all tools.
@@ -349,6 +361,12 @@ pub enum ToolKind {
     StartPoint,
     /// Click a corner to round it with the editor's corner radius (W1-L2a).
     RoundCorner,
+    /// Tangent Circle with every solution shown (W3-UI-schikken).
+    TangentCircle,
+    /// Warp Selection: four corner handles (W3-UI-schikken).
+    Warp,
+    /// Deform Selection: a 4 × 4 control net (W3-UI-schikken).
+    Deform,
     // Sketch tools (S-draw); ids in docs/coordination/userflow.md.
     LineMidpoint,
     Centerline,
@@ -416,6 +434,8 @@ enum Active {
     Shape(BasicShapeTool),
     StartPoint(StartPointTool),
     RoundCorner(RoundCornerTool),
+    Reshape(ReshapeTool),
+    Tangent(TangentCirclesTool),
     Draw(DrawTool),
     TangentCircle(TangentCircleTool),
     TangentArc(TangentArcTool),
@@ -442,6 +462,9 @@ impl Active {
             | ToolKind::RoundedRectangle => Active::Shape(BasicShapeTool::for_kind(kind, defaults)),
             ToolKind::StartPoint => Active::StartPoint(StartPointTool),
             ToolKind::RoundCorner => Active::RoundCorner(RoundCornerTool::new(round_radius_mm)),
+            ToolKind::TangentCircle => Active::Tangent(TangentCirclesTool::new()),
+            ToolKind::Warp => Active::Reshape(ReshapeTool::new(ReshapeMode::Warp)),
+            ToolKind::Deform => Active::Reshape(ReshapeTool::new(ReshapeMode::Deform)),
             ToolKind::CircleTwoTangent => Active::TangentCircle(TangentCircleTool::new(2)),
             ToolKind::CircleThreeTangent => Active::TangentCircle(TangentCircleTool::new(3)),
             ToolKind::ArcTangent => Active::TangentArc(TangentArcTool::default()),
@@ -477,6 +500,8 @@ impl Active {
             Active::Shape(t) => t,
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
+            Active::Reshape(t) => t,
+            Active::Tangent(t) => t,
             Active::Draw(t) => t,
             Active::TangentCircle(t) => t,
             Active::TangentArc(t) => t,
@@ -497,6 +522,8 @@ impl Active {
             Active::Shape(t) => t,
             Active::StartPoint(t) => t,
             Active::RoundCorner(t) => t,
+            Active::Reshape(t) => t,
+            Active::Tangent(t) => t,
             Active::Draw(t) => t,
             Active::TangentCircle(t) => t,
             Active::TangentArc(t) => t,
@@ -589,6 +616,31 @@ impl Editor {
 
     pub fn exact_size(&mut self, width: Length, height: Length) -> ToolStep {
         self.active.tool().exact_size(width, height)
+    }
+
+    /// Starts the session of a tool that works on the selection as a whole (Warp, Deform): its
+    /// handles appear. `Nothing` for every other tool; a refused selection is `Rejected`.
+    pub fn begin_tool(&mut self, ctx: &ToolContext<'_>) -> ToolStep {
+        match &mut self.active {
+            Active::Reshape(t) => t.begin(ctx),
+            _ => ToolStep::Nothing,
+        }
+    }
+
+    /// Warp/Deform: every handle back on its start position.
+    pub fn reshape_reset(&mut self, ctx: &ToolContext<'_>) -> ToolStep {
+        match &mut self.active {
+            Active::Reshape(t) => t.reset(ctx),
+            _ => ToolStep::Nothing,
+        }
+    }
+
+    /// Warp/Deform: applies the handles as they are (the Enter key does the same).
+    pub fn reshape_apply(&mut self) -> ToolStep {
+        match &mut self.active {
+            Active::Reshape(t) => t.apply(),
+            _ => ToolStep::Nothing,
+        }
     }
 
     /// Selected nodes in node-edit mode; empty for every other tool.
