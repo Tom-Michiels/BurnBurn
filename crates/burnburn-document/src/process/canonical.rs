@@ -133,6 +133,10 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
         SharedEdgePolicy::CutPerRegion => "shared-cut-per-region",
     });
     encode_line_extensions(&a.line, out);
+    if let Some(z) = a.z_offset {
+        out.tag("advanced-z");
+        out.f64(z.mm());
+    }
 }
 
 /// `tag("advanced-ext")` + tab spacing (optional `f64` spacing, then width) + lead in and lead

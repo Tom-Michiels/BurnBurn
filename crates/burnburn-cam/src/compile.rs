@@ -169,7 +169,8 @@ pub fn compile_with(
         for pass in 0..unit.settings.passes.get() {
             cancel.check()?;
             plan.push(PlanEvent::OperationBoundary { operation: id, settings, pass })?;
-            let wanted = unit.op.advanced().z_step.map_or(0.0, |z| z.mm() * f64::from(pass));
+            let a = unit.op.advanced();
+            let wanted = a.z_offset.map_or(0.0, |z| z.mm()) + a.z_step.map_or(0.0, |z| z.mm() * f64::from(pass));
             if wanted != focus_mm {
                 plan.push(PlanEvent::FocusOffset { z_mm: wanted })?;
                 focus_mm = wanted;

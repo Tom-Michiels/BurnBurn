@@ -201,8 +201,9 @@ fn neighbours(gap: f64, passes: u32, same_layer: bool) -> f64 {
 
 #[test]
 fn overlapping_edges_within_the_tolerance_are_cut_once() {
-    // A: 40, B: 40 minus its left edge (10) which lies 0.005 mm from A's right edge.
-    assert!((neighbours(0.005, 1, true) - 70.0).abs() < 1e-9);
+    // A: 40, B: 40 minus its left edge (10) which lies 0.005 mm from A's right edge, and minus the
+    // 0.005 mm at each end of B's top and bottom edge that lie within 0.01 mm of A's corners.
+    assert!((neighbours(0.005, 1, true) - 69.99).abs() < 1e-9);
 }
 
 #[test]
@@ -212,7 +213,7 @@ fn edges_further_apart_than_the_tolerance_are_both_cut() {
 
 #[test]
 fn every_pass_cuts_the_same_line_again() {
-    assert!((neighbours(0.005, 2, true) - 140.0).abs() < 1e-9);
+    assert!((neighbours(0.005, 2, true) - 139.98).abs() < 1e-9);
 }
 
 #[test]

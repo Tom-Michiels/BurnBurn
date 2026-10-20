@@ -46,6 +46,7 @@ fn every_option() -> AdvancedOptions {
             ..Default::default()
         },
         z_step: Some(ZStep::new(mm(-0.2)).unwrap()),
+        z_offset: Some(burnburn_document::process::ZOffset::new(mm(0.75)).unwrap()),
         sub_operations: vec![
             SubOperation { mode: OperationMode::Fill(angled), settings: settings(300.0, 12.5, 1) },
             SubOperation {

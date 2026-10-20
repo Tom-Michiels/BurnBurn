@@ -457,6 +457,9 @@ pub mod v1 {
         pub dot: Option<DotDto>,
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub z_step_mm: Option<Num>,
+        /// Focus offset of the operation (W2-L3). Omitted when none.
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub z_offset_mm: Option<Num>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub sub_operations: Vec<SubOperationDto>,
         /// Omitted for the default (`cut_once`).

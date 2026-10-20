@@ -113,3 +113,35 @@ fn a_stored_priority_for_a_missing_shape_or_an_unknown_level_is_refused() {
         rewrite_json(&stored(&s), "document.json", |v| v["optimization"]["remove_overlapping_mm"] = (-1.0).into());
     assert!(matches!(decode_container(&tolerance), Err(LoadError::InvalidValue { .. })), "tolerance");
 }
+
+#[test]
+fn a_focus_offset_survives_save_and_reopen_and_is_validated_on_load() {
+    use burnburn_document::process::{AdvancedOptions, Kerf, OperationDraft, OperationMode, ZOffset};
+    let (mut s, g) = session();
+    let p = burnburn_document::process::PowerPercent::new(10.0).unwrap();
+    let draft = OperationDraft {
+        name: "Focus".into(),
+        mode: OperationMode::Line { kerf: Kerf::NONE },
+        settings: burnburn_document::process::ProcessSettings {
+            speed: burnburn_document::process::Speed::mm_per_s(10.0).unwrap(),
+            power: burnburn_document::process::PowerRange::new(p, p).unwrap(),
+            passes: burnburn_document::process::Passes::new(1).unwrap(),
+            air_assist: false,
+        },
+        output_enabled: true,
+    };
+    let op = apply(&mut s, CommandPayload::Process(ProcessCommand::AddOperation { draft, targets: vec![g] }))
+        .changes
+        .operations[0];
+    let advanced = AdvancedOptions { z_offset: Some(ZOffset::new(mm(-1.25)).unwrap()), ..Default::default() };
+    apply(&mut s, CommandPayload::Process(ProcessCommand::SetAdvanced { operation: op, advanced: advanced.clone() }));
+    let p = project(&s);
+    let back = decode_container(&encode_container(&p).unwrap()).unwrap();
+    assert_eq!(back.document.process().operation(op).unwrap().advanced(), &advanced);
+    assert_eq!(project_hash(&back).unwrap(), project_hash(&p).unwrap());
+
+    let zero = rewrite_json(&stored(&s), "document.json", |v| {
+        v["operations"][0]["process"]["advanced"]["z_offset_mm"] = 0.0.into();
+    });
+    assert!(matches!(decode_container(&zero), Err(LoadError::InvalidValue { .. })));
+}

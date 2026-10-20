@@ -14,7 +14,7 @@ use burnburn_document::process::{
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
     Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId,
     RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement, TabSpec,
-    ToneSettings, ZStep,
+    ToneSettings, ZOffset, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 
@@ -162,6 +162,7 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
             .perforation
             .map(|p| v1::PerforationDto { on_mm: v1::Num(p.on_mm()), off_mm: v1::Num(p.off_mm()) }),
         z_step_mm: a.z_step.map(|z| v1::Num(z.mm())),
+        z_offset_mm: a.z_offset.map(|z| v1::Num(z.mm())),
         sub_operations,
         shared_edges: match a.shared_edges {
             SharedEdgePolicy::CutOnce => None,
@@ -524,6 +525,9 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
         },
         z_step: opt("z_step_mm", a.z_step_mm)?
             .map(|l| ZStep::new(l).map_err(|e| invalid(&at("z_step_mm"), e)))
+            .transpose()?,
+        z_offset: opt("z_offset_mm", a.z_offset_mm)?
+            .map(|l| ZOffset::new(l).map_err(|e| invalid(&at("z_offset_mm"), e)))
             .transpose()?,
         sub_operations,
         shared_edges: match a.shared_edges {
