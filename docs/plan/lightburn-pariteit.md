@@ -121,10 +121,27 @@ Elke L1-sessie werkt in eigen modules; gedeelde bestanden (`intent.rs`, `view_mo
 Beslissingen nodig (gebruiker): scope van tweede laser (S92–S96), OMTech Polar, Trocen PPI, Print (Black Only/Keep
 Colors), Cuttle, OS-diensten (M002–M013) — voorstel: buiten golf 2, in golf 4 heroverwegen.
 
-**Golf 3**: resterende panelen (bibliotheken, variabele tekst, nesting, camera-overlay, voorkeuren/hotkeys),
-Windows-host op pariteit (L8), acceptatieplan `research/lightburn/05-acceptatieplan.md` doorlopen.
+**Golf 3 (na golf 2, main a4bdc4f): de domeinwachtrij van golf 2 bedienbaar + robuustheid**
+- W3-UI-schikken (Sonnet): dock, move together, warp 4/deform 16, resize slots, tangent circle, print-and-cut en center
+  finder (W2-L2-regels), plus Quick Nest / Nest Selected (paneel als taak, C10).
+- W3-UI-cam (Sonnet): Optimization Settings-dialoog, cut-priority per vorm, Material/Interval/Focus Test-dialogen,
+  Z-offset in Cut Settings, Device Settings-venster (machineprofiel, rotary, M01/M02/M08) (W2-L3-regels).
+- W3-UI-tekst (Sonnet): teksttoolbar (face, uppercase, uitlijning, spatiëring, welded), Convert to Path, tekst op pad
+  met Distort, variabele-tekstpaneel met ProductionRecord-binding, barcode-dialoog (W2-L5b/c/d).
+- W3-UI-bestanden (Sonnet): HPGL/PDF/AI-import (paginakeuze), LBRN2-import-UI, templates, Material Library-, Art
+  Library- en Bundle-panelen, exportopties met verliesrapport (W2-L6).
+- W3-UI-camera (Sonnet): camerabeeld als overlay op het canvas (opacity, capture), lenskalibratie- en
+  alignmentwizards, kalibratiebeheer, meerdere camera's (W2-L5e, W04).
+- W3-UI-app (Sonnet): voorkeurenvenster, sneltoetseneditor, ongedaanmaakgeschiedenis, previewvenster met afspelen en
+  klik-naar-bron (C07), "Inspecteer RD", help/over/supportbundel/debuglog.
+- W3-robuust (Sonnet): fuzzdoelen bouwen en kort draaien voor PDF/HPGL/LBRN2/klembord/bundles, de 4 resterende
+  barcodetypes, golden-images controleren.
+- W3-L7 (Haiku): wachtrij ontdubbelen (union-merges gaven oude "open" naast nieuwe "klaar"), matrix en coverage bijwerken.
 
-**Golf 4**: G-code- en galvo-backends, prestaties (100k objecten), installer/updates, echte Windows-run.
+**Golf 4**: Windows-host op pariteit (L8, in delen: catalogus-toolstrip, lagen/Cut Settings, laservenster, beeld,
+bewerken — typecheck + headless adaptertests; echte Windows-run handmatig), G-code-backend (GRBL) met eigen
+capability-matrix, acceptatieplan `research/lightburn/05-acceptatieplan.md` als scenario-tests, prestaties (100k
+objecten, X04), installer/bundle en updatecontract (X07). Galvo pas na beslissing van de gebruiker.
 
 ## Volgen
 
