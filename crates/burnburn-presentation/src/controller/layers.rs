@@ -9,14 +9,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use burnburn_document::process::{
-    FillSettings, Kerf, OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode, Passes,
-    PowerPercent, PowerRange, ProcessCommand, ProcessSettings, ScanAxis, ScanDirection, Speed,
+    AdvancedOptions, FillSettings, Kerf, OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode,
+    Passes, PowerPercent, PowerRange, ProcessCommand, ProcessError, ProcessSettings, ScanAxis, ScanDirection, Speed,
 };
 use burnburn_document::{CommandPayload, DocumentSnapshot};
 use burnburn_editor::{SceneSnapshot, StyleRole};
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::{DocumentId, GeometryId, Length, OperationId, RequestId};
 
+use super::cut_options;
 use super::process::{parse_speed, refused};
 use super::{AppUpdate, DEFAULT_FILL_INTERVAL_MM, Session, apply_edit};
 use crate::field::{format_mm, parse_number, parse_position};
@@ -80,6 +81,7 @@ fn kind_of(mode: OperationMode) -> OperationKind {
         OperationMode::Line { .. } => OperationKind::Line,
         OperationMode::Fill(_) => OperationKind::Fill,
         OperationMode::OffsetFill(_) => OperationKind::OffsetFill,
+        OperationMode::Image(_) => OperationKind::Image,
         _ => OperationKind::Other,
     }
 }
@@ -110,6 +112,15 @@ pub(super) fn operation_row(s: &Session, op: &Operation) -> OperationRow {
     }
 }
 
+/// The modes the sheet of an operation of `kind` offers: an image keeps its mode, the rest switch
+/// between Line, Fill and Offset fill.
+fn sheet_modes(kind: OperationKind, caps: &MachineCapabilities) -> Vec<ModeChoice> {
+    match kind {
+        OperationKind::Image => vec![ModeChoice { kind, blocked: None }],
+        _ => SHEET_MODES.iter().map(|k| ModeChoice { kind: *k, blocked: mode_blocked(*k, caps) }).collect(),
+    }
+}
+
 /// Why `kind` cannot be chosen with this machine profile (conservative matrix without one).
 fn mode_blocked(kind: OperationKind, caps: &MachineCapabilities) -> Option<MessageKey> {
     let feature = match kind {
@@ -135,7 +146,7 @@ pub(super) fn cut_settings_view(s: &Session, caps: Option<&MachineCapabilities>)
         name: row.name,
         slot: row.slot,
         mode: row.kind,
-        modes: SHEET_MODES.iter().map(|k| ModeChoice { kind: *k, blocked: mode_blocked(*k, caps) }).collect(),
+        modes: sheet_modes(row.kind, caps),
         speed: row.speed,
         power_min: row.power_min,
         power_max: row.power,
@@ -144,6 +155,8 @@ pub(super) fn cut_settings_view(s: &Session, caps: Option<&MachineCapabilities>)
         output_enabled: row.output_enabled,
         visible: row.visible,
         error,
+        extras: cut_options::extras_of(op),
+        gates: cut_options::gates_of(row.kind, caps),
     })
 }
 
@@ -291,7 +304,7 @@ pub(super) fn parse_kerf(text: &str) -> Result<Kerf, MessageKey> {
     Kerf::width(length).map_err(|_| invalid(OperationField::Kerf))
 }
 
-fn default_fill() -> Option<FillSettings> {
+pub(super) fn default_fill() -> Option<FillSettings> {
     let interval = Length::from_mm(DEFAULT_FILL_INTERVAL_MM).ok()?;
     let overscan = Length::from_mm(0.0).ok()?;
     FillSettings::new(interval, ScanAxis::X, ScanDirection::Bidirectional, overscan).ok()
@@ -301,24 +314,32 @@ fn default_offset_fill() -> Option<OffsetFillSettings> {
     OffsetFillSettings::new(Length::from_mm(DEFAULT_OFFSET_STEP_MM).ok()?, OffsetFillOrder::OutsideIn).ok()
 }
 
-/// The mode for `kind`, keeping the current mode's own settings where they fit.
+/// The mode for `kind`, keeping the current mode's own settings where they fit. An image keeps
+/// its mode and nothing becomes an image here (its source is not part of the sheet).
 fn mode_for(kind: OperationKind, current: OperationMode, kerf: Kerf) -> Option<OperationMode> {
+    let image = matches!(current, OperationMode::Image(_));
     Some(match (kind, current) {
+        (OperationKind::Image, OperationMode::Image(_)) => current,
+        (OperationKind::Image, _) => return None,
+        _ if image => return None,
         (OperationKind::Line, _) => OperationMode::Line { kerf },
         (OperationKind::Fill, OperationMode::Fill(f)) => OperationMode::Fill(f),
         (OperationKind::Fill, _) => OperationMode::Fill(default_fill()?),
         (OperationKind::OffsetFill, OperationMode::OffsetFill(o)) => OperationMode::OffsetFill(o),
         (OperationKind::OffsetFill, _) => OperationMode::OffsetFill(default_offset_fill()?),
-        // Image and other modes are not edited here; their own settings stay.
+        // Other modes are not edited here; their own settings stay.
         _ => current,
     })
 }
 
-fn sheet_draft(
-    op: &Operation,
-    input: &CutSettingsInput,
-    caps: &MachineCapabilities,
-) -> Result<OperationDraft, MessageKey> {
+/// What OK in the sheet turns into: the operation draft and, when the line options change, the
+/// advanced options.
+struct SheetEdit {
+    draft: OperationDraft,
+    advanced: AdvancedOptions,
+}
+
+fn sheet_edit(op: &Operation, input: &CutSettingsInput, caps: &MachineCapabilities) -> Result<SheetEdit, MessageKey> {
     let speed: Speed = parse_speed(&input.speed)?;
     let min = parse_percent(&input.power_min, OperationField::PowerMin)?;
     let max = parse_percent(&input.power_max, OperationField::PowerMax)?;
@@ -326,38 +347,50 @@ fn sheet_draft(
     let passes = parse_passes(&input.passes)?;
     let line = input.mode == OperationKind::Line;
     let kerf = if line { parse_kerf(&input.kerf)? } else { Kerf::NONE };
-    if let Some(blocked) = mode_blocked(input.mode, caps) {
-        return Err(blocked);
-    }
-    if !kerf.is_none()
-        && let Some(blocked) = missing(Feature::KerfCompensation, caps)
-    {
-        return Err(blocked);
-    }
     let mode = mode_for(input.mode, op.mode(), kerf).ok_or(MessageKey::CommandRejected)?;
+    let (mode, advanced) = cut_options::apply(op, mode, &input.extras)?;
     let current = op.draft();
-    Ok(OperationDraft {
+    let draft = OperationDraft {
         mode,
         settings: ProcessSettings { speed, power, passes, ..current.settings },
         output_enabled: input.output_enabled,
         ..current
-    })
+    };
+    // Options the operation did not use before need the profile's capability; options it
+    // already has stay as they are (the compiler reports them) and never block other edits.
+    let candidate = Operation::new(op.id(), draft.clone(), op.targets().to_vec(), op.recipe())
+        .and_then(|o| o.with_advanced(advanced.clone()))
+        .map_err(|e| match e {
+            ProcessError::ConflictingOptions { .. } => MessageKey::CutOptionsConflict,
+            _ => MessageKey::CommandRejected,
+        })?;
+    let before = burnburn_cam::required_features(op);
+    if let Some(blocked) = burnburn_cam::required_features(&candidate)
+        .into_iter()
+        .filter(|f| !before.contains(f))
+        .find_map(|f| missing(f, caps))
+    {
+        return Err(blocked);
+    }
+    Ok(SheetEdit { draft, advanced })
 }
 
-/// OK in the Cut Settings sheet: everything valid is one `UpdateOperation` (nothing when nothing
-/// changed) and closes the sheet; the first invalid field keeps it open with its message.
+/// OK in the Cut Settings sheet: everything valid is applied and closes the sheet; the first
+/// invalid field keeps it open with its message. Mode settings are one `UpdateOperation`, line
+/// options one `SetAdvanced` (the document has no combined command, so an OK that changes both
+/// is two undo steps); nothing is sent for what did not change.
 pub(super) fn apply_cut_settings(
     s: &mut Session,
     document: DocumentId,
     operation: OperationId,
     input: &CutSettingsInput,
     caps: Option<&MachineCapabilities>,
-    request: Option<RequestId>,
+    next_request: NextRequest<'_>,
 ) -> AppUpdate {
     let snapshot = s.doc.snapshot();
     let Some(op) = snapshot.process().operation(operation) else { return AppUpdate::default() };
     let conservative = MachineCapabilities::conservative();
-    let draft = match sheet_draft(op, input, caps.unwrap_or(&conservative)) {
+    let edit = match sheet_edit(op, input, caps.unwrap_or(&conservative)) {
         Ok(d) => d,
         Err(key) => {
             s.layers.sheet = Some((operation, Some(key)));
@@ -367,13 +400,42 @@ pub(super) fn apply_cut_settings(
     s.layers.sheet = None;
     let mut update = set_visible(s, document, operation, input.visible);
     update.view_changed = true;
-    if draft != op.draft() {
-        let edit = ProcessCommand::UpdateOperation { operation, draft };
-        let applied = apply_edit(s, document, CommandPayload::Process(edit), request);
+    let draft_changed = edit.draft != op.draft();
+    let advanced_changed = edit.advanced != *op.advanced();
+    let update_draft = ProcessCommand::UpdateOperation { operation, draft: edit.draft };
+    let set_advanced = ProcessCommand::SetAdvanced { operation, advanced: edit.advanced };
+    // Line options are only legal on a Line operation: leaving Line clears them first, entering
+    // it sets the mode first, so no step in between is an operation the compiler would refuse.
+    let leaving_line = matches!(op.mode(), OperationMode::Line { .. })
+        && !matches!(update_draft_mode(&update_draft), Some(OperationMode::Line { .. }));
+    let mut commands = Vec::new();
+    if draft_changed {
+        commands.push(update_draft);
+    }
+    if advanced_changed {
+        if leaving_line {
+            commands.insert(0, set_advanced);
+        } else {
+            commands.push(set_advanced);
+        }
+    }
+    for command in commands {
+        let applied = apply_edit(s, document, CommandPayload::Process(command), next_request());
+        let failed = !applied.effects.is_empty();
         update.effects.extend(applied.effects);
         update.scenes_changed.extend(applied.scenes_changed);
+        if failed {
+            break;
+        }
     }
     update
+}
+
+fn update_draft_mode(command: &ProcessCommand) -> Option<OperationMode> {
+    match command {
+        ProcessCommand::UpdateOperation { draft, .. } => Some(draft.mode),
+        _ => None,
+    }
 }
 
 /// Canvas colours and visibility (C01): an object is drawn in the colour of its first operation

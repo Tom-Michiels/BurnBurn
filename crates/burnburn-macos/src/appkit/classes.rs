@@ -23,7 +23,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
-use burnburn_presentation::FieldKey;
+use burnburn_presentation::{CutField, FieldKey};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
@@ -43,6 +43,7 @@ use objc2_foundation::{
 
 use super::app::HostApp;
 use super::canvas::Canvas;
+use super::panels::cut_settings::OptionControl;
 use crate::adapter::{CommitCause, MouseButton, MousePhase, NativeEvent, menu_enabled, menu_item, menu_title};
 use crate::l10n::{HostText, host_text};
 use crate::panels::{LayerColumn, OperationLine, SketchColumn, SketchLine};
@@ -230,6 +231,8 @@ pub(crate) struct ControllerParts {
     pub(crate) cut_mode: Retained<NSPopUpButton>,
     pub(crate) cut_fields: [Retained<NSTextField>; 5],
     pub(crate) cut_toggles: [Retained<NSButton>; 2],
+    /// Cut Settings sheet: the option fields (tabs, leads, fill and image options) and their controls.
+    pub(crate) cut_options: Vec<(CutField, OptionControl)>,
     pub(crate) camera_devices: Retained<NSPopUpButton>,
     /// Sketch panel: constraint table, parameter table and the new parameter's name and expression.
     pub(crate) sketch_table: Retained<NSTableView>,
@@ -250,6 +253,7 @@ pub(crate) struct ControllerIvars {
     cut_mode: Retained<NSPopUpButton>,
     cut_fields: [Retained<NSTextField>; 5],
     cut_toggles: [Retained<NSButton>; 2],
+    cut_options: Vec<(CutField, OptionControl)>,
     camera_devices: Retained<NSPopUpButton>,
     sketch_table: Retained<NSTableView>,
     sketch_params_table: Retained<NSTableView>,
@@ -452,6 +456,7 @@ define_class!(
                     kerf,
                     output,
                     visible,
+                    options: super::panels::cut_settings::read_options(&ivars.cut_options),
                 });
             });
         }
@@ -469,6 +474,21 @@ define_class!(
             ffi_guard("cutSettingsModeChosen:", (), || {
                 let ivars = self.ivars();
                 ivars.cut_fields[4].setEnabled(crate::panels::kerf_applies(ivars.cut_mode.indexOfSelectedItem()));
+                // The mode decides which option rows exist.
+                if let Some(app) = ivars.app.upgrade() {
+                    app.cut_option_changed();
+                }
+            });
+        }
+
+        /// A switch, pop-up or mode of the Cut Settings sheet changed: the rows are laid out again
+        /// from the values on the sheet (greyed rows, rows of the chosen mode). No intent.
+        #[unsafe(method(cutSettingsOptionChanged:))]
+        fn cut_settings_option_changed(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("cutSettingsOptionChanged:", (), || {
+                if let Some(app) = self.ivars().app.upgrade() {
+                    app.cut_option_changed();
+                }
             });
         }
 
@@ -811,6 +831,7 @@ impl WindowController {
             cut_mode,
             cut_fields,
             cut_toggles,
+            cut_options,
             camera_devices,
             sketch_table,
             sketch_params_table,
@@ -828,6 +849,7 @@ impl WindowController {
             cut_mode,
             cut_fields,
             cut_toggles,
+            cut_options,
             camera_devices,
             sketch_table,
             sketch_params_table,

@@ -53,16 +53,7 @@ fn sheet(h: &HeadlessEditorHarness, doc: DocumentId) -> Option<CutSettingsViewMo
 }
 
 fn input(s: &CutSettingsViewModel) -> CutSettingsInput {
-    CutSettingsInput {
-        mode: s.mode,
-        speed: s.speed.clone(),
-        power_min: s.power_min.clone(),
-        power_max: s.power_max.clone(),
-        passes: s.passes.clone(),
-        kerf: s.kerf.clone(),
-        output_enabled: s.output_enabled,
-        visible: s.visible,
-    }
+    s.input()
 }
 
 fn apply(h: &mut HeadlessEditorHarness, doc: DocumentId, op: OperationId, settings: CutSettingsInput) {

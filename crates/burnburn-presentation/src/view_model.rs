@@ -15,8 +15,9 @@ use burnburn_types::{DocumentId, GeometryId, OperationId, RevisionId, TaskId, Un
 use burnburn_machine::{ExecutionId, ExecutionState, MachineId};
 
 use crate::catalog::ToolbarViewModel;
+use crate::cut_options::{CutExtras, CutField, CutGates};
 use crate::field::FieldError;
-use crate::intent::{CommandKey, FieldKey, ImportUnit, OperationField, OperationKind};
+use crate::intent::{CommandKey, CutSettingsInput, FieldKey, ImportUnit, OperationField, OperationKind};
 use crate::production::{ActionId, MachineAction, OrderId};
 use crate::task::TaskKind;
 
@@ -121,6 +122,27 @@ pub struct CutSettingsViewModel {
     pub output_enabled: bool,
     pub visible: bool,
     pub error: Option<MessageKey>,
+    /// Current values of the option fields of this operation's mode (empty for other modes).
+    pub extras: CutExtras,
+    /// What the machine profile blocks; blocked fields stay visible with their reason.
+    pub gates: CutGates,
+}
+
+impl CutSettingsViewModel {
+    /// What pressing OK without touching anything would send.
+    pub fn input(&self) -> CutSettingsInput {
+        CutSettingsInput {
+            mode: self.mode,
+            speed: self.speed.clone(),
+            power_min: self.power_min.clone(),
+            power_max: self.power_max.clone(),
+            passes: self.passes.clone(),
+            kerf: self.kerf.clone(),
+            output_enabled: self.output_enabled,
+            visible: self.visible,
+            extras: self.extras.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -575,6 +597,13 @@ pub enum MessageKey {
     NoFontAvailable,
     /// Operations-panel text that is not a valid number for that field.
     InvalidNumber(OperationField),
+    /// Cut Settings: this option field holds no valid value (number, range or relation to a
+    /// sibling field); nothing was changed.
+    InvalidCutField(CutField),
+    /// Cut Settings: Dot mode excludes tabs, leads, overcut and perforation.
+    CutOptionsConflict,
+    /// Cut Settings: this field does not apply to the chosen image mode.
+    CutOptionNotForMode(CutField),
     /// The camera may only start after the OS granted access.
     CameraNotAuthorized,
     /// Camera image: a visual placement aid, not production geometry.
