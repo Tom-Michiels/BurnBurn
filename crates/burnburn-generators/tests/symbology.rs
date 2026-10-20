@@ -160,6 +160,7 @@ fn bits(s: &str) -> Vec<bool> {
 
 /// Every implemented symbology with a payload it accepts.
 const SAMPLES: &[(Symbology, &str)] = &[
+    (Symbology::TwoOfFive, "0123456789"),
     (Symbology::TwoOfFiveIata, "0123456789"),
     (Symbology::TwoOfFiveIndustrial, "0123456789"),
     (Symbology::AprilTag16h5, "7"),
@@ -168,6 +169,7 @@ const SAMPLES: &[(Symbology, &str)] = &[
     (Symbology::AprilTag36h11, "7"),
     (Symbology::ArucoOpenCv7x7, "7"),
     (Symbology::Aztec, "Aztec 123"),
+    (Symbology::HanXin, "Han Xin 123"),
     (Symbology::DataMatrix, "DataMatrix 123"),
     (Symbology::Codabar, "A40156B"),
     (Symbology::Code128, "Hello-128 123"),
@@ -254,8 +256,10 @@ fn catalog_status_names_a_source_or_an_honest_reason() {
     assert_eq!(status(Symbology::AprilTag36h11), own);
     assert_eq!(status(Symbology::ArucoOpenCv7x7), own);
     for s in [
+        Symbology::TwoOfFive,
         Symbology::TwoOfFiveIata,
         Symbology::TwoOfFiveIndustrial,
+        Symbology::HanXin,
         Symbology::Aztec,
         Symbology::DataMatrix,
         Symbology::Codabar,
@@ -275,7 +279,7 @@ fn catalog_status_names_a_source_or_an_honest_reason() {
     ] {
         assert_eq!(status(s), anyd, "{s:?}");
     }
-    for s in [Symbology::TwoOfFive, Symbology::ArucoMip36h11, Symbology::HanXin, Symbology::GridMatrix] {
+    for s in [Symbology::ArucoMip36h11, Symbology::GridMatrix] {
         match status(s) {
             SymbolStatus::Unsupported { reason } => {
                 assert!(reason.len() > 30, "{s:?}: reason is a sentence, not a stub")
@@ -285,7 +289,7 @@ fn catalog_status_names_a_source_or_an_honest_reason() {
     }
     let implemented =
         symbology_catalog().iter().filter(|e| matches!(e.status, SymbolStatus::Implemented { .. })).count();
-    assert_eq!(implemented, 25);
+    assert_eq!(implemented, 27);
     assert_eq!(SAMPLES.len(), implemented, "every implemented symbology has a sample");
     for (s, _) in SAMPLES {
         assert!(matches!(s.status(), SymbolStatus::Implemented { .. }), "{s:?}");
@@ -294,7 +298,7 @@ fn catalog_status_names_a_source_or_an_honest_reason() {
 
 #[test]
 fn unsupported_symbologies_return_a_typed_error_and_never_a_pattern() {
-    for s in [Symbology::TwoOfFive, Symbology::ArucoMip36h11, Symbology::HanXin, Symbology::GridMatrix] {
+    for s in [Symbology::ArucoMip36h11, Symbology::GridMatrix] {
         let SymbolStatus::Unsupported { reason } = s.status() else { panic!("{s:?} should be unsupported") };
         for payload in ["12345", "A", ""] {
             let r = encode_symbol(s, payload, &params(0.4));
@@ -309,7 +313,8 @@ fn capabilities_describe_what_a_ui_may_offer() {
     for (s, _) in SAMPLES {
         let c = s.capabilities();
         let kind = match s {
-            Symbology::TwoOfFiveIata
+            Symbology::TwoOfFive
+            | Symbology::TwoOfFiveIata
             | Symbology::TwoOfFiveIndustrial
             | Symbology::Codabar
             | Symbology::Code128
@@ -955,6 +960,8 @@ fn geometry_has_real_millimetre_extents_and_exact_dark_area() {
 #[test]
 fn every_sample_reads_back_through_the_independent_decoder() {
     let no_decoder = [
+        Symbology::TwoOfFive,
+        Symbology::HanXin,
         Symbology::TwoOfFiveIata,
         Symbology::TwoOfFiveIndustrial,
         Symbology::AprilTag16h5,
