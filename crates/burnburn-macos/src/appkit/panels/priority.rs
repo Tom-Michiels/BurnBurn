@@ -15,6 +15,9 @@ use crate::panels::{cam_priority_hint, cam_priority_hint_short};
 const CAPTION_WIDTH: f64 = 86.0;
 const FIELD_HEIGHT: f64 = 24.0;
 const HINT_HEIGHT: f64 = 13.0;
+/// View tag of the priority field. The transform fields use their index as tag and the window
+/// finds their unit captions by tag; the default tag 0 would make it rename the X caption.
+const PRIORITY_FIELD_TAG: isize = 900;
 
 /// Adds the row from the column's current position down; returns the field for the window's list.
 pub(crate) fn priority_row(col: &mut Column<'_>, locale: Locale) -> (FieldKey, Retained<NSTextField>) {
@@ -25,6 +28,7 @@ pub(crate) fn priority_row(col: &mut Column<'_>, locale: Locale) -> (FieldKey, R
     caption.setFont(Some(&NSFont::systemFontOfSize(11.0)));
     col.view.addSubview(&caption);
     let f = field(mtm, rect(12.0 + CAPTION_WIDTH + 6.0, col.y, col.width - CAPTION_WIDTH - 6.0, FIELD_HEIGHT));
+    f.setTag(PRIORITY_FIELD_TAG);
     f.setAccessibilityLabel(Some(&NSString::from_str(&caption_text)));
     f.setToolTip(Some(&NSString::from_str(cam_priority_hint(locale))));
     col.view.addSubview(&f);

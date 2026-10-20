@@ -80,8 +80,11 @@ const SCHIKKEN_PANEL_TAG: isize = 1007;
 /// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
 const RECENT_TAG_BASE: isize = 2000;
 const RECENT_TAG_SLOTS: isize = 64;
-/// CAM dialog `n` (`CamDialog::ALL` order) has tag `CAM_TAG_BASE + n`.
-const CAM_TAG_BASE: isize = 5000;
+/// CAM dialog `n` (`CamDialog::ALL` order) has tag `CAM_TAG_BASE + n`. Tag ranges in use: 1000–1008
+/// host items, 2000+ recent projects, 2100+ recent templates, 3000+ app items (`AppAction`), 4000+
+/// CAM dialogs; 5000+ is taken by the inspector's caption views (`panels::inspector::CAPTION_TAG_BASE`),
+/// which share a container with buttons carrying menu tags.
+const CAM_TAG_BASE: isize = 4000;
 const CLEAR_RECENT_TEMPLATES_TAG: isize = 1008;
 /// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
 const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
