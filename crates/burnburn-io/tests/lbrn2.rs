@@ -246,13 +246,11 @@ fn proposals_commit_as_disabled_operations_through_the_process_api() {
 }
 
 #[test]
-fn pdf_import_is_not_supported_yet() {
+fn pdf_is_routed_to_the_pdf_importer_and_unknown_extensions_stay_unknown() {
     assert_eq!(ImportFormat::from_extension("PDF"), Some(ImportFormat::Pdf));
-    assert_eq!(ImportFormat::Pdf.check_supported(), Err(ImportError::NotSupportedYet(ImportFormat::Pdf)));
-    assert_eq!(
-        analyze(ImportFormat::Pdf, b"%PDF-1.7\n"),
-        Err(AnalyzeError::Import(ImportError::NotSupportedYet(ImportFormat::Pdf)))
-    );
+    assert_eq!(ImportFormat::Pdf.check_supported(), Ok(()));
+    assert!(matches!(analyze(ImportFormat::Pdf, b"%PDF-1.7\n"), Err(AnalyzeError::Parse(_))));
+    assert_eq!(ImportFormat::from_extension("xyz"), None);
     assert!(matches!(analyze(ImportFormat::Lbrn2, SHAPES.as_bytes()), Ok(burnburn_io::import::Analysis::Lbrn2(_))));
 }
 

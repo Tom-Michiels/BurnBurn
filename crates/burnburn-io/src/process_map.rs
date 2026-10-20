@@ -184,7 +184,7 @@ fn lead_angle_to_dto(l: Lead) -> Option<v1::Num> {
     (l.angle_deg() != 90.0).then(|| v1::Num(l.angle_deg()))
 }
 
-fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
+pub(crate) fn mode_to_dto(mode: OperationMode) -> Result<v1::Mode, SaveError> {
     Ok(match mode {
         OperationMode::Fill(f) => v1::Mode::Fill {
             interval_mm: v1::Num(f.interval().mm()),
@@ -276,7 +276,7 @@ fn image_options_to_dto(i: &ImageSettings) -> Option<v1::ImageOptions> {
     })
 }
 
-fn settings_to_dto(s: &ProcessSettings) -> v1::Settings {
+pub(crate) fn settings_to_dto(s: &ProcessSettings) -> v1::Settings {
     v1::Settings {
         speed_mm_s: v1::Num(s.speed.get_mm_per_s()),
         power_min_pct: v1::Num(s.power.min().get()),
@@ -296,7 +296,7 @@ fn length(path: PathFn<'_>, n: v1::Num) -> Result<Length, LoadError> {
     Length::from_mm(num(path, n)?).map_err(|e| invalid(path, e))
 }
 
-fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadError> {
+pub(crate) fn mode_from_dto(path: PathFn<'_>, m: &v1::Mode) -> Result<OperationMode, LoadError> {
     Ok(match *m {
         v1::Mode::Line { kerf_mm } => {
             let at = || format!("{}.kerf_mm", path());
@@ -537,7 +537,7 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
     })
 }
 
-fn settings_from_dto(path: PathFn<'_>, s: &v1::Settings) -> Result<ProcessSettings, LoadError> {
+pub(crate) fn settings_from_dto(path: PathFn<'_>, s: &v1::Settings) -> Result<ProcessSettings, LoadError> {
     let at = |f: &'static str| move || format!("{}.{f}", path());
     let pct = |f: &'static str, n| -> Result<PowerPercent, LoadError> {
         PowerPercent::new(num(&at(f), n)?).map_err(|e| invalid(&at(f), e))

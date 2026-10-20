@@ -1,0 +1,53 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [5 0 R 6 0 R] /D << /OFF [6 0 R] >> >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.276 841.89] /Contents 4 0 R /Resources << /Properties << /Cut 5 0 R /Guide 6 0 R >> /Font << /F1 7 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 415 >>
+stream
+/OC /Cut BDC
+0 0 1 RG
+56.6929 56.6929 283.4646 141.7323 re S
+127.5591 127.5591 m
+127.5591 135.3867 121.2135 141.7323 113.3858 141.7323 c
+105.5582 141.7323 99.2126 135.3867 99.2126 127.5591 c
+99.2126 119.7314 105.5582 113.3858 113.3858 113.3858 c
+121.2135 113.3858 127.5591 119.7314 127.5591 127.5591 c h S
+EMC
+/OC /Guide BDC 1 0 0 RG
+0.0000 283.4646 m 425.1969 283.4646 l S
+EMC
+BT /F1 12 Tf 100 700 Td (Plate) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /OCG /Name (Cut) >>
+endobj
+6 0 obj
+<< /Type /OCG /Name (Guide) >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000126 00000 n 
+0000000183 00000 n 
+0000000358 00000 n 
+0000000824 00000 n 
+0000000868 00000 n 
+0000000914 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+984
+%%EOF

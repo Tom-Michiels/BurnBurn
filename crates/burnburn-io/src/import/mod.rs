@@ -7,7 +7,9 @@
 //! builds one `GeometryCommand::Import`, so the document only changes through its command route.
 
 mod dxf;
+mod hpgl;
 mod lbrn2;
+mod pdf;
 mod raster;
 mod svg;
 mod xml;
@@ -19,10 +21,13 @@ use burnburn_geometry::Path;
 use burnburn_types::ContentHash;
 
 pub use dxf::{DxfDocument, DxfScale, parse_dxf, parse_dxf_with};
+pub use hpgl::{parse_hpgl, parse_hpgl_with};
 pub use lbrn2::{
-    AssetNote, Assumption, CutKind, CutSettingProposal, FontUse, ImportNote, Lbrn2Draft, Lbrn2Item, Lbrn2Report,
-    NoteKind, SUPPORTED, parse_lbrn2, parse_lbrn2_with, supported_attributes,
+    AssetNote, Assumption, CutKind, CutSettingProposal, EmbeddedBitmap, FontUse, ImageProposal, ImportNote, Lbrn2Draft,
+    Lbrn2Item, Lbrn2Report, NoteKind, ProjectInfo, ProjectNotes, SUPPORTED, UnmappedValue, parse_lbrn2,
+    parse_lbrn2_with, supported_attributes,
 };
+pub use pdf::{PdfDocument, PdfKind, PdfPage, PdfPages, parse_ai_with, parse_pdf, parse_pdf_with};
 pub use raster::{RasterError, RasterFormat, RasterInfo, RasterLimits, inspect_raster};
 pub use svg::{parse_svg, parse_svg_with};
 
@@ -108,9 +113,12 @@ pub enum ImportFormat {
     Lbrn2,
     Png,
     Jpeg,
-    /// Recognised only: vector import from PDF waits for the parser decision (lopdf or own
-    /// reader, Design/owner). Until then `NotSupportedYet`, never a partial import.
+    /// HP-GL / PLT plotter files.
+    Hpgl,
+    /// PDF vector paths (own reader, see IM28 W2-L6).
     Pdf,
+    /// Illustrator files: PDF-compatible `.ai`; legacy PostScript `.ai` is refused by name.
+    Ai,
 }
 
 impl ImportFormat {
@@ -122,17 +130,16 @@ impl ImportFormat {
             "lbrn2" => ImportFormat::Lbrn2,
             "png" => ImportFormat::Png,
             "jpg" | "jpeg" => ImportFormat::Jpeg,
+            "plt" | "hpgl" | "hgl" => ImportFormat::Hpgl,
             "pdf" => ImportFormat::Pdf,
+            "ai" => ImportFormat::Ai,
             _ => return None,
         })
     }
 
     /// Whether this build can import the format.
     pub fn check_supported(self) -> Result<(), ImportError> {
-        match self {
-            ImportFormat::Pdf => Err(ImportError::NotSupportedYet(self)),
-            _ => Ok(()),
-        }
+        Ok(())
     }
 }
 
@@ -145,6 +152,8 @@ pub enum Analysis {
     Dxf(DxfDocument),
     Lbrn2(Lbrn2Draft),
     Raster(RasterInfo),
+    /// PDF or Illustrator: the page choice comes before the draft.
+    Pdf(PdfDocument),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -155,7 +164,7 @@ pub enum AnalyzeError {
     Import(ImportError),
 }
 
-/// Analyses `bytes` as `format`. PDF → `ImportError::NotSupportedYet`.
+/// Analyses `bytes` as `format`.
 pub fn analyze(format: ImportFormat, bytes: &[u8]) -> Result<Analysis, AnalyzeError> {
     format.check_supported().map_err(AnalyzeError::Import)?;
     match format {
@@ -165,8 +174,22 @@ pub fn analyze(format: ImportFormat, bytes: &[u8]) -> Result<Analysis, AnalyzeEr
         ImportFormat::Png | ImportFormat::Jpeg => {
             inspect_raster(bytes, &RasterLimits::default()).map(Analysis::Raster).map_err(AnalyzeError::Raster)
         }
-        ImportFormat::Pdf => Err(AnalyzeError::Import(ImportError::NotSupportedYet(format))),
+        ImportFormat::Hpgl => parse_hpgl(bytes).map(Analysis::Vector).map_err(AnalyzeError::Parse),
+        ImportFormat::Pdf => parse_pdf(bytes).map(Analysis::Pdf).map_err(AnalyzeError::Parse),
+        ImportFormat::Ai => analyze_ai(bytes),
     }
+}
+
+fn analyze_ai(bytes: &[u8]) -> Result<Analysis, AnalyzeError> {
+    const LEGACY: &str = "legacy PostScript Illustrator file: save it with PDF compatibility or export SVG";
+    let head = &bytes[..bytes.len().min(1024)];
+    if head.windows(5).any(|w| w == b"%PDF-") {
+        return parse_ai_with(bytes, &ParseLimits::default()).map(Analysis::Pdf).map_err(AnalyzeError::Parse);
+    }
+    if head.starts_with(b"%!PS-Adobe") {
+        return Err(AnalyzeError::Parse(ParseError::Unsupported(LEGACY)));
+    }
+    Err(AnalyzeError::Parse(ParseError::Malformed { at: 0, reason: "not an Illustrator or PDF file" }))
 }
 
 impl fmt::Display for ImportError {
@@ -210,6 +233,25 @@ pub enum UnitDecision {
     DxfExplicit {
         mm_per_unit: f64,
     },
+    /// PDF user space: `mm_per_unit` is 25.4/72 times the first imported page's `UserUnit`.
+    Pdf {
+        mm_per_unit: f64,
+        pages: usize,
+    },
+    /// HP-GL plotter units (0.025 mm) or user units scaled by `IP`/`SC`.
+    Hpgl {
+        mm_per_unit: f64,
+        basis: HpglUnitBasis,
+    },
+}
+
+/// How HP-GL coordinates were turned into millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HpglUnitBasis {
+    /// Plotter units: 1016 per inch, 0.025 mm each.
+    PlotterUnits,
+    /// `SC` user units mapped onto the `IP` reference points (result still in plotter units).
+    ScaledByIpSc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

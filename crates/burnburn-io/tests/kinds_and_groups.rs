@@ -20,6 +20,7 @@ fn project(objects: Vec<GeometryObject>, next_id: u64) -> Project {
         assets: AssetStore::default(),
         profiles: Vec::new(),
         revisions: Vec::new(),
+        library_links: Vec::new(),
     }
 }
 
