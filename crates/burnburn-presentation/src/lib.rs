@@ -17,6 +17,8 @@ mod intent;
 mod laser;
 mod production;
 mod task;
+mod text_panel;
+mod variable_panel;
 mod view_model;
 
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
@@ -62,6 +64,14 @@ pub use production::{
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,
+};
+pub use text_panel::{
+    Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
+    TextToolbarViewModel, VAlign,
+};
+pub use variable_panel::{
+    AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
+    VariablePanelViewModel, VariableProblem,
 };
 pub use view_model::{
     AppViewModel, BooleanPreview, CommandState, ConstraintHealth, ConstraintRow, CutSettingsViewModel,

@@ -116,8 +116,12 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         | CommandKey::ShapesClockwise
         | CommandKey::ShapesCounterClockwise => path_op_operands(&snapshot, &s.selection).is_ok(),
         CommandKey::ShapesConvertToPath => {
-            !s.selection.is_empty()
-                && s.selection.ids().iter().all(|id| snapshot.object(*id).is_some_and(|o| o.parametric().is_some()))
+            super::text::convertible(s)
+                || (!s.selection.is_empty()
+                    && s.selection
+                        .ids()
+                        .iter()
+                        .all(|id| snapshot.object(*id).is_some_and(|o| o.parametric().is_some())))
         }
         other => {
             let cmd = node_command(other)?;
@@ -178,6 +182,9 @@ pub(super) fn run_command(
         CommandKey::ShapesReverse => path_op(s, PathOp::Reverse { subpaths: None })?,
         CommandKey::ShapesClockwise => path_op(s, PathOp::SetWinding { winding: Winding::Clockwise })?,
         CommandKey::ShapesCounterClockwise => path_op(s, PathOp::SetWinding { winding: Winding::CounterClockwise })?,
+        CommandKey::ShapesConvertToPath if super::text::convertible(s) => {
+            return Some(super::text::convert(s, document, Some(request)));
+        }
         CommandKey::ShapesConvertToPath => {
             let payload = CommandPayload::Shape(ShapeCommand::ConvertToPath { targets: s.selection.ids().to_vec() });
             return Some(run(s, document, payload, request).unwrap_or_else(|e| failed(s, document, &e)));

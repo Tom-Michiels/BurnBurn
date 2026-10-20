@@ -27,6 +27,9 @@ pub(super) struct Prepared {
     /// The head position (µm) the plan was placed on ("start from current position"); uploading
     /// is refused once the head is known to be elsewhere or its position is unknown.
     pub(super) placed_from: Option<(i64, i64)>,
+    /// The production record the job's variable text was resolved against: the counters commit
+    /// for exactly this record on the chosen job event (W3-UI-tekst).
+    pub(super) record: Option<burnburn_generators::ProductionRecord>,
 }
 
 /// An order (IM31) with the explicitly chosen job, if any.

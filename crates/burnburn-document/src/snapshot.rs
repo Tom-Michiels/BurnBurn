@@ -255,6 +255,13 @@ impl DocumentSnapshot {
         Ok(DocumentSnapshot { engines: Arc::new(engines), ..self })
     }
 
+    /// The same content under another revision identity. For a working snapshot derived from the
+    /// document's own (a job bound to a production record) that must stay comparable with the
+    /// revision it came from; a document session never changes revision this way.
+    pub fn restamped(self, revision: RevisionId) -> Self {
+        DocumentSnapshot { revision, ..self }
+    }
+
     pub(crate) fn from_txn(
         revision: RevisionId,
         objects: Objects,

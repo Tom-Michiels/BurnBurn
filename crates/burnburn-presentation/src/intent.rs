@@ -14,6 +14,8 @@ use crate::cut_options::CutExtras;
 use crate::image_panel::{ImageAdjustInput, TraceFormInput, TracePreset};
 use crate::laser::{LaserCommand, LaserSetup};
 use crate::production::{ActionId, OrderDraft, OrderId};
+use crate::text_panel::{TextEdit, TextPathEdit};
+use crate::variable_panel::VariableEdit;
 
 /// A semantic user action. Native hosts translate OS events into these; they never change
 /// document fields and never parse field text themselves. Menu, toolbar, shortcut and command
@@ -396,6 +398,21 @@ pub enum UiIntent {
     SetAspectLock {
         document: DocumentId,
         locked: bool,
+    },
+    /// The text toolbar (W3-UI-tekst): one edit of the selected text object, one undo step.
+    Text {
+        document: DocumentId,
+        edit: TextEdit,
+    },
+    /// The text-on-path dialog: choose Distort, start, offset, direction; apply or cancel.
+    TextPath {
+        document: DocumentId,
+        edit: TextPathEdit,
+    },
+    /// The variable-text panel: type, serial counter, auto-advance, data rows, Test and Bake.
+    Variable {
+        document: DocumentId,
+        edit: VariableEdit,
     },
 }
 
@@ -814,6 +831,8 @@ pub enum CommandKey {
     ZoomOut,
     /// Weergave ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
     ViewWireframe,
+    /// Bewerken ▸ Tekst op pad…: the selected text follows the selected guide (dialog with Distort).
+    TextOnPath,
 }
 
 impl CommandKey {
@@ -931,6 +950,7 @@ impl CommandKey {
         CommandKey::ZoomIn,
         CommandKey::ZoomOut,
         CommandKey::ViewWireframe,
+        CommandKey::TextOnPath,
     ];
 }
 

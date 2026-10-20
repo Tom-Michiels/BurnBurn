@@ -125,6 +125,12 @@ pub trait FontSource {
     fn available_styles(&self, _family: &str) -> Vec<FontStyle> {
         Vec::new()
     }
+
+    /// Family names this source can list, sorted (empty when the source cannot enumerate its
+    /// faces). The text toolbar's font choice is this list; a family is never invented.
+    fn families(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// The reference for the same family with Bold/Italic switched. It names another face, so an
@@ -169,5 +175,11 @@ impl FontSource for MemoryFontSource {
 
     fn available_styles(&self, family: &str) -> Vec<FontStyle> {
         self.by_name.keys().filter(|(f, _)| f == family).map(|(_, style)| *style).collect()
+    }
+
+    fn families(&self) -> Vec<String> {
+        let mut families: Vec<String> = self.by_name.keys().map(|(f, _)| f.clone()).collect();
+        families.dedup();
+        families
     }
 }

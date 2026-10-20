@@ -115,6 +115,12 @@ pub struct DocumentViewModel {
     pub tool_options: Vec<ParamRow>,
     /// The selected nodes in node-edit mode; empty for every other tool.
     pub node_selection: Vec<NodeRef>,
+    /// The text toolbar while exactly one text object is selected (W3-UI-tekst).
+    pub text_toolbar: Option<crate::text_panel::TextToolbarViewModel>,
+    /// The text-on-path dialog while it is open.
+    pub text_on_path: Option<crate::text_panel::TextOnPathViewModel>,
+    /// The variable-text panel while exactly one text object is selected.
+    pub variable_panel: Option<crate::variable_panel::VariablePanelViewModel>,
 }
 
 /// What the geometry dialog asks for.

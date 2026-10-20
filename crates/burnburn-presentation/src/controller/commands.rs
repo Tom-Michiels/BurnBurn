@@ -210,6 +210,7 @@ pub(super) fn invoke_in_session(
                 other => after_change(s, document, other),
             }
         }
+        CommandKey::TextOnPath => super::text::open_path_dialog(s, document),
         CommandKey::SketchNew => sketch::new_sketch(s, document, request),
         CommandKey::SketchFromSelection => sketch::from_selection(s, document, request),
         CommandKey::SketchEdit => sketch::edit_selected(s, document),

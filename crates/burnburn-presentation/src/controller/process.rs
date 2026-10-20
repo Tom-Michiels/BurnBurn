@@ -34,6 +34,8 @@ pub(super) struct Compiled {
     pub(super) placement: Option<crate::laser::AppliedPlacement>,
     /// Setup the plan was compiled with (0: plain). A different current key makes it stale.
     pub(super) setup_key: u64,
+    /// The production record the plan's variable text was resolved against (W3-UI-tekst).
+    pub(super) record: Option<burnburn_generators::ProductionRecord>,
 }
 
 impl AppController {
@@ -51,8 +53,22 @@ impl AppController {
             }
         };
         let tasks = Arc::clone(&self.ports.tasks);
+        let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+        let clock = self.clock.as_ref().map(|c| c());
         self.with_session(document, |s| {
-            let snapshot = s.doc.snapshot();
+            // Variable text is resolved against one production record before it is compiled, so
+            // preview, RD export and upload print the same text (E11).
+            let (snapshot, bound) = match super::variable::bind(s, fonts.as_ref(), clock) {
+                Ok(bound) => bound,
+                Err(problem) => {
+                    s.variable.set_problem(problem);
+                    return error(Some(document), MessageKey::CompileFailed);
+                }
+            };
+            s.variable.clear_problem();
+            if let Some(record) = bound {
+                s.variable.bind_task(id, record);
+            }
             let source = snapshot.revision();
             let cancel = CancellationSource::new();
             let input = match laser {
@@ -74,7 +90,11 @@ impl AppController {
                 cancel: cancel.token(),
                 input,
             };
-            submit(s, &tasks, request, cancel, document)
+            let update = submit(s, &tasks, request, cancel, document);
+            if !s.pending.contains_key(&id) {
+                s.variable.take_record(id);
+            }
+            update
         })
     }
 

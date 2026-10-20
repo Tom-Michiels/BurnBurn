@@ -389,3 +389,37 @@ fn bake_is_an_undoable_set_command_with_fixed_content() {
     assert_eq!(s.snapshot().text(id).unwrap().content, "N{serial}", "undo brings the dynamic content back");
     assert!(s.snapshot().text(id).unwrap().variable.is_some());
 }
+
+#[test]
+fn manual_changes_move_serial_and_row_together_and_stale_the_open_record() {
+    // The panel's Previous, Reset, row choice, series edit and event choice (W3-UI-tekst).
+    let mut live = ProductionCounters::new(Some(serial()), AdvancePolicy::Manual);
+    live.advance_manually().unwrap();
+    live.advance_manually().unwrap(); // serial 3, row 2
+    live.step_back_manually().unwrap();
+    assert_eq!((live.serial().unwrap().current(), live.row()), (2, 1));
+    live.step_back_manually().unwrap();
+    live.step_back_manually().unwrap(); // serial wraps backwards, the row stops at 0
+    assert_eq!(live.row(), 0);
+    assert_eq!(live.serial().unwrap().current(), serial().spec().end(), "the series wraps backwards");
+
+    live.advance_manually().unwrap();
+    live.reset();
+    assert_eq!((live.serial().unwrap().current(), live.row()), (serial().spec().start(), 0));
+
+    live.set_row(2);
+    assert_eq!(live.row(), 2);
+    let record = live.record(clock(), Some(rows()), &[]).unwrap();
+    assert!(record.resolve("{csv:naam}", 0).unwrap().starts_with('Å'), "row 2 of the fixture is Åsa");
+
+    // Any manual change counts as a move of the counters: a record made before it cannot commit.
+    live.set_policy(AdvancePolicy::OnJobStarted);
+    assert_eq!(live.policy(), AdvancePolicy::OnJobStarted);
+    assert_eq!(live.commit(&record, JobEvent::JobStarted), Err(VariableError::StaleRecord));
+    let before = live.generation();
+    let other = SerialCounter::new(spec(100, 200, 10));
+    live.set_serial(Some(other));
+    assert_eq!(live.serial().unwrap().current(), 100);
+    assert!(live.generation() > before);
+    assert_eq!(live.row(), 2, "a new series does not move the row");
+}
