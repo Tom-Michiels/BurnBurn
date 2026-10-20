@@ -286,7 +286,10 @@ fn layer_palette_has_thirty_distinct_opaque_colours() {
 fn the_wireframe_theme_draws_no_fills_but_the_same_strokes() {
     let viewport = Viewport::new(100.0, 100.0, 1.0).unwrap();
     let camera = Camera::new(Point::new(0.0, 0.0), 1.0).unwrap();
-    let items = vec![(rect_path(0.0, 0.0, 10.0, 10.0), StyleRole::Design), (rect_path(5.0, 5.0, 10.0, 10.0), StyleRole::Selected)];
+    let items = vec![
+        (rect_path(0.0, 0.0, 10.0, 10.0), StyleRole::Design),
+        (rect_path(5.0, 5.0, 10.0, 10.0), StyleRole::Selected),
+    ];
     let sc = scene(camera, viewport, items, Vec::new());
     let count = |packet: &burnburn_render::RenderPacket, fills: bool| {
         packet.primitives.iter().filter(|p| matches!(p, Primitive::Fill { .. }) == fills).count()

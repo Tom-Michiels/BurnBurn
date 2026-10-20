@@ -44,7 +44,7 @@ impl AppController {
                 Outcome::Send(payload) => {
                     s.field_errors.remove(&field);
                     match request {
-                        Some(request) => send(s, document, payload, request),
+                        Some(request) => send(s, document, *payload, request),
                         None => error(Some(document), MessageKey::CommandRejected),
                     }
                 }
@@ -83,7 +83,7 @@ enum Outcome {
     Invalid(crate::field::FieldError),
     Unchanged,
     Rejected,
-    Send(CommandPayload),
+    Send(Box<CommandPayload>),
 }
 
 fn send(s: &mut Session, document: DocumentId, payload: CommandPayload, request: RequestId) -> AppUpdate {
@@ -97,7 +97,9 @@ fn send(s: &mut Session, document: DocumentId, payload: CommandPayload, request:
 
 fn transform(s: &Session, matrix: Result<Affine, burnburn_geometry::GeometryError>) -> Outcome {
     match matrix {
-        Ok(transform) => Outcome::Send(CommandPayload::Transform { targets: s.selection.ids().to_vec(), transform }),
+        Ok(transform) => {
+            Outcome::Send(Box::new(CommandPayload::Transform { targets: s.selection.ids().to_vec(), transform }))
+        }
         Err(_) => Outcome::Rejected,
     }
 }
@@ -133,7 +135,7 @@ fn size(s: &Session, bounds: &Bounds, field: FieldKey, text: &str) -> Outcome {
             _ => Anchor::Max,
         };
         let axis = if width { Axis::Width } else { Axis::Height };
-        return Outcome::Send(CommandPayload::SetDimension { target, axis, value, anchor });
+        return Outcome::Send(Box::new(CommandPayload::SetDimension { target, axis, value, anchor }));
     }
     if !(current > 0.0) {
         return Outcome::Rejected;

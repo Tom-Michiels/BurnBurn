@@ -8,7 +8,7 @@ use std::path::{Path as FsPath, PathBuf};
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_io::{Project, ProjectUuid, save_project};
-use burnburn_presentation::{CommandKey, HeadlessEditorHarness, HostEffect, UiIntent};
+use burnburn_presentation::{HeadlessEditorHarness, HostEffect, UiIntent};
 
 fn fixture(h: &HeadlessEditorHarness, name: &str) -> PathBuf {
     h.fs().create_dir_all_for_test(FsPath::new("/work"));
@@ -18,8 +18,8 @@ fn fixture(h: &HeadlessEditorHarness, name: &str) -> PathBuf {
     path
 }
 
-fn open(h: &mut HeadlessEditorHarness, path: &PathBuf) -> Vec<Vec<PathBuf>> {
-    h.send(UiIntent::Open { path: path.clone() });
+fn open(h: &mut HeadlessEditorHarness, path: &FsPath) -> Vec<Vec<PathBuf>> {
+    h.send(UiIntent::Open { path: path.to_path_buf() });
     h.run_tasks()
         .iter()
         .flat_map(|u| u.effects.clone())
@@ -75,7 +75,6 @@ fn the_host_restores_the_stored_list_and_a_clear_empties_it() {
     let update = h.send(UiIntent::ClearRecentProjects);
     assert_eq!(update.effects, vec![HostEffect::RecentProjectsChanged { paths: vec![] }]);
     assert!(h.controller().recent_projects().is_empty());
-    let _ = CommandKey::New;
 }
 
 #[test]

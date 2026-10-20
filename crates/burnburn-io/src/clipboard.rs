@@ -166,7 +166,7 @@ pub fn decode_clipboard(bytes: &[u8]) -> Result<Clipboard, ClipboardError> {
                 let shape = crate::shape_map::shape_from_dto(&|| at("parametric"), dto).map_err(invalid)?;
                 // The definition must produce the stored outline (as when opening a project).
                 GeometryObject::new(GeometryId::from_raw(0), String::new(), kind, GeometrySource::Drawn, path.clone())
-                    .with_definition(shape.clone())
+                    .with_definition(shape)
                     .map_err(|e| ClipboardError::Invalid {
                         path: at("parametric"),
                         reason: crate::shape_map::definition_reason(e),
