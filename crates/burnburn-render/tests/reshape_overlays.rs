@@ -2,7 +2,7 @@
 //! colour, the dragged one larger, an invalid set in the problem colour (never colour alone: the
 //! marker stays the same shape, the status line says why).
 
-#![allow(clippy::unwrap_used, clippy::panic)] // test helpers outside #[test] fns
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers outside #[test] fns
 
 use burnburn_editor::{Camera, Overlay, SceneSnapshot, Viewport};
 use burnburn_geometry::Point;

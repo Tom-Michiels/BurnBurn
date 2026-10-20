@@ -5,7 +5,7 @@
 use burnburn_document::EditLabel;
 use burnburn_presentation::{
     CenterProblem, CommandKey, MessageKey, NestFailure, NestField, NestSkipReason, NestUnplacedReason, PlaceFailure,
-    RegistrationFailure, RegistrationField, ReshapeProblem, SchikkenMessage, SlotField, SlotsFailure,
+    RegistrationFailure, RegistrationField, ReshapeProblem, SchikkenMessage, SlotField, SlotsFailure, TangentProblem,
 };
 
 use super::{Locale, pick};
