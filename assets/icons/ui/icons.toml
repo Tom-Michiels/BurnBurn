@@ -491,3 +491,13 @@ solidcraft_icon = ""
 file = "bb_start_point.svg"
 category = "burnburn"
 solidcraft_icon = ""
+
+[tools."geometry.warp"]
+file = "bb_warp.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.deform"]
+file = "bb_deform.svg"
+category = "burnburn"
+solidcraft_icon = ""

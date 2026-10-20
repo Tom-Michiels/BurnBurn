@@ -94,6 +94,15 @@ impl AppController {
             s.sketch.constraints.clear();
             return AppUpdate::redraw(document);
         }
+        // Escape ends a Warp/Deform session whatever the handles show: the tool is done.
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && super::reshape::is_reshape_tool(s.editor.tool())
+        {
+            s.editor.cancel();
+            super::reshape::leave(s);
+            return AppUpdate::redraw(document);
+        }
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| match request {
             Some(request) => {
@@ -209,6 +218,7 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
         }
         ToolStep::Commit(edit) => {
             s.tool_measurement = None;
+            let reshaped = matches!(edit, EditCommit::Reshape(_));
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
             let snapshot = s.doc.snapshot();
@@ -221,6 +231,9 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
                 Ok(outcome) => {
                     if let Some(k) = kind {
                         *s.created.entry(k).or_insert(0) += 1;
+                    }
+                    if reshaped {
+                        super::reshape::leave(s);
                     }
                     after_change(s, document, Ok(outcome))
                 }

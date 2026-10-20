@@ -26,6 +26,9 @@ fn tool(h: &HeadlessEditorHarness, doc: DocumentId) -> ToolKind {
 #[test]
 fn every_catalog_id_with_a_tool_activates_that_tool_and_is_marked_selected() {
     let (mut h, doc) = window();
+    // Warp and Deform work on a selection (without one they stay in Select and say why).
+    select_tool(&mut h, doc, "sketch.rectangle.two_point");
+    h.drag(doc, (0.0, 0.0), (20.0, 10.0));
     let mut checked = 0;
     for spec in ToolCatalog::standard().specs() {
         let Action::Tool(kind) = spec.action else { continue };

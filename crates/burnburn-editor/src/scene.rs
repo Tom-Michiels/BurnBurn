@@ -53,6 +53,14 @@ pub enum Overlay {
         at: Point,
         handle: Handle,
     },
+    /// A handle of Warp or Deform; `index` is the handle's place in `ReshapePreview::handles`. An
+    /// `invalid` set of handles (non-convex quadrilateral, folded net) is drawn as a problem.
+    ReshapeHandle {
+        at: Point,
+        index: usize,
+        active: bool,
+        invalid: bool,
+    },
     /// A path node or Bézier handle in node-edit mode; `selected` nodes are the ones the node
     /// buttons act on (never set for a handle).
     Node {
@@ -229,6 +237,20 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
                     .filter_map(|id| req.snapshot.object(*id))
                     .map(|obj| Overlay::DragPreview { path: Arc::clone(obj.path()), transform: *transform }),
             );
+        }
+        Some(ToolPreview::Reshape(p)) => {
+            overlays.push(Overlay::DragPreview { path: Arc::clone(&p.frame), transform: Affine::IDENTITY });
+            overlays.extend(
+                p.items
+                    .iter()
+                    .map(|(_, path)| Overlay::DragPreview { path: Arc::clone(path), transform: Affine::IDENTITY }),
+            );
+            overlays.extend(p.handles.iter().enumerate().map(|(index, at)| Overlay::ReshapeHandle {
+                at: *at,
+                index,
+                active: p.active == Some(index),
+                invalid: p.error.is_some(),
+            }));
         }
         None => {}
     }

@@ -16,6 +16,7 @@ mod image_task;
 mod intent;
 mod laser;
 mod production;
+mod schikken;
 mod task;
 mod view_model;
 
@@ -58,6 +59,10 @@ pub use production::{
     LiveStatus, MachineAction, MachineError, MachineIntent, MachinePort, MachineService, MachineStatus, OrderDraft,
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
+};
+pub use schikken::{
+    DockContactChoice, DockReference, PlaceFailure, PlaceOptionsInput, PlaceOptionsViewModel, ReshapeProblem,
+    ReshapeViewModel, SchikkenIntent, SchikkenMessage, SchikkenViewModel, TogetherAnchorChoice,
 };
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,

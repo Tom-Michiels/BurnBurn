@@ -115,6 +115,8 @@ pub struct DocumentViewModel {
     pub tool_options: Vec<ParamRow>,
     /// The selected nodes in node-edit mode; empty for every other tool.
     pub node_selection: Vec<NodeRef>,
+    /// Dock, Move Together, reshape, slots, nesting and registration (W3-UI-schikken).
+    pub schikken: crate::schikken::SchikkenViewModel,
 }
 
 /// What the geometry dialog asks for.
@@ -654,6 +656,8 @@ pub struct MeasureViewModel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum MessageKey {
+    /// Dock, Move Together and the other Schikken flows refused something, or report (W3-UI-schikken).
+    Schikken(crate::schikken::SchikkenMessage),
     /// The active tool refused its gesture; nothing changed.
     ToolRejected(ToolRejection),
     /// Text input without any font to draw it with.

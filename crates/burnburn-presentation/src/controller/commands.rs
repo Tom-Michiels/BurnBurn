@@ -70,6 +70,9 @@ impl AppController {
                     shapes::apply_options(s);
                     s.tool_size_error = None;
                     clear_tool_report(s);
+                    if let Some(update) = super::reshape::activate(s, document, tool, request) {
+                        return update;
+                    }
                     AppUpdate::redraw(document)
                 })
             }
@@ -197,6 +200,9 @@ pub(super) fn invoke_in_session(
         return update;
     }
     if let Some(update) = super::arrange::command(s, document, command, request) {
+        return update;
+    }
+    if let Some(update) = super::reshape::command(s, document, command, request) {
         return update;
     }
     match command {

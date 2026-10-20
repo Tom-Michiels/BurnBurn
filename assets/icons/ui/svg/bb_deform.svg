@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Deform selection</title>
+  <path d="M8 14C22 6 40 24 56 12" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M8 50C22 42 40 58 56 48" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M8 14C14 26 2 38 8 50" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M56 12C50 26 62 36 56 48" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="24" cy="26" r="3.07" fill="#236ead"/>
+  <circle cx="40" cy="38" r="3.07" fill="#236ead"/>
+</svg>

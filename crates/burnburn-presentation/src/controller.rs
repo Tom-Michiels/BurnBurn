@@ -24,6 +24,7 @@ use burnburn_text::{FontRef, TextEvaluator};
 use crate::camera::{CameraDeviceId, CameraMode, CameraPort};
 use crate::intent::{CloseChoice, CommandKey, DialogKind, FieldKey, SelectMode, UiIntent};
 use crate::production::{ActionSubject, HistoryStore, MachinePort, OrderId, Role};
+use crate::schikken::SchikkenIntent;
 use crate::task::{TaskKind, TaskPort, TaskRequest};
 use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
@@ -46,6 +47,7 @@ mod machine;
 mod process;
 mod recent;
 mod recovery;
+mod reshape;
 mod shapes;
 mod sketch;
 mod tasks;
@@ -581,6 +583,7 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
             }
+            UiIntent::Schikken(intent) => self.schikken(intent),
         }
     }
 
@@ -730,6 +733,9 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Key { document, .. }
         | UiIntent::SetReferencePoint { document, .. }
         | UiIntent::SetAspectLock { document, .. }
+        | UiIntent::Schikken(
+            SchikkenIntent::SetPlaceOptions { document, .. } | SchikkenIntent::SetWarpKind { document, .. },
+        )
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {

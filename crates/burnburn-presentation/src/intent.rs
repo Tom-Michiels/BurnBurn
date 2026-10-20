@@ -397,6 +397,9 @@ pub enum UiIntent {
         document: DocumentId,
         locked: bool,
     },
+    /// Schikken (W3-UI-schikken): dock, move together, reshape, slots, nesting and registration
+    /// options and answers; see [`crate::SchikkenIntent`].
+    Schikken(crate::schikken::SchikkenIntent),
 }
 
 /// A numeric (or on/off) setting of a basic shape or of a tool; the host shows one row per key
@@ -814,6 +817,22 @@ pub enum CommandKey {
     ZoomOut,
     /// Weergave ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
     ViewWireframe,
+    /// Schikken ▸ Docken: the other selected objects slide against the reference (W3-UI-schikken).
+    DockLeft,
+    DockRight,
+    DockUp,
+    DockDown,
+    /// Schikken ▸ Samenschuiven: close the gaps between the selected objects along one axis.
+    MoveTogetherHorizontal,
+    MoveTogetherVertical,
+    /// Gereedschap ▸ Vervorm selectie (4 punten): the Warp tool with four corner handles.
+    ToolWarp,
+    /// Gereedschap ▸ Vervorm selectie (16 punten): the Deform tool with a 4 × 4 net.
+    ToolDeform,
+    /// Apply the handles of the Warp or Deform tool (Enter does the same).
+    ReshapeApply,
+    /// Put the handles of the Warp or Deform tool back on their start positions.
+    ReshapeReset,
 }
 
 impl CommandKey {
@@ -931,6 +950,16 @@ impl CommandKey {
         CommandKey::ZoomIn,
         CommandKey::ZoomOut,
         CommandKey::ViewWireframe,
+        CommandKey::DockLeft,
+        CommandKey::DockRight,
+        CommandKey::DockUp,
+        CommandKey::DockDown,
+        CommandKey::MoveTogetherHorizontal,
+        CommandKey::MoveTogetherVertical,
+        CommandKey::ToolWarp,
+        CommandKey::ToolDeform,
+        CommandKey::ReshapeApply,
+        CommandKey::ReshapeReset,
     ];
 }
 

@@ -238,6 +238,9 @@ static SPECS: &[ToolSpec] = &[
         Command(CommandKey::ShapesCounterClockwise),
     ),
     spec("geometry.optimize", Shapes, None, None, Command(CommandKey::ShapesOptimize)),
+    // Reshape the selection by handles; Enter applies (W3-UI-schikken).
+    spec("geometry.warp", Shapes, None, Some("geometry.reshape"), Tool(ToolKind::Warp)),
+    spec("geometry.deform", Shapes, None, Some("geometry.reshape"), Tool(ToolKind::Deform)),
     spec("geometry.convert_to_path", Shapes, None, None, Command(CommandKey::ShapesConvertToPath)),
     // Nodes: act on the nodes selected with the Node tool.
     spec("node.delete", Nodes, None, None, Command(CommandKey::NodeDelete)),

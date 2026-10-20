@@ -4,27 +4,199 @@
 use std::collections::BTreeSet;
 
 use burnburn_document::{
-    ArrangeCommand, ArrangeError, CommandError, CommandPayload, DocumentCommand, DocumentSnapshot, GeometryCommand,
-    GeometrySource, ObjectKind, OrderChange,
+    ArrangeCommand, ArrangeError, CommandError, CommandPayload, DocumentCommand, DocumentSnapshot, EditError,
+    GeometryCommand, GeometrySource, MoveAnchor, ObjectKind, OrderChange, PlaceCommand, PlaceUnits,
 };
-use burnburn_editor::SelectionChange;
-use burnburn_geometry::{Affine, Bounds, Point, Vector};
-use burnburn_types::{Angle, DocumentId, GeometryId, RequestId};
+use burnburn_editor::{
+    ArrangeError as OperandError, ReferenceChoice, SelectionChange, dock_operands, expand_to_groups,
+    move_together_operands,
+};
+use burnburn_geometry::{Affine, Bounds, Direction, DockDirection, DockError, Point, ProductionTolerance, Vector};
+use burnburn_types::{Angle, DocumentId, GeometryId, Length, RequestId};
 
+use crate::field::parse_position;
 use crate::intent::{CommandKey, RefPoint};
+use crate::schikken::{
+    DockReference, PlaceFailure, PlaceOptionsInput, PlaceOptionsViewModel, SchikkenIntent, SchikkenMessage,
+    TogetherAnchorChoice,
+};
 use crate::view_model::{MessageKey, StatusMessage};
 
-use super::{AppUpdate, Session, after_change, apply_command, apply_edit, apply_selection, error};
+use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_edit, apply_selection, error};
 
 /// Two shapes count as the same drawing when every segment end agrees within this (mm).
 const DUPLICATE_TOLERANCE_MM: f64 = 1e-3;
 
 /// Window state of the transform inspector and the view.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct ArrangeState {
     pub reference: RefPoint,
     pub aspect_locked: bool,
     pub wireframe: bool,
+    /// Dock and Move Together options (W3-UI-schikken).
+    pub place: PlaceOptions,
+}
+
+/// The Dock / Move Together options in force: the last valid input of the options panel.
+#[derive(Debug, Clone, Default)]
+pub(super) struct PlaceOptions {
+    pub input: PlaceOptionsInput,
+    /// Parsed `input.gap`.
+    pub gap_mm: f64,
+    /// Why the last input was refused.
+    pub error: Option<SchikkenMessage>,
+}
+
+impl AppController {
+    /// Intents of the Schikken module (options, dialogs, panels).
+    pub(super) fn schikken(&mut self, intent: SchikkenIntent) -> AppUpdate {
+        match intent {
+            SchikkenIntent::SetPlaceOptions { document, options } => {
+                self.with_session(document, |s| set_place_options(s, options))
+            }
+            SchikkenIntent::SetWarpKind { document, bilinear } => {
+                self.with_session(document, |s| super::reshape::set_warp_kind(s, document, bilinear))
+            }
+        }
+    }
+}
+
+fn set_place_options(s: &mut Session, options: PlaceOptionsInput) -> AppUpdate {
+    match parse_position(&options.gap) {
+        Ok(gap) if gap.mm() >= 0.0 => {
+            s.arrange.place = PlaceOptions { input: options, gap_mm: gap.mm(), error: None };
+        }
+        // The options in force stay; the panel shows why the new input was not taken.
+        _ => s.arrange.place.error = Some(SchikkenMessage::InvalidGap),
+    }
+    AppUpdate { view_changed: true, ..AppUpdate::default() }
+}
+
+fn dock_direction(command: CommandKey) -> Option<DockDirection> {
+    Some(match command {
+        CommandKey::DockLeft => DockDirection::Left,
+        CommandKey::DockRight => DockDirection::Right,
+        CommandKey::DockUp => DockDirection::Up,
+        CommandKey::DockDown => DockDirection::Down,
+        _ => return None,
+    })
+}
+
+fn together_direction(command: CommandKey) -> Option<Direction> {
+    match command {
+        CommandKey::MoveTogetherHorizontal => Some(Direction::Horizontal),
+        CommandKey::MoveTogetherVertical => Some(Direction::Vertical),
+        _ => None,
+    }
+}
+
+fn reference_choice(choice: DockReference) -> ReferenceChoice {
+    match choice {
+        DockReference::FirstSelected => ReferenceChoice::FirstSelected,
+        DockReference::LastSelected => ReferenceChoice::LastSelected,
+        DockReference::Object(id) => ReferenceChoice::Object(id),
+    }
+}
+
+fn units(by_group: bool) -> PlaceUnits {
+    if by_group { PlaceUnits::ByGroup } else { PlaceUnits::Individual }
+}
+
+/// Why a dock or move-together did not run (operands) or was refused (document).
+fn operand_failure(e: OperandError) -> PlaceFailure {
+    match e {
+        OperandError::TooFewObjects { .. } => PlaceFailure::TooFewObjects,
+        OperandError::EmptyGeometry(_) => PlaceFailure::EmptyGeometry,
+        OperandError::ReferenceNotSelected(_) => PlaceFailure::ReferenceNotSelected,
+        _ => PlaceFailure::Refused,
+    }
+}
+
+fn place_failure(e: &CommandError) -> PlaceFailure {
+    match e {
+        CommandError::Edit(EditError::Dock(DockError::NoContact)) => PlaceFailure::NoContact,
+        CommandError::Edit(EditError::Dock(DockError::Overlapping)) => PlaceFailure::Overlapping,
+        CommandError::Edit(EditError::Dock(DockError::EmptyGeometry)) => PlaceFailure::EmptyGeometry,
+        CommandError::Edit(EditError::ReferenceInTargets(_) | EditError::ReferenceNotInTargets(_)) => {
+            PlaceFailure::ReferenceNotSelected
+        }
+        CommandError::Edit(EditError::NotEnoughTargets) => PlaceFailure::TooFewObjects,
+        CommandError::Edit(EditError::NothingChanged) => PlaceFailure::NothingToMove,
+        _ => PlaceFailure::Refused,
+    }
+}
+
+/// Dock or Move Together with the options in force: one document command, the selection (and so
+/// the reference) kept across it. A refusal is a status message, never a history entry.
+fn place_edit(s: &mut Session, document: DocumentId, command: CommandKey, request: Option<RequestId>) -> AppUpdate {
+    let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+    let snapshot = s.doc.snapshot();
+    let options = s.arrange.place.input.clone();
+    let Ok(gap) = Length::from_mm(s.arrange.place.gap_mm) else {
+        return error(Some(document), MessageKey::CommandRejected);
+    };
+    let by_group = options.by_group;
+    let dock = dock_direction(command);
+    let together = together_direction(command);
+    let refuse = |s: &mut Session, f: PlaceFailure| {
+        let message = if dock.is_some() { SchikkenMessage::Dock(f) } else { SchikkenMessage::MoveTogether(f) };
+        s.messages.retain(|m| !matches!(m.key, MessageKey::Schikken(_)));
+        s.messages.push(StatusMessage { key: MessageKey::Schikken(message) });
+        AppUpdate::redraw(document)
+    };
+    let place = if let Some(direction) = dock {
+        let (targets, reference) = match dock_operands(&snapshot, &s.selection, reference_choice(options.reference)) {
+            Ok(operands) => operands,
+            Err(e) => return refuse(s, operand_failure(e)),
+        };
+        let targets = if by_group { expand_to_groups(&snapshot, &targets) } else { targets };
+        let targets: Vec<_> = targets.into_iter().filter(|id| *id != reference).collect();
+        let Some(tolerance) =
+            Length::from_mm(super::COMPILE_TOLERANCE_MM).ok().and_then(|l| ProductionTolerance::new(l).ok())
+        else {
+            return error(Some(document), MessageKey::CommandRejected);
+        };
+        PlaceCommand::Dock {
+            targets,
+            reference: vec![reference],
+            direction,
+            contact: options.contact.contact(),
+            gap,
+            units: units(by_group),
+            tolerance,
+        }
+    } else if let Some(direction) = together {
+        let targets = match move_together_operands(&snapshot, &s.selection) {
+            Ok(targets) => targets,
+            Err(e) => return refuse(s, operand_failure(e)),
+        };
+        let anchor = match options.anchor {
+            TogetherAnchorChoice::Start => MoveAnchor::Start,
+            TogetherAnchorChoice::End => MoveAnchor::End,
+            TogetherAnchorChoice::Object(id) => MoveAnchor::Object(id),
+        };
+        let targets = if by_group { expand_to_groups(&snapshot, &targets) } else { targets };
+        PlaceCommand::MoveTogether { targets, direction, anchor, gap, units: units(by_group) }
+    } else {
+        return AppUpdate::default();
+    };
+    let payload = CommandPayload::Edit(GeometryCommand::Place(place));
+    let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
+    match apply_command(&s.fonts, &mut s.doc, cmd) {
+        Ok(outcome) => {
+            // Selection order (and so the reference) is kept across the change.
+            let keep = s.selection.clone();
+            let update = after_change(s, document, Ok(outcome));
+            s.selection = keep;
+            s.selection.retain_existing(&s.doc.snapshot());
+            update
+        }
+        Err(e) => refuse(s, place_failure(&e)),
+    }
+}
+
+pub(super) fn place_view(s: &Session) -> PlaceOptionsViewModel {
+    PlaceOptionsViewModel { input: s.arrange.place.input.clone(), error: s.arrange.place.error }
 }
 
 pub(super) fn set_reference_point(s: &mut Session, point: RefPoint) -> AppUpdate {
@@ -170,6 +342,17 @@ pub(super) fn command(
             arrange_edit(s, document, ArrangeCommand::SetHidden { targets, hidden: false }, request)
         }
         CommandKey::LockSelected | CommandKey::HideSelected => AppUpdate::default(),
+        CommandKey::DockLeft
+        | CommandKey::DockRight
+        | CommandKey::DockUp
+        | CommandKey::DockDown
+        | CommandKey::MoveTogetherHorizontal
+        | CommandKey::MoveTogetherVertical => {
+            if command_enabled(command, s) != Some(true) {
+                return Some(AppUpdate::default());
+            }
+            place_edit(s, document, command, request)
+        }
         CommandKey::DeleteDuplicates => delete_duplicates(s, document, request),
         CommandKey::ViewWireframe => {
             s.arrange.wireframe = !s.arrange.wireframe;
@@ -318,6 +501,12 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         | CommandKey::ZoomIn
         | CommandKey::ZoomOut => true,
         CommandKey::ViewWireframe => true,
+        CommandKey::DockLeft | CommandKey::DockRight | CommandKey::DockUp | CommandKey::DockDown => {
+            dock_operands(&snapshot, &s.selection, reference_choice(s.arrange.place.input.reference)).is_ok()
+        }
+        CommandKey::MoveTogetherHorizontal | CommandKey::MoveTogetherVertical => {
+            move_together_operands(&snapshot, &s.selection).is_ok()
+        }
         CommandKey::Group => selected.len() >= 2,
         CommandKey::Ungroup => any(&|id| snapshot.object(id).is_some_and(|o| !o.groups().is_empty())),
         CommandKey::AutoGroup => snapshot.len() >= 2,

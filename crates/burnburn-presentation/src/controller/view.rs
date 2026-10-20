@@ -197,6 +197,10 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         tool_options: shapes::option_rows(s),
         node_selection: s.editor.node_selection().to_vec(),
         image: super::image::image_view(s),
+        schikken: crate::schikken::SchikkenViewModel {
+            place: super::arrange::place_view(s),
+            reshape: super::reshape::view(s),
+        },
     }
 }
 
@@ -290,6 +294,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SaveProcessedBitmap,
             Some(s),
         ) => (super::image::command_enabled(key, s), false),
+        (other, Some(s)) if super::reshape::command_enabled(other, s).is_some() => {
+            (super::reshape::command_enabled(other, s).unwrap_or(false), false)
+        }
         (other, Some(s)) if super::arrange::command_enabled(other, s).is_some() => {
             (super::arrange::command_enabled(other, s).unwrap_or(false), false)
         }
