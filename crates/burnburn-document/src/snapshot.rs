@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use burnburn_types::{GeometryId, IdAllocator, RevisionId, StableId};
 
-use crate::GeometryObject;
 use crate::engine::{EngineError, EngineLayer};
 use crate::generator::{GeneratorDefinition, GeneratorId};
 use crate::process::{ProcessError, ProcessLayer};
@@ -15,6 +14,7 @@ use crate::structure::{
 };
 use crate::text::{TextError, TextId, TextLayer, TextObject};
 use crate::trace::{TraceDefinition, TraceId};
+use crate::{ArrangeLayer, GeometryObject};
 use crate::{DerivedOwner, DerivedRecord, EvalStatus, GeometrySource};
 
 pub(crate) type Objects = Arc<BTreeMap<GeometryId, Arc<GeometryObject>>>;
@@ -35,6 +35,8 @@ pub struct DocumentSnapshot {
     pub(crate) texts: Arc<TextLayer>,
     /// Trace and generator definitions and their evaluation records (C-9, IM22).
     pub(crate) engines: Arc<EngineLayer>,
+    /// Draw order and locks (W2-L1-bewerken).
+    pub(crate) arrange: Arc<ArrangeLayer>,
 }
 
 /// The part of a document that one plate compiles (P06): only the plate's objects, operations
@@ -65,6 +67,8 @@ pub enum SnapshotError {
     Text(TextError),
     /// The trace/generator layer is inconsistent with itself or with the objects.
     Engine(EngineError),
+    /// The arrangement layer names an object that does not exist.
+    Arrange(GeometryId),
 }
 
 impl fmt::Display for SnapshotError {
@@ -79,6 +83,7 @@ impl fmt::Display for SnapshotError {
             SnapshotError::Structure(e) => write!(f, "structure layer: {e}"),
             SnapshotError::Text(e) => write!(f, "text layer: {e}"),
             SnapshotError::Engine(e) => write!(f, "trace/generator layer: {e}"),
+            SnapshotError::Arrange(id) => write!(f, "arrangement names unknown object {id}"),
         }
     }
 }
@@ -96,6 +101,7 @@ impl DocumentSnapshot {
             structure: Arc::default(),
             texts: Arc::default(),
             engines: Arc::default(),
+            arrange: Arc::default(),
         }
     }
 
@@ -121,6 +127,7 @@ impl DocumentSnapshot {
             structure: Arc::default(),
             texts: Arc::default(),
             engines: Arc::default(),
+            arrange: Arc::default(),
         })
     }
 
@@ -258,7 +265,48 @@ impl DocumentSnapshot {
         texts: Arc<TextLayer>,
         engines: Arc<EngineLayer>,
     ) -> Self {
-        DocumentSnapshot { revision, objects, next_id, process, sketches, structure, texts, engines }
+        DocumentSnapshot {
+            revision,
+            objects,
+            next_id,
+            process,
+            sketches,
+            structure,
+            texts,
+            engines,
+            arrange: Arc::default(),
+        }
+    }
+
+    /// The same snapshot with another arrangement layer (transactions and undo).
+    pub(crate) fn with_arrange_layer(self, arrange: Arc<ArrangeLayer>) -> Self {
+        DocumentSnapshot { arrange, ..self }
+    }
+
+    /// The same snapshot with a stored arrangement layer (open/recovery). Every object it names
+    /// must exist.
+    pub fn with_arrange(self, arrange: ArrangeLayer) -> Result<Self, SnapshotError> {
+        for id in arrange.order().iter().copied().chain(arrange.locked()) {
+            if !self.objects.contains_key(&id) {
+                return Err(SnapshotError::Arrange(id));
+            }
+        }
+        Ok(DocumentSnapshot { arrange: Arc::new(arrange), ..self })
+    }
+
+    /// Draw order and locks.
+    pub fn arrange(&self) -> &ArrangeLayer {
+        &self.arrange
+    }
+
+    /// All objects back to front: the order they are drawn in (not the cut order).
+    pub fn draw_order(&self) -> Vec<GeometryId> {
+        self.arrange.draw_order(self.objects.keys().copied())
+    }
+
+    /// Locked objects are not picked on the canvas and are not moved by it.
+    pub fn is_locked(&self, id: GeometryId) -> bool {
+        self.arrange.is_locked(id)
     }
 
     /// Trace and generator definitions with their evaluation records (C-9, IM22).
@@ -364,7 +412,8 @@ impl DocumentSnapshot {
             Arc::clone(&self.structure),
             Arc::clone(&self.texts),
             Arc::clone(&self.engines),
-        );
+        )
+        .with_arrange_layer(Arc::clone(&self.arrange));
         issues.extend(
             view.objects().filter(|(id, _)| view.production_blocked(*id)).map(|(id, _)| PlateIssue::Blocked(id)),
         );
@@ -446,5 +495,6 @@ impl DocumentSnapshot {
             && (Arc::ptr_eq(&self.structure, &other.structure) || self.structure == other.structure)
             && (Arc::ptr_eq(&self.texts, &other.texts) || self.texts == other.texts)
             && (Arc::ptr_eq(&self.engines, &other.engines) || self.engines == other.engines)
+            && (Arc::ptr_eq(&self.arrange, &other.arrange) || self.arrange == other.arrange)
     }
 }

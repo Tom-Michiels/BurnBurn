@@ -5,6 +5,8 @@
 //! changes nothing. Machine actions are never document commands, so undo can never replay them.
 //! This crate has no GUI, GPU, filesystem or network dependency.
 
+mod arrange;
+mod arrange_edit;
 mod canonical;
 mod command;
 mod edit;
@@ -21,6 +23,8 @@ pub mod structure;
 pub mod text;
 pub mod trace;
 
+pub use arrange::{ArrangeLayer, ArrangeLayerError};
+pub use arrange_edit::{ArrangeCommand, ArrangeError, ArrangeLabel, OrderChange, PasteItem};
 pub use command::{
     Anchor, Axis, ChangeSet, CommandError, CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, UndoLabel,
     ValueError,

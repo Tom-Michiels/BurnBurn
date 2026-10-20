@@ -20,7 +20,9 @@ pub fn asset_hash(bytes: &[u8]) -> ContentHash {
 /// only when the document has sketches: `tag("sketches")`, `seq` of (`u64` id, sketch canonical form incl. solution);
 /// only when the document has text objects: `tag("texts")`, `seq` of (`u64` id, text source canonical form);
 /// only when the document has traces: `tag("traces")`, `seq` of (`u64` id, trace definition);
-/// only when the document has generators: `tag("generators")`, `seq` of (`u64` id, generator definition).
+/// only when the document has generators: `tag("generators")`, `seq` of (`u64` id, generator definition);
+/// only when the document has a draw order or locks (W2-L1-bewerken): `tag("arrange")`, `seq` of the
+/// ordered ids, `seq` of the locked ids (ascending).
 pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
     let mut w = CanonicalWriter::new();
     w.tag("objects");
@@ -66,6 +68,13 @@ pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
         w.tag("generators");
         w.seq(engines.generators().map(|(id, g)| IdRef(id.raw(), g)));
     }
+    // Draw order and locks only when present, so other projects keep their hash.
+    let arrange = project.document.arrange();
+    if !arrange.is_empty() {
+        w.tag("arrange");
+        w.seq(arrange.order().iter().map(|id| IdOnly(id.raw())));
+        w.seq(arrange.locked().map(|id| IdOnly(id.raw())));
+    }
     // Frozen profiles and revisions (IM28) only when present.
     if !project.profiles.is_empty() {
         w.tag("profiles");
@@ -86,6 +95,14 @@ impl CanonicalEncode for AssetRef<'_> {
     fn encode(&self, out: &mut CanonicalWriter) {
         out.bytes(self.0.as_bytes());
         out.str(self.1);
+    }
+}
+
+struct IdOnly(u64);
+
+impl CanonicalEncode for IdOnly {
+    fn encode(&self, out: &mut CanonicalWriter) {
+        out.u64(self.0);
     }
 }
 
