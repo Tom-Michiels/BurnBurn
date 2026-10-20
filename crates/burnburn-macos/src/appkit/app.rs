@@ -17,8 +17,8 @@ use burnburn_editor::Viewport;
 use burnburn_io::ProjectUuid;
 use burnburn_io::fs::FileSystem;
 use burnburn_presentation::{
-    AppController, AppPorts, AppUpdate, AppViewModel, CameraPort, CloseChoice, CommandKey, HostEffect, MessageKey,
-    UiIntent,
+    AppController, AppPorts, AppUpdate, AppViewModel, CamDialog, CameraPort, CloseChoice, CommandKey, HostEffect,
+    MessageKey, UiIntent,
 };
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
@@ -30,7 +30,9 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
+mod cam_host;
 mod laser_host;
+pub use cam_host::CamPanelParts;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
@@ -131,6 +133,8 @@ pub struct HostApp {
     recovery_count: Cell<(usize, usize)>,
     /// Autosave tick and the camera tick (refreshes the camera section while a camera is attached).
     timers: RefCell<Vec<Retained<NSTimer>>>,
+    /// The panels of the open CAM dialogs (Optimization, tests, Device Settings).
+    cam_panels: RefCell<cam_host::CamPanels>,
 }
 
 /// Ask the running host (on the main queue, after the current callback) to autosave: used when a
@@ -208,6 +212,7 @@ impl HostApp {
                 recovery_alert: RefCell::new(None),
                 recovery_count: Cell::new((0, 0)),
                 timers: RefCell::new(Vec::new()),
+                cam_panels: RefCell::new(cam_host::CamPanels::new()),
             }
         });
         if let Ok(mut controller) = app.controller.try_borrow_mut() {
@@ -813,6 +818,7 @@ impl HostApp {
                 }
             }
         }
+        self.refresh_cam_panels();
     }
 
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
@@ -1453,6 +1459,9 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::SelectCircles),
             sep(),
             plain(CommandKey::DeleteDuplicates),
+            sep(),
+            item(MenuItem::CamDialog(CamDialog::Optimization), "", false),
+            item(MenuItem::CamDialog(CamDialog::Device), "", false),
         ],
     ));
     main.addItem(&submenu(
@@ -1598,7 +1607,13 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
     ));
     main.addItem(&submenu(
         crate::panels::laser_text(crate::panels::LaserText::MenuLaser, locale),
-        vec![item(MenuItem::LaserWindow, "l", true)],
+        vec![
+            item(MenuItem::LaserWindow, "l", true),
+            sep(),
+            item(MenuItem::CamDialog(CamDialog::MaterialTest), "", false),
+            item(MenuItem::CamDialog(CamDialog::IntervalTest), "", false),
+            item(MenuItem::CamDialog(CamDialog::FocusTest), "", false),
+        ],
     ));
     main.addItem(&submenu(
         crate::panels::laser_text(crate::panels::LaserText::HelpMenu, locale),

@@ -4,6 +4,7 @@
 //! Native hosts (AppKit, Windows), the CLI and the [`HeadlessEditorHarness`] all drive the same
 //! controller. No AppKit, Windows or GPU type appears here.
 
+mod cam_dialogs;
 mod camera;
 mod catalog;
 mod commit;
@@ -24,6 +25,11 @@ pub use burnburn_job::Feature;
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
 pub use burnburn_machine::{
     ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
+};
+pub use cam_dialogs::{
+    CamDialog, CapabilityRow, DialogAction, DialogActionKind, DialogActionState, DialogChoice, DialogControl,
+    DialogError, DialogField, DialogNote, DialogRow, DialogValue, DialogViewModel, RdRefusal, SupportView,
+    TestResultView,
 };
 pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,

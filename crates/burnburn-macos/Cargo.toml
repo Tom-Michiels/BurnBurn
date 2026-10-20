@@ -154,6 +154,11 @@ path = "../../tests/native/macos/cut_settings_options.rs"
 harness = false
 
 [[test]]
+name = "cam_dialogs"
+path = "../../tests/native/macos/cam_dialogs.rs"
+harness = false
+
+[[test]]
 name = "sketch_mode"
 path = "../../tests/native/macos/sketch_mode.rs"
 harness = false

@@ -39,7 +39,7 @@ use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_r
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{machine_panel, plan_panel};
 
-const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 760.0 };
+const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 800.0 };
 /// Machine controls offered at most at once (ConfirmStored, Start, QueryStatus, Cancel, Reconnect).
 const MACHINE_SLOTS: usize = 6;
 const SIDEBAR_WIDTH: f64 = 200.0;
@@ -156,7 +156,8 @@ impl DocWindow {
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
         inspector.setAccessibilityLabel(Some(&NSString::from_str(host_text(HostText::InspectorLabel, locale))));
         let mut col = Column { mtm, view: &inspector, y: h - 8.0, width: INSPECTOR_WIDTH - 24.0 };
-        let (fields, controls) = transform_block(&mut col, locale);
+        let (mut fields, controls) = transform_block(&mut col, locale);
+        fields.push(super::panels::priority::priority_row(&mut col, locale));
         let status_label = col.add_label("", 32.0);
         status_label.setTextColor(Some(&NSColor::systemRedColor()));
         status_label.setLineBreakMode(NSLineBreakMode::ByWordWrapping);

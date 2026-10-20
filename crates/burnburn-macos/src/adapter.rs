@@ -35,6 +35,9 @@ pub enum MenuItem {
     Recent(usize),
     /// Archief ▸ Recente projecten ▸ Wis menu.
     ClearRecent,
+    /// Bewerken / Laser ▸ one of the CAM dialogs (Optimalisatie-instellingen, Materiaal-, Interval-,
+    /// Focustest, Apparaatinstellingen): presentation opens it for the active window.
+    CamDialog(burnburn_presentation::CamDialog),
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -49,6 +52,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::ClearRecent,
     ]
     .into_iter()
+    .chain(burnburn_presentation::CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
     .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
     .collect()
 }
@@ -64,6 +68,8 @@ const CLEAR_RECENT_TAG: isize = 1006;
 /// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
 const RECENT_TAG_BASE: isize = 2000;
 const RECENT_TAG_SLOTS: isize = 64;
+/// CAM dialog `n` (`CamDialog::ALL` order) has tag `CAM_TAG_BASE + n`.
+const CAM_TAG_BASE: isize = 3000;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
@@ -78,6 +84,10 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::Recent(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
         }
+        MenuItem::CamDialog(dialog) => burnburn_presentation::CamDialog::ALL
+            .iter()
+            .position(|d| *d == dialog)
+            .map_or(-1, |i| CAM_TAG_BASE + i as isize),
         MenuItem::Command(key) => CommandKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize + 1),
     }
 }
@@ -104,6 +114,13 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == CLEAR_RECENT_TAG {
         return Some(MenuItem::ClearRecent);
+    }
+    if let Some(dialog) = tag
+        .checked_sub(CAM_TAG_BASE)
+        .and_then(|i| usize::try_from(i).ok())
+        .and_then(|i| burnburn_presentation::CamDialog::ALL.get(i))
+    {
+        return Some(MenuItem::CamDialog(*dialog));
     }
     if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
@@ -501,6 +518,11 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
         E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
         E::Menu(MenuItem::ClearRecent) => UiIntent::ClearRecentProjects,
+        // The CAM dialogs belong to the window in front.
+        E::Menu(MenuItem::CamDialog(dialog)) => {
+            let Some(document) = vm.active else { return Reaction::Nothing };
+            UiIntent::OpenCamDialog { document, dialog }
+        }
         // A recent entry needs the stored list: see `recent_open_reaction`.
         E::Menu(MenuItem::Recent(_)) => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
@@ -837,6 +859,8 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         // The laser panel belongs to a window; the diagnostic export reads the journal only.
         MenuItem::LaserWindow => vm.active.is_some(),
         MenuItem::ExportDiagnostics => true,
+        // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
+        MenuItem::CamDialog(_) => vm.active.is_some(),
         MenuItem::Recent(_) | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
@@ -872,6 +896,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::TraceImage
         | MenuItem::LaserWindow
         | MenuItem::ExportDiagnostics
+        | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
         | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
@@ -890,6 +915,7 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
             crate::panels::laser_text(crate::panels::LaserText::DiagnosticsItem, locale).to_owned()
         }
         MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
+        MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).
         MenuItem::Recent(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {

@@ -7,7 +7,7 @@
 
 use burnburn_document::process::{
     AdvancedOptions, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead, LeadStyle,
-    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec,
+    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec, ZOffset,
 };
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::Length;
@@ -151,6 +151,7 @@ fn image_extras(i: &ImageSettings, e: &mut CutExtras) {
 pub(super) fn extras_of(op: &Operation) -> CutExtras {
     use burnburn_document::process::OperationMode as M;
     let mut e = CutExtras::new();
+    e.set_text(CutField::ZOffset, format_mm(op.advanced().z_offset.map_or(0.0, |z| z.mm())));
     if let M::Image(i) = op.mode() {
         image_extras(&i, &mut e);
         return e;
@@ -178,6 +179,7 @@ pub(super) fn gates_of(kind: OperationKind, caps: &MachineCapabilities) -> CutGa
             }
         }
     };
+    block(&[CutField::ZOffset], Feature::ZStep);
     match kind {
         OperationKind::Image => {
             for choice in CutField::ImageMode.choices() {
@@ -521,5 +523,20 @@ pub(super) fn apply(
             other
         }
     };
+    if changed(&[CutField::ZOffset]) {
+        advanced.z_offset = z_offset(merged.text(CutField::ZOffset))?;
+    }
     Ok((mode, advanced))
+}
+
+/// `0` or an empty field is no offset; otherwise a signed length of at most 50 mm.
+fn z_offset(text: &str) -> Result<Option<ZOffset>, MessageKey> {
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let length = parse_position(text).map_err(|_| invalid(CutField::ZOffset))?;
+    if length.mm() == 0.0 {
+        return Ok(None);
+    }
+    ZOffset::new(length).map(Some).map_err(|_| invalid(CutField::ZOffset))
 }

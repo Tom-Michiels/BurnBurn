@@ -119,7 +119,9 @@ fn a_line_sheet_has_the_line_rows_with_the_right_controls_and_greys_what_is_off(
     assert!(row(&panel.options, CutField::Overcut).enabled);
     // The Fill mode of the pop-up shows the Fill rows instead.
     let fill = option_rows(&sheet, OperationKind::Fill, &sheet.extras, Locale::En);
-    let expected: Vec<CutField> = CutField::ALL.into_iter().filter(|f| f.section() == CutSection::Fill).collect();
+    // The Z offset belongs to the operation, whatever its mode: it closes every sheet's rows.
+    let mut expected: Vec<CutField> = CutField::ALL.into_iter().filter(|f| f.section() == CutSection::Fill).collect();
+    expected.push(CutField::ZOffset);
     assert_eq!(fields(&fill), expected);
     assert_eq!(row(&fill, CutField::FillInterval).control, RowControl::Text("0.1".into()));
     assert_eq!(row(&fill, CutField::FillBidirectional).control, RowControl::Check(true));
