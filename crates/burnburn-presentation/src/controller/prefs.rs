@@ -205,6 +205,14 @@ impl LanguageChoice {
 }
 
 impl DisplayQuality {
+    /// Curve flattening of the canvas drawing in device pixels (never a job tolerance).
+    pub fn tolerance_px(self) -> f64 {
+        match self {
+            DisplayQuality::Coarse => 1.0,
+            DisplayQuality::Smooth => 0.25,
+        }
+    }
+
     pub fn id(self) -> &'static str {
         match self {
             DisplayQuality::Coarse => "coarse",
