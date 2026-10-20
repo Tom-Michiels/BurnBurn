@@ -97,9 +97,13 @@ pub fn hit_test(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: f64) -> Ve
     };
     // The key's first part makes the domain's tie-break pick the topmost object.
     let order = snapshot.draw_order();
-    let index = SpatialIndex::build(order.iter().enumerate().filter(|(_, id)| snapshot.is_selectable(**id)).filter_map(
-        |(rank, id)| snapshot.object(*id)?.bounds().map(|b| ((Reverse(rank), *id), b)),
-    ));
+    let index = SpatialIndex::build(
+        order
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| snapshot.is_selectable(**id))
+            .filter_map(|(rank, id)| snapshot.object(*id)?.bounds().map(|b| ((Reverse(rank), *id), b))),
+    );
     burnburn_geometry::hit_test(&index, |(_, id)| snapshot.object(id).map(|o| o.path().as_ref()), at, &tol)
         .into_iter()
         .map(|c| c.key.1)

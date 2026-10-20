@@ -32,7 +32,10 @@ pub enum ClipboardError {
     NotOurs,
     UnsupportedVersion(u32),
     /// A value is not valid; `path` names it.
-    Invalid { path: String, reason: String },
+    Invalid {
+        path: String,
+        reason: String,
+    },
 }
 
 const FORMAT: &str = "burnburn-clipboard";
@@ -145,10 +148,8 @@ pub fn decode_clipboard(bytes: &[u8]) -> Result<Clipboard, ClipboardError> {
         return Err(ClipboardError::UnsupportedVersion(header.version));
     }
     let payload: Payload = serde_json::from_slice(bytes).map_err(|e| ClipboardError::Malformed(e.to_string()))?;
-    let project = ProjectUuid::parse(&payload.project).ok_or_else(|| ClipboardError::Invalid {
-        path: "project".into(),
-        reason: "not a project uuid".into(),
-    })?;
+    let project = ProjectUuid::parse(&payload.project)
+        .ok_or_else(|| ClipboardError::Invalid { path: "project".into(), reason: "not a project uuid".into() })?;
     if payload.items.is_empty() {
         return Err(ClipboardError::Empty);
     }

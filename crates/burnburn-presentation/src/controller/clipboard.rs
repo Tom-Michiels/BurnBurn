@@ -65,7 +65,8 @@ fn paste(
     }
     let offset = match (in_place, bounds_of(&items)) {
         (false, Some(bounds)) => {
-            let target = s.camera.points_to_world(&s.viewport, [s.viewport.width_pt() / 2.0, s.viewport.height_pt() / 2.0]);
+            let target =
+                s.camera.points_to_world(&s.viewport, [s.viewport.width_pt() / 2.0, s.viewport.height_pt() / 2.0]);
             let centre = bounds.center();
             Vector::new(target.x - centre.x, target.y - centre.y)
         }
@@ -91,6 +92,10 @@ impl AppController {
                 let clip = Clipboard { project: s.uuid, items };
                 let mut update = if command == CommandKey::Cut {
                     let targets = s.selection.ids().to_vec();
+                    // A cut that cannot delete copies nothing either.
+                    if super::arrange::touches_locked(s, &CommandPayload::Delete { targets: targets.clone() }) {
+                        return error(Some(document), MessageKey::ObjectsLocked);
+                    }
                     apply_edit(s, document, CommandPayload::Delete { targets }, request)
                 } else {
                     AppUpdate::default()

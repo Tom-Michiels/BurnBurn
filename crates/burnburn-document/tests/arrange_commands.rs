@@ -361,9 +361,11 @@ fn unknown_targets_are_rejected_and_change_nothing() {
 #[test]
 fn ungroup_removes_the_outermost_group_of_the_targets_in_one_step() {
     let mut s = session();
-    let (a, b, c) = (rect(&mut s, 0.0, 0.0, 5.0, 5.0), rect(&mut s, 10.0, 0.0, 5.0, 5.0), rect(&mut s, 20.0, 0.0, 5.0, 5.0));
+    let (a, b, c) =
+        (rect(&mut s, 0.0, 0.0, 5.0, 5.0), rect(&mut s, 10.0, 0.0, 5.0, 5.0), rect(&mut s, 20.0, 0.0, 5.0, 5.0));
     run(&mut s, CommandPayload::Edit(burnburn_document::GeometryCommand::Group { targets: vec![a, b] })).unwrap();
-    let inner = run(&mut s, CommandPayload::Edit(burnburn_document::GeometryCommand::Group { targets: vec![a, b, c] })).unwrap();
+    let inner = run(&mut s, CommandPayload::Edit(burnburn_document::GeometryCommand::Group { targets: vec![a, b, c] }))
+        .unwrap();
     let outer_group = inner.changes.groups[0];
     // Group chains are outermost first: the second Group nests *inside* the groups all targets share
     // (none), so `a` and `b` carry [first, second]... check what the document says, then ungroup it.

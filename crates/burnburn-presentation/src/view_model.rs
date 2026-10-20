@@ -679,4 +679,6 @@ pub enum MessageKey {
     NoDuplicatesFound,
     /// A selection command matched nothing.
     NothingFound,
+    /// The change would move or delete locked objects (unlock them first).
+    ObjectsLocked,
 }

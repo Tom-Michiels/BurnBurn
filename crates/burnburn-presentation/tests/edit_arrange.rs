@@ -168,7 +168,12 @@ fn rotate_90_turns_about_the_centre_and_swaps_width_and_height() {
     h.invoke(doc, CommandKey::Rotate90Cw);
     let fields = |h: &burnburn_presentation::HeadlessEditorHarness| {
         let i = view(h, doc).inspector.unwrap();
-        (i.field(FieldKey::X).unwrap().text.clone(), i.field(FieldKey::Y).unwrap().text.clone(), i.field(FieldKey::Width).unwrap().text.clone(), i.field(FieldKey::Height).unwrap().text.clone())
+        (
+            i.field(FieldKey::X).unwrap().text.clone(),
+            i.field(FieldKey::Y).unwrap().text.clone(),
+            i.field(FieldKey::Width).unwrap().text.clone(),
+            i.field(FieldKey::Height).unwrap().text.clone(),
+        )
     };
     // Centre (10, 5); after a quarter turn the 20×10 box is 10×20 about the same centre.
     assert_eq!(fields(&h), ("5".into(), "-5".into(), "10".into(), "20".into()));
@@ -256,14 +261,20 @@ fn select_open_shapes_picks_only_unclosed_paths() {
 #[test]
 fn select_circles_picks_circle_objects() {
     let circle = Path::circle(Point::new(50.0, 50.0), 5.0).unwrap();
-    let (mut h, doc, ids) = opened_with_kinds(vec![(square(0.0, 0.0, 10.0), ObjectKind::Rectangle), (circle, ObjectKind::Circle)]);
+    let (mut h, doc, ids) =
+        opened_with_kinds(vec![(square(0.0, 0.0, 10.0), ObjectKind::Rectangle), (circle, ObjectKind::Circle)]);
     h.invoke(doc, CommandKey::SelectCircles);
     assert_eq!(selected(&h, doc), vec![ids[1]]);
 }
 
 #[test]
 fn select_contained_picks_what_lies_inside_the_selection() {
-    let (mut h, doc, ids) = opened_with(vec![square(0.0, 0.0, 40.0), square(5.0, 5.0, 4.0), square(15.0, 15.0, 4.0), square(100.0, 0.0, 4.0)]);
+    let (mut h, doc, ids) = opened_with(vec![
+        square(0.0, 0.0, 40.0),
+        square(5.0, 5.0, 4.0),
+        square(15.0, 15.0, 4.0),
+        square(100.0, 0.0, 4.0),
+    ]);
     select(&mut h, doc, &ids[..1]);
     h.invoke(doc, CommandKey::SelectContained);
     assert_eq!(selected(&h, doc), vec![ids[1], ids[2]]);
@@ -271,7 +282,12 @@ fn select_contained_picks_what_lies_inside_the_selection() {
 
 #[test]
 fn select_smaller_picks_shapes_smaller_than_the_first_selected() {
-    let (mut h, doc, ids) = opened_with(vec![square(0.0, 0.0, 20.0), square(30.0, 0.0, 5.0), square(50.0, 0.0, 30.0), square(100.0, 0.0, 10.0)]);
+    let (mut h, doc, ids) = opened_with(vec![
+        square(0.0, 0.0, 20.0),
+        square(30.0, 0.0, 5.0),
+        square(50.0, 0.0, 30.0),
+        square(100.0, 0.0, 10.0),
+    ]);
     select(&mut h, doc, &ids[..1]);
     h.invoke(doc, CommandKey::SelectSmaller);
     assert_eq!(selected(&h, doc), vec![ids[1], ids[3]]);
@@ -317,6 +333,8 @@ fn edit_commands_follow_the_selection_in_the_enablement() {
     for key in needs_selection {
         assert!(enabled(&h, key), "{key:?} with a selection");
     }
-    assert!(enabled(&h, CommandKey::Paste) && enabled(&h, CommandKey::ZoomPage) && enabled(&h, CommandKey::InvertSelection));
+    assert!(
+        enabled(&h, CommandKey::Paste) && enabled(&h, CommandKey::ZoomPage) && enabled(&h, CommandKey::InvertSelection)
+    );
     let _: Vec<GeometryId> = ids;
 }

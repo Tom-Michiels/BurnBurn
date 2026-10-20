@@ -3,9 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // test helpers outside #[test] fns
 
 use burnburn_document::{ArrangeCommand, CommandPayload, DocumentCommand, DocumentSession, OrderChange};
-use burnburn_editor::{
-    Camera, Selection, SceneRequest, ToolKind, Viewport, build_scene, hit_test, objects_inside,
-};
+use burnburn_editor::{Camera, SceneRequest, Selection, ToolKind, Viewport, build_scene, hit_test, objects_inside};
 use burnburn_geometry::{Bounds, Point, Rect};
 use burnburn_types::{DocumentId, GeometryId, Length, RequestId, StableId};
 

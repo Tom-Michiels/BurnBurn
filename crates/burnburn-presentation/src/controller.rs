@@ -41,6 +41,7 @@ mod import;
 mod layers;
 mod machine;
 mod process;
+mod recent;
 mod recovery;
 mod sketch;
 mod tasks;
@@ -125,6 +126,10 @@ pub enum HostEffect {
     /// answers a later Paste with `UiIntent::PasteData` when the pasteboard holds that type.
     SetClipboard {
         bytes: Vec<u8>,
+    },
+    /// The recent-projects list changed: the host stores it and rebuilds Archief ▸ Recente projecten.
+    RecentProjectsChanged {
+        paths: Vec<PathBuf>,
     },
 }
 
@@ -307,6 +312,10 @@ pub struct AppController {
     toolbar_variants: VariantMemory,
     /// The last Copy or Cut: all windows paste from it; the host mirrors it to the OS pasteboard.
     clipboard: Option<burnburn_io::clipboard::Clipboard>,
+    /// Archief ▸ Recente projecten, most recent first; the host persists it.
+    recent: Vec<PathBuf>,
+    /// The path each pending open task was asked for (to forget it when it fails).
+    opening_paths: BTreeMap<TaskId, PathBuf>,
 }
 
 impl AppController {
@@ -332,6 +341,8 @@ impl AppController {
             restoring: BTreeMap::new(),
             toolbar_variants: VariantMemory::new(),
             clipboard: None,
+            recent: Vec::new(),
+            opening_paths: BTreeMap::new(),
         }
     }
 
@@ -502,6 +513,13 @@ impl AppController {
                     _ => error(None, MessageKey::MachineActionRefused),
                 }
             }
+            UiIntent::SetRecentProjects { paths } => {
+                self.restore_recent(paths);
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            UiIntent::ClearRecentProjects => {
+                AppUpdate { effects: self.clear_recent(), view_changed: true, ..AppUpdate::default() }
+            }
             UiIntent::PasteData { document, bytes, in_place } => self.paste_data(document, bytes, in_place),
             UiIntent::SetReferencePoint { document, point } => {
                 self.with_session(document, |s| arrange::set_reference_point(s, point))
@@ -610,6 +628,9 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
 /// Applies one payload as one command against the current revision.
 fn apply_edit(s: &mut Session, document: DocumentId, payload: CommandPayload, request: Option<RequestId>) -> AppUpdate {
     let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+    if arrange::touches_locked(s, &payload) {
+        return error(Some(document), MessageKey::ObjectsLocked);
+    }
     let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
     let result = apply_command(&s.fonts, &mut s.doc, cmd);
     after_change(s, document, result)

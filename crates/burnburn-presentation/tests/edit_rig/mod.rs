@@ -8,9 +8,7 @@ use std::path::{Path as FsPath, PathBuf};
 use burnburn_document::{DocumentSnapshot, GeometryObject, GeometrySource, ObjectKind};
 use burnburn_geometry::{Path, Point};
 use burnburn_io::{Project, ProjectUuid, save_project};
-use burnburn_presentation::{
-    CommandKey, DocumentViewModel, HeadlessEditorHarness, HostEffect, SelectMode, UiIntent,
-};
+use burnburn_presentation::{CommandKey, DocumentViewModel, HeadlessEditorHarness, HostEffect, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId, StableId};
 
 pub fn view(h: &HeadlessEditorHarness, doc: DocumentId) -> DocumentViewModel {

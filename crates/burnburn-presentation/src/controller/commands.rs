@@ -88,9 +88,11 @@ impl AppController {
                 },
                 _ => AppUpdate::default(),
             },
-            CommandKey::Cut | CommandKey::Copy | CommandKey::Paste | CommandKey::PasteInPlace | CommandKey::Duplicate => {
-                self.clipboard_command(document, command)
-            }
+            CommandKey::Cut
+            | CommandKey::Copy
+            | CommandKey::Paste
+            | CommandKey::PasteInPlace
+            | CommandKey::Duplicate => self.clipboard_command(document, command),
             CommandKey::ZoomPage => {
                 let bed = self.machine.as_ref().and_then(|m| {
                     let frame = m.profile.frame();

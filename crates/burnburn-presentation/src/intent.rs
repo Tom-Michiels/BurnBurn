@@ -290,6 +290,12 @@ pub enum UiIntent {
     },
     /// Edit ▸ Plak with an object payload read from the OS pasteboard by the host (the
     /// controller's own copy of the last Copy is used when the host has none: `Invoke`).
+    /// Start: the list the host stored under Archief ▸ Recente projecten. Not a change to persist.
+    SetRecentProjects {
+        paths: Vec<PathBuf>,
+    },
+    /// Archief ▸ Recente projecten ▸ Wis menu.
+    ClearRecentProjects,
     PasteData {
         document: Option<DocumentId>,
         bytes: Vec<u8>,

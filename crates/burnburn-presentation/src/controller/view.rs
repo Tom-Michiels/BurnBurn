@@ -108,8 +108,9 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             groups: obj.groups().to_vec(),
         })
         .collect();
-    let inspector = s.selection.single().and_then(|gid| snapshot.object(gid).map(|o| (gid, o))).and_then(|(gid, o)| {
-        let b = o.bounds()?;
+    let inspector = s.selection.reference().and_then(|gid| {
+        let b = s.selection.bounds(&snapshot)?;
+        let at = super::arrange::reference_in(&b, s.arrange.reference);
         let field = |key: FieldKey, mm: f64| FieldViewModel {
             key,
             label: MessageKey::Field(key),
@@ -118,14 +119,20 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             editable: true,
             error: s.field_errors.get(&key).copied(),
         };
+        // Action fields show the neutral value; a commit applies the typed amount to the selection.
+        let action = |key: FieldKey, neutral: &str| FieldViewModel { text: neutral.into(), ..field(key, 0.0) };
         Some(InspectorViewModel {
             object: gid,
             fields: vec![
-                field(FieldKey::X, b.min().x),
-                field(FieldKey::Y, b.min().y),
+                field(FieldKey::X, at.x),
+                field(FieldKey::Y, at.y),
                 field(FieldKey::Width, b.width()),
                 field(FieldKey::Height, b.height()),
-                FieldViewModel { text: "0".into(), ..field(FieldKey::Rotation, 0.0) },
+                action(FieldKey::Rotation, "0"),
+                action(FieldKey::ScaleX, "100"),
+                action(FieldKey::ScaleY, "100"),
+                action(FieldKey::ShearX, "0"),
+                action(FieldKey::ShearY, "0"),
             ],
         })
     });

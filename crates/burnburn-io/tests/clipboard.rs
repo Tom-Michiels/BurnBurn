@@ -6,8 +6,8 @@
 
 use burnburn_document::{ObjectKind, PasteItem};
 use burnburn_geometry::{ParametricShape, Path, Point, Rect, ShapeParams, Subpath};
-use burnburn_io::clipboard::{ClipboardError, MAX_CLIPBOARD_BYTES, decode_clipboard, encode_clipboard};
 use burnburn_io::ProjectUuid;
+use burnburn_io::clipboard::{ClipboardError, MAX_CLIPBOARD_BYTES, decode_clipboard, encode_clipboard};
 use burnburn_types::{Length, OperationId, StableId};
 use proptest::prelude::*;
 
@@ -20,11 +20,9 @@ fn project() -> ProjectUuid {
 }
 
 fn sample() -> Vec<PasteItem> {
-    let star = ParametricShape::fit(
-        ShapeParams::Star { points: 5, ratio: 0.5 },
-        rect(0.0, 0.0, 20.0, 20.0).bounds().unwrap(),
-    )
-    .unwrap();
+    let star =
+        ParametricShape::fit(ShapeParams::Star { points: 5, ratio: 0.5 }, rect(0.0, 0.0, 20.0, 20.0).bounds().unwrap())
+            .unwrap();
     vec![
         PasteItem {
             name: "Plaat".into(),
@@ -83,10 +81,7 @@ fn foreign_future_and_damaged_payloads_are_refused_with_a_typed_error() {
     assert!(matches!(decode_clipboard(b"not json"), Err(ClipboardError::Malformed(_))));
     assert!(matches!(decode_clipboard(b""), Err(ClipboardError::Malformed(_))));
     assert_eq!(decode_clipboard(&edit(&|v| v["format"] = "lightburn".into())), Err(ClipboardError::NotOurs));
-    assert_eq!(
-        decode_clipboard(&edit(&|v| v["version"] = 2.into())),
-        Err(ClipboardError::UnsupportedVersion(2))
-    );
+    assert_eq!(decode_clipboard(&edit(&|v| v["version"] = 2.into())), Err(ClipboardError::UnsupportedVersion(2)));
     // A coordinate that is not a finite number names its place.
     let bad = edit(&|v| v["items"][0]["subpaths"][0]["start"][0] = serde_json::Value::Null);
     assert!(matches!(decode_clipboard(&bad), Err(ClipboardError::Invalid { .. })), "{:?}", decode_clipboard(&bad));

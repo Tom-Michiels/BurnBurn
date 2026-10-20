@@ -37,7 +37,6 @@ pub(super) fn set_aspect_lock(s: &mut Session, locked: bool) -> AppUpdate {
     AppUpdate { view_changed: true, ..AppUpdate::default() }
 }
 
-
 /// The point of `bounds` a reference point stands for (document coordinates, y up).
 #[allow(dead_code)]
 pub(super) fn reference_in(bounds: &Bounds, point: RefPoint) -> Point {
@@ -48,14 +47,15 @@ pub(super) fn reference_in(bounds: &Bounds, point: RefPoint) -> Point {
 
 /// An arrangement command as one document command. A command that would change nothing (an
 /// object already at the front, say) is silent: no history entry and no error.
-fn arrange_edit(s: &mut Session, document: DocumentId, command: ArrangeCommand, request: Option<RequestId>) -> AppUpdate {
+fn arrange_edit(
+    s: &mut Session,
+    document: DocumentId,
+    command: ArrangeCommand,
+    request: Option<RequestId>,
+) -> AppUpdate {
     let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
-    let cmd = DocumentCommand {
-        document,
-        expected: s.doc.revision(),
-        request,
-        payload: CommandPayload::Arrange(command),
-    };
+    let cmd =
+        DocumentCommand { document, expected: s.doc.revision(), request, payload: CommandPayload::Arrange(command) };
     match apply_command(&s.fonts, &mut s.doc, cmd) {
         Err(CommandError::Arrange(ArrangeError::NothingChanged)) => AppUpdate::default(),
         result => after_change(s, document, result),
@@ -121,16 +121,19 @@ pub(super) fn command(
             arrange_edit(s, document, ArrangeCommand::Ungroup { targets }, request)
         }
         CommandKey::AutoGroup => {
-            let targets =
-                if targets.len() >= 2 { targets } else { selectable_ids(&s.doc.snapshot()) };
+            let targets = if targets.len() >= 2 { targets } else { selectable_ids(&s.doc.snapshot()) };
             arrange_edit(s, document, ArrangeCommand::AutoGroup { targets }, request)
         }
         CommandKey::BreakApart if !targets.is_empty() => {
             arrange_edit(s, document, ArrangeCommand::BreakApart { targets }, request)
         }
         CommandKey::Group | CommandKey::Ungroup | CommandKey::BreakApart => AppUpdate::default(),
-        CommandKey::FlipHorizontal => transform_about_centre(s, document, request, |c| Affine::scale_about(c, -1.0, 1.0).ok()),
-        CommandKey::FlipVertical => transform_about_centre(s, document, request, |c| Affine::scale_about(c, 1.0, -1.0).ok()),
+        CommandKey::FlipHorizontal => {
+            transform_about_centre(s, document, request, |c| Affine::scale_about(c, -1.0, 1.0).ok())
+        }
+        CommandKey::FlipVertical => {
+            transform_about_centre(s, document, request, |c| Affine::scale_about(c, 1.0, -1.0).ok())
+        }
         CommandKey::Rotate90Cw => transform_about_centre(s, document, request, |c| quarter_turn(c, -90.0)),
         CommandKey::Rotate90Ccw => transform_about_centre(s, document, request, |c| quarter_turn(c, 90.0)),
         CommandKey::LockSelected if !targets.is_empty() => {
@@ -205,9 +208,10 @@ pub(super) fn command(
                 .filter(|id| !s.selection.contains(*id))
                 .filter(|id| {
                     let Some(inner) = snapshot.object(*id) else { return false };
-                    targets.iter().filter_map(|t| snapshot.object(*t)).any(|outer| {
-                        burnburn_geometry::encloses(outer.path(), inner.path(), ENCLOSE_TOLERANCE_MM)
-                    })
+                    targets
+                        .iter()
+                        .filter_map(|t| snapshot.object(*t))
+                        .any(|outer| burnburn_geometry::encloses(outer.path(), inner.path(), ENCLOSE_TOLERANCE_MM))
                 })
                 .collect();
             select_found(s, document, ids)
@@ -253,8 +257,9 @@ fn zoom_by(s: &mut Session, document: DocumentId, factor: f64) -> AppUpdate {
 pub(super) fn fit_to(s: &mut Session, document: DocumentId, bounds: Bounds) -> AppUpdate {
     // A point or a line still gets a usable view.
     let (w, h) = (bounds.width().max(1.0), bounds.height().max(1.0));
-    let scale = ((s.viewport.width_pt() / (w * (1.0 + FIT_MARGIN))).min(s.viewport.height_pt() / (h * (1.0 + FIT_MARGIN))))
-        .max(f64::MIN_POSITIVE);
+    let scale = ((s.viewport.width_pt() / (w * (1.0 + FIT_MARGIN)))
+        .min(s.viewport.height_pt() / (h * (1.0 + FIT_MARGIN))))
+    .max(f64::MIN_POSITIVE);
     match burnburn_editor::Camera::new(bounds.center(), scale) {
         Ok(camera) => {
             s.camera = camera;
@@ -307,7 +312,11 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         | CommandKey::SelectContained
         | CommandKey::SelectSmaller
         | CommandKey::SelectInLayer => !selected.is_empty(),
-        CommandKey::Paste | CommandKey::PasteInPlace | CommandKey::ZoomPage | CommandKey::ZoomIn | CommandKey::ZoomOut => true,
+        CommandKey::Paste
+        | CommandKey::PasteInPlace
+        | CommandKey::ZoomPage
+        | CommandKey::ZoomIn
+        | CommandKey::ZoomOut => true,
         CommandKey::ViewWireframe => true,
         CommandKey::Group => selected.len() >= 2,
         CommandKey::Ungroup => any(&|id| snapshot.object(id).is_some_and(|o| !o.groups().is_empty())),
@@ -316,9 +325,10 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         CommandKey::UnlockSelected => any(&|id| snapshot.is_locked(id)),
         CommandKey::UnlockAll => snapshot.arrange().locked().len() > 0,
         CommandKey::ShowAll => snapshot.arrange().hidden().len() > 0,
-        CommandKey::DeleteDuplicates | CommandKey::InvertSelection | CommandKey::SelectOpenShapes | CommandKey::SelectCircles => {
-            !snapshot.is_empty()
-        }
+        CommandKey::DeleteDuplicates
+        | CommandKey::InvertSelection
+        | CommandKey::SelectOpenShapes
+        | CommandKey::SelectCircles => !snapshot.is_empty(),
         _ => return None,
     })
 }
@@ -341,9 +351,9 @@ pub(super) fn delete_duplicates(s: &mut Session, document: DocumentId, request: 
             continue;
         }
         let same = kept.iter().any(|k| {
-            snapshot.object(*k).is_some_and(|other| {
-                burnburn_geometry::coincident(other.path(), obj.path(), DUPLICATE_TOLERANCE_MM)
-            })
+            snapshot
+                .object(*k)
+                .is_some_and(|other| burnburn_geometry::coincident(other.path(), obj.path(), DUPLICATE_TOLERANCE_MM))
         });
         if same { doomed.push(id) } else { kept.push(id) }
     }
@@ -366,7 +376,10 @@ pub(super) fn whole_groups(s: &Session, change: SelectionChange) -> SelectionCha
                 Some(group) => snapshot
                     .draw_order()
                     .into_iter()
-                    .filter(|m| snapshot.is_selectable(*m) && snapshot.object(*m).is_some_and(|o| o.groups().first() == Some(&group)))
+                    .filter(|m| {
+                        snapshot.is_selectable(*m)
+                            && snapshot.object(*m).is_some_and(|o| o.groups().first() == Some(&group))
+                    })
                     .collect(),
                 None => vec![*id],
             };
@@ -393,4 +406,23 @@ pub(super) fn whole_groups(s: &Session, change: SelectionChange) -> SelectionCha
         }
         other => other,
     }
+}
+
+/// True when `payload` would move, resize, delete or regroup locked objects. A locked object can
+/// still be selected from the object list (to unlock it), but nothing edits it meanwhile.
+pub(super) fn touches_locked(s: &Session, payload: &CommandPayload) -> bool {
+    let snapshot = s.doc.snapshot();
+    let targets: &[GeometryId] = match payload {
+        CommandPayload::Transform { targets, .. } | CommandPayload::Delete { targets } => targets,
+        CommandPayload::SetDimension { target, .. } | CommandPayload::Rename { target, .. } => {
+            std::slice::from_ref(target)
+        }
+        CommandPayload::Edit(
+            GeometryCommand::Group { targets }
+            | GeometryCommand::Align { targets, .. }
+            | GeometryCommand::Distribute { targets, .. },
+        ) => targets,
+        _ => return false,
+    };
+    targets.iter().any(|id| snapshot.is_locked(*id))
 }

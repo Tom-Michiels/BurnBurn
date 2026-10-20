@@ -70,7 +70,10 @@ fn paste_puts_the_copies_in_the_middle_of_the_view() {
     let vm = view(&h, doc);
     let centre = vm.camera.points_to_world(&vm.viewport, [vm.viewport.width_pt() / 2.0, vm.viewport.height_pt() / 2.0]);
     // A 10 mm square centred on the view centre starts 5 mm left of and below it.
-    let (x, y) = (field(&h, doc, FieldKey::X).replace(',', ".").parse::<f64>().unwrap(), field(&h, doc, FieldKey::Y).replace(',', ".").parse::<f64>().unwrap());
+    let (x, y) = (
+        field(&h, doc, FieldKey::X).replace(',', ".").parse::<f64>().unwrap(),
+        field(&h, doc, FieldKey::Y).replace(',', ".").parse::<f64>().unwrap(),
+    );
     assert!((x - (centre.x - 5.0)).abs() < 1e-9 && (y - (centre.y - 5.0)).abs() < 1e-9, "({x}, {y}) vs {centre:?}");
 }
 
@@ -144,7 +147,10 @@ fn unreadable_pasteboard_data_is_reported_and_changes_nothing() {
     for junk in [b"hello".to_vec(), Vec::new(), br#"{"format":"lightburn","version":1}"#.to_vec()] {
         let update = h.send(UiIntent::PasteData { document: Some(doc), bytes: junk, in_place: false });
         assert!(
-            update.effects.iter().any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::ClipboardUnreadable, .. })),
+            update
+                .effects
+                .iter()
+                .any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::ClipboardUnreadable, .. })),
             "{:?}",
             update.effects
         );
