@@ -977,6 +977,8 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ProcessLabel::AddRecipe => ("Recept toevoegen", "Add Recipe"),
             ProcessLabel::UpdateRecipe => ("Recept wijzigen", "Change Recipe"),
             ProcessLabel::ApplyRecipe => ("Recept toepassen", "Apply Recipe"),
+            ProcessLabel::SetOptimization => ("Optimalisatie-instellingen wijzigen", "Change Optimization Settings"),
+            ProcessLabel::SetPriority => ("Prioriteit wijzigen", "Change Cut Priority"),
             _ => return None,
         },
         UndoLabel::Sketch(s) => match s {
@@ -1008,6 +1010,7 @@ fn field_pair(key: FieldKey) -> Option<(&'static str, &'static str)> {
         FieldKey::ScaleY => ("Schaal Y", "Scale Y"),
         FieldKey::ShearX => ("Scheef X", "Shear X"),
         FieldKey::ShearY => ("Scheef Y", "Shear Y"),
+        FieldKey::Priority => ("Prioriteit", "Priority"),
         _ => return None,
     })
 }
@@ -1063,6 +1066,7 @@ pub fn option_caption(field: burnburn_presentation::CutField, locale: Locale) ->
         F::ImageOverscan => ("Overscan (mm)", "Overscan (mm)"),
         F::ScreenCell => ("Rastercel (mm)", "Screen cell (mm)"),
         F::ScreenAngle => ("Rasterhoek (°)", "Screen angle (°)"),
+        F::ZOffset => ("Z-offset (mm, 0 = geen)", "Z offset (mm, 0 = none)"),
         _ => ("", ""),
     };
     match locale {
@@ -1397,6 +1401,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         M::ObjectsLocked => {
             ("Vergrendelde objecten kunnen niet gewijzigd worden.", "Locked objects cannot be changed.")
         }
+        M::RdRefused(reason) => return Some(crate::panels::rd_refusal_text(reason, locale).to_owned()),
         M::VisualPlacementOnly => (
             "Camerabeeld is alleen een visuele plaatsingshulp, geen productiegeometrie.",
             "The camera image is only a visual placement aid, not production geometry.",
@@ -1404,6 +1409,11 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         _ => return None,
     };
     Some(pick(pair, locale))
+}
+
+/// The name of a machine-profile feature (capability lists, W3-UI-cam).
+pub fn feature_name(feature: Feature, locale: Locale) -> String {
+    feature_pair(feature).map_or_else(|| format!("{feature:?}"), |pair| pick(pair, locale))
 }
 
 /// Names of the machine-profile features (capability matrix, M02).
@@ -1495,6 +1505,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             ProcessLabel::AddRecipe,
             ProcessLabel::UpdateRecipe,
             ProcessLabel::ApplyRecipe,
+            ProcessLabel::SetOptimization,
+            ProcessLabel::SetPriority,
         ]
         .map(UndoLabel::Process),
     );
@@ -1529,8 +1541,23 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             FieldKey::ScaleY,
             FieldKey::ShearX,
             FieldKey::ShearY,
+            FieldKey::Priority,
         ]
         .map(MessageKey::Field),
+    );
+    keys.extend(
+        [
+            burnburn_presentation::RdRefusal::CrossHatch,
+            burnburn_presentation::RdRefusal::DotMode,
+            burnburn_presentation::RdRefusal::RampLength,
+            burnburn_presentation::RdRefusal::FocusOffset,
+            burnburn_presentation::RdRefusal::ScanAngle,
+            burnburn_presentation::RdRefusal::GrayscaleModulation,
+            burnburn_presentation::RdRefusal::Other,
+            burnburn_presentation::RdRefusal::TooManyParts,
+            burnburn_presentation::RdRefusal::NegativeCoordinate,
+        ]
+        .map(MessageKey::RdRefused),
     );
     keys.extend([MessageKey::NoFontAvailable, MessageKey::CameraNotAuthorized, MessageKey::VisualPlacementOnly]);
     keys.extend(

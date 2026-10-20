@@ -156,7 +156,8 @@ impl DocWindow {
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
         inspector.setAccessibilityLabel(Some(&NSString::from_str(host_text(HostText::InspectorLabel, locale))));
         let mut col = Column { mtm, view: &inspector, y: h - 8.0, width: INSPECTOR_WIDTH - 24.0 };
-        let (fields, controls) = transform_block(&mut col, locale);
+        let (mut fields, controls) = transform_block(&mut col, locale);
+        fields.push(super::panels::priority::priority_row(&mut col, locale));
         let status_label = col.add_label("", 32.0);
         status_label.setTextColor(Some(&NSColor::systemRedColor()));
         status_label.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
