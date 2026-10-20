@@ -3,8 +3,8 @@ use std::sync::Arc;
 use burnburn_types::{GeometryId, IdAllocator, OperationId};
 
 use super::{
-    AdvancedOptions, MaterialRecipe, Operation, OperationDraft, OrderConstraint, ProcessError, ProcessLayer,
-    RecipeDraft, RecipeId, RecipeRef,
+    AdvancedOptions, CutPriority, MaterialRecipe, Operation, OperationDraft, OptimizationSettings, OrderConstraint,
+    ProcessError, ProcessLayer, RecipeDraft, RecipeId, RecipeRef,
 };
 use crate::command::CommandError;
 
@@ -65,6 +65,17 @@ pub enum ProcessCommand {
         operation: OperationId,
         advanced: AdvancedOptions,
     },
+    /// Replaces the document's optimization settings (order hierarchy, inner-first, overlap
+    /// removal, …). Every operation's plan can change, so all of them are reported as changed.
+    SetOptimization {
+        settings: OptimizationSettings,
+    },
+    /// Sets the cut priority of a shape (lower is cut first when ordering by priority). The
+    /// default priority removes the entry.
+    SetPriority {
+        geometry: GeometryId,
+        priority: CutPriority,
+    },
 }
 
 /// Localisation key for undo/redo of a process command.
@@ -82,6 +93,8 @@ pub enum ProcessLabel {
     UpdateRecipe,
     ApplyRecipe,
     SetAdvanced,
+    SetOptimization,
+    SetPriority,
 }
 
 impl ProcessCommand {
@@ -98,6 +111,8 @@ impl ProcessCommand {
             ProcessCommand::UpdateRecipe { .. } => ProcessLabel::UpdateRecipe,
             ProcessCommand::ApplyRecipe { .. } => ProcessLabel::ApplyRecipe,
             ProcessCommand::SetAdvanced { .. } => ProcessLabel::SetAdvanced,
+            ProcessCommand::SetOptimization { .. } => ProcessLabel::SetOptimization,
+            ProcessCommand::SetPriority { .. } => ProcessLabel::SetPriority,
         }
     }
 }
@@ -188,6 +203,19 @@ pub(crate) fn apply(cmd: ProcessCommand, t: ProcessTxn<'_>) -> Result<(), Comman
             let (i, op) = find(t.layer, operation)?;
             t.layer.operations[i] = Arc::new(op.with_advanced(advanced).map_err(err)?);
             t.operations.push(operation);
+        }
+        ProcessCommand::SetOptimization { settings } => {
+            t.layer.optimization = settings;
+            t.operations.extend(t.layer.operations().map(|o| o.id()));
+        }
+        ProcessCommand::SetPriority { geometry, priority } => {
+            check_geometry(&t, &[geometry])?;
+            if priority == CutPriority::default() {
+                t.layer.priorities.remove(&geometry);
+            } else {
+                t.layer.priorities.insert(geometry, priority);
+            }
+            t.operations.extend(t.layer.operations_using(geometry));
         }
     }
     Ok(())

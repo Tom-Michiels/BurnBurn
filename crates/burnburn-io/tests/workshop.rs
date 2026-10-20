@@ -152,3 +152,35 @@ fn tampered_frozen_revision_is_refused() {
     let err = burnburn_io::decode_container(&tampered).unwrap_err();
     assert!(matches!(err, burnburn_io::LoadError::InvalidValue { ref path, .. } if path == "revisions[0]"), "{err:?}");
 }
+
+fn rotary_profile(kind: burnburn_job::RotaryKind, mirror: bool) -> burnburn_job::MachineProfile {
+    let rotary = burnburn_job::RotaryConfig::new(kind, 8000, 20.0, mirror).unwrap();
+    profile("ruida-1500x900", 400.0).with_rotary(rotary).unwrap()
+}
+
+#[test]
+fn a_frozen_profile_with_a_rotary_survives_reopen_and_can_return_to_the_flat_bed() {
+    use burnburn_job::RotaryKind;
+    for (kind, mirror) in [
+        (RotaryKind::Chuck { object_diameter_mm: 63.5 }, false),
+        (RotaryKind::Roller { roller_diameter_mm: 30.0 }, true),
+    ] {
+        let mut p = Project::new(ProjectUuid::from_bytes(*b"burnburn-rotary!"), (*session("A").snapshot()).clone());
+        let turned = rotary_profile(kind, mirror);
+        p.profiles.push(turned.clone());
+        let back = roundtrip(&p);
+        let got = &back.profiles[0];
+        assert_eq!(got, &turned, "rotary, flat-bed frame and content hash all come back");
+        assert_eq!(got.clone().without_rotary(), profile("ruida-1500x900", 400.0));
+        assert_eq!(project_hash(&back).unwrap(), project_hash(&p).unwrap());
+    }
+}
+
+#[test]
+fn comparing_profiles_names_the_rotary() {
+    let flat = profile("ruida-1500x900", 400.0);
+    let turned = rotary_profile(burnburn_job::RotaryKind::Roller { roller_diameter_mm: 30.0 }, false);
+    assert_eq!(compare_profile(&turned, &flat), ProfileComparison::Differs { fields: vec!["rotary"] });
+    let mirrored = rotary_profile(burnburn_job::RotaryKind::Roller { roller_diameter_mm: 30.0 }, true);
+    assert_eq!(compare_profile(&turned, &mirrored), ProfileComparison::Differs { fields: vec!["rotary"] });
+}

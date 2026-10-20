@@ -71,7 +71,7 @@ pub fn required_features(op: &Operation) -> Vec<Feature> {
     if l.dot.is_some() {
         out.push(Feature::DotMode);
     }
-    if a.z_step.is_some() {
+    if a.z_step.is_some() || a.z_offset.is_some() {
         out.push(Feature::ZStep);
     }
     if !a.sub_operations.is_empty() {

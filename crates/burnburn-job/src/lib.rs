@@ -17,6 +17,7 @@ mod frame;
 mod plan;
 mod preview;
 mod profile;
+mod rotary;
 
 pub use capability::{Feature, MachineCapabilities, Support};
 pub use event::{
@@ -27,3 +28,4 @@ pub use frame::{MachineFrame, OriginCorner};
 pub use plan::{JobPlan, JobPlanBuilder, JobPlanId, PlanSource, PlanUnits};
 pub use preview::{MoveKind, PlanPreview, PreviewMove, preview};
 pub use profile::{MachineProfile, ProfileRevision};
+pub use rotary::{RotaryConfig, RotaryKind};

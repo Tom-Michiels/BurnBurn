@@ -1,19 +1,23 @@
 use burnburn_document::DocumentSnapshot;
+use std::collections::BTreeMap;
+
 use burnburn_document::process::{
-    DitherMode, FillGrouping, ImageRender, LineOptions, Operation, OperationMode, ProcessSettings, ScanDirection,
-    SharedEdgePolicy,
+    DitherMode, FillGrouping, ImageRender, LineOptions, Operation, OperationMode, OptimizationSettings, OrderKey,
+    ProcessSettings, ScanDirection, SharedEdgePolicy,
 };
 use burnburn_geometry::{Bounds, OffsetError, OffsetJoin, Path, Point, Vector, math, offset};
 use burnburn_job::{
     JobPlan, JobPlanBuilder, MachinePoint, MachineProfile, OperationSettings, PlanEvent, PlanMode, PlanSource,
     PowerRatio, ScanAxis, ScanLine, SourceRef,
 };
-use burnburn_types::{CancellationToken, GeometryId, OperationId};
+use burnburn_types::{CancellationToken, GeometryId, OperationId, StableId};
 
 use crate::fill::{Rows, ScanFrame};
 use crate::image::{NoRasters, RasterSource};
-use crate::line::{self, Contour, Order};
-use crate::{CompileError, CompileOptions, JobAnchor, Placement, StartPoint, features, fill, image, offset_fill};
+use crate::line::{self, Contour, Heuristics, Order};
+use crate::{
+    CompileError, CompileOptions, JobAnchor, Placement, StartPoint, features, fill, image, offset_fill, overlap,
+};
 use crate::{features::effective_angle, source_hash};
 
 /// Recorded in every plan's source; part of the plan id.
@@ -133,10 +137,18 @@ pub fn compile_with(
         compiler_version: COMPILER_VERSION.to_owned(),
     };
     let tolerance_mm = options.tolerance.mm();
+    let optimization = process.optimization();
+    let heuristics = Heuristics::from(optimization);
     let mut plan = JobPlanBuilder::new(source, frame, frame.to_machine(head)?);
+    if let Some(rotary) = profile.rotary() {
+        plan = plan.with_rotary(*rotary);
+    }
+
+    // Settings blocks are registered per unit, in unit order, before any motion: chunks of one
+    // unit may be interleaved with chunks of another, but each keeps the same block.
+    let mut blocks = Vec::with_capacity(units.len());
     for unit in &units {
-        let id = unit.op.id();
-        let block = plan_settings(id, unit.mode, &unit.settings, &unit.line)?;
+        let block = plan_settings(unit.op.id(), unit.mode, &unit.settings, &unit.line)?;
         let settings = plan.add_settings(block)?;
         // Cross-hatch: a second scan block perpendicular to the first, run in every pass.
         let hatch = match unit.mode {
@@ -147,38 +159,59 @@ pub fn compile_with(
             }
             _ => None,
         };
+        blocks.push((block, settings, hatch));
+    }
+
+    let mut focus_mm = 0.0;
+    // Segments kept so far per (unit, pass), for Remove Overlapping Lines.
+    let mut kept: BTreeMap<(usize, u32), overlap::Kept> = BTreeMap::new();
+    for chunk in order_chunks(snapshot, &units, optimization, cancel)? {
+        let unit = &units[chunk.unit];
+        let (block, settings, hatch) = blocks[chunk.unit];
+        let id = unit.op.id();
         for pass in 0..unit.settings.passes.get() {
             cancel.check()?;
             plan.push(PlanEvent::OperationBoundary { operation: id, settings, pass })?;
-            if let Some(z) = unit.op.advanced().z_step
-                && pass > 0
-            {
-                plan.push(PlanEvent::FocusOffset { z_mm: z.mm() * f64::from(pass) })?;
+            let a = unit.op.advanced();
+            let wanted = a.z_offset.map_or(0.0, |z| z.mm()) + a.z_step.map_or(0.0, |z| z.mm() * f64::from(pass));
+            if wanted != focus_mm {
+                plan.push(PlanEvent::FocusOffset { z_mm: wanted })?;
+                focus_mm = wanted;
             }
             let (steps, overscan) = match unit.mode {
                 OperationMode::Line { .. } => {
                     // The overcut is cut once, on the last pass.
                     let last_pass = pass + 1 == unit.settings.passes.get();
                     let line = if last_pass { unit.line } else { LineOptions { overcut: None, ..unit.line } };
+                    let before = head;
                     let steps = line::plan(
-                        &unit.contours,
+                        &chunk.contours,
                         Order::Containment,
                         &line,
                         unit.shared,
+                        &heuristics,
                         &mut head,
                         id,
                         tolerance_mm,
                         cancel,
                     )?;
+                    let steps = match optimization.remove_overlapping_mm() {
+                        Some(tol) => {
+                            let kept = kept.entry((chunk.unit, pass)).or_insert_with(|| overlap::Kept::new(tol));
+                            overlap::remove(steps, before, tol, kept, cancel)?
+                        }
+                        None => steps,
+                    };
                     (steps, 0.0)
                 }
                 OperationMode::OffsetFill(_) => {
                     let none = LineOptions::default();
                     let steps = line::plan(
-                        &unit.contours,
+                        &chunk.contours,
                         Order::AsGiven,
                         &none,
                         SharedEdgePolicy::CutPerRegion,
+                        &heuristics,
                         &mut head,
                         id,
                         tolerance_mm,
@@ -187,11 +220,11 @@ pub fn compile_with(
                     (steps, 0.0)
                 }
                 OperationMode::Fill(f) => {
-                    let steps = fill_steps(unit, &f, effective_angle(&f), &mut head, cancel)?;
+                    let steps = fill_steps(unit.op, &chunk, &f, effective_angle(&f), &mut head, cancel)?;
                     if let Some((second, angle)) = hatch {
                         emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
                         plan.push(PlanEvent::OperationBoundary { operation: id, settings: second, pass })?;
-                        let steps = fill_steps(unit, &f, angle, &mut head, cancel)?;
+                        let steps = fill_steps(unit.op, &chunk, &f, angle, &mut head, cancel)?;
                         let block = OperationSettings { mode: fill_mode(&f, angle), ..block };
                         emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
                         continue;
@@ -199,7 +232,7 @@ pub fn compile_with(
                     (steps, f.overscan().mm())
                 }
                 OperationMode::Image(i) => {
-                    (image::plan(&unit.contours, &i, rasters, &mut head, id, cancel)?, i.overscan_mm())
+                    (image::plan(&chunk.contours, &i, rasters, &mut head, id, cancel)?, i.overscan_mm())
                 }
                 _ => return Err(CompileError::UnsupportedMode { operation: id }),
             };
@@ -207,6 +240,74 @@ pub fn compile_with(
         }
     }
     Ok(plan.finish()?)
+}
+
+/// The contours of one unit that are planned together: one run of a unit under the settings'
+/// `Order by` hierarchy. Without Group/Priority in the hierarchy a unit is a single chunk.
+struct Chunk {
+    unit: usize,
+    contours: Vec<Contour>,
+    /// Fill-grouping buckets as indices into `contours`.
+    buckets: Vec<Vec<usize>>,
+}
+
+/// The chunks in execution order. The hierarchy is the sort key, most significant level first;
+/// levels that are not listed never reorder or split anything, they only break ties (Layer
+/// last, so units never interleave their travel). Equal keys keep unit and contour order, which
+/// makes the order deterministic.
+fn order_chunks(
+    snapshot: &DocumentSnapshot,
+    units: &[Unit<'_>],
+    optimization: &OptimizationSettings,
+    cancel: &CancellationToken,
+) -> Result<Vec<Chunk>, CompileError> {
+    let listed = optimization.order_by();
+    let process = snapshot.process();
+    // The value of a non-layer level for a geometry; ungrouped shapes come before groups.
+    let component = |key: OrderKey, geometry: GeometryId| -> i128 {
+        match key {
+            OrderKey::Layer => 0,
+            OrderKey::Group => snapshot
+                .object(geometry)
+                .and_then(|o| o.groups().first().copied())
+                .map_or(0, |g| i128::from(g.raw()) + 1),
+            OrderKey::Priority => i128::from(process.priority(geometry).get()),
+        }
+    };
+    let split: Vec<OrderKey> = listed.iter().copied().filter(|k| *k != OrderKey::Layer).collect();
+    let mut keyed: Vec<(Vec<i128>, usize, Chunk)> = Vec::new();
+    for (ui, unit) in units.iter().enumerate() {
+        cancel.check()?;
+        let mut parts: BTreeMap<Vec<i128>, Vec<usize>> = BTreeMap::new();
+        for (i, c) in unit.contours.iter().enumerate() {
+            parts.entry(split.iter().map(|k| component(*k, c.geometry)).collect()).or_default().push(i);
+        }
+        if parts.is_empty() {
+            parts.insert(vec![0; split.len()], Vec::new());
+        }
+        for (part, members) in parts {
+            let mut sort: Vec<i128> = Vec::with_capacity(listed.len() + 1);
+            for k in listed {
+                sort.push(if *k == OrderKey::Layer {
+                    ui as i128
+                } else {
+                    part[split.iter().position(|s| s == k).unwrap_or(0)]
+                });
+            }
+            let local = |i: usize| members.iter().position(|m| *m == i);
+            let buckets = unit
+                .buckets
+                .iter()
+                .map(|b| b.iter().filter_map(|&i| local(i)).collect::<Vec<_>>())
+                .filter(|b| !b.is_empty())
+                .collect();
+            let contours = members.iter().map(|&i| unit.contours[i].clone()).collect();
+            keyed.push((sort, ui, Chunk { unit: ui, contours, buckets }));
+        }
+    }
+    // Stable: equal keys keep the unit and contour order they were built in.
+    keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    Ok(keyed.into_iter().map(|(_, _, c)| c).collect())
 }
 
 /// Flattened contours an operation block works on (kerf-compensated for Line, rings for
@@ -262,7 +363,8 @@ fn kerf_path(
 
 /// The scan steps of one pass of a fill at `angle_deg`, bucket by bucket (fill grouping).
 fn fill_steps(
-    unit: &Unit<'_>,
+    op: &Operation,
+    chunk: &Chunk,
     f: &burnburn_document::process::FillSettings,
     angle_deg: f64,
     head: &mut Point,
@@ -275,9 +377,9 @@ fn fill_steps(
         ramp_mm: f.ramp_mm(),
     };
     let mut steps = Vec::new();
-    for bucket in &unit.buckets {
-        let contours: Vec<&Contour> = bucket.iter().map(|&i| &unit.contours[i]).collect();
-        steps.extend(fill::plan(&contours, rows, scan_frame(angle_deg), head, unit.op.id(), cancel)?);
+    for bucket in &chunk.buckets {
+        let contours: Vec<&Contour> = bucket.iter().map(|&i| &chunk.contours[i]).collect();
+        steps.extend(fill::plan(&contours, rows, scan_frame(angle_deg), head, op.id(), cancel)?);
     }
     Ok(steps)
 }

@@ -202,6 +202,27 @@ impl ZStep {
     }
 }
 
+/// Focus (Z) offset of the whole operation from the start focus (positive = deeper into the
+/// material), `0 < |z| <= 50` mm; no offset is `None`. The Z step per pass adds to it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ZOffset {
+    mm: f64,
+}
+
+impl ZOffset {
+    pub fn new(offset: Length) -> Result<Self, ProcessError> {
+        let mm = offset.mm();
+        if mm == 0.0 || mm.abs() > 50.0 {
+            return Err(ProcessError::OutOfRange { field: "z offset" });
+        }
+        Ok(ZOffset { mm })
+    }
+
+    pub fn mm(&self) -> f64 {
+        self.mm
+    }
+}
+
 /// Line-only options. All `None` = a plain closed or open cut.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LineOptions {
@@ -237,6 +258,8 @@ pub struct SubOperation {
 pub struct AdvancedOptions {
     pub line: LineOptions,
     pub z_step: Option<ZStep>,
+    /// Focus offset of the operation (W2-L3); needs the same Z capability as the step.
+    pub z_offset: Option<ZOffset>,
     pub sub_operations: Vec<SubOperation>,
     pub shared_edges: SharedEdgePolicy,
 }

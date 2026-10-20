@@ -11,9 +11,9 @@
 use burnburn_types::{CanonicalEncode, CanonicalWriter, StableId};
 
 use super::{
-    AdvancedOptions, DitherMode, FillGrouping, GrayMethod, ImageRender, Lead, LeadStyle, LineOptions, MaterialRecipe,
-    OffsetFillOrder, Operation, OperationMode, OrderConstraint, ProcessLayer, ProcessSettings, ScanAxis, ScanDirection,
-    SharedEdgePolicy, TabPlacement,
+    AdvancedOptions, CutPriority, DitherMode, FillGrouping, GrayMethod, ImageRender, Lead, LeadStyle, LineOptions,
+    MaterialRecipe, OffsetFillOrder, Operation, OperationMode, OrderConstraint, OrderKey, ProcessLayer,
+    ProcessSettings, ScanAxis, ScanDirection, SharedEdgePolicy, TabPlacement,
 };
 
 impl CanonicalEncode for ProcessLayer {
@@ -21,6 +21,44 @@ impl CanonicalEncode for ProcessLayer {
         out.seq(self.operations.iter().map(|o| o.as_ref()));
         out.seq(self.constraints.iter());
         out.seq(self.recipes.values().map(|r| r.as_ref()));
+        self.encode_optimization(out);
+    }
+}
+
+/// `tag("optimization")` after the recipes, only when the settings or any priority differ from
+/// the defaults (so existing projects keep their hash): `seq` of order keys (tag each), five
+/// `bool`s (inner-first, reduce-travel, best-start, best-direction, hide-backlash), optional
+/// `f64` overlap tolerance (`u64` 0 | 1 + `f64`), `u64` priority count, each `u64` geometry +
+/// `i64`-as-`u64` offset priority (`priority + CutPriority::MAX`), in geometry id order.
+impl ProcessLayer {
+    /// Writes the optimization block (nothing when settings and priorities are the defaults).
+    pub fn encode_optimization(&self, out: &mut CanonicalWriter) {
+        encode_optimization(self, out);
+    }
+}
+
+fn encode_optimization(layer: &ProcessLayer, out: &mut CanonicalWriter) {
+    let o = layer.optimization();
+    if o.is_default() && layer.priorities.is_empty() {
+        return;
+    }
+    out.tag("optimization");
+    out.u64(o.order_by().len() as u64);
+    for k in o.order_by() {
+        out.tag(match k {
+            OrderKey::Layer => "layer",
+            OrderKey::Group => "group",
+            OrderKey::Priority => "priority",
+        });
+    }
+    for b in [o.inner_first(), o.reduce_travel(), o.best_start(), o.best_direction(), o.hide_backlash()] {
+        out.bool(b);
+    }
+    opt_f64(out, o.remove_overlapping_mm());
+    out.u64(layer.priorities.len() as u64);
+    for (g, p) in &layer.priorities {
+        out.u64(g.raw());
+        out.u64((i64::from(p.get()) + i64::from(CutPriority::MAX)) as u64);
     }
 }
 
@@ -95,6 +133,10 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
         SharedEdgePolicy::CutPerRegion => "shared-cut-per-region",
     });
     encode_line_extensions(&a.line, out);
+    if let Some(z) = a.z_offset {
+        out.tag("advanced-z");
+        out.f64(z.mm());
+    }
 }
 
 /// `tag("advanced-ext")` + tab spacing (optional `f64` spacing, then width) + lead in and lead

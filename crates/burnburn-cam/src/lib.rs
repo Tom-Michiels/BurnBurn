@@ -30,8 +30,10 @@ mod line;
 pub mod nest;
 mod offset_fill;
 mod options;
+mod overlap;
 mod preflight;
 mod source;
+pub mod test_job;
 
 pub use array::{ArrayError, CircularArray, GridArray, MAX_COPIES, circular_array, grid_array};
 pub use compile::{COMPILER_VERSION, compile, compile_with};

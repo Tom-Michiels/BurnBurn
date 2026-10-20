@@ -95,12 +95,15 @@ pub(crate) fn document_to_dto(doc: &DocumentSnapshot) -> Result<v1::Document, Sa
         .collect::<Result<Vec<_>, SaveError>>()?;
     let (operations, constraints, recipes) = crate::process_map::process_to_dto(doc)?;
     let (traces, generators) = crate::engine_map::engines_to_dto(doc);
+    let (optimization, priorities) = crate::process_map::optimization_to_dto(doc);
     Ok(v1::Document {
         next_id: doc.next_id(),
         objects,
         operations,
         constraints,
         recipes,
+        optimization,
+        priorities,
         sketches: crate::sketch_map::sketches_to_dto(doc),
         texts: crate::text_map::texts_to_dto(doc),
         structure: crate::structure_map::structure_to_dto(doc)?,
