@@ -100,6 +100,17 @@ fn an_l_shape_hooks_around_a_corner_that_bounding_boxes_ignore() {
 }
 
 #[test]
+fn a_flat_edge_is_stopped_by_the_tip_of_a_pointed_reference() {
+    // The tip at y = 2 lies between the horizontal rays of the box's corners: only the reference's
+    // own vertex can find the contact.
+    let tip = poly(&[(20.0, 2.0), (26.0, 0.0), (26.0, 4.0)]);
+    let v = dock(&rect(0.0, 0.0, 4.0, 4.0), &tip, DockDirection::Right, DockContact::Geometry, 0.0).unwrap();
+    assert!(near(v.x, 16.0), "{v:?}");
+    let v = dock(&rect(40.0, 0.0, 4.0, 4.0), &tip, DockDirection::Left, DockContact::Geometry, 0.0).unwrap();
+    assert!(near(v.x, -14.0), "{v:?}");
+}
+
+#[test]
 fn several_reference_objects_act_as_one_wall() {
     let (near_wall, far_wall) = (rect(20.0, 0.0, 2.0, 10.0), rect(30.0, 0.0, 2.0, 10.0));
     let moving = rect(0.0, 2.0, 4.0, 4.0);
@@ -150,6 +161,10 @@ fn docking_needs_a_reference_ahead_and_no_overlap() {
     assert_eq!(
         dock(&moving, &rect(8.0, 0.0, 1.0, 1.0), DockDirection::Right, DockContact::Geometry, f64::NAN),
         Err(DockError::NotFinite)
+    );
+    assert_eq!(
+        dock(&moving, &rect(8.0, 0.0, 1.0, 1.0), DockDirection::Right, DockContact::Geometry, -0.5),
+        Err(DockError::InvalidGap)
     );
 }
 
@@ -233,6 +248,25 @@ fn a_gap_is_left_between_neighbours_and_overlaps_are_not_pushed_apart() {
     let b = [bx(0.0, 4.0), bx(3.0, 6.0), bx(10.0, 11.0)];
     let v = together(&b, TogetherAnchor::Start, 0.0).unwrap();
     assert_eq!(v, vec![0.0, 0.0, -4.0]);
+}
+
+#[test]
+fn an_object_nested_in_the_anchor_does_not_pull_the_next_one_into_it() {
+    // [6,8] lies inside the anchor [0,10]; the third object must still stop at the anchor's edge.
+    let b = [bx(0.0, 10.0), bx(6.0, 8.0), bx(20.0, 25.0)];
+    let v = together(&b, TogetherAnchor::Start, 0.0).unwrap();
+    assert_eq!(v, vec![0.0, 0.0, -10.0]);
+}
+
+#[test]
+fn the_start_anchor_is_the_object_with_the_lowest_edge_not_the_lowest_centre() {
+    // The small box has the lower centre, but the wide one starts further left.
+    let b = [bx(2.0, 4.0), bx(0.0, 10.0), bx(20.0, 25.0)];
+    let v = together(&b, TogetherAnchor::Start, 0.0).unwrap();
+    assert_eq!(v, vec![0.0, 0.0, -10.0]);
+    let v = together(&b, TogetherAnchor::End, 0.0).unwrap();
+    // Mirror image: the object ending furthest right stays; in centre order the wide box then the small one close in.
+    assert_eq!(v, vec![6.0, 10.0, 0.0]);
 }
 
 #[test]

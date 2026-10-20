@@ -7,9 +7,9 @@ use crate::{Bounds, Direction, Vector};
 /// Which object keeps its place; the others close in on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TogetherAnchor {
-    /// The object with the lowest position along the axis.
+    /// The object whose lower edge is lowest along the axis (ties: the first in the slice).
     Start,
-    /// The object with the highest position along the axis.
+    /// The object whose upper edge is highest along the axis (ties: the first in the slice).
     End,
     /// One of the input boxes (index into the slice).
     Object(usize),
@@ -55,9 +55,15 @@ pub fn move_together_offsets(
     let n = bounds.len();
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| centre(&bounds[a]).total_cmp(&centre(&bounds[b])).then(a.cmp(&b)));
+    let extreme = |key: &dyn Fn(&Bounds) -> f64, want_max: bool| {
+        (0..n).reduce(|best, i| {
+            let (a, b) = (key(&bounds[best]), key(&bounds[i]));
+            if (want_max && b > a) || (!want_max && b < a) { i } else { best }
+        })
+    };
     let reference = match anchor {
-        TogetherAnchor::Start => order[0],
-        TogetherAnchor::End => order[n - 1],
+        TogetherAnchor::Start => extreme(&lo, false).unwrap_or(0),
+        TogetherAnchor::End => extreme(&hi, true).unwrap_or(0),
         TogetherAnchor::Object(i) if i < n => i,
         TogetherAnchor::Object(i) => return Err(TogetherError::NoSuchReference(i)),
     };

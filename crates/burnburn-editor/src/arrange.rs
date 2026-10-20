@@ -22,6 +22,10 @@ pub enum ArrangeError {
     UnknownObject(GeometryId),
     /// Join needs at least one open path among the selected objects.
     NoOpenPath,
+    /// The selection has no width or height, so there is nothing to map onto a quadrilateral.
+    FlatSelection,
+    /// The reference chosen for a dock is not part of the selection.
+    ReferenceNotSelected(GeometryId),
 }
 
 impl fmt::Display for ArrangeError {
@@ -32,6 +36,8 @@ impl fmt::Display for ArrangeError {
             ArrangeError::OpenContour(id) => write!(f, "object {id} is not closed"),
             ArrangeError::UnknownObject(id) => write!(f, "no object {id}"),
             ArrangeError::NoOpenPath => f.write_str("none of the selected objects is an open path"),
+            ArrangeError::FlatSelection => f.write_str("the selection has no width or height"),
+            ArrangeError::ReferenceNotSelected(id) => write!(f, "reference {id} is not selected"),
         }
     }
 }

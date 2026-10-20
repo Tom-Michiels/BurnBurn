@@ -8,18 +8,23 @@ use std::sync::Arc;
 
 use burnburn_geometry::{
     Affine, AlignEdge, AlignError, AlignTo, BooleanError, BooleanOp, BooleanOptions, Bounds, BreakError, CornerCut,
-    CornerError, CutError, DiagnosticTolerance, Direction, EndpointRef, ExtendError, GeometryError, JoinError,
-    NodeEdit, NodeEditError, OffsetError, OffsetJoin, Path, PathOpError, Point, ProductionTolerance, Shape, Spacing,
-    TrimError, align_offsets, boolean, close_gaps, distribute_offsets, offset,
+    CornerError, CutError, DiagnosticTolerance, Direction, DockError, EndpointRef, ExtendError, GeometryError,
+    JoinError, NodeEdit, NodeEditError, OffsetError, OffsetJoin, Path, PathOpError, Point, ProductionTolerance, Shape,
+    SlotsError, Spacing, TogetherError, TrimError, WarpError, align_offsets, boolean, close_gaps, distribute_offsets,
+    offset,
 };
 use burnburn_types::{CancellationToken, ContentHash, GeometryId, GroupId, IdAllocator, Length};
 
 use crate::command::{ChangeSet, CommandWarning};
 
 mod ops;
+mod place;
+mod reshape;
 
 use crate::object::{GeometryObject, GeometrySource, ObjectKind};
 pub use ops::OpsCommand;
+pub use place::{MoveAnchor, PlaceCommand, PlaceUnits};
+pub use reshape::ReshapeCommand;
 
 /// Reference for [`GeometryCommand::Align`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -131,6 +136,10 @@ pub enum GeometryCommand {
     },
     /// Whole-selection operations: round corners, optimize, cut shapes, join, node sets (W1-L2a).
     Ops(OpsCommand),
+    /// Dock and Move Together (W2-L2).
+    Place(PlaceCommand),
+    /// Warp, Deform and Resize Slots (W2-L2).
+    Reshape(ReshapeCommand),
 }
 
 /// Undo/redo label (localisation key).
@@ -158,6 +167,11 @@ pub enum EditLabel {
     JoinShapes,
     /// Reverse or set the direction of contours.
     Direction,
+    Dock,
+    MoveTogether,
+    Warp,
+    Deform,
+    ResizeSlots,
 }
 
 impl GeometryCommand {
@@ -181,6 +195,8 @@ impl GeometryCommand {
             GeometryCommand::Ungroup { .. } => EditLabel::Ungroup,
             GeometryCommand::Import { .. } => EditLabel::Import,
             GeometryCommand::Ops(ops) => ops.label(),
+            GeometryCommand::Place(place) => place.label(),
+            GeometryCommand::Reshape(reshape) => reshape.label(),
         }
     }
 }
@@ -203,9 +219,15 @@ pub enum EditError {
     PathOp(PathOpError),
     Cut(CutError),
     Join(JoinError),
+    Dock(DockError),
+    Together(TogetherError),
+    Warp(WarpError),
+    Slots(SlotsError),
     NotEnoughTargets,
     /// The align reference must be one of the targets.
     ReferenceNotInTargets(GeometryId),
+    /// A dock reference cannot also be a moving target.
+    ReferenceInTargets(GeometryId),
     NoSuchGroup(GroupId),
     /// The edit would not change the document (no history entry is made).
     NothingChanged,
@@ -516,6 +538,8 @@ pub(crate) fn apply(cmd: GeometryCommand, mut txn: EditTxn<'_>) -> Result<(), Ed
             txn.changes.groups.push(group);
         }
         GeometryCommand::Ops(ops) => ops::apply(ops, &mut txn)?,
+        GeometryCommand::Place(place) => place::apply(place, &mut txn)?,
+        GeometryCommand::Reshape(reshape) => reshape::apply(reshape, &mut txn)?,
         GeometryCommand::Import { asset, items } => {
             if items.is_empty() {
                 return Err(EditError::NothingChanged);

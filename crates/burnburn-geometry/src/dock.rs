@@ -30,6 +30,8 @@ pub enum DockContact {
 #[non_exhaustive]
 pub enum DockError {
     NotFinite,
+    /// The clearance must not be negative.
+    InvalidGap,
     /// The moving objects or the reference have no geometry.
     EmptyGeometry,
     /// Nothing in the reference lies ahead of the moving objects in this direction.
@@ -61,6 +63,9 @@ pub fn dock_offset(
 ) -> Result<Vector, DockError> {
     if !gap.is_finite() {
         return Err(DockError::NotFinite);
+    }
+    if gap < 0.0 {
+        return Err(DockError::InvalidGap);
     }
     let (m_bounds, r_bounds) = (union_bounds(moving), union_bounds(reference));
     let (Some(mb), Some(rb)) = (m_bounds, r_bounds) else { return Err(DockError::EmptyGeometry) };
