@@ -23,11 +23,15 @@ pub enum MenuItem {
     Open,
     /// Archief ▸ Importeer…: first a file from NSOpenPanel, then presentation's import preview.
     Import,
+    /// Archief ▸ Recente projecten ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
+    Recent(usize),
+    /// Archief ▸ Recente projecten ▸ Wis menu.
+    ClearRecent,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
 pub fn menu_items() -> Vec<MenuItem> {
-    [MenuItem::Open, MenuItem::Import]
+    [MenuItem::Open, MenuItem::Import, MenuItem::ClearRecent]
         .into_iter()
         .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
         .collect()
@@ -36,12 +40,20 @@ pub fn menu_items() -> Vec<MenuItem> {
 /// Tag of Open; commands use 1 + their index in `CommandKey::ALL` (0 is AppKit's default tag).
 const OPEN_TAG: isize = 1000;
 const IMPORT_TAG: isize = 1001;
+const CLEAR_RECENT_TAG: isize = 1002;
+/// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
+const RECENT_TAG_BASE: isize = 2000;
+const RECENT_TAG_SLOTS: isize = 64;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
     match item {
         MenuItem::Open => OPEN_TAG,
         MenuItem::Import => IMPORT_TAG,
+        MenuItem::ClearRecent => CLEAR_RECENT_TAG,
+        MenuItem::Recent(n) => {
+            isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
+        }
         MenuItem::Command(key) => CommandKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize + 1),
     }
 }
@@ -53,6 +65,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == IMPORT_TAG {
         return Some(MenuItem::Import);
+    }
+    if tag == CLEAR_RECENT_TAG {
+        return Some(MenuItem::ClearRecent);
+    }
+    if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
+        return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
     }
     let index = usize::try_from(tag.checked_sub(1)?).ok()?;
     CommandKey::ALL.get(index).map(|k| MenuItem::Command(*k))
@@ -346,6 +364,9 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
     let intent = match event {
         E::Menu(MenuItem::Open) => return Reaction::ShowOpenPanel,
         E::Menu(MenuItem::Import) => return Reaction::ShowImportPanel,
+        E::Menu(MenuItem::ClearRecent) => UiIntent::ClearRecentProjects,
+        // A recent entry needs the stored list: see `recent_open_reaction`.
+        E::Menu(MenuItem::Recent(_)) => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
         E::OpenPanelFinished { path: Some(path) } => UiIntent::Open { path },
         E::OpenPanelFinished { path: None } => return Reaction::Nothing,
@@ -590,14 +611,36 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::Open => true,
         // Importing needs a document window to import into.
         MenuItem::Import => vm.active.is_some(),
+        MenuItem::Recent(_) | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
+    }
+}
+
+/// As [`menu_enabled`], knowing how many recent projects the menu offers.
+pub fn menu_enabled_with_recent(item: MenuItem, vm: &AppViewModel, recent: usize) -> bool {
+    match item {
+        MenuItem::Recent(n) => n < recent,
+        MenuItem::ClearRecent => recent > 0,
+        _ => menu_enabled(item, vm),
+    }
+}
+
+/// What choosing a recent-projects entry does: open that path. `item` must be `Recent(n)` with `n`
+/// inside `recent`; anything else (a stale index) does nothing.
+pub fn recent_open_reaction(item: MenuItem, recent: &[PathBuf]) -> Reaction {
+    match item {
+        MenuItem::Recent(n) => match recent.get(n) {
+            Some(path) => Reaction::Intent(UiIntent::Open { path: path.clone() }),
+            None => Reaction::Nothing,
+        },
+        _ => Reaction::Nothing,
     }
 }
 
 /// Checkmark state (active tool, snapping toggles).
 pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
-        MenuItem::Open | MenuItem::Import => false,
+        MenuItem::Open | MenuItem::Import | MenuItem::Recent(_) | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -607,6 +650,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
     match item {
         MenuItem::Open => host_text(HostText::Open, locale).to_owned(),
         MenuItem::Import => host_text(HostText::Import, locale).to_owned(),
+        MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
+        // The entries are titled with their file name when the menu is built (`recent::recent_title`).
+        MenuItem::Recent(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),
