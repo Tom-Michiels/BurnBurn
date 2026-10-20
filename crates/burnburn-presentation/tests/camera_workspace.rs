@@ -954,6 +954,36 @@ fn clicked_marks_fit_an_alignment_whose_check_residuals_are_independent_and_savi
     near([first.x, first.y], MAP.bed([0.0, 0.0]));
 }
 
+/// W05 `collinear_marks_give_no_valid_registration`, through the wizard: marks that all lie on one line
+/// fix no homography. The fit is refused with the typed reason, no result is offered and nothing can be
+/// saved, however consistent the clicks are.
+#[test]
+fn collinear_marks_give_no_valid_registration() {
+    let mut r = rig_a();
+    use_camera(&mut r, A, mode(640, 360));
+    start_alignment(&mut r, "0");
+    go(&mut r, I::CaptureAlignmentPhoto);
+    for i in 0..6 {
+        let bed = [100.0 + 60.0 * i as f64, 200.0];
+        go(&mut r, I::SetAlignmentMark { index: i, x_mm: bed[0].to_string(), y_mm: bed[1].to_string() });
+        go(&mut r, I::PlaceAlignmentMark { index: i, pixel: MAP.pixel(bed) });
+    }
+
+    let v = go(&mut r, I::FitAlignment);
+
+    assert_eq!(
+        v.last_refusal,
+        Some(CameraWhy::Align(burnburn_image::calib::AlignError::Calibration(
+            burnburn_image::calib::CalibError::Collinear
+        )))
+    );
+    let wizard = v.alignment.unwrap();
+    assert!(wizard.result.is_none() && !wizard.can_save);
+    let v = go(&mut r, I::SaveAlignment);
+    assert_eq!(v.last_refusal, Some(CameraWhy::NoAlignmentResult));
+    assert_eq!(r.h.controller().calibrations().alignment_count(), 0);
+}
+
 #[test]
 fn too_few_marks_a_click_outside_the_photo_or_a_missing_photo_are_typed_refusals() {
     let mut r = rig_a();
