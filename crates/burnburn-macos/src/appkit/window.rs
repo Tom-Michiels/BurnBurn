@@ -5,15 +5,15 @@
 
 use std::rc::Weak;
 
-use burnburn_presentation::{AppViewModel, CameraViewModel, CommandKey, FieldKey, MachineViewModel, MessageKey};
+use burnburn_presentation::{AppViewModel, CameraViewModel, CommandKey, FieldKey, MachineViewModel};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAlert, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSFloatingWindowLevel,
-    NSFont, NSLineBreakMode, NSSavePanel, NSScrollView, NSSplitView, NSSplitViewDividerStyle, NSTableColumn,
-    NSTableView, NSTextField, NSToolbar, NSToolbarDisplayMode, NSView, NSWindow, NSWindowStyleMask,
+    NSFont, NSLineBreakMode, NSSavePanel, NSScrollView, NSSegmentedControl, NSSplitView, NSSplitViewDividerStyle,
+    NSTableColumn, NSTableView, NSTextField, NSToolbar, NSToolbarDisplayMode, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSSize, NSString};
 
@@ -22,17 +22,19 @@ use super::canvas::Canvas;
 use super::classes::{
     CanvasView, ControllerParts, WindowController, table_delegate, table_source, toolbar_delegate, window_delegate,
 };
+use super::panels::arrange::arrange_toolbar;
 use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
 use super::panels::import::{ImportSheet, import_sheet};
+use super::panels::inspector::{InspectorControlsWidgets, transform_block};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
 use super::panels::sketch::{SketchSection, sketch_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
 use super::toolstrip::{STRIP_HEIGHT as TOOL_STRIP_HEIGHT, ToolStrip};
 use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_rows, window_title};
-use crate::l10n::{HostText, Locale, host_text, message_or_key};
-use crate::panels::{INSPECTOR_FIELDS, field_unit, machine_panel, plan_panel};
+use crate::l10n::{HostText, Locale, host_text};
+use crate::panels::{machine_panel, plan_panel};
 
 const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 760.0 };
 /// Machine controls offered at most at once (ConfirmStored, Start, QueryStatus, Cancel, Reconnect).
@@ -55,8 +57,12 @@ pub(crate) struct DocWindow {
     pub(crate) canvas_view: Retained<CanvasView>,
     pub(crate) table: Retained<NSTableView>,
     pub(crate) toolbar: Retained<NSToolbar>,
+    /// The toolbar's Uitlijnen control (align and distribute segments).
+    pub(crate) arrange_tools: Retained<NSSegmentedControl>,
     pub(crate) strip: ToolStrip,
     pub(crate) fields: Vec<(FieldKey, Retained<NSTextField>)>,
+    /// Reference point, aspect lock and flip buttons beside the fields.
+    pub(crate) controls: InspectorControlsWidgets,
     pub(crate) status_label: Retained<NSTextField>,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub(crate) plan_labels: [Retained<NSTextField>; 5],
@@ -134,19 +140,13 @@ impl DocWindow {
         let (strip, operations, camera) = production_strip(mtm, canvas_width, locale);
         let cut_settings = cut_settings_sheet(mtm, locale);
         let sketch = sketch_section(mtm, locale);
+        let arrange_tools = arrange_toolbar(mtm, locale);
 
         // Right: inspector fields, message line, plan preview.
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
         inspector.setAccessibilityLabel(Some(&NSString::from_str(host_text(HostText::InspectorLabel, locale))));
         let mut col = Column { mtm, view: &inspector, y: h - 8.0, width: INSPECTOR_WIDTH - 24.0 };
-        let mut fields = Vec::new();
-        for key in INSPECTOR_FIELDS {
-            let caption = format!("{} ({})", message_or_key(MessageKey::Field(key), locale), field_unit(key, locale));
-            col.add_label(&caption, 18.0);
-            let f = col.add_field();
-            f.setAccessibilityLabel(Some(&NSString::from_str(&caption)));
-            fields.push((key, f));
-        }
+        let (fields, controls) = transform_block(&mut col, locale);
         let status_label = col.add_label("", 32.0);
         status_label.setTextColor(Some(&NSColor::systemRedColor()));
         status_label.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
@@ -180,6 +180,8 @@ impl DocWindow {
                 param_inputs: sketch.param_inputs.clone(),
                 sketch_tools: sketch.toolbar.clone(),
                 sketch_tools_label: host_text(HostText::MenuSketch, locale).to_owned(),
+                arrange_tools: arrange_tools.clone(),
+                arrange_tools_label: host_text(HostText::MenuAlign, locale).to_owned(),
             },
         );
         let target: &AnyObject = controller.as_ref();
@@ -238,6 +240,26 @@ impl DocWindow {
             // SAFETY: `fieldCommitted:` is a controller method taking the sender (`v@:@`).
             unsafe { f.setAction(Some(sel!(fieldCommitted:))) };
         }
+        for b in &controls.reference {
+            // SAFETY: as for the fields; `referencePoint:` takes the sender, its tag is the point's index.
+            unsafe { b.setTarget(Some(target)) };
+            // SAFETY: as above.
+            unsafe { b.setAction(Some(sel!(referencePoint:))) };
+        }
+        // SAFETY: as above; `aspectLock:` takes the sender.
+        unsafe { controls.aspect_lock.setTarget(Some(target)) };
+        // SAFETY: as above.
+        unsafe { controls.aspect_lock.setAction(Some(sel!(aspectLock:))) };
+        for b in &controls.flip {
+            // SAFETY: as above; the flip buttons use `panelButton:` (tag = the command's menu tag).
+            unsafe { b.setTarget(Some(target)) };
+            // SAFETY: as above.
+            unsafe { b.setAction(Some(sel!(panelButton:))) };
+        }
+        // SAFETY: as above; `arrangeToolbar:` takes the sender.
+        unsafe { arrange_tools.setTarget(Some(target)) };
+        // SAFETY: as above.
+        unsafe { arrange_tools.setAction(Some(sel!(arrangeToolbar:))) };
         // SAFETY: as for the fields; the actions below take the sender (`v@:@`).
         unsafe { operations.add.setTarget(Some(target)) };
         // SAFETY: as above.
@@ -343,8 +365,10 @@ impl DocWindow {
             canvas_view,
             table,
             toolbar,
+            arrange_tools,
             strip: tool_strip,
             fields,
+            controls,
             status_label,
             plan_labels: [plan_title, plan_id, estimate, state, findings],
             compile_button,
@@ -432,6 +456,8 @@ impl DocWindow {
                 None => b.setHidden(true),
             }
         }
+        self.refresh_inspector_controls(vm, document);
+        self.refresh_arrange_toolbar(vm);
         self.refresh_import(vm, document);
         self.refresh_operations(vm, document);
         self.refresh_cut_settings(vm, document);
@@ -486,6 +512,14 @@ impl Drop for DocWindow {
             // SAFETY: a nil target cannot dangle.
             unsafe { f.setTarget(None) };
         }
+        for b in self.controls.reference.iter().chain(self.controls.flip.iter()) {
+            // SAFETY: a nil target cannot dangle.
+            unsafe { b.setTarget(None) };
+        }
+        // SAFETY: as above.
+        unsafe { self.controls.aspect_lock.setTarget(None) };
+        // SAFETY: as above.
+        unsafe { self.arrange_tools.setTarget(None) };
         // SAFETY: as above.
         unsafe { self.import.units.setTarget(None) };
         // SAFETY: as above.

@@ -287,12 +287,12 @@ fn arrange_and_view() -> Result<(), String> {
     s.pump(0.2);
     expect(|| "wireframe is checked".into(), s.menu_item_checked(wire) == Some(true))?;
     expect(|| "view model says wireframe".into(), s.doc(doc).is_some_and(|d| d.wireframe))?;
-    let after = s.app.with_window(doc, |w| w.canvas_frames).unwrap_or(0);
-    let attached = s
-        .app
-        .with_window(doc, |w| matches!(w.canvas_status, burnburn_macos::appkit::CanvasStatus::Attached))
-        .unwrap_or(false);
-    expect(|| format!("the canvas drew again ({frames} to {after} frames)"), !attached || after > frames)?;
+    // Metal presents nothing while the window is occluded (locked screen): then only report it.
+    let on_screen = s.wait_on_screen(doc)?;
+    if on_screen {
+        let after = s.app.with_window(doc, |w| w.canvas_frames).unwrap_or(0);
+        expect(|| format!("the canvas drew again ({frames} to {after} frames)"), after > frames)?;
+    }
     expect(|| "a view setting is no document change".into(), s.doc(doc).is_some_and(|d| d.revision == revision))?;
     s.menu(wire)?;
     expect(|| "wireframe off again".into(), s.menu_item_checked(wire) == Some(false))?;

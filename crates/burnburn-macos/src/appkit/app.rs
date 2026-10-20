@@ -980,6 +980,9 @@ impl HostApp {
             window: &w.window,
             table: &w.table,
             fields: &w.fields,
+            reference_buttons: &w.controls.reference,
+            aspect_lock: &w.controls.aspect_lock,
+            flip_buttons: &w.controls.flip,
             strip: &w.strip,
             status_label: &w.status_label,
             plan_labels: [
@@ -1027,6 +1030,7 @@ impl HostApp {
             sketch_param_set: &w.sketch.param_set,
             sketch_buttons: &w.sketch.buttons,
             sketch_toolbar: &w.sketch.toolbar,
+            arrange_toolbar: &w.arrange_tools,
             canvas_view: w.canvas_view.as_view(),
             save_panel: w.save_panel.as_deref(),
             export_panel: w.export_panel.as_deref(),
@@ -1093,6 +1097,10 @@ pub struct WindowParts<'a> {
     pub window: &'a objc2_app_kit::NSWindow,
     pub table: &'a objc2_app_kit::NSTableView,
     pub fields: &'a [(burnburn_presentation::FieldKey, Retained<objc2_app_kit::NSTextField>)],
+    /// The 3×3 reference-point buttons (row by row), the aspect-lock checkbox and the two flip buttons.
+    pub reference_buttons: &'a [Retained<objc2_app_kit::NSButton>],
+    pub aspect_lock: &'a objc2_app_kit::NSButton,
+    pub flip_buttons: &'a [Retained<objc2_app_kit::NSButton>],
     pub strip: &'a super::toolstrip::ToolStrip,
     pub status_label: &'a objc2_app_kit::NSTextField,
     /// Preview panel: title, plan id, estimate, state, findings.
@@ -1145,6 +1153,8 @@ pub struct WindowParts<'a> {
     pub sketch_param_set: &'a objc2_app_kit::NSButton,
     pub sketch_buttons: &'a [(burnburn_presentation::CommandKey, Retained<objc2_app_kit::NSButton>)],
     pub sketch_toolbar: &'a objc2_app_kit::NSSegmentedControl,
+    /// The toolbar's Uitlijnen control.
+    pub arrange_toolbar: &'a objc2_app_kit::NSSegmentedControl,
     pub canvas_view: &'a objc2_app_kit::NSView,
     pub save_panel: Option<&'a NSSavePanel>,
     pub export_panel: Option<&'a NSSavePanel>,

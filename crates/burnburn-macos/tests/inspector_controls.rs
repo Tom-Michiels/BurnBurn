@@ -7,8 +7,8 @@
 use burnburn_macos::adapter::{CommitCause, NativeEvent, Reaction, translate};
 use burnburn_macos::l10n::Locale;
 use burnburn_macos::panels::{
-    INSPECTOR_FIELDS, INSPECTOR_FLIP_BUTTONS, aspect_lock_intent, field_unit, flip_intent, inspector_controls,
-    reference_point_intent, reference_point_label,
+    INSPECTOR_FIELDS, INSPECTOR_FLIP_BUTTONS, INSPECTOR_ROWS, aspect_lock_intent, field_unit, flip_intent,
+    inspector_controls, reference_point_intent, reference_point_label,
 };
 use burnburn_presentation::{CommandKey, FieldKey, HeadlessEditorHarness, RefPoint, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, StableId};
@@ -151,4 +151,41 @@ fn the_controls_are_off_without_a_selection_and_the_flip_buttons_invoke_the_flip
     let c = inspector_controls(&h.view(), doc);
     assert!(!c.enabled, "nothing selected, nothing to transform");
     assert_eq!(c.flip_enabled, [false, false]);
+}
+
+/// The widgets only report which control was clicked; the adapter turns that into the same
+/// intents the headless helpers build (and drops late callbacks of a closed window).
+#[test]
+fn clicks_on_the_inspector_controls_become_intents_for_open_windows_only() {
+    let (h, doc) = rectangles(1);
+    let vm = h.view();
+    assert_eq!(
+        translate(NativeEvent::ReferencePointChosen { document: doc, index: 2 }, &vm),
+        Reaction::Intent(UiIntent::SetReferencePoint { document: doc, point: RefPoint::TopRight })
+    );
+    assert_eq!(translate(NativeEvent::ReferencePointChosen { document: doc, index: 12 }, &vm), Reaction::Nothing);
+    assert_eq!(
+        translate(NativeEvent::AspectLockToggled { document: doc }, &vm),
+        Reaction::Intent(UiIntent::SetAspectLock { document: doc, locked: true })
+    );
+    let gone = <DocumentId as StableId>::from_raw(404);
+    assert_eq!(translate(NativeEvent::ReferencePointChosen { document: gone, index: 0 }, &vm), Reaction::Nothing);
+    assert_eq!(translate(NativeEvent::AspectLockToggled { document: gone }, &vm), Reaction::Nothing);
+}
+
+/// The window lays the fields out two per row: every field is on exactly one row, X beside Y,
+/// width beside height, so nine fields fit the inspector's height next to the plan and machine panels.
+#[test]
+fn the_rows_hold_every_field_once_with_pairs_that_belong_together() {
+    let in_rows: Vec<FieldKey> = INSPECTOR_ROWS.iter().flat_map(|(a, b)| std::iter::once(*a).chain(*b)).collect();
+    let mut sorted = in_rows.clone();
+    sorted.sort();
+    sorted.dedup();
+    let mut expected = INSPECTOR_FIELDS.to_vec();
+    expected.sort();
+    assert_eq!(sorted, expected, "every inspector field is on a row, none twice: {in_rows:?}");
+    assert_eq!(INSPECTOR_ROWS[0], (FieldKey::X, Some(FieldKey::Y)));
+    assert_eq!(INSPECTOR_ROWS[1], (FieldKey::Width, Some(FieldKey::Height)));
+    assert!(INSPECTOR_ROWS.contains(&(FieldKey::ScaleX, Some(FieldKey::ScaleY))));
+    assert!(INSPECTOR_ROWS.contains(&(FieldKey::ShearX, Some(FieldKey::ShearY))));
 }

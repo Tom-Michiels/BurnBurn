@@ -65,6 +65,8 @@ impl Column<'_> {
         l
     }
 
+    /// A full-width field below the cursor (the inspector now lays its fields out in rows).
+    #[allow(dead_code)]
     pub(crate) fn add_field(&mut self) -> Retained<NSTextField> {
         self.y -= 24.0;
         let f = field(self.mtm, rect(12.0, self.y, self.width, 24.0));

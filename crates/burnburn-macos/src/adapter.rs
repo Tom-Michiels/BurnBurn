@@ -191,6 +191,15 @@ pub enum NativeEvent {
         document: DocumentId,
         command: CommandKey,
     },
+    /// One of the inspector's nine reference-point buttons (`index` in `RefPoint::ALL` order).
+    ReferencePointChosen {
+        document: DocumentId,
+        index: isize,
+    },
+    /// The inspector's aspect-lock checkbox was clicked: the lock flips.
+    AspectLockToggled {
+        document: DocumentId,
+    },
     /// The RD export save sheet closed: a path on OK, `None` on cancel.
     ExportPanelFinished {
         document: DocumentId,
@@ -471,6 +480,16 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::PanelCommand { document, command } if open(document) => {
             UiIntent::Invoke { document: Some(document), command }
         }
+        E::ReferencePointChosen { document, index } if open(document) => {
+            match crate::panels::reference_point_intent(document, index) {
+                Some(intent) => intent,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::AspectLockToggled { document } => match crate::panels::aspect_lock_intent(vm, document) {
+            Some(intent) => intent,
+            None => return Reaction::Nothing,
+        },
         E::ExportPanelFinished { document, path: Some(path) } if open(document) => {
             UiIntent::ExportRd { document, path }
         }

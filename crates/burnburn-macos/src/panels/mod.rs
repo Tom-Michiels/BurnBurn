@@ -94,6 +94,15 @@ pub const INSPECTOR_FIELDS: [FieldKey; 9] = [
     FieldKey::ShearY,
 ];
 
+/// The inspector's field rows, top to bottom: two fields side by side (the last row has one).
+pub const INSPECTOR_ROWS: [(FieldKey, Option<FieldKey>); 5] = [
+    (FieldKey::X, Some(FieldKey::Y)),
+    (FieldKey::Width, Some(FieldKey::Height)),
+    (FieldKey::ScaleX, Some(FieldKey::ScaleY)),
+    (FieldKey::ShearX, Some(FieldKey::ShearY)),
+    (FieldKey::Rotation, None),
+];
+
 /// Unit shown after an inspector field's caption.
 pub fn field_unit(key: FieldKey, locale: Locale) -> &'static str {
     match key {
