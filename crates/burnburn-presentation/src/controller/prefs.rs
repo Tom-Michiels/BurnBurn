@@ -263,7 +263,11 @@ impl Preferences {
             PrefKey::Language => {
                 next.language = choice(
                     text,
-                    &[("system", LanguageChoice::System), ("nl", LanguageChoice::Dutch), ("en", LanguageChoice::English)],
+                    &[
+                        ("system", LanguageChoice::System),
+                        ("nl", LanguageChoice::Dutch),
+                        ("en", LanguageChoice::English),
+                    ],
                 )?
             }
             PrefKey::Quality => {

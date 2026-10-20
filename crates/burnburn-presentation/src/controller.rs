@@ -39,6 +39,7 @@ mod cut_options;
 mod document;
 mod fields;
 mod geometry;
+mod history_panel;
 mod image;
 mod import;
 mod laser;
@@ -56,9 +57,10 @@ mod trace;
 mod view;
 
 pub use app_panels::{AppIntent, NudgeDirection, NudgeStep};
+pub use history_panel::{HistoryRow, HistoryViewModel};
 pub use prefs::{
-    DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue, Preferences,
-    PrefsViewModel,
+    DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
+    Preferences, PrefsViewModel,
 };
 
 use geometry::{offset_selection, repair_issue};

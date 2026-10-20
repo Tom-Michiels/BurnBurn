@@ -26,10 +26,23 @@ const MAX_USER_FILE_BYTES: u64 = 256 * 1024;
 #[non_exhaustive]
 pub enum AppIntent {
     /// Raw text (or a choice id such as `mm`, `on`, `coarse`) typed in the preferences window.
-    SetPreference { key: PrefKey, text: String },
+    SetPreference {
+        key: PrefKey,
+        text: String,
+    },
     ResetPreferences,
     /// An arrow key on the canvas: move the selection by the preference distance of `step`.
-    Nudge { document: DocumentId, direction: NudgeDirection, step: NudgeStep },
+    Nudge {
+        document: DocumentId,
+        direction: NudgeDirection,
+        step: NudgeStep,
+    },
+    /// A click on a row of the undo history: go to the state after `position` applied steps
+    /// (0 = as opened) by undoing or redoing step by step.
+    HistoryJump {
+        document: DocumentId,
+        position: usize,
+    },
 }
 
 /// Which way an arrow key points on screen (world y is up).
@@ -126,6 +139,7 @@ impl AppController {
                 self.persist_settings()
             }
             AppIntent::Nudge { document, direction, step } => self.nudge(document, direction, step),
+            AppIntent::HistoryJump { document, position } => self.history_jump(document, position),
         }
     }
 
@@ -180,7 +194,8 @@ impl AppController {
 
     fn submit_user_write(&mut self, dir: &Path, text: String) -> Option<TaskId> {
         let (document, id) = (self.next_id()?, self.next_id::<TaskId>()?);
-        let input = TaskInput::WriteText { text: Arc::from(text), path: dir.join(USER_FILE), fs: Arc::clone(&self.ports.fs) };
+        let input =
+            TaskInput::WriteText { text: Arc::from(text), path: dir.join(USER_FILE), fs: Arc::clone(&self.ports.fs) };
         let kind = input.kind();
         let source = RevisionId::INITIAL;
         let request = TaskRequest {
