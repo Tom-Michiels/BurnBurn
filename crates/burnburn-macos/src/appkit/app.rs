@@ -1778,11 +1778,12 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::CenterFinder),
         ],
     ));
-    main.addItem(&submenu(
-        t(HostText::MenuWindow),
+    main.addItem(&app_host::window_menu(
+        mtm,
+        target,
+        locale,
         vec![plain(CommandKey::ShowMaterialLibrary), plain(CommandKey::ShowArtLibrary)],
     ));
-    main.addItem(&app_host::window_menu(mtm, target, locale));
     main.addItem(&app_host::help_menu(mtm, target, locale));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));
     MenuBar { main, recent, recent_templates }

@@ -110,17 +110,22 @@ fn host_title(locale: crate::l10n::Locale) -> &'static str {
     crate::l10n::host_text(HostText::AppMenu, locale)
 }
 
-/// Window menu: Preview, Inspect RD, History and the standard window commands; AppKit adds the
-/// list of open windows to it (`setWindowsMenu`).
+/// Window menu: `panels` (the library panels), Preview, Inspect RD, History and the standard window
+/// commands; AppKit adds the list of open windows to it (`setWindowsMenu`). One Window menu only.
 pub(super) fn window_menu(
     mtm: MainThreadMarker,
     target: &crate::appkit::classes::MenuTarget,
     locale: crate::l10n::Locale,
+    panels: Vec<Retained<NSMenuItem>>,
 ) -> Retained<NSMenuItem> {
     let t = |text| app_text(text, locale);
     let app = |a: AppAction| command_item(mtm, target, MenuItem::App(a), a.title(locale));
     let sep = || NSMenuItem::separatorItem(mtm);
-    let items = [
+    let mut items = panels;
+    if !items.is_empty() {
+        items.push(sep());
+    }
+    items.extend([
         app(AppAction::Preview),
         app(AppAction::InspectRd),
         app(AppAction::History),
@@ -129,7 +134,7 @@ pub(super) fn window_menu(
         raw_item(mtm, t(AppText::ZoomWindow), Some(sel!(performZoom:)), ""),
         sep(),
         raw_item(mtm, t(AppText::BringAllToFront), Some(sel!(arrangeInFront:)), ""),
-    ];
+    ]);
     let (holder, menu) = submenu_holder(mtm, t(AppText::MenuWindow), &items);
     NSApplication::sharedApplication(mtm).setWindowsMenu(Some(&menu));
     holder
