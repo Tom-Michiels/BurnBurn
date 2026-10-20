@@ -44,6 +44,7 @@ impl AppController {
                 };
                 let mut session = session;
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+                session.snap = self.app.prefs.snap_settings();
                 self.sessions.insert(document, session);
                 self.active = Some(document);
                 self.warm_images(document);
@@ -103,6 +104,7 @@ impl AppController {
         };
         let mut session = session;
         session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
+        session.snap = self.app.prefs.snap_settings();
         self.sessions.insert(id, session);
         self.active = Some(id);
         AppUpdate {

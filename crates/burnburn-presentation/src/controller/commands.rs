@@ -103,6 +103,14 @@ impl AppController {
             CommandKey::Save | CommandKey::SaveAs => self.save(document, None),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
+            // The grid distance is a preference (X02), not a session constant.
+            CommandKey::SnapToGrid => {
+                let grid = self.app.prefs.grid_snap_mm;
+                self.with_session(document, |s| {
+                    s.snap.grid_mm = if s.snap.grid_mm.is_some() { None } else { Some(grid) };
+                    AppUpdate::redraw(document)
+                })
+            }
             CommandKey::Compile => self.submit_compile(document),
             CommandKey::PrepareJob => self.submit_prepare(document),
             CommandKey::ApproveJob => self.with_session(document, |s| match s.prepared.as_mut() {

@@ -33,7 +33,10 @@ pub use catalog::{
     Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
-pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
+pub use controller::{
+    AppController, AppIntent, AppPorts, AppUpdate, DisplayQuality, HostEffect, LanguageChoice, LengthUnit,
+    NudgeDirection, NudgeStep, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue, Preferences, PrefsViewModel,
+};
 pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
 };

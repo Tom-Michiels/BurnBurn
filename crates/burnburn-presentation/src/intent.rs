@@ -10,6 +10,7 @@ use burnburn_trace::TraceRecipe;
 use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
 use crate::camera::BedCameraIntent;
+use crate::controller::AppIntent;
 use crate::cut_options::CutExtras;
 use crate::image_panel::{ImageAdjustInput, TraceFormInput, TracePreset};
 use crate::laser::{LaserCommand, LaserSetup};
@@ -335,6 +336,8 @@ pub enum UiIntent {
     },
     /// Bed camera panel (IM27).
     BedCamera(BedCameraIntent),
+    /// Preferences, shortcuts, undo history, preview window, support (W3-UI-app).
+    App(AppIntent),
     /// Host timer (and crash guard): write recovery files for documents changed since the
     /// last autosave. Never writes the project file, never marks a document saved.
     Autosave,

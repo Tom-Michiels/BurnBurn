@@ -29,6 +29,7 @@ use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
 };
 
+mod app_panels;
 mod arrange;
 mod camera;
 mod canvas;
@@ -43,6 +44,7 @@ mod import;
 mod laser;
 mod layers;
 mod machine;
+mod prefs;
 mod process;
 mod recent;
 mod recovery;
@@ -52,6 +54,12 @@ mod tasks;
 mod text;
 mod trace;
 mod view;
+
+pub use app_panels::{AppIntent, NudgeDirection, NudgeStep};
+pub use prefs::{
+    DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue, Preferences,
+    PrefsViewModel,
+};
 
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
@@ -331,6 +339,8 @@ pub struct AppController {
     recent: Vec<PathBuf>,
     /// The path each pending open task was asked for (to forget it when it fails).
     opening_paths: BTreeMap<TaskId, PathBuf>,
+    /// Preferences, shortcuts, history, preview and support panels (W3-UI-app).
+    app: app_panels::AppPanels,
 }
 
 impl AppController {
@@ -359,6 +369,7 @@ impl AppController {
             clipboard: None,
             recent: Vec::new(),
             opening_paths: BTreeMap::new(),
+            app: app_panels::AppPanels::default(),
         }
     }
 
@@ -556,6 +567,7 @@ impl AppController {
             UiIntent::SetAspectLock { document, locked } => {
                 self.with_session(document, |s| arrange::set_aspect_lock(s, locked))
             }
+            UiIntent::App(intent) => self.app_intent(intent),
             UiIntent::SketchSelect { document, entities, constraints, mode } => {
                 self.sketch_select(document, entities, constraints, mode)
             }
