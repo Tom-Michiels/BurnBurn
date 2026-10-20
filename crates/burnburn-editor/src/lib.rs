@@ -7,6 +7,7 @@
 //! `DocumentCommand` with the expected revision (contract §4).
 
 mod arrange;
+mod bed_image;
 mod input;
 mod issues;
 mod node_ops;
@@ -21,6 +22,7 @@ mod tool;
 mod view;
 
 pub use arrange::{ArrangeError, boolean_operands};
+pub use bed_image::{BedPicture, BedQuad};
 pub use input::{CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerButton, PointerEvent, PointerId, PointerPhase};
 pub use issues::{GeometryIssue, IssueKind, NEARLY_CLOSED_MM, geometry_issues, open_contours, self_intersections};
 pub use node_ops::{NodeCommand, NodeCommandError, node_command_op};

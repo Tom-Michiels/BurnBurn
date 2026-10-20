@@ -113,6 +113,13 @@ pub enum Overlay {
         at: Point,
         glyph: SketchGlyph,
     },
+    /// A camera picture on the bed (W3-UI-camera): drawn beneath the grid and the design, with
+    /// `opacity` 0..=1. A visual placement aid only; never document data.
+    BedImage {
+        picture: Arc<crate::bed_image::BedPicture>,
+        quads: Arc<[crate::bed_image::BedQuad]>,
+        opacity: f32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

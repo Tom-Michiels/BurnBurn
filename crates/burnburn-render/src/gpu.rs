@@ -3,7 +3,10 @@
 //! Colours are written as given into a non-sRGB 8-bit target (`Rgba8Unorm` offscreen, the
 //! surface's non-sRGB format on screen), with straight-alpha blending.
 
-use crate::packet::RenderPacket;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use crate::packet::{ImageCell, Primitive, RenderPacket};
 use crate::tess::{Vertex, tessellate};
 
 /// The offscreen target format.
@@ -119,11 +122,203 @@ impl Image {
 /// The canvas pipeline for one colour target format.
 pub struct CanvasRenderer {
     pipeline: wgpu::RenderPipeline,
+    pictures: PicturePass,
     format: wgpu::TextureFormat,
 }
 
 /// Bytes per vertex: position (2 × f32) then colour (4 × f32).
 const VERTEX_STRIDE: u64 = 24;
+/// Bytes per picture vertex: position (2 × f32) then texture coordinates (2 × f32).
+const PICTURE_VERTEX_STRIDE: u64 = 16;
+/// The two triangles of a quad cell, as corner indices (top-left, top-right, bottom-right, bottom-left).
+const CELL_TRIANGLES: [usize; 6] = [0, 1, 2, 0, 2, 3];
+
+/// The textured pass for pictures (the camera overlay). Textures are kept between frames by
+/// picture id, so an unchanged picture is uploaded once; ids not drawn in a frame are dropped.
+struct PicturePass {
+    pipeline: wgpu::RenderPipeline,
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    textures: Mutex<HashMap<u64, wgpu::TextureView>>,
+}
+
+impl PicturePass {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("burnburn pictures"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
+        });
+        let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("burnburn pictures"),
+            entries: &[
+                entry(
+                    0,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                entry(1, wgpu::ShaderStages::FRAGMENT, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                entry(
+                    2,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+            ],
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("burnburn pictures"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let buffer = wgpu::VertexBufferLayout {
+            array_stride: PICTURE_VERTEX_STRIDE,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+        };
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("burnburn pictures"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs_main"),
+                buffers: &[Some(buffer)],
+                compilation_options: Default::default(),
+            },
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState { count: 1, mask: !0, alpha_to_coverage_enabled: false },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("burnburn pictures"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        PicturePass { pipeline, layout, sampler, textures: Mutex::new(HashMap::new()) }
+    }
+
+    /// The texture of a picture, uploaded on first use.
+    fn texture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        picture: &burnburn_editor::BedPicture,
+        kept: &mut HashMap<u64, wgpu::TextureView>,
+    ) -> wgpu::TextureView {
+        let mut cache = self.textures.lock().unwrap_or_else(|e| e.into_inner());
+        let view = cache.remove(&picture.id).unwrap_or_else(|| {
+            let size = wgpu::Extent3d { width: picture.width, height: picture.height, depth_or_array_layers: 1 };
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("burnburn picture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            queue.write_texture(
+                texture.as_image_copy(),
+                &picture.rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(picture.width * 4),
+                    rows_per_image: Some(picture.height),
+                },
+                size,
+            );
+            texture.create_view(&Default::default())
+        });
+        kept.insert(picture.id, view.clone());
+        view
+    }
+
+    /// Record every image of the packet; `draw` runs inside the render pass.
+    fn prepare(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        packet: &RenderPacket,
+    ) -> Vec<(wgpu::BindGroup, wgpu::Buffer, u32)> {
+        let mut kept = HashMap::new();
+        let mut drawn = Vec::new();
+        for primitive in &packet.primitives {
+            let Primitive::Image { picture, cells, opacity } = primitive else { continue };
+            let bytes = picture_vertex_bytes(cells, packet.size_px);
+            if bytes.is_empty() || !(opacity.is_finite() && *opacity > 0.0) {
+                continue;
+            }
+            let view = self.texture(device, queue, picture, &mut kept);
+            let vertices = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("burnburn picture vertices"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            queue.write_buffer(&vertices, 0, &bytes);
+            let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("burnburn picture opacity"),
+                size: 16,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let mut value = [0u8; 16];
+            value[..4].copy_from_slice(&opacity.clamp(0.0, 1.0).to_ne_bytes());
+            queue.write_buffer(&uniform, 0, &value);
+            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("burnburn picture"),
+                layout: &self.layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                    wgpu::BindGroupEntry { binding: 2, resource: uniform.as_entire_binding() },
+                ],
+            });
+            drawn.push((group, vertices, (bytes.len() as u64 / PICTURE_VERTEX_STRIDE) as u32));
+        }
+        *self.textures.lock().unwrap_or_else(|e| e.into_inner()) = kept;
+        drawn
+    }
+}
+
+/// Picture vertices: two triangles per cell, positions in clip space (x / w · 2 − 1, 1 − y / h · 2).
+/// A cell with a non-finite corner is skipped.
+fn picture_vertex_bytes(cells: &[ImageCell], [w, h]: [u32; 2]) -> Vec<u8> {
+    let (w, h) = (w.max(1) as f32, h.max(1) as f32);
+    let mut out = Vec::with_capacity(cells.len() * CELL_TRIANGLES.len() * PICTURE_VERTEX_STRIDE as usize);
+    for cell in cells.iter().filter(|c| c.corners_px.iter().chain(&c.uv).flatten().all(|v| v.is_finite())) {
+        for i in CELL_TRIANGLES {
+            let [x, y] = cell.corners_px[i];
+            for f in [x / w * 2.0 - 1.0, 1.0 - y / h * 2.0, cell.uv[i][0], cell.uv[i][1]] {
+                out.extend_from_slice(&f.to_ne_bytes());
+            }
+        }
+    }
+    out
+}
 
 impl CanvasRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
@@ -166,7 +361,7 @@ impl CanvasRenderer {
             multiview_mask: None,
             cache: None,
         });
-        CanvasRenderer { pipeline, format }
+        CanvasRenderer { pipeline, pictures: PicturePass::new(device, format), format }
     }
 
     pub fn format(&self) -> wgpu::TextureFormat {
@@ -183,6 +378,7 @@ impl CanvasRenderer {
         target: &wgpu::TextureView,
         packet: &RenderPacket,
     ) {
+        let pictures = self.pictures.prepare(device, queue, packet);
         let vertices = tessellate(packet);
         let bytes = clip_space_bytes(&vertices, packet.size_px);
         let buffer = (!bytes.is_empty()).then(|| {
@@ -217,6 +413,15 @@ impl CanvasRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        // Pictures lie beneath every fill and stroke.
+        if !pictures.is_empty() {
+            pass.set_pipeline(&self.pictures.pipeline);
+            for (group, vertices, count) in &pictures {
+                pass.set_bind_group(0, group, &[]);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.draw(0..*count, 0..1);
+            }
+        }
         if let Some(buffer) = &buffer {
             pass.set_pipeline(&self.pipeline);
             pass.set_vertex_buffer(0, buffer.slice(..));

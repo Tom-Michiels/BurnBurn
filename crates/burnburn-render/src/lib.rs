@@ -16,5 +16,5 @@ pub mod surface;
 pub mod tess;
 
 pub use input::Rgba;
-pub use packet::{Primitive, RenderPacket};
+pub use packet::{ImageCell, Primitive, RenderPacket};
 pub use scene::{LAYER_COLOURS, RoleStyle, Theme, build_packet, size_px};
