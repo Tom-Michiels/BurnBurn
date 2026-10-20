@@ -24,6 +24,9 @@ use super::{AppController, AppUpdate, Session, error};
 pub(super) struct Prepared {
     pub(super) job: Arc<PreparedJob>,
     pub(super) approved: bool,
+    /// The head position (µm) the plan was placed on ("start from current position"); uploading
+    /// is refused once the head is known to be elsewhere or its position is unknown.
+    pub(super) placed_from: Option<(i64, i64)>,
 }
 
 /// An order (IM31) with the explicitly chosen job, if any.
@@ -181,6 +184,9 @@ impl AppController {
                 Some(p) if self.role == Role::Operator && !p.approved => {
                     return (error(document, MessageKey::NotAllowedForRole), None);
                 }
+                Some(p) if p.placed_from.is_some_and(|at| !position_is(&port.status(), at)) => {
+                    return (error(document, MessageKey::LaserRefused(crate::laser::LaserWhy::PlacementStale)), None);
+                }
                 Some(p) => Some(Arc::clone(&p.job)),
                 None => return (error(document, MessageKey::MachineActionRefused), None),
             },
@@ -197,6 +203,11 @@ impl AppController {
             Err(_) => (error(document, MessageKey::MachineActionRefused), None),
         }
     }
+}
+
+/// Is the head known to be at `(x, y)` micrometres? An unknown position is never a match.
+fn position_is(status: &MachineStatus, (x, y): (i64, i64)) -> bool {
+    status.live.position.x.um() == Some(x) && status.live.position.y.um() == Some(y)
 }
 
 /// Machine panel from the service status. Status and controls follow evidence only.

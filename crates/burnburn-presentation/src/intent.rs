@@ -10,6 +10,7 @@ use burnburn_trace::TraceRecipe;
 use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
 use crate::camera::BedCameraIntent;
+use crate::laser::{LaserCommand, LaserSetup};
 use crate::production::{ActionId, OrderDraft, OrderId};
 
 /// A semantic user action. Native hosts translate OS events into these; they never change
@@ -177,6 +178,28 @@ pub enum UiIntent {
         document: Option<DocumentId>,
         action: ActionId,
         seen: Option<ExecutionState>,
+    },
+    /// A laser-window control (jog, move, home, frame, pause, files, ...). `action` and `seen` are
+    /// copied unchanged from the `LaserControl` the user used; `None` action is refused. Never a
+    /// document command.
+    Laser {
+        document: Option<DocumentId>,
+        action: Option<ActionId>,
+        seen: Option<ExecutionState>,
+        command: LaserCommand,
+    },
+    /// Laser window setup: start from, job origin, cut selected, selection origin, step, frame speed,
+    /// position-laser mode, user origin. Window state; the next compile uses it.
+    LaserSetup {
+        setup: LaserSetup,
+    },
+    /// Focus lost, window closed or panel hidden: releases the held jog key. Always allowed.
+    LaserReleaseJog,
+    /// Help ▸ Diagnose exporteren: the replay of the journal as text, written to `path` (chosen in a
+    /// save panel). Private data is in only when ticked; there is no machine contact.
+    ExportDiagnostics {
+        options: crate::production::DiagnosticOptions,
+        path: PathBuf,
     },
     /// Archief ▸ Importeer (P03): the file chosen in the open panel; parsed off the UI thread.
     Import {

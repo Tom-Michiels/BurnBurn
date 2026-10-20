@@ -44,6 +44,16 @@ pub enum TaskInput {
     /// Compile one revision for one machine profile into an immutable JobPlan, with its preview
     /// and preflight (B12).
     Compile { snapshot: Arc<DocumentSnapshot>, profile: Arc<MachineProfile>, options: CompileOptions },
+    /// The same compile with the laser window's setup: only the included objects, and the plan put
+    /// on the chosen start position / job origin before the preview and preflight are derived.
+    CompilePlaced {
+        snapshot: Arc<DocumentSnapshot>,
+        profile: Arc<MachineProfile>,
+        options: CompileOptions,
+        laser: Arc<crate::laser::LaserCompile>,
+        /// Identifies the setup, compared later with the current one (a changed setup = stale plan).
+        setup_key: u64,
+    },
     /// Lower exactly this plan to RD and write it atomically (M03). Never touches the document.
     ExportRd { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Read and decode an image for the tracer (bounded by `DecodeLimits`).
@@ -58,6 +68,8 @@ pub enum TaskInput {
     SaveRecovery { project: Box<Project>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Recovery files (`*.burnburn`) in `dir`; a missing directory has none.
     ListRecovery { dir: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write a text file atomically (the diagnostic report); independent of any document.
+    WriteText { text: Arc<str>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Remove one recovery file (after a save, or when the user declines the offer).
     RemoveRecovery { path: PathBuf, fs: Arc<dyn FileSystem> },
 }
@@ -73,6 +85,9 @@ impl fmt::Debug for TaskInput {
             TaskInput::Boolean { snapshot, op, operands } => {
                 write!(f, "Boolean({op:?} of {operands:?} at revision {})", snapshot.revision())
             }
+            TaskInput::CompilePlaced { snapshot, profile, .. } => {
+                write!(f, "CompilePlaced(revision {} for {})", snapshot.revision(), profile.revision().id)
+            }
             TaskInput::Compile { snapshot, profile, .. } => {
                 write!(f, "Compile(revision {} for {})", snapshot.revision(), profile.revision().id)
             }
@@ -84,6 +99,7 @@ impl fmt::Debug for TaskInput {
             TaskInput::SaveRecovery { path, .. } => write!(f, "SaveRecovery({})", path.display()),
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
             TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
+            TaskInput::WriteText { path, .. } => write!(f, "WriteText({})", path.display()),
         }
     }
 }
@@ -95,7 +111,7 @@ impl TaskInput {
             TaskInput::Save { .. } => TaskKind::Save,
             TaskInput::Open { .. } => TaskKind::Open,
             TaskInput::Boolean { .. } => TaskKind::Boolean,
-            TaskInput::Compile { .. } => TaskKind::Compile,
+            TaskInput::Compile { .. } | TaskInput::CompilePlaced { .. } => TaskKind::Compile,
             TaskInput::ExportRd { .. } => TaskKind::ExportRd,
             TaskInput::LoadImage { .. } => TaskKind::LoadImage,
             TaskInput::Trace(_) => TaskKind::Trace,
@@ -103,6 +119,7 @@ impl TaskInput {
             TaskInput::ParseImport { .. } => TaskKind::ParseImport,
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
+            TaskInput::WriteText { .. } => TaskKind::TextExport,
         }
     }
 }
@@ -128,6 +145,8 @@ pub enum TaskKind {
     Autosave,
     /// Lists or removes recovery files; not tied to a document revision.
     Recovery,
+    /// Writes a text export (diagnostic report); not tied to a document revision.
+    TextExport,
 }
 
 impl TaskKind {
@@ -167,6 +186,13 @@ pub enum TaskOutput {
         preview: Arc<PlanPreview>,
         report: PreflightReport,
     },
+    /// A compile with the laser window's setup applied.
+    CompiledPlaced {
+        plan: Arc<JobPlan>,
+        preview: Arc<PlanPreview>,
+        report: PreflightReport,
+        placement: crate::laser::AppliedPlacement,
+    },
     ExportedRd {
         plan: JobPlanId,
         path: PathBuf,
@@ -200,6 +226,9 @@ pub enum TaskOutput {
     RecoveryRemoved {
         path: PathBuf,
     },
+    TextWritten {
+        path: PathBuf,
+    },
 }
 
 /// A parsed import file. A DXF stays in drawing units until the unit decision.
@@ -225,6 +254,8 @@ pub enum TaskError {
     /// An operand id is not in the snapshot.
     UnknownObject(GeometryId),
     Compile(CompileError),
+    /// The laser window's placement was refused (position unknown, off the bed, ...).
+    Placement(crate::laser::LaserWhy),
     Lower(LowerError),
     Encode(EncodeError),
     Write(FsError),
@@ -245,6 +276,7 @@ impl fmt::Display for TaskError {
             TaskError::Boolean(e) => write!(f, "boolean failed: {e}"),
             TaskError::UnknownObject(id) => write!(f, "no object {id}"),
             TaskError::Compile(e) => write!(f, "compile failed: {e:?}"),
+            TaskError::Placement(why) => write!(f, "placement refused: {why}"),
             TaskError::Lower(e) => write!(f, "RD lowering failed: {e:?}"),
             TaskError::Encode(e) => write!(f, "RD encoding failed: {e:?}"),
             TaskError::Write(e) => write!(f, "writing failed: {e:?}"),
@@ -319,6 +351,12 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             let report = preflight(&snapshot, &plan, &profile);
             Ok(TaskOutput::Compiled { plan: Arc::new(plan), preview, report })
         }
+        TaskInput::CompilePlaced { snapshot, profile, options, laser, setup_key } => {
+            let (plan, report, placement) =
+                crate::laser::compile_placed(&snapshot, &profile, &options, &laser, setup_key, cancel)?;
+            let preview = Arc::new(preview(&plan, &profile));
+            Ok(TaskOutput::CompiledPlaced { plan: Arc::new(plan), preview, report, placement })
+        }
         TaskInput::ExportRd { plan, ruida, path, fs } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
             let program = lower(&plan, &ruida).map_err(TaskError::Lower)?;
@@ -378,6 +416,11 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
                 .collect();
             files.sort();
             Ok(TaskOutput::RecoveryFound { files })
+        }
+        TaskInput::WriteText { text, path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            write_atomically(fs.as_ref(), &path, text.as_bytes()).map_err(TaskError::Write)?;
+            Ok(TaskOutput::TextWritten { path })
         }
         TaskInput::RemoveRecovery { path, fs } => {
             fs.remove_file(&path).map_err(TaskError::Write)?;
@@ -469,6 +512,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::ParseImport => 10,
         TaskKind::Autosave => 11,
         TaskKind::Recovery => 12,
+        TaskKind::TextExport => 13,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

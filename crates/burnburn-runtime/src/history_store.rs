@@ -14,13 +14,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use burnburn_history::{
     ActionId as HActionId, CompileRecord, CompiledJobId, EvidenceDto, ExecutionStateDto, History, HistoryRecord,
-    IntentKind, JournalFs, OrderRecord, PreflightSummary, ReconcileStatement, Role as HRole, WallTime,
+    IntentKind, JournalFs, LiveIntentDto, OrderRecord, PreflightSummary, ReconcileStatement, Role as HRole, WallTime,
 };
 use burnburn_machine::{Execution, ExecutionId, ExecutionState, MachineId, UnknownReason};
 use burnburn_presentation::{
-    ActionId, ActionSubject, HistoryStore, HistoryStoreError, IntentRecord, MachineAction, OrderDraft, OrderId,
-    Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
-    StoredOrders, UploadRecord,
+    ActionId, ActionSubject, DiagnosticOptions, HistoryStore, HistoryStoreError, IntentRecord, LiveIntentRecord,
+    LiveKind, LiveOutcomeRecord, MachineAction, OrderDraft, OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded,
+    RecoveredExecution, RecoveredMachine, Role, StoredOrder, StoredOrders, UploadRecord,
 };
 use burnburn_types::{ContentHash, HashDomain};
 
@@ -70,6 +70,8 @@ fn history_action(action: &ActionId) -> HActionId {
         MachineAction::Cancel => (5, 0),
         MachineAction::Reconnect => (6, 0),
         MachineAction::RecordOutcome(o) => (7, outcome_code(o)),
+        MachineAction::Frame => (8, 0),
+        MachineAction::Live(kind) => (9, live_code(kind)),
         _ => (255, 0),
     };
     bytes.extend_from_slice(&[code, outcome]);
@@ -89,6 +91,46 @@ fn history_action(action: &ActionId) -> HActionId {
     let mut raw = [0u8; 16];
     raw.copy_from_slice(&hash.as_bytes()[..16]);
     HActionId::from_raw(u128::from_be_bytes(raw))
+}
+
+/// A distinct code per laser-window action kind (part of the stable action id).
+fn live_code(kind: LiveKind) -> u8 {
+    match kind {
+        LiveKind::JogPress => 1,
+        LiveKind::JogRelease => 2,
+        LiveKind::JogStep => 3,
+        LiveKind::MoveTo => 4,
+        LiveKind::PositionLaser => 5,
+        LiveKind::GoToOrigin => 6,
+        LiveKind::Home => 7,
+        LiveKind::Pause => 8,
+        LiveKind::Resume => 9,
+        LiveKind::ShowPosition => 10,
+        LiveKind::ListFiles => 11,
+        LiveKind::FileMetadata => 12,
+        LiveKind::RunFile => 13,
+        LiveKind::DeleteFile => 14,
+    }
+}
+
+/// The action kinds a journaled request may have come from. A numeric move, a step, a position
+/// click and a go-to-origin all journal as one absolute move, so a restart counts all of them.
+fn live_kinds(intent: &LiveIntentDto) -> &'static [LiveKind] {
+    match intent {
+        LiveIntentDto::JogStart { .. } => &[LiveKind::JogPress],
+        LiveIntentDto::JogStop { .. } => &[LiveKind::JogRelease],
+        LiveIntentDto::Home { .. } => &[LiveKind::Home],
+        LiveIntentDto::MoveAbsolute { .. } => {
+            &[LiveKind::JogStep, LiveKind::MoveTo, LiveKind::PositionLaser, LiveKind::GoToOrigin]
+        }
+        LiveIntentDto::Pause => &[LiveKind::Pause],
+        LiveIntentDto::Resume => &[LiveKind::Resume],
+        LiveIntentDto::ReadPosition => &[LiveKind::ShowPosition],
+        LiveIntentDto::ListFiles => &[LiveKind::ListFiles],
+        LiveIntentDto::FileMetadata { .. } => &[LiveKind::FileMetadata],
+        LiveIntentDto::RunFile { .. } => &[LiveKind::RunFile],
+        LiveIntentDto::DeleteFile { .. } => &[LiveKind::DeleteFile],
+    }
 }
 
 fn outcome_code(o: Outcome) -> u8 {
@@ -165,8 +207,10 @@ impl HistoryStore for JournalHistoryStore {
         if let Some(order) = record.order {
             s.history.link_order(fs.as_ref(), order.0, execution, at).map_err(store_error)?;
         }
+        // A laser-off frame run is its own intent: it never counts as a produced piece.
+        let kind = if record.action.kind == MachineAction::Frame { IntentKind::Frame } else { IntentKind::Upload };
         s.history
-            .record_intent(fs.as_ref(), execution, history_action(&record.action), IntentKind::Upload, at)
+            .record_intent(fs.as_ref(), execution, history_action(&record.action), kind, at)
             .map_err(store_error)?;
         s.journaled.insert(execution, 0);
         Ok((execution, Recorded::Fresh))
@@ -187,6 +231,40 @@ impl HistoryStore for JournalHistoryStore {
             .record_intent(fs.as_ref(), record.execution, history_action(&record.action), intent, at)
             .map_err(store_error)?;
         Ok(if receipt.fresh { Recorded::Fresh } else { Recorded::AlreadyRecorded })
+    }
+
+    fn record_live_intent(&self, record: &LiveIntentRecord) -> Result<Recorded, HistoryStoreError> {
+        let mut s = self.lock();
+        let (at, fs) = (s.now(), Arc::clone(&s.fs));
+        let receipt = s
+            .history
+            .record_live_intent(
+                fs.as_ref(),
+                record.machine.clone(),
+                history_action(&record.action),
+                &record.request,
+                at,
+            )
+            .map_err(store_error)?;
+        Ok(if receipt.fresh { Recorded::Fresh } else { Recorded::AlreadyRecorded })
+    }
+
+    fn record_live_outcome(&self, record: &LiveOutcomeRecord) -> Result<(), HistoryStoreError> {
+        let mut s = self.lock();
+        let (at, fs) = (s.now(), Arc::clone(&s.fs));
+        s.history
+            .record_live_outcome(fs.as_ref(), history_action(&record.action), &record.outcome, at)
+            .map(|_| ())
+            .map_err(store_error)
+    }
+
+    fn diagnostic_report(&self, options: &DiagnosticOptions) -> Result<String, HistoryStoreError> {
+        let s = self.lock();
+        let options = burnburn_history::DiagnosticOptions {
+            include_project_paths: options.include_project_paths,
+            include_machine_ids: options.include_machine_ids,
+        };
+        Ok(burnburn_history::diagnostic_replay(&s.history, &options).render_text())
     }
 
     fn record_outcome(&self, record: &OutcomeRecord) -> Result<Recorded, HistoryStoreError> {
@@ -244,6 +322,7 @@ impl HistoryStore for JournalHistoryStore {
                     IntentKind::Upload => (MachineAction::Upload, ActionSubject::Job(job.plan)),
                     IntentKind::Start => (MachineAction::Start, ActionSubject::Execution(v.id)),
                     IntentKind::Stop => (MachineAction::Cancel, ActionSubject::Execution(v.id)),
+                    IntentKind::Frame => (MachineAction::Frame, ActionSubject::Machine),
                     _ => continue,
                 };
                 *handled.entry(key).or_insert(0) += 1;
@@ -263,6 +342,13 @@ impl HistoryStore for JournalHistoryStore {
                 order: s.history.order_of(v.id).map(OrderId),
                 job,
             });
+        }
+        // Laser-window actions of this machine: the buttons continue above the journaled ones, so a
+        // click after a restart is never swallowed as a duplicate of an old one.
+        for v in s.history.live_actions().filter(|v| &v.machine == machine) {
+            for kind in live_kinds(&v.intent) {
+                *handled.entry((MachineAction::Live(*kind), ActionSubject::Machine)).or_insert(0) += 1;
+            }
         }
         out.handled = handled.into_iter().collect();
         Ok(out)

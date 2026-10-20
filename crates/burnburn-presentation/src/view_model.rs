@@ -601,6 +601,10 @@ pub enum MessageKey {
     SaveNotConfirmedDurable,
     /// Label of a machine control ("Software-stop" for `Cancel` after a start).
     MachineAction(MachineAction),
+    /// A laser-window action or compile was refused; the reason says why, in words.
+    LaserRefused(crate::laser::LaserWhy),
+    /// The diagnostic report could not be rendered or written.
+    DiagnosticsFailed,
     PrepareFailed,
     /// "Ontwerp gewijzigd sinds job – nieuwe conceptversie".
     DesignChangedSinceJob,

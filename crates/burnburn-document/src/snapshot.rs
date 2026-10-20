@@ -371,6 +371,48 @@ impl DocumentSnapshot {
         Ok(PlateView { plate, snapshot: view, issues })
     }
 
+    /// The document as "Cut Selected Graphics" compiles it: only the objects in `keep`, and the
+    /// operations restricted to them (an operation left without targets disappears). The view
+    /// keeps this snapshot's revision, so a plan compiled from it is not stale for the document.
+    pub fn restricted_to(&self, keep: &[GeometryId]) -> DocumentSnapshot {
+        use std::collections::BTreeSet;
+        let objects: BTreeMap<GeometryId, Arc<GeometryObject>> =
+            self.objects.iter().filter(|(id, _)| keep.contains(id)).map(|(id, o)| (*id, Arc::clone(o))).collect();
+        let mut operations = Vec::new();
+        let mut kept = BTreeSet::new();
+        for op in self.process.operations() {
+            let inside: Vec<GeometryId> = op.targets().iter().copied().filter(|g| objects.contains_key(g)).collect();
+            if inside.is_empty() {
+                continue;
+            }
+            // Restricting a valid operation to a non-empty subset of its targets stays valid; if it
+            // somehow does not, the operation is left out rather than compiled unrestricted.
+            if let Ok(restricted) = crate::process::Operation::new(op.id(), op.draft(), inside, op.recipe()) {
+                kept.insert(op.id());
+                operations.push(restricted);
+            }
+        }
+        let constraints = self
+            .process
+            .constraints()
+            .iter()
+            .filter(|c| kept.contains(&c.before) && kept.contains(&c.after))
+            .copied()
+            .collect();
+        let recipes = self.process.recipes().cloned().collect();
+        let process = ProcessLayer::from_parts(operations, constraints, recipes).unwrap_or_default();
+        DocumentSnapshot::from_txn(
+            self.revision,
+            Arc::new(objects),
+            self.next_id,
+            Arc::new(process),
+            Arc::clone(&self.sketches),
+            Arc::clone(&self.structure),
+            Arc::clone(&self.texts),
+            Arc::clone(&self.engines),
+        )
+    }
+
     /// Sketch definitions and derived-output records.
     pub fn sketch_layer(&self) -> &SketchLayer {
         &self.sketches

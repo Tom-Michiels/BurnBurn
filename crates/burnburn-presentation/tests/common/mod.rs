@@ -4,6 +4,8 @@
 
 #![allow(dead_code, clippy::expect_used, clippy::unwrap_used, clippy::panic)] // shared test helpers
 
+pub mod laser;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -349,4 +351,22 @@ pub fn uploaded_bytes(peer: &Peer) -> Vec<u8> {
 
 pub fn starts_sent(peer: &Peer) -> usize {
     peer.sent().iter().filter(|r| **r == Request::Start).count()
+}
+
+// --- laser window (W2-L1-laser) -----------------------------------------------------------------
+
+impl FakePort {
+    pub fn new(peer: &Peer, machine: MachineId) -> FakePort {
+        FakePort { peer: peer.clone(), machine, last_tag: None }
+    }
+}
+
+/// A machine service over any history, as the runtime would create it once per machine.
+pub fn service_with(clock: &FakeClock, peer: &Peer, history: Arc<dyn HistoryStore>) -> Arc<MachineService<FakePort>> {
+    let machine = MachineId::new(MACHINE);
+    let port = FakePort::new(peer, machine.clone());
+    let policy = Policy { reply_timeout: TIMEOUT, max_query_attempts: 2 };
+    let identity = MachineIdentity { id: machine, model: Some(MODEL.into()), firmware: None };
+    let actor = ExecutionActor::new(identity, port, Arc::new(clock.clone()), policy);
+    Arc::new(MachineService::new(actor, history, CHUNK).expect("history readable"))
 }

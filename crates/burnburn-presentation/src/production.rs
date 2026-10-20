@@ -13,10 +13,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use burnburn_io::Project;
+use burnburn_job::MachineFrame;
 use burnburn_job::{JobPlan, JobPlanId, ProfileRevision};
 use burnburn_machine::{
-    ActorError, ControllerPort, ControllerStatus, Evidence, Execution, ExecutionActor, ExecutionId, ExecutionState,
-    FailReason, MachineId, RdArtifact, UnknownReason,
+    ActorError, Capabilities, ControllerFileName, ControllerPort, ControllerStatus, Evidence, Execution,
+    ExecutionActor, ExecutionId, ExecutionState, FailReason, FileEntry, JogKey, LaserAction, LaserRefusal, LiveError,
+    LiveFeature, LiveOutcome, LiveRequest, MachineId, PositionReading, RdArtifact, UnknownReason, UserOrigin,
 };
 use burnburn_types::{ContentHash, RevisionId};
 
@@ -92,6 +94,53 @@ pub enum MachineAction {
     /// The operator states what happened to an execution whose outcome is unknown, after a
     /// status query showed the controller is not running (reconciliation; never automatic).
     RecordOutcome(Outcome),
+    /// Upload of a laser-off frame job (laser window). Like [`MachineAction::Upload`] it creates an
+    /// execution; starting it is the ordinary [`MachineAction::Start`]. Journaled as a frame, so it
+    /// never counts as a produced piece.
+    Frame,
+    /// A laser-window action that is not a job: jog, home, move, pause, position, controller files.
+    Live(LiveKind),
+}
+
+/// The kinds of laser-window action. Together with the machine subject and a generation they are
+/// the idempotency key; what exactly was requested (the [`LiveRequest`]) is journaled with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LiveKind {
+    JogPress,
+    JogRelease,
+    JogStep,
+    MoveTo,
+    PositionLaser,
+    GoToOrigin,
+    Home,
+    Pause,
+    Resume,
+    ShowPosition,
+    ListFiles,
+    FileMetadata,
+    RunFile,
+    DeleteFile,
+}
+
+impl LiveKind {
+    pub fn of(action: &LaserAction) -> LiveKind {
+        match action {
+            LaserAction::JogPress(_) => LiveKind::JogPress,
+            LaserAction::JogRelease(_) => LiveKind::JogRelease,
+            LaserAction::JogStep { .. } => LiveKind::JogStep,
+            LaserAction::MoveTo { .. } => LiveKind::MoveTo,
+            LaserAction::PositionLaser { .. } => LiveKind::PositionLaser,
+            LaserAction::Home(_) => LiveKind::Home,
+            LaserAction::GoToOrigin(_) => LiveKind::GoToOrigin,
+            LaserAction::Pause => LiveKind::Pause,
+            LaserAction::Resume => LiveKind::Resume,
+            LaserAction::ShowPosition => LiveKind::ShowPosition,
+            LaserAction::ListFiles => LiveKind::ListFiles,
+            LaserAction::FileMetadata(_) => LiveKind::FileMetadata,
+            LaserAction::RunFile(_) => LiveKind::RunFile,
+            LaserAction::DeleteFile(_) => LiveKind::DeleteFile,
+        }
+    }
 }
 
 /// What the operator saw happen to a job whose outcome is unknown. Only `RanToCompletion`
@@ -158,6 +207,28 @@ pub struct IntentRecord {
     pub execution: ExecutionId,
     pub plan: JobPlanId,
     pub rd_hash: ContentHash,
+}
+
+/// What a diagnostic export may contain beyond the journal's structure. Both are off by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiagnosticOptions {
+    pub include_project_paths: bool,
+    pub include_machine_ids: bool,
+}
+
+/// A laser-window request as it is made durable before it can reach the actor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveIntentRecord {
+    pub action: ActionId,
+    pub machine: MachineId,
+    pub request: LiveRequest,
+}
+
+/// What was proven about a journaled laser-window request (never `Pending`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveOutcomeRecord {
+    pub action: ActionId,
+    pub outcome: LiveOutcome,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -238,6 +309,25 @@ pub trait HistoryStore: Send + Sync {
     /// Records an outcome statement (reconciliation of an unknown execution).
     fn record_outcome(&self, record: &OutcomeRecord) -> Result<Recorded, HistoryStoreError>;
 
+    /// Records a laser-window request before it is sent. A store that cannot journal these refuses,
+    /// so a laser-window action never reaches the machine without a record.
+    fn record_live_intent(&self, record: &LiveIntentRecord) -> Result<Recorded, HistoryStoreError> {
+        let _ = record;
+        Err(HistoryStoreError("this history does not journal laser-window actions".into()))
+    }
+
+    /// Journals what was proven about a laser-window request.
+    fn record_live_outcome(&self, record: &LiveOutcomeRecord) -> Result<(), HistoryStoreError> {
+        let _ = record;
+        Ok(())
+    }
+
+    /// Renders the diagnostic replay of the journal as text. There is no machine contact in this path.
+    fn diagnostic_report(&self, options: &DiagnosticOptions) -> Result<String, HistoryStoreError> {
+        let _ = options;
+        Err(HistoryStoreError("this history cannot render a diagnostic report".into()))
+    }
+
     /// Journals what the actor observed (new evidence, state).
     fn record_observed(&self, execution: &Execution) -> Result<(), HistoryStoreError> {
         let _ = execution;
@@ -285,6 +375,10 @@ pub enum MachineError {
     /// controller is not running.
     NotReconcilable,
     Actor(ActorError),
+    /// The laser-window action cannot be planned (position unknown, off the bed, ...).
+    Laser(LaserRefusal),
+    /// The actor refuses the request (not verified, job may be active, ...). Nothing was journaled.
+    Live(LiveError),
 }
 
 impl fmt::Display for MachineError {
@@ -329,6 +423,9 @@ pub struct MachineStatus {
     pub last_action: Option<HandledAction>,
     /// The last failure to journal observed evidence (the machine state shown stays evidence-based).
     pub journal_error: Option<HistoryStoreError>,
+    /// The current execution is a laser-off frame run.
+    pub current_is_frame: bool,
+    pub live: LiveStatus,
     handled: BTreeMap<(MachineAction, ActionSubject), u32>,
 }
 
@@ -345,10 +442,57 @@ impl MachineStatus {
     }
 }
 
+/// What a laser-window control asks for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LaserCall {
+    Action(LaserAction),
+    /// "Save RD to controller": a named file, not a job start. Always refused in this build.
+    SaveRd {
+        name: ControllerFileName,
+        job: Arc<PreparedJob>,
+    },
+}
+
+/// One laser-window action as sent by presentation to the machine service.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LaserIntent {
+    /// `kind` is [`MachineAction::Live`] of the call's kind, `subject` the machine.
+    pub action: ActionId,
+    pub machine: MachineId,
+    pub call: LaserCall,
+    /// The bed the coordinates refer to (the active machine profile).
+    pub frame: MachineFrame,
+    pub user_origin: Option<UserOrigin>,
+}
+
+/// What the laser window shows of the live side of the machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveStatus {
+    /// Unknown axes are `Unknown`, never 0.
+    pub position: PositionReading,
+    /// The held jog key, or the one whose release is unconfirmed.
+    pub jog_held: Option<JogKey>,
+    pub files: Option<Vec<FileEntry>>,
+    /// Per feature: `None` when a request of that feature would be accepted right now, else why not.
+    pub gates: Vec<(LiveFeature, Option<LiveError>)>,
+}
+
+impl LiveStatus {
+    pub fn gate(&self, feature: LiveFeature) -> Option<&LiveError> {
+        self.gates.iter().find(|(f, _)| *f == feature).and_then(|(_, e)| e.as_ref())
+    }
+}
+
 /// The one owner of a machine connection, shared by every window and the operator view.
 pub trait MachinePort: Send + Sync {
     fn dispatch(&self, intent: MachineIntent) -> Result<Dispatched, MachineError>;
     fn status(&self) -> MachineStatus;
+    /// A laser-window action (jog, home, move, pause, controller files, save RD). Ports without
+    /// laser support refuse.
+    fn laser(&self, intent: LaserIntent) -> Result<Dispatched, MachineError> {
+        let _ = intent;
+        Err(MachineError::NotAllowed)
+    }
 }
 
 /// Machine service over one [`ExecutionActor`]. Step-driven: the runtime (or a test) calls
@@ -367,6 +511,16 @@ struct Inner<P: ControllerPort> {
     handled: BTreeMap<ActionId, HandledAction>,
     counts: BTreeMap<(MachineAction, ActionSubject), u32>,
     last: Option<HandledAction>,
+    /// Executions that are laser-off frame runs (this session).
+    frames: Vec<ExecutionId>,
+    /// Which journaled laser-window action each actor live attempt belongs to.
+    live_tracks: Vec<LiveTrack>,
+}
+
+struct LiveTrack {
+    seq: usize,
+    action: ActionId,
+    journaled: bool,
 }
 
 impl<P: ControllerPort> MachineService<P> {
@@ -407,6 +561,8 @@ impl<P: ControllerPort> MachineService<P> {
                 handled: BTreeMap::new(),
                 counts: recovered.handled.into_iter().collect(),
                 last: None,
+                frames: Vec::new(),
+                live_tracks: Vec::new(),
             }),
         })
     }
@@ -420,7 +576,14 @@ impl<P: ControllerPort> MachineService<P> {
         let mut s = self.lock();
         let result = s.actor.poll();
         s.journal();
+        s.journal_live();
         result
+    }
+
+    /// Switches on the laser-window features a controller has been proven to support. The default
+    /// is everything unverified, which refuses every live request.
+    pub fn set_capabilities(&self, capabilities: Capabilities) {
+        self.lock().actor.set_capabilities(capabilities);
     }
 
     /// Read access to the transport (tests inspect their fake).
@@ -443,7 +606,11 @@ impl<P: ControllerPort + Send> MachinePort for MachineService<P> {
         // Non-idempotent actions act only on the state the user saw.
         if matches!(
             kind,
-            MachineAction::Upload | MachineAction::Start | MachineAction::Cancel | MachineAction::RecordOutcome(_)
+            MachineAction::Upload
+                | MachineAction::Frame
+                | MachineAction::Start
+                | MachineAction::Cancel
+                | MachineAction::RecordOutcome(_)
         ) && intent.required_state != actual
         {
             return Err(MachineError::StateChanged { expected: intent.required_state, actual });
@@ -451,8 +618,12 @@ impl<P: ControllerPort + Send> MachinePort for MachineService<P> {
         let current = s.actor.execution().map(|e| e.id);
         let subject_ok = match (kind, intent.action.subject) {
             (MachineAction::Upload, ActionSubject::Job(plan)) => intent.job.as_ref().is_some_and(|j| j.plan == plan),
+            // A frame run is one more kind of action on the machine; its job travels in the intent.
+            (MachineAction::Frame, ActionSubject::Machine) => intent.job.is_some(),
             (MachineAction::Reconnect, ActionSubject::Machine) => true,
-            (MachineAction::Upload | MachineAction::Reconnect, _) => false,
+            (MachineAction::Upload | MachineAction::Frame | MachineAction::Reconnect | MachineAction::Live(_), _) => {
+                false
+            }
             (_, ActionSubject::Execution(id)) => current == Some(id),
             _ => false,
         };
@@ -472,24 +643,152 @@ impl<P: ControllerPort + Send> MachinePort for MachineService<P> {
         result.map(Dispatched::Sent)
     }
 
+    fn laser(&self, intent: LaserIntent) -> Result<Dispatched, MachineError> {
+        let mut s = self.lock();
+        if let Some(done) = s.handled.get(&intent.action) {
+            return Ok(Dispatched::AlreadyHandled(done.clone()));
+        }
+        if intent.machine != s.actor.machine().id {
+            return Err(MachineError::WrongMachine);
+        }
+        let kind_ok = match &intent.call {
+            LaserCall::Action(a) => intent.action.kind == MachineAction::Live(LiveKind::of(a)),
+            // Never journaled, never counted: nothing is sent.
+            LaserCall::SaveRd { .. } => return s.save_rd(&intent).map(|()| Dispatched::Sent(None)),
+        };
+        if !kind_ok || intent.action.subject != ActionSubject::Machine {
+            return Err(MachineError::NothingToAct);
+        }
+        let result = s.perform_laser(&intent);
+        s.journal_live();
+        if let Err(MachineError::NotRecorded(_)) = &result {
+            // Nothing was sent: the same click may be tried again.
+            return result.map(Dispatched::Sent);
+        }
+        let handled = HandledAction { action: intent.action, result: result.clone() };
+        s.handled.insert(intent.action, handled.clone());
+        *s.counts.entry((intent.action.kind, intent.action.subject)).or_insert(0) += 1;
+        s.last = Some(handled);
+        result.map(Dispatched::Sent)
+    }
+
     fn status(&self) -> MachineStatus {
         let s = self.lock();
         let current = match (s.actor.execution(), s.job.as_ref()) {
             (Some(e), Some(job)) => Some(ExecutionRecord { execution: e.clone(), job: Arc::clone(job) }),
             _ => None,
         };
+        let live = LiveStatus {
+            position: *s.actor.position(),
+            jog_held: s.actor.jog_held(),
+            files: s.actor.controller_files().map(<[FileEntry]>::to_vec),
+            gates: LIVE_FEATURES
+                .iter()
+                .map(|&f| (f, sample_request(f).and_then(|r| s.actor.live_preflight(&r).err())))
+                .collect(),
+        };
+        let current_is_frame = s.actor.execution().is_some_and(|e| s.frames.contains(&e.id));
         MachineStatus {
             machine: s.actor.machine().id.clone(),
             current,
             earlier: s.earlier.clone(),
             last_action: s.last.clone(),
             journal_error: s.journal_error.clone(),
+            current_is_frame,
+            live,
             handled: s.counts.clone(),
         }
     }
 }
 
+/// Every feature the laser window gates on, in display order.
+const LIVE_FEATURES: [LiveFeature; 9] = [
+    LiveFeature::Jog,
+    LiveFeature::Home,
+    LiveFeature::MoveAbsolute,
+    LiveFeature::PauseResume,
+    LiveFeature::ReadPosition,
+    LiveFeature::FileList,
+    LiveFeature::FileMetadata,
+    LiveFeature::FileRun,
+    LiveFeature::FileDelete,
+];
+
+/// A request of `feature` to ask the actor's preflight with. `None` for features without one.
+fn sample_request(feature: LiveFeature) -> Option<LiveRequest> {
+    let name = || ControllerFileName::new("x").ok();
+    Some(match feature {
+        LiveFeature::Jog => LiveRequest::JogStart(JogKey::XLeft),
+        LiveFeature::Home => LiveRequest::Home(burnburn_machine::HomeTarget::Xy),
+        LiveFeature::MoveAbsolute => LiveRequest::MoveAbsolute { x_um: 0, y_um: 0 },
+        LiveFeature::PauseResume => LiveRequest::Pause,
+        LiveFeature::ReadPosition => LiveRequest::ReadPosition,
+        LiveFeature::FileList => LiveRequest::ListFiles,
+        LiveFeature::FileMetadata => LiveRequest::FileMetadata(name()?),
+        LiveFeature::FileRun => LiveRequest::RunFile(name()?),
+        LiveFeature::FileDelete => LiveRequest::DeleteFile(name()?),
+        LiveFeature::FileUpload => return None,
+    })
+}
+
 impl<P: ControllerPort> Inner<P> {
+    /// Journals the outcome of every live attempt that has been proven (or has stayed unknown).
+    fn journal_live(&mut self) {
+        for track in self.live_tracks.iter_mut().filter(|t| !t.journaled) {
+            let Some(attempt) = self.actor.live_attempts().get(track.seq) else { continue };
+            if attempt.outcome == LiveOutcome::Pending {
+                continue;
+            }
+            let record = LiveOutcomeRecord { action: track.action, outcome: attempt.outcome.clone() };
+            match self.history.record_live_outcome(&record) {
+                Ok(()) => track.journaled = true,
+                Err(e) => self.journal_error = Some(e),
+            }
+        }
+    }
+
+    /// "Save RD to controller": gated like the other file operations; this build has no wire form
+    /// for a named upload, so it is always refused and nothing is sent or journaled.
+    fn save_rd(&mut self, intent: &LaserIntent) -> Result<(), MachineError> {
+        let LaserCall::SaveRd { name, job } = &intent.call else { return Err(MachineError::NothingToAct) };
+        let artifact =
+            RdArtifact::from_rd_file(job.plan, &job.rd, self.chunk_bytes).map_err(|_| MachineError::NothingToAct)?;
+        self.actor.save_rd_to_controller(name, &artifact).map_err(MachineError::Live)
+    }
+
+    /// Plan, preflight, journal the intent, then send: in that order.
+    fn perform_laser(&mut self, intent: &LaserIntent) -> Result<Option<ExecutionId>, MachineError> {
+        let LaserCall::Action(action) = &intent.call else { return Err(MachineError::NothingToAct) };
+        // A key-up with no key held is not a stop: the press was refused or already released.
+        if let LaserAction::JogRelease(key) = action
+            && self.actor.jog_held() != Some(*key)
+        {
+            return Ok(None);
+        }
+        let context = burnburn_machine::LaserContext {
+            frame: &intent.frame,
+            position: *self.actor.position(),
+            user_origin: intent.user_origin,
+        };
+        let request = burnburn_machine::plan_action(action, &context).map_err(MachineError::Laser)?;
+        self.actor.live_preflight(&request).map_err(MachineError::Live)?;
+        let record = LiveIntentRecord {
+            action: intent.action,
+            machine: self.actor.machine().id.clone(),
+            request: request.clone(),
+        };
+        match self.history.record_live_intent(&record).map_err(MachineError::NotRecorded)? {
+            Recorded::Fresh => {}
+            Recorded::AlreadyRecorded => return Err(MachineError::AlreadyRecorded),
+        }
+        let attempts = self.actor.live_attempts().len();
+        let sent = self.actor.live(request);
+        if self.actor.live_attempts().len() > attempts {
+            self.live_tracks.push(LiveTrack { seq: attempts, action: intent.action, journaled: false });
+        }
+        sent.map_err(MachineError::Live).map(|()| None)
+    }
+
     /// Intent before action (ADR 0008 §5): returns only after the history holds the record.
     fn record(&self, action: ActionId, execution: ExecutionId, job: &PreparedJob) -> Result<(), MachineError> {
         let record = IntentRecord {
@@ -517,7 +816,7 @@ impl<P: ControllerPort> Inner<P> {
         let current = self.actor.execution().map(|e| e.id);
         let actor = |r: Result<(), ActorError>| r.map_err(MachineError::Actor);
         match action.kind {
-            MachineAction::Upload => {
+            MachineAction::Upload | MachineAction::Frame => {
                 let job = intent.job.clone().ok_or(MachineError::NothingToAct)?;
                 if self.actor.execution().is_some_and(|e| !e.state.is_terminal()) {
                     return Err(MachineError::Actor(ActorError::Busy));
@@ -540,8 +839,12 @@ impl<P: ControllerPort> Inner<P> {
                     self.earlier.push(ExecutionRecord { execution, job });
                 }
                 self.job = Some(job);
+                if action.kind == MachineAction::Frame {
+                    self.frames.push(id);
+                }
                 Ok(Some(id))
             }
+            MachineAction::Live(_) => Err(MachineError::NothingToAct),
             MachineAction::ConfirmStored => actor(self.actor.confirm_stored()).map(|()| current),
             MachineAction::Start => {
                 let (Some(id), Some(job)) = (current, self.job.clone()) else { return Err(MachineError::NothingToAct) };
