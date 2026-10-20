@@ -183,6 +183,11 @@ name = "clipboard_and_recents"
 path = "../../tests/native/macos/clipboard_and_recents.rs"
 harness = false
 
+[[test]]
+name = "camera_window"
+path = "../../tests/native/macos/camera_window.rs"
+harness = false
+
 [dependencies]
 # Platform-independent adapter (event -> UiIntent) and the app wiring: tested headlessly everywhere.
 burnburn-document = { workspace = true }
@@ -225,4 +230,4 @@ objc2-av-foundation = { workspace = true, optional = true, features = ["std", "b
 objc2-core-media = { workspace = true, optional = true, features = ["std", "objc2-core-video", "CMBase", "CMFormatDescription", "CMSampleBuffer"] }
 objc2-core-video = { workspace = true, optional = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimer", "NSURL", "NSData"] }
-objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSImageRep", "NSImage", "NSImageView", "NSImageCell", "NSBox", "NSBitmapImageRep", "NSAppearance", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow", "NSPasteboard"] }
+objc2-app-kit = { workspace = true, features = ["std", "NSSlider", "NSSliderCell", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSImageRep", "NSImage", "NSImageView", "NSImageCell", "NSBox", "NSBitmapImageRep", "NSAppearance", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow", "NSPasteboard"] }

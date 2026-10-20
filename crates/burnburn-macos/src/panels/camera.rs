@@ -12,6 +12,8 @@ pub enum CameraControl {
     RequestAccess,
     Start,
     Stop,
+    /// Opens or closes the camera window (W3-UI-camera).
+    Window,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -63,6 +65,10 @@ pub fn camera_panel(vm: Option<&CameraViewModel>, locale: Locale) -> CameraPanel
 }
 
 /// The capture mode the host's adapters decode: the largest BGRA mode.
+pub fn bgra_mode_of(modes: &[CameraMode]) -> Option<CameraMode> {
+    bgra_mode(modes)
+}
+
 fn bgra_mode(modes: &[CameraMode]) -> Option<CameraMode> {
     modes
         .iter()

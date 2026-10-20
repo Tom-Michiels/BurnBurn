@@ -454,6 +454,11 @@ impl AppController {
         }
     }
 
+    /// The photo the alignment marks are clicked in (pixels for the host to show), if one was taken.
+    pub fn alignment_photo(&self) -> Option<Arc<CameraFrame>> {
+        self.camera_ws.align.as_ref()?.photo.clone()
+    }
+
     pub(super) fn alignment_view(&self) -> Option<AlignmentView> {
         let w = self.camera_ws.align.as_ref()?;
         let with_pixels = |role| w.marks.iter().filter(|m| m.role == role && m.pixel.is_some()).count();

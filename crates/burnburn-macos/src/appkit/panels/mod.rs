@@ -3,6 +3,7 @@
 
 pub(crate) mod arrange;
 pub(crate) mod camera;
+pub(crate) mod camera_window;
 pub(crate) mod cut_settings;
 pub(crate) mod image;
 pub(crate) mod import;

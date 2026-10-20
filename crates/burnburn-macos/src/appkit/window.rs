@@ -304,7 +304,7 @@ impl DocWindow {
         for w in &cut_settings.options {
             w.control.set_target(Some(target));
         }
-        for b in &camera.buttons {
+        for b in camera.buttons.iter().chain(std::iter::once(&camera.window_button)) {
             // SAFETY: as above.
             unsafe { b.setTarget(Some(target)) };
             // SAFETY: as above.
@@ -563,6 +563,7 @@ impl Drop for DocWindow {
         .into_iter()
         .chain(self.machine_buttons.iter())
         .chain(self.camera.buttons.iter())
+        .chain(std::iter::once(&self.camera.window_button))
         .chain(self.operations.palette.iter())
         {
             // SAFETY: as above.
