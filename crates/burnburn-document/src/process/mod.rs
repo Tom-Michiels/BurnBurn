@@ -14,6 +14,7 @@ mod command;
 mod error;
 mod layer;
 mod operation;
+mod optimize;
 mod recipe;
 mod settings;
 
@@ -26,6 +27,7 @@ pub(crate) use command::{ProcessTxn, apply};
 pub use error::ProcessError;
 pub use layer::{OrderConstraint, ProcessLayer};
 pub use operation::{Operation, OperationDraft};
+pub use optimize::{CutPriority, OptimizationSettings, OrderKey};
 pub use recipe::{MaterialRecipe, RecipeDraft, RecipeId, RecipeRef};
 pub use settings::{
     DitherMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender, ImageSettings, ImageSharpen, Kerf,

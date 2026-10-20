@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use burnburn_types::{GeometryId, OperationId, StableId};
 
-use super::{MaterialRecipe, Operation, ProcessError, RecipeId};
+use super::{CutPriority, MaterialRecipe, Operation, OptimizationSettings, ProcessError, RecipeId};
 
 /// A hard ordering requirement: `before` must be completely executed before `after` starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -20,6 +20,9 @@ pub struct ProcessLayer {
     pub(crate) operations: Vec<Arc<Operation>>,
     pub(crate) constraints: Vec<OrderConstraint>,
     pub(crate) recipes: BTreeMap<RecipeId, Arc<MaterialRecipe>>,
+    pub(crate) optimization: OptimizationSettings,
+    /// Cut priority per geometry; absent = the default priority 0.
+    pub(crate) priorities: BTreeMap<GeometryId, CutPriority>,
 }
 
 impl ProcessLayer {
@@ -52,7 +55,47 @@ impl ProcessLayer {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.operations.is_empty() && self.constraints.is_empty() && self.recipes.is_empty()
+        self.operations.is_empty()
+            && self.constraints.is_empty()
+            && self.recipes.is_empty()
+            && self.optimization.is_default()
+            && self.priorities.is_empty()
+    }
+
+    /// Planner options of the document (order hierarchy, inner-first, overlap removal, …).
+    pub fn optimization(&self) -> &OptimizationSettings {
+        &self.optimization
+    }
+
+    /// Cut priority of `geometry` (default 0; lower is cut first when ordering by priority).
+    pub fn priority(&self, geometry: GeometryId) -> CutPriority {
+        self.priorities.get(&geometry).copied().unwrap_or_default()
+    }
+
+    /// Geometries with a non-default priority, in id order.
+    pub fn priorities(&self) -> impl Iterator<Item = (GeometryId, CutPriority)> + '_ {
+        self.priorities.iter().map(|(g, p)| (*g, *p))
+    }
+
+    /// The same layer with stored optimization settings (open/recovery). Priorities must name
+    /// geometry that exists; the snapshot checks that.
+    pub fn with_optimization(mut self, settings: OptimizationSettings) -> Self {
+        self.optimization = settings;
+        self
+    }
+
+    /// The same layer with stored priorities; the default priority is not stored.
+    pub fn with_priorities(mut self, priorities: impl IntoIterator<Item = (GeometryId, CutPriority)>) -> Self {
+        self.priorities = priorities.into_iter().filter(|(_, p)| *p != CutPriority::default()).collect();
+        self
+    }
+
+    /// Copies the optimization settings and the priorities of `other` for the geometry in
+    /// `keep` (a plate view of the same document).
+    pub(crate) fn inherit_settings(mut self, other: &ProcessLayer, keep: impl Fn(GeometryId) -> bool) -> Self {
+        self.optimization = other.optimization.clone();
+        self.priorities = other.priorities.iter().filter(|(g, _)| keep(**g)).map(|(g, p)| (*g, *p)).collect();
+        self
     }
 
     /// Operations in their default (list) order.
@@ -83,6 +126,7 @@ impl ProcessLayer {
 
     /// Drops `geometry` from every operation's targets; returns the operations that changed.
     pub(crate) fn remove_geometry(&mut self, geometry: GeometryId) -> Vec<OperationId> {
+        self.priorities.remove(&geometry);
         let mut changed = Vec::new();
         for op in &mut self.operations {
             if op.targets().contains(&geometry) {

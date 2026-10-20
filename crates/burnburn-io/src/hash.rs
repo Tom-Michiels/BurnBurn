@@ -16,6 +16,8 @@ pub fn asset_hash(bytes: &[u8]) -> ContentHash {
 /// `tag("assets")`, `seq` of (`bytes` hash, `str` media) in hash order (the bytes are covered by the hash);
 /// only when the process layer has order constraints or recipes: `tag("process")`, `seq` of
 /// constraints, `seq` of recipes;
+/// only when the optimization settings or priorities are not the defaults: `tag("optimization")` and the
+/// canonical form of `burnburn_document::process` (W2-L3);
 /// only when the document has structure (IM21): `tag("structure")` and the layer's canonical form;
 /// only when the document has sketches: `tag("sketches")`, `seq` of (`u64` id, sketch canonical form incl. solution);
 /// only when the document has text objects: `tag("texts")`, `seq` of (`u64` id, text source canonical form);
@@ -36,6 +38,8 @@ pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
         w.seq(process.constraints().iter());
         w.seq(process.recipes());
     }
+    // Optimization settings and priorities (W2-L3) only when they differ from the defaults.
+    process.encode_optimization(&mut w);
     // Sketches (IM11) only when present, so sketch-free projects keep their hash.
     let layer = project.document.sketch_layer();
     if layer.sketches().len() > 0 {

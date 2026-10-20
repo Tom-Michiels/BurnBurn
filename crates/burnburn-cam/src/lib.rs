@@ -30,6 +30,7 @@ mod line;
 pub mod nest;
 mod offset_fill;
 mod options;
+mod overlap;
 mod preflight;
 mod source;
 

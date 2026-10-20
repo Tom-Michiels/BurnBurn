@@ -87,6 +87,12 @@ pub mod v1 {
         /// Material recipe library (schema 2). Omitted when empty.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub recipes: Vec<Recipe>,
+        /// Optimization settings (W2-L3). Omitted when they are the defaults.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub optimization: Option<Optimization>,
+        /// Cut priorities (W2-L3): only shapes with a non-default priority. Omitted when empty.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub priorities: Vec<Priority>,
         /// Parametric sketches (IM11). Omitted when empty, so sketch-free files are unchanged.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub sketches: Vec<crate::sketch_dto::Sketch>,
@@ -102,6 +108,37 @@ pub mod v1 {
         /// Generators (IM22). Omitted when empty.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub generators: Vec<crate::engine_dto::Generator>,
+    }
+
+    /// Level of the `Order by` hierarchy.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum OrderBy {
+        Layer,
+        Group,
+        Priority,
+    }
+
+    /// Planner options of the document (W2-L3).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Optimization {
+        pub order_by: Vec<OrderBy>,
+        pub inner_first: bool,
+        pub reduce_travel: bool,
+        pub best_start: bool,
+        pub best_direction: bool,
+        pub hide_backlash: bool,
+        /// Overlap tolerance in mm; omitted when overlapping lines are kept.
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub remove_overlapping_mm: Option<Num>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct Priority {
+        pub geometry: u64,
+        pub priority: i32,
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

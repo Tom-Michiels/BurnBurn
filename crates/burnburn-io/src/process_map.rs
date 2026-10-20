@@ -9,11 +9,12 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
+    AdvancedOptions, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
     ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
-    OffsetFillSettings, Operation, OperationDraft, OperationMode, OrderConstraint, Overcut, Passes, Perforation,
-    PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId, RecipeRef, ScanAxis, ScanDirection,
-    ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement, TabSpec, ToneSettings, ZStep,
+    OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
+    Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId,
+    RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement, TabSpec,
+    ToneSettings, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 
@@ -64,6 +65,58 @@ pub(crate) fn process_to_dto(doc: &DocumentSnapshot) -> Result<ProcessDto, SaveE
         });
     }
     Ok((operations, constraints, recipes))
+}
+
+/// The optimization settings and priorities as DTOs; both are omitted when they are the defaults.
+pub(crate) fn optimization_to_dto(doc: &DocumentSnapshot) -> (Option<v1::Optimization>, Vec<v1::Priority>) {
+    let layer = doc.process();
+    let o = layer.optimization();
+    let optimization = (!o.is_default()).then(|| v1::Optimization {
+        order_by: o
+            .order_by()
+            .iter()
+            .map(|k| match k {
+                OrderKey::Layer => v1::OrderBy::Layer,
+                OrderKey::Group => v1::OrderBy::Group,
+                OrderKey::Priority => v1::OrderBy::Priority,
+            })
+            .collect(),
+        inner_first: o.inner_first(),
+        reduce_travel: o.reduce_travel(),
+        best_start: o.best_start(),
+        best_direction: o.best_direction(),
+        hide_backlash: o.hide_backlash(),
+        remove_overlapping_mm: o.remove_overlapping_mm().map(v1::Num),
+    });
+    let priorities = layer.priorities().map(|(g, p)| v1::Priority { geometry: g.raw(), priority: p.get() }).collect();
+    (optimization, priorities)
+}
+
+fn optimization_from_dto(o: &v1::Optimization) -> Result<OptimizationSettings, LoadError> {
+    let at = |field: &'static str| move || format!("optimization.{field}");
+    let order = o
+        .order_by
+        .iter()
+        .map(|k| match k {
+            v1::OrderBy::Layer => OrderKey::Layer,
+            v1::OrderBy::Group => OrderKey::Group,
+            v1::OrderBy::Priority => OrderKey::Priority,
+        })
+        .collect();
+    let mut settings = OptimizationSettings::default()
+        .with_order(order)
+        .map_err(|e| invalid(&at("order_by"), e))?
+        .with_inner_first(o.inner_first)
+        .with_reduce_travel(o.reduce_travel)
+        .with_best_start(o.best_start)
+        .with_best_direction(o.best_direction)
+        .with_hide_backlash(o.hide_backlash);
+    if let Some(t) = o.remove_overlapping_mm {
+        let tolerance = length(&at("remove_overlapping_mm"), t)?;
+        settings =
+            settings.with_remove_overlapping(Some(tolerance)).map_err(|e| invalid(&at("remove_overlapping_mm"), e))?;
+    }
+    Ok(settings)
 }
 
 fn direction_to(d: ScanDirection) -> v1::ScanDirection {
@@ -606,5 +659,23 @@ pub(crate) fn process_from_dto(
         .collect();
     let layer = ProcessLayer::from_parts(operations, constraints, recipes)
         .map_err(|e| LoadError::InvalidValue { path: "operations".into(), reason: e.to_string() })?;
+    let mut priorities = Vec::with_capacity(dto.priorities.len());
+    for (i, p) in dto.priorities.iter().enumerate() {
+        let at = move || format!("priorities[{i}]");
+        let geometry = GeometryId::from_raw(p.geometry);
+        if doc.object(geometry).is_none() {
+            return Err(invalid(&|| format!("{}.geometry", at()), "no such shape"));
+        }
+        if priorities.iter().any(|(g, _)| *g == geometry) {
+            return Err(invalid(&|| format!("{}.geometry", at()), "priority set twice"));
+        }
+        let priority = CutPriority::new(p.priority).map_err(|e| invalid(&|| format!("{}.priority", at()), e))?;
+        priorities.push((geometry, priority));
+    }
+    let layer = layer.with_priorities(priorities);
+    let layer = match &dto.optimization {
+        Some(o) => layer.with_optimization(optimization_from_dto(o)?),
+        None => layer,
+    };
     doc.with_process(layer).map_err(|e| LoadError::InvalidValue { path: "operations".into(), reason: e.to_string() })
 }

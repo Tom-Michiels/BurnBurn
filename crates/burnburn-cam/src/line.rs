@@ -44,6 +44,46 @@ pub(crate) enum Order {
     AsGiven,
 }
 
+/// The planner switches of the document's optimization settings. `Default` is the planner as
+/// it was before the settings existed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Heuristics {
+    pub inner_first: bool,
+    pub reduce_travel: bool,
+    pub best_start: bool,
+    pub best_direction: bool,
+    pub hide_backlash: bool,
+}
+
+impl Default for Heuristics {
+    fn default() -> Self {
+        Heuristics {
+            inner_first: true,
+            reduce_travel: true,
+            best_start: true,
+            best_direction: true,
+            hide_backlash: false,
+        }
+    }
+}
+
+impl From<&burnburn_document::process::OptimizationSettings> for Heuristics {
+    fn from(o: &burnburn_document::process::OptimizationSettings) -> Self {
+        Heuristics {
+            inner_first: o.inner_first(),
+            reduce_travel: o.reduce_travel(),
+            best_start: o.best_start(),
+            best_direction: o.best_direction(),
+            hide_backlash: o.hide_backlash(),
+        }
+    }
+}
+
+/// Extra cost (mm of travel) of an approach that reverses the head at the start of a cut, when
+/// the backlash heuristic is on. A fixed, documented constant: the heuristic only has to break
+/// near-ties deterministically towards approaches that keep the head moving the same way.
+pub(crate) const BACKLASH_REVERSAL_PENALTY_MM: f64 = 1.0;
+
 /// Plans all contours of one operation pass, starting at `head`; updates `head`.
 ///
 /// With [`Order::Containment`] a contour that lies inside a closed contour is cut before it
@@ -55,6 +95,7 @@ pub(crate) fn plan(
     order: Order,
     options: &LineOptions,
     shared: SharedEdgePolicy,
+    heuristics: &Heuristics,
     head: &mut Point,
     operation: OperationId,
     tolerance_mm: f64,
@@ -62,8 +103,8 @@ pub(crate) fn plan(
 ) -> Result<Vec<Step>, CompileError> {
     let usable: Vec<&Contour> = contours.iter().filter(|c| c.points.len() >= 2).collect();
     let inner = match order {
-        Order::Containment => containment(&usable, cancel)?,
-        Order::AsGiven => vec![Vec::new(); usable.len()],
+        Order::Containment if heuristics.inner_first => containment(&usable, cancel)?,
+        _ => vec![Vec::new(); usable.len()],
     };
     let depth = hole_depth(&usable);
     let mut done = vec![false; usable.len()];
@@ -71,7 +112,7 @@ pub(crate) fn plan(
     for k in 0..usable.len() {
         cancel.check()?;
         let chosen = match order {
-            Order::AsGiven => Some((k, entry(usable[k], *head))),
+            Order::AsGiven => Some((k, entry(usable[k], *head, heuristics))),
             Order::Containment => {
                 let ready = |i: usize| !done[i] && inner[i].iter().all(|&k| done[k]);
                 // If containment were ever cyclic (degenerate input), fall back to any remaining contour.
@@ -81,8 +122,9 @@ pub(crate) fn plan(
                     if done[i] || (any_ready && !ready(i)) {
                         continue;
                     }
-                    let e = entry(c, *head);
-                    if best.as_ref().is_none_or(|(_, b)| e.distance < b.distance) {
+                    let e = entry(c, *head, heuristics);
+                    // Without travel reduction the given order wins: the first candidate stays.
+                    if best.as_ref().is_none_or(|(_, b)| heuristics.reduce_travel && e.cost < b.cost) {
                         best = Some((i, e));
                     }
                 }
@@ -110,25 +152,45 @@ fn start_of(steps: &[Step]) -> Option<Point> {
 
 /// Where and how to enter a contour.
 pub(crate) struct Entry {
-    distance: f64,
+    /// Travel distance plus the backlash penalty (if enabled): what candidates are compared by.
+    cost: f64,
     /// Closed: index of the entry vertex. Open: 0 = forward, otherwise reversed.
     index: usize,
 }
 
-fn entry(c: &Contour, head: Point) -> Entry {
+/// The cost of moving the head to `at` and then cutting towards `next`.
+fn approach_cost(head: Point, at: Point, next: Option<Point>, h: &Heuristics) -> f64 {
+    let d = head.distance(at);
+    let reverses =
+        h.hide_backlash && next.is_some_and(|n| (at.x - head.x) * (n.x - at.x) + (at.y - head.y) * (n.y - at.y) < 0.0);
+    if reverses { d + BACKLASH_REVERSAL_PENALTY_MM } else { d }
+}
+
+/// The entry of `c` for a head at `head`: the cheapest vertex of a closed contour (only its
+/// first vertex, the shape's own start point, when the best start is off) or the cheaper end of
+/// an open one (only its drawn start when the best direction is off). Ties keep the lowest index.
+fn entry(c: &Contour, head: Point, h: &Heuristics) -> Entry {
+    let n = c.points.len();
     if c.closed {
-        let mut best = Entry { distance: f64::INFINITY, index: 0 };
-        for (i, p) in c.points.iter().enumerate() {
-            let d = head.distance(*p);
-            if d < best.distance {
-                best = Entry { distance: d, index: i };
+        let candidates = if h.best_start { n } else { 1.min(n) };
+        let mut best = Entry { cost: f64::INFINITY, index: 0 };
+        for i in 0..candidates {
+            let cost = approach_cost(head, c.points[i], Some(c.points[(i + 1) % n]), h);
+            if cost < best.cost {
+                best = Entry { cost, index: i };
             }
         }
         best
     } else {
-        let first = c.points.first().map_or(f64::INFINITY, |p| head.distance(*p));
-        let last = c.points.last().map_or(f64::INFINITY, |p| head.distance(*p));
-        if last < first { Entry { distance: last, index: 1 } } else { Entry { distance: first, index: 0 } }
+        let forward = match (c.points.first(), c.points.get(1)) {
+            (Some(p), next) => approach_cost(head, *p, next.copied(), h),
+            _ => f64::INFINITY,
+        };
+        let backward = match (c.points.last(), n.checked_sub(2).and_then(|k| c.points.get(k))) {
+            (Some(p), next) if h.best_direction => approach_cost(head, *p, next.copied(), h),
+            _ => f64::INFINITY,
+        };
+        if backward < forward { Entry { cost: backward, index: 1 } } else { Entry { cost: forward, index: 0 } }
     }
 }
 

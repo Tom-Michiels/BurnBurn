@@ -354,7 +354,8 @@ impl DocumentSnapshot {
             .collect();
         let recipes = self.process.recipes().cloned().collect();
         let process = ProcessLayer::from_parts(operations, constraints, recipes)
-            .map_err(|_| StructureError::InvalidValue { field: "process" })?;
+            .map_err(|_| StructureError::InvalidValue { field: "process" })?
+            .inherit_settings(&self.process, |g| on.contains_key(&g));
         let view = DocumentSnapshot::from_txn(
             self.revision,
             Arc::new(on),
