@@ -109,6 +109,7 @@ pub(crate) fn document_to_dto(doc: &DocumentSnapshot) -> Result<v1::Document, Sa
         structure: crate::structure_map::structure_to_dto(doc)?,
         traces,
         generators,
+        arrange: crate::arrange_dto::arrange_to_dto(doc),
     })
 }
 
@@ -295,7 +296,8 @@ pub(crate) fn document_from_dto(
         .map_err(|e| LoadError::InvalidValue { path: "texts".into(), reason: e.to_string() })?;
     let snapshot = crate::process_map::process_from_dto(dto, schema, snapshot)?;
     let snapshot = crate::structure_map::structure_from_dto(dto.structure.as_ref(), snapshot)?;
-    crate::engine_map::engines_from_dto(dto, asset_exists, snapshot)
+    let snapshot = crate::engine_map::engines_from_dto(dto, asset_exists, snapshot)?;
+    crate::arrange_dto::arrange_from_dto(dto.arrange.as_ref(), snapshot)
 }
 
 /// A path as DTO subpaths (part definitions with fixed geometry).

@@ -10,12 +10,19 @@
 
 use std::ptr::NonNull;
 
-use burnburn_render::RenderPacket;
+use burnburn_editor::SceneSnapshot;
 use burnburn_render::surface::{CanvasError, DrawReport, SurfaceCanvas};
+use burnburn_render::{RenderPacket, Theme, build_packet};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::NSView;
 use raw_window_handle::{AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle};
+
+/// What the canvas draws for `scene`: the light theme, outlines only in wireframe.
+pub fn canvas_packet(scene: &SceneSnapshot, wireframe: bool) -> RenderPacket {
+    let theme = if wireframe { Theme::light().wireframe() } else { Theme::light() };
+    build_packet(scene, &theme)
+}
 
 pub(crate) struct Canvas {
     inner: SurfaceCanvas,

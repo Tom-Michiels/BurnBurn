@@ -108,6 +108,9 @@ pub mod v1 {
         /// Generators (IM22). Omitted when empty.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub generators: Vec<crate::engine_dto::Generator>,
+        /// Draw order and locks (W2-L1-bewerken). Omitted when there are none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub arrange: Option<crate::arrange_dto::Arrange>,
     }
 
     /// Level of the `Order by` hierarchy.

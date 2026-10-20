@@ -170,14 +170,20 @@ pub fn grid_spacing_mm(camera: &Camera) -> f64 {
 
 /// Builds the scene for one window.
 pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
+    // Back to front in draw order; hidden objects are not drawn.
     let items = req
         .snapshot
-        .objects()
-        .map(|(id, obj)| SceneItem {
-            source: id,
-            path: Arc::clone(obj.path()),
-            transform: Affine::IDENTITY,
-            role: if req.selection.contains(id) { StyleRole::Selected } else { StyleRole::Design },
+        .draw_order()
+        .into_iter()
+        .filter(|id| !req.snapshot.is_hidden(*id))
+        .filter_map(|id| {
+            let obj = req.snapshot.object(id)?;
+            Some(SceneItem {
+                source: id,
+                path: Arc::clone(obj.path()),
+                transform: Affine::IDENTITY,
+                role: if req.selection.contains(id) { StyleRole::Selected } else { StyleRole::Design },
+            })
         })
         .collect();
     let mut overlays = vec![Overlay::Grid { spacing_mm: grid_spacing_mm(&req.camera) }];

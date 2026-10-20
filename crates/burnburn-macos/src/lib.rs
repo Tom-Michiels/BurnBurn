@@ -15,6 +15,8 @@ pub mod l10n;
 pub mod lifecycle;
 pub mod panels;
 pub mod panels_image;
+pub mod pasteboard;
+pub mod recent;
 pub mod tasks;
 pub mod text_input;
 pub mod toolbar;

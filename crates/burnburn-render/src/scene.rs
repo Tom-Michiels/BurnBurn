@@ -117,6 +117,18 @@ impl Theme {
         }
     }
 
+    /// The same look without any fill: outlines only (Beeld ▸ Draadmodel).
+    pub fn wireframe(self) -> Self {
+        let bare = |style: RoleStyle| RoleStyle { fill: None, ..style };
+        Theme {
+            design: bare(self.design),
+            selected: bare(self.selected),
+            hovered: bare(self.hovered),
+            disabled: bare(self.disabled),
+            ..self
+        }
+    }
+
     pub fn role(&self, role: StyleRole) -> RoleStyle {
         match role {
             StyleRole::Selected => self.selected,

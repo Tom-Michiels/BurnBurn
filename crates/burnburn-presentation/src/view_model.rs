@@ -70,6 +70,12 @@ pub struct DocumentViewModel {
     pub selection_cycle: Option<SelectionCycle>,
     /// Align/distribute reference (first selected) when two or more objects are selected (E04).
     pub align_reference: Option<GeometryId>,
+    /// The 3×3 point X and Y show and the size fields keep in place (window state).
+    pub reference_point: crate::intent::RefPoint,
+    /// A width or height commit scales both axes (window state).
+    pub aspect_locked: bool,
+    /// Draw outlines only (window state; hosts draw with `Theme::wireframe`).
+    pub wireframe: bool,
     /// Located geometry problems of this revision (E09), also drawn as scene overlays.
     pub issues: Vec<GeometryIssue>,
     /// Error of the last typed drawing size; the gesture stays in preview (E01).
@@ -531,7 +537,12 @@ pub struct ObjectRow {
     pub label: String,
     pub depth: u16,
     pub selected: bool,
+    /// Not hidden (Arrange ▸ Verberg).
     pub visible: bool,
+    /// Locked objects are not picked on the canvas.
+    pub locked: bool,
+    /// Group chain, outermost first (empty: ungrouped).
+    pub groups: Vec<burnburn_types::GroupId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -751,4 +762,12 @@ pub enum MessageKey {
     NothingToChange,
     /// A shape parameter outside what the shape allows (sides, tips, ratio, radius).
     ShapeParamInvalid,
+    /// The pasteboard payload is not a readable BurnBurn clipboard (damaged, foreign or too new).
+    ClipboardUnreadable,
+    /// Delete Duplicates found no identical stacked shapes.
+    NoDuplicatesFound,
+    /// A selection command matched nothing.
+    NothingFound,
+    /// The change would move or delete locked objects (unlock them first).
+    ObjectsLocked,
 }

@@ -29,8 +29,10 @@ use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
 };
 
+mod arrange;
 mod camera;
 mod canvas;
+mod clipboard;
 mod commands;
 mod cut_options;
 mod document;
@@ -42,6 +44,7 @@ mod laser;
 mod layers;
 mod machine;
 mod process;
+mod recent;
 mod recovery;
 mod shapes;
 mod sketch;
@@ -123,6 +126,15 @@ pub enum HostEffect {
         constraint: burnburn_document::sketch::ConstraintId,
         text: String,
     },
+    /// Put these bytes on the OS pasteboard under BurnBurn's own type (Copy and Cut). The host
+    /// answers a later Paste with `UiIntent::PasteData` when the pasteboard holds that type.
+    SetClipboard {
+        bytes: Vec<u8>,
+    },
+    /// The recent-projects list changed: the host stores it and rebuilds Archief ▸ Recente projecten.
+    RecentProjectsChanged {
+        paths: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -197,6 +209,8 @@ struct Session {
     options: shapes::ToolOptions,
     /// Bitmap import sheet, Adjust Image panel and decoded sources (window state).
     image: image::ImageState,
+    /// Inspector reference point, aspect lock and wireframe view (window state).
+    arrange: arrange::ArrangeState,
 }
 
 impl Session {
@@ -249,6 +263,7 @@ impl Session {
             geometry_dialog: None,
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
+            arrange: arrange::ArrangeState::default(),
         })
     }
 
@@ -310,6 +325,12 @@ pub struct AppController {
     toolbar_variants: VariantMemory,
     /// The laser window's setup (window state, never document data).
     laser: laser::LaserState,
+    /// The last Copy or Cut: all windows paste from it; the host mirrors it to the OS pasteboard.
+    clipboard: Option<burnburn_io::clipboard::Clipboard>,
+    /// Archief ▸ Recente projecten, most recent first; the host persists it.
+    recent: Vec<PathBuf>,
+    /// The path each pending open task was asked for (to forget it when it fails).
+    opening_paths: BTreeMap<TaskId, PathBuf>,
 }
 
 impl AppController {
@@ -335,6 +356,9 @@ impl AppController {
             restoring: BTreeMap::new(),
             toolbar_variants: VariantMemory::new(),
             laser: laser::LaserState::default(),
+            clipboard: None,
+            recent: Vec::new(),
+            opening_paths: BTreeMap::new(),
         }
     }
 
@@ -518,6 +542,20 @@ impl AppController {
                     _ => error(None, MessageKey::MachineActionRefused),
                 }
             }
+            UiIntent::SetRecentProjects { paths } => {
+                self.restore_recent(paths);
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            UiIntent::ClearRecentProjects => {
+                AppUpdate { effects: self.clear_recent(), view_changed: true, ..AppUpdate::default() }
+            }
+            UiIntent::PasteData { document, bytes, in_place } => self.paste_data(document, bytes, in_place),
+            UiIntent::SetReferencePoint { document, point } => {
+                self.with_session(document, |s| arrange::set_reference_point(s, point))
+            }
+            UiIntent::SetAspectLock { document, locked } => {
+                self.with_session(document, |s| arrange::set_aspect_lock(s, locked))
+            }
             UiIntent::SketchSelect { document, entities, constraints, mode } => {
                 self.sketch_select(document, entities, constraints, mode)
             }
@@ -634,6 +672,9 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
 /// Applies one payload as one command against the current revision.
 fn apply_edit(s: &mut Session, document: DocumentId, payload: CommandPayload, request: Option<RequestId>) -> AppUpdate {
     let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+    if arrange::touches_locked(s, &payload) {
+        return error(Some(document), MessageKey::ObjectsLocked);
+    }
     let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
     let result = apply_command(&s.fonts, &mut s.doc, cmd);
     after_change(s, document, result)
@@ -687,7 +728,10 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::CommitShapeParam { document, .. }
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
+        | UiIntent::SetReferencePoint { document, .. }
+        | UiIntent::SetAspectLock { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
+        UiIntent::PasteData { document, .. } => *document,
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {
             *document
         }

@@ -17,9 +17,9 @@ use burnburn_editor::Viewport;
 use burnburn_io::ProjectUuid;
 use burnburn_io::fs::FileSystem;
 use burnburn_presentation::{
-    AppController, AppPorts, AppUpdate, AppViewModel, CameraPort, CloseChoice, CommandKey, HostEffect, UiIntent,
+    AppController, AppPorts, AppUpdate, AppViewModel, CameraPort, CloseChoice, CommandKey, HostEffect, MessageKey,
+    UiIntent,
 };
-use burnburn_render::{Theme, build_packet};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
@@ -37,7 +37,8 @@ use super::objc_try;
 use super::window::{CanvasStatus, DocWindow};
 use crate::accessibility::{AxElement, canvas_elements};
 use crate::adapter::{
-    CLOSE_ALERT_BUTTONS, MenuItem, NativeEvent, Reaction, key_code, menu_items, menu_tag, translate, window_title,
+    CLOSE_ALERT_BUTTONS, MenuItem, NativeEvent, Reaction, key_code, menu_items, menu_tag, recent_open_reaction,
+    translate, window_title,
 };
 use crate::l10n::{HostText, Locale, close_alert_title, host_text};
 use crate::lifecycle::{QuitFlow, QuitStep, RECOVERY_ALERT_BUTTONS, open_requests, recovery_message};
@@ -60,6 +61,12 @@ pub struct HostOptions {
     pub recovery_dir: Option<PathBuf>,
     /// Autosave tick in seconds; `None`: only on request (`HostApp::autosave_now`, crash guard).
     pub autosave_interval_s: Option<f64>,
+    /// Use a private, uniquely named pasteboard instead of the user's general one (tests must
+    /// never touch the user's clipboard).
+    pub private_pasteboard: bool,
+    /// Where Archief ▸ Recente projecten is stored (read at start, written on every change);
+    /// `None`: the list is neither read nor stored.
+    pub recent_projects_file: Option<PathBuf>,
 }
 
 impl HostOptions {
@@ -72,8 +79,10 @@ impl HostOptions {
             float_windows: false,
             locale: None,
             terminate_on_quit: true,
-            recovery_dir: support.map(|s| crate::lifecycle::recovery_dir(&s)),
+            recovery_dir: support.as_ref().map(|s| crate::lifecycle::recovery_dir(s)),
             autosave_interval_s: Some(crate::lifecycle::AUTOSAVE_INTERVAL_S),
+            private_pasteboard: false,
+            recent_projects_file: support.as_deref().map(crate::recent::recent_projects_file),
         }
     }
 }
@@ -101,6 +110,8 @@ pub struct HostApp {
     /// `NSApplication.delegate` is weak: the host keeps it.
     _delegate: Retained<AppDelegate>,
     menu: Retained<NSMenu>,
+    recent_menu: Retained<NSMenu>,
+    pasteboard: Retained<objc2_app_kit::NSPasteboard>,
     open_panel: RefCell<Option<Retained<NSOpenPanel>>>,
     options: HostOptions,
     locale: Locale,
@@ -164,10 +175,11 @@ impl HostApp {
         let (port, inbox) = task_channel(wake);
         let ports = AppPorts { tasks: Arc::new(port), fs, new_project_uuid: Arc::new(random_uuid) };
         let locale = options.locale.unwrap_or_else(super::system_locale);
+        let private_pasteboard = options.private_pasteboard;
         let app = Rc::new_cyclic(|me: &Weak<HostApp>| {
             let target = MenuTarget::new(mtm);
             target.set_app(me.clone());
-            let menu = main_menu(mtm, &target, locale);
+            let bar = main_menu(mtm, &target, locale);
             HostApp {
                 mtm,
                 me: me.clone(),
@@ -176,7 +188,13 @@ impl HostApp {
                 inbox,
                 _target: target,
                 _delegate: AppDelegate::new(mtm, me.clone()),
-                menu,
+                menu: bar.main,
+                recent_menu: bar.recent,
+                pasteboard: if private_pasteboard {
+                    super::clipboard::private_pasteboard()
+                } else {
+                    super::clipboard::general_pasteboard()
+                },
                 open_panel: RefCell::new(None),
                 options,
                 locale,
@@ -206,6 +224,14 @@ impl HostApp {
                 controller.set_recovery_dir(dir.clone());
             }
         }
+        if let Some(file) = &app.options.recent_projects_file {
+            // A missing or damaged file is an empty list.
+            let paths = crate::recent::read_recent_projects(file);
+            if let Ok(mut controller) = app.controller.try_borrow_mut() {
+                controller.handle(UiIntent::SetRecentProjects { paths });
+            }
+            app.rebuild_recent_menu(&app.recent_paths());
+        }
         if let Some(interval) = app.options.autosave_interval_s {
             app.start_timer(interval, HostApp::autosave_now);
         }
@@ -234,6 +260,21 @@ impl HostApp {
 
     pub fn menu(&self) -> &NSMenu {
         &self.menu
+    }
+
+    /// Archief ▸ Recente projecten.
+    pub fn recent_menu(&self) -> &NSMenu {
+        &self.recent_menu
+    }
+
+    /// How many recent projects the menu offers now (`validateMenuItem:`).
+    pub(crate) fn recent_count(&self) -> usize {
+        self.controller.try_borrow().map(|c| c.recent_projects().len()).unwrap_or(0)
+    }
+
+    /// The pasteboard Cut/Copy/Paste use.
+    pub fn pasteboard(&self) -> &objc2_app_kit::NSPasteboard {
+        &self.pasteboard
     }
 
     /// The UI language chosen at start-up.
@@ -271,8 +312,41 @@ impl HostApp {
         }
     }
 
+    fn recent_paths(&self) -> Vec<PathBuf> {
+        self.controller.try_borrow().map(|c| c.recent_projects()).unwrap_or_default()
+    }
+
+    /// Rebuild Archief ▸ Recente projecten from `paths` (most recent first).
+    fn rebuild_recent_menu(&self, paths: &[PathBuf]) {
+        fill_recent_menu(self.mtm, &self._target, &self.recent_menu, paths, self.locale);
+    }
+
+    /// Cut or Copy of the canvas selection (Edit items through the responder chain).
+    pub(crate) fn clipboard_command(&self, document: DocumentId, command: CommandKey) {
+        self.dispatch(UiIntent::Invoke { document: Some(document), command });
+    }
+
+    /// Paste into `document`: BurnBurn's own type on the pasteboard wins over the controller's
+    /// last copy (another window or process may have copied since).
+    pub(crate) fn paste(&self, document: DocumentId, in_place: bool) {
+        let bytes = super::clipboard::read_clipboard(&self.pasteboard);
+        self.dispatch(crate::pasteboard::paste_intent(Some(document), in_place, bytes));
+    }
+
+    /// Enablement of an Edit item that reaches the canvas through the responder chain.
+    pub(crate) fn edit_item_enabled(&self, command: CommandKey) -> bool {
+        crate::pasteboard::edit_item_enabled(command, &self.view(), super::clipboard::has_clipboard(&self.pasteboard))
+    }
+
     /// One native event: translated with the current view model, then performed.
     pub fn native(&self, event: NativeEvent) {
+        if let NativeEvent::Menu(item @ MenuItem::Recent(_)) = &event {
+            // The entry's path is in the stored list, which the view model does not carry.
+            if let Reaction::Intent(intent) = recent_open_reaction(*item, &self.recent_paths()) {
+                self.dispatch(intent);
+            }
+            return;
+        }
         if let NativeEvent::TextCommitted { text, .. } = &event
             && let Ok(mut commits) = self.text_commits.try_borrow_mut()
         {
@@ -666,6 +740,19 @@ impl HostApp {
                 }
             }
             HostEffect::Redraw { document } => self.redraw(*document),
+            HostEffect::SetClipboard { bytes } => {
+                if let Err(e) = super::clipboard::write_clipboard(&self.pasteboard, bytes) {
+                    eprintln!("burnburn: clipboard: {e}");
+                }
+            }
+            HostEffect::RecentProjectsChanged { paths } => {
+                if let Some(file) = &self.options.recent_projects_file
+                    && let Err(e) = crate::recent::write_recent_projects(file, paths)
+                {
+                    eprintln!("burnburn: recent projects {}: {e}", file.display());
+                }
+                self.rebuild_recent_menu(paths);
+            }
             HostEffect::OfferRecovery { files } => {
                 if let Ok(mut queue) = self.recovery_queue.try_borrow_mut() {
                     // A second check while alerts are up offers each file once.
@@ -731,7 +818,8 @@ impl HostApp {
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
     pub(crate) fn redraw(&self, document: DocumentId) {
         let Some(scene) = self.controller.try_borrow().ok().and_then(|c| c.scene(document)) else { return };
-        let packet = build_packet(&scene, &Theme::light());
+        let wireframe = self.view().document(document).is_some_and(|d| d.wireframe);
+        let packet = super::canvas::canvas_packet(&scene, wireframe);
         let Ok(windows) = self.windows.try_borrow() else { return };
         let Some(w) = windows.get(&document) else { return };
         if let Some(Err(e)) = w.controller.with_canvas(|canvas| canvas.draw(&packet)) {
@@ -956,6 +1044,9 @@ impl HostApp {
             window: &w.window,
             table: &w.table,
             fields: &w.fields,
+            reference_buttons: &w.controls.reference,
+            aspect_lock: &w.controls.aspect_lock,
+            flip_buttons: &w.controls.flip,
             strip: &w.strip,
             status_label: &w.status_label,
             plan_labels: [
@@ -1028,6 +1119,7 @@ impl HostApp {
             geometry_field: w.shapes.dialog_widgets().0,
             geometry_ok: w.shapes.dialog_widgets().1,
             geometry_cancel: w.shapes.dialog_widgets().2,
+            arrange_toolbar: &w.arrange_tools,
             canvas_view: w.canvas_view.as_view(),
             save_panel: w.save_panel.as_deref(),
             export_panel: w.export_panel.as_deref(),
@@ -1101,6 +1193,10 @@ pub struct WindowParts<'a> {
     pub window: &'a objc2_app_kit::NSWindow,
     pub table: &'a objc2_app_kit::NSTableView,
     pub fields: &'a [(burnburn_presentation::FieldKey, Retained<objc2_app_kit::NSTextField>)],
+    /// The 3×3 reference-point buttons (row by row), the aspect-lock checkbox and the two flip buttons.
+    pub reference_buttons: &'a [Retained<objc2_app_kit::NSButton>],
+    pub aspect_lock: &'a objc2_app_kit::NSButton,
+    pub flip_buttons: &'a [Retained<objc2_app_kit::NSButton>],
     pub strip: &'a super::toolstrip::ToolStrip,
     pub status_label: &'a objc2_app_kit::NSTextField,
     /// Preview panel: title, plan id, estimate, state, findings.
@@ -1188,6 +1284,8 @@ pub struct WindowParts<'a> {
     pub geometry_field: &'a objc2_app_kit::NSTextField,
     pub geometry_ok: &'a objc2_app_kit::NSButton,
     pub geometry_cancel: &'a objc2_app_kit::NSButton,
+    /// The toolbar's Uitlijnen control.
+    pub arrange_toolbar: &'a objc2_app_kit::NSSegmentedControl,
     pub canvas_view: &'a objc2_app_kit::NSView,
     pub save_panel: Option<&'a NSSavePanel>,
     pub export_panel: Option<&'a NSSavePanel>,
@@ -1212,12 +1310,62 @@ fn set_file_type(panel: &NSSavePanel, extension: &str) {
     panel.setAllowedFileTypes(Some(&types));
 }
 
-/// App menu, File, Edit, Tools. Every item sends `burnburnMenu:` to `target` with its tag; titles
-/// and enablement come from the view model in `validateMenuItem:`, the menu headings from the
-/// catalogue in `locale`.
+/// The menu bar and the one menu that changes while the app runs.
+struct MenuBar {
+    main: Retained<NSMenu>,
+    /// Archief ▸ Recente projecten, rebuilt from the controller's list.
+    recent: Retained<NSMenu>,
+}
+
+/// Modifier masks of the key equivalents.
+const CMD: NSEventModifierFlags = NSEventModifierFlags::Command;
+const CMD_SHIFT: NSEventModifierFlags =
+    NSEventModifierFlags(NSEventModifierFlags::Command.0 | NSEventModifierFlags::Shift.0);
+const CMD_OPT: NSEventModifierFlags =
+    NSEventModifierFlags(NSEventModifierFlags::Command.0 | NSEventModifierFlags::Option.0);
+
+/// A menu item that sends `burnburnMenu:` to `target` with the tag of `menu_item`.
 #[allow(unsafe_code)]
-fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Retained<NSMenu> {
+fn command_item(mtm: MainThreadMarker, target: &MenuTarget, menu_item: MenuItem, title: &str) -> Retained<NSMenuItem> {
     let target: &AnyObject = target.as_ref();
+    // SAFETY: a freshly allocated item; the action is `burnburnMenu:` (`v@:@`) on our target.
+    let item = unsafe {
+        NSMenuItem::initWithTitle_action_keyEquivalent(
+            NSMenuItem::alloc(mtm),
+            &NSString::from_str(title),
+            Some(sel!(burnburnMenu:)),
+            &NSString::from_str(""),
+        )
+    };
+    item.setTag(menu_tag(menu_item));
+    // SAFETY: the target is weak; HostApp keeps it for the app's lifetime.
+    unsafe { item.setTarget(Some(target)) };
+    item
+}
+
+/// Fill Archief ▸ Recente projecten: one entry per stored project (most recent first), a
+/// separator and Wis menu. Titles are file names; the tooltip is the full path.
+fn fill_recent_menu(mtm: MainThreadMarker, target: &MenuTarget, menu: &NSMenu, paths: &[PathBuf], locale: Locale) {
+    menu.removeAllItems();
+    for (index, path) in paths.iter().enumerate() {
+        let item = command_item(mtm, target, MenuItem::Recent(index), &crate::recent::recent_title(path));
+        item.setToolTip(Some(&NSString::from_str(&path.to_string_lossy())));
+        menu.addItem(&item);
+    }
+    if !paths.is_empty() {
+        menu.addItem(&NSMenuItem::separatorItem(mtm));
+    }
+    menu.addItem(&command_item(mtm, target, MenuItem::ClearRecent, host_text(HostText::ClearRecent, locale)));
+}
+
+/// App menu, File, Edit, Arrange, Tools, View, Sketch, Production. Every item sends
+/// `burnburnMenu:` to `target` with its tag, except Cut / Copy / Paste / Paste in Place / Select
+/// All: those go through the responder chain (nil target), so a focused text field keeps normal
+/// text editing and the canvas handles them otherwise. Titles, enablement and check marks come
+/// from the view model in `validateMenuItem:`, the menu headings from the catalogue in `locale`.
+#[allow(unsafe_code)]
+fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> MenuBar {
+    let target_object: &AnyObject = target.as_ref();
     let t = |text: HostText| host_text(text, locale);
     let raw_item = |title: &str, action: Option<objc2::runtime::Sel>, key: &str| {
         // SAFETY: a freshly allocated item; the action is `burnburnMenu:` (`v@:@`) on our target,
@@ -1231,24 +1379,23 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
             )
         }
     };
-    let item = |menu_item: MenuItem, key: &str, shift: bool| {
-        let title = crate::adapter::menu_title(
-            menu_item,
-            &AppViewModel {
-                documents: Vec::new(),
-                active: None,
-                commands: BTreeMap::new(),
-                toolbar: Default::default(),
-            },
-            locale,
-        );
+    let empty_vm =
+        AppViewModel { documents: Vec::new(), active: None, commands: BTreeMap::new(), toolbar: Default::default() };
+    let keyed = |menu_item: MenuItem, key: &str, mask: NSEventModifierFlags| {
+        let title = crate::adapter::menu_title(menu_item, &empty_vm, locale);
         let item = raw_item(&title, Some(sel!(burnburnMenu:)), key);
         item.setTag(menu_tag(menu_item));
-        if shift {
-            item.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
-        }
+        item.setKeyEquivalentModifierMask(mask);
         // SAFETY: the target is weak; HostApp keeps it for the app's lifetime.
-        unsafe { item.setTarget(Some(target)) };
+        unsafe { item.setTarget(Some(target_object)) };
+        item
+    };
+    let item = |menu_item: MenuItem, key: &str, shift: bool| keyed(menu_item, key, if shift { CMD_SHIFT } else { CMD });
+    // An Edit item through the responder chain: no target, so the first responder that handles
+    // the action (a field editor, or the canvas) gets it.
+    let chain = |command: CommandKey, action: objc2::runtime::Sel, key: &str, mask: NSEventModifierFlags| {
+        let item = raw_item(&crate::adapter::message_text(MessageKey::Command(command), locale), Some(action), key);
+        item.setKeyEquivalentModifierMask(mask);
         item
     };
     let submenu = |title: &str, items: Vec<Retained<NSMenuItem>>| {
@@ -1262,13 +1409,20 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
     };
     let sep = || NSMenuItem::separatorItem(mtm);
     let c = MenuItem::Command;
+    let plain = |key: CommandKey| item(c(key), "", false);
     let main = NSMenu::new(mtm);
     main.addItem(&submenu(t(HostText::AppMenu), vec![raw_item(t(HostText::Quit), Some(sel!(terminate:)), "q")]));
+
+    let recent = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(t(HostText::RecentProjects)));
+    fill_recent_menu(mtm, target, &recent, &[], locale);
+    let recent_holder = raw_item(t(HostText::RecentProjects), None, "");
+    recent_holder.setSubmenu(Some(&recent));
     main.addItem(&submenu(
         t(HostText::MenuFile),
         vec![
             item(c(CommandKey::New), "n", false),
             item(MenuItem::Open, "o", false),
+            recent_holder,
             item(MenuItem::Import, "i", true),
             sep(),
             item(c(CommandKey::Close), "w", false),
@@ -1282,22 +1436,99 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
             item(c(CommandKey::Undo), "z", false),
             item(c(CommandKey::Redo), "z", true),
             sep(),
-            item(c(CommandKey::Delete), "", false),
+            chain(CommandKey::Cut, sel!(cut:), "x", CMD),
+            chain(CommandKey::Copy, sel!(copy:), "c", CMD),
+            chain(CommandKey::Paste, sel!(paste:), "v", CMD),
+            chain(CommandKey::PasteInPlace, sel!(pasteInPlace:), "v", CMD_SHIFT),
+            item(c(CommandKey::Duplicate), "d", false),
+            plain(CommandKey::Delete),
+            sep(),
             // Responder chain: a text field keeps its own Select All (see CanvasView::selectAll:).
-            raw_item(t(HostText::SelectAll), Some(sel!(selectAll:)), "a"),
+            chain(CommandKey::SelectAll, sel!(selectAll:), "a", CMD),
+            keyed(c(CommandKey::InvertSelection), "i", CMD_OPT),
+            plain(CommandKey::SelectOpenShapes),
+            plain(CommandKey::SelectInLayer),
+            plain(CommandKey::SelectContained),
+            plain(CommandKey::SelectSmaller),
+            plain(CommandKey::SelectCircles),
+            sep(),
+            plain(CommandKey::DeleteDuplicates),
+        ],
+    ));
+    main.addItem(&submenu(
+        t(HostText::MenuArrange),
+        vec![
+            item(c(CommandKey::Group), "g", false),
+            item(c(CommandKey::Ungroup), "g", true),
+            plain(CommandKey::AutoGroup),
+            plain(CommandKey::BreakApart),
+            sep(),
+            plain(CommandKey::FlipHorizontal),
+            plain(CommandKey::FlipVertical),
+            plain(CommandKey::Rotate90Cw),
+            plain(CommandKey::Rotate90Ccw),
+            sep(),
+            submenu(
+                t(HostText::MenuAlign),
+                [
+                    CommandKey::AlignLeft,
+                    CommandKey::AlignCenterX,
+                    CommandKey::AlignRight,
+                    CommandKey::AlignTop,
+                    CommandKey::AlignCenterY,
+                    CommandKey::AlignBottom,
+                ]
+                .into_iter()
+                .map(plain)
+                .collect(),
+            ),
+            submenu(
+                t(HostText::MenuDistribute),
+                [CommandKey::DistributeHorizontal, CommandKey::DistributeVertical].into_iter().map(plain).collect(),
+            ),
+            sep(),
+            item(c(CommandKey::PushForward), "]", false),
+            item(c(CommandKey::PushBackward), "[", false),
+            item(c(CommandKey::PushToFront), "]", true),
+            item(c(CommandKey::PushToBack), "[", true),
+            sep(),
+            plain(CommandKey::LockSelected),
+            plain(CommandKey::UnlockSelected),
+            plain(CommandKey::UnlockAll),
+            plain(CommandKey::HideSelected),
+            plain(CommandKey::ShowAll),
         ],
     ));
     main.addItem(&submenu(
         t(HostText::MenuTools),
         vec![
-            item(c(CommandKey::ToolSelect), "", false),
-            item(c(CommandKey::ToolRectangle), "", false),
-            item(c(CommandKey::ToolEllipse), "", false),
-            item(c(CommandKey::ToolLine), "", false),
-            item(c(CommandKey::ToolPen), "", false),
-            item(c(CommandKey::ToolNode), "", false),
+            plain(CommandKey::ToolSelect),
+            plain(CommandKey::ToolRectangle),
+            plain(CommandKey::ToolEllipse),
+            plain(CommandKey::ToolLine),
+            plain(CommandKey::ToolPen),
+            plain(CommandKey::ToolNode),
+            plain(CommandKey::ToolTrim),
             sep(),
-            item(c(CommandKey::Measure), "", false),
+            plain(CommandKey::BooleanUnion),
+            plain(CommandKey::BooleanDifference),
+            plain(CommandKey::BooleanIntersection),
+            sep(),
+            plain(CommandKey::SnapToObjects),
+            plain(CommandKey::SnapToGrid),
+            sep(),
+            plain(CommandKey::Measure),
+        ],
+    ));
+    main.addItem(&submenu(
+        t(HostText::MenuView),
+        vec![
+            item(c(CommandKey::ZoomPage), "0", false),
+            item(c(CommandKey::ZoomSelection), "0", true),
+            item(c(CommandKey::ZoomIn), "=", false),
+            item(c(CommandKey::ZoomOut), "-", false),
+            sep(),
+            plain(CommandKey::ViewWireframe),
         ],
     ));
     main.addItem(&submenu(
@@ -1329,22 +1560,22 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
     main.addItem(&submenu(
         t(HostText::MenuSketch),
         vec![
-            item(c(CommandKey::SketchNew), "", false),
-            item(c(CommandKey::SketchFromSelection), "", false),
-            item(c(CommandKey::SketchEdit), "", false),
-            item(c(CommandKey::SketchFinish), "", false),
+            plain(CommandKey::SketchNew),
+            plain(CommandKey::SketchFromSelection),
+            plain(CommandKey::SketchEdit),
+            plain(CommandKey::SketchFinish),
             sep(),
-            item(c(CommandKey::SketchCoincident), "", false),
-            item(c(CommandKey::SketchHorizontal), "", false),
-            item(c(CommandKey::SketchVertical), "", false),
-            item(c(CommandKey::SketchParallel), "", false),
-            item(c(CommandKey::SketchPerpendicular), "", false),
-            item(c(CommandKey::SketchEqual), "", false),
-            item(c(CommandKey::SketchTangent), "", false),
-            item(c(CommandKey::SketchFix), "", false),
+            plain(CommandKey::SketchCoincident),
+            plain(CommandKey::SketchHorizontal),
+            plain(CommandKey::SketchVertical),
+            plain(CommandKey::SketchParallel),
+            plain(CommandKey::SketchPerpendicular),
+            plain(CommandKey::SketchEqual),
+            plain(CommandKey::SketchTangent),
+            plain(CommandKey::SketchFix),
             sep(),
-            item(c(CommandKey::SketchDimension), "", false),
-            item(c(CommandKey::SketchRemoveConstraint), "", false),
+            plain(CommandKey::SketchDimension),
+            plain(CommandKey::SketchRemoveConstraint),
         ],
     ));
     main.addItem(&submenu(
@@ -1374,5 +1605,5 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
         vec![item(MenuItem::ExportDiagnostics, "", false)],
     ));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));
-    main
+    MenuBar { main, recent }
 }

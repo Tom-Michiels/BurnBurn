@@ -31,6 +31,10 @@ pub enum MenuItem {
     LaserWindow,
     /// Help ▸ Diagnose exporteren…: options and a save panel first, then presentation's export.
     ExportDiagnostics,
+    /// Archief ▸ Recente projecten ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
+    Recent(usize),
+    /// Archief ▸ Recente projecten ▸ Wis menu.
+    ClearRecent,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -42,6 +46,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::TraceImage,
         MenuItem::LaserWindow,
         MenuItem::ExportDiagnostics,
+        MenuItem::ClearRecent,
     ]
     .into_iter()
     .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
@@ -55,6 +60,10 @@ const IMPORT_IMAGE_TAG: isize = 1002;
 const TRACE_IMAGE_TAG: isize = 1003;
 const LASER_WINDOW_TAG: isize = 1004;
 const DIAGNOSTICS_TAG: isize = 1005;
+const CLEAR_RECENT_TAG: isize = 1006;
+/// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
+const RECENT_TAG_BASE: isize = 2000;
+const RECENT_TAG_SLOTS: isize = 64;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
@@ -65,6 +74,10 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::TraceImage => TRACE_IMAGE_TAG,
         MenuItem::LaserWindow => LASER_WINDOW_TAG,
         MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
+        MenuItem::ClearRecent => CLEAR_RECENT_TAG,
+        MenuItem::Recent(n) => {
+            isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
+        }
         MenuItem::Command(key) => CommandKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize + 1),
     }
 }
@@ -88,6 +101,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == DIAGNOSTICS_TAG {
         return Some(MenuItem::ExportDiagnostics);
+    }
+    if tag == CLEAR_RECENT_TAG {
+        return Some(MenuItem::ClearRecent);
+    }
+    if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
+        return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
     }
     let index = usize::try_from(tag.checked_sub(1)?).ok()?;
     CommandKey::ALL.get(index).map(|k| MenuItem::Command(*k))
@@ -207,6 +226,15 @@ pub enum NativeEvent {
     PanelCommand {
         document: DocumentId,
         command: CommandKey,
+    },
+    /// One of the inspector's nine reference-point buttons (`index` in `RefPoint::ALL` order).
+    ReferencePointChosen {
+        document: DocumentId,
+        index: isize,
+    },
+    /// The inspector's aspect-lock checkbox was clicked: the lock flips.
+    AspectLockToggled {
+        document: DocumentId,
     },
     /// The RD export save sheet closed: a path on OK, `None` on cancel.
     ExportPanelFinished {
@@ -472,6 +500,9 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
         E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
+        E::Menu(MenuItem::ClearRecent) => UiIntent::ClearRecentProjects,
+        // A recent entry needs the stored list: see `recent_open_reaction`.
+        E::Menu(MenuItem::Recent(_)) => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
         E::OpenPanelFinished { path: Some(path) } => UiIntent::Open { path },
         E::OpenPanelFinished { path: None } => return Reaction::Nothing,
@@ -576,6 +607,16 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::PanelCommand { document, command } if open(document) => {
             UiIntent::Invoke { document: Some(document), command }
         }
+        E::ReferencePointChosen { document, index } if open(document) => {
+            match crate::panels::reference_point_intent(document, index) {
+                Some(intent) => intent,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::AspectLockToggled { document } => match crate::panels::aspect_lock_intent(vm, document) {
+            Some(intent) => intent,
+            None => return Reaction::Nothing,
+        },
         E::ExportPanelFinished { document, path: Some(path) } if open(document) => {
             UiIntent::ExportRd { document, path }
         }
@@ -796,7 +837,29 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         // The laser panel belongs to a window; the diagnostic export reads the journal only.
         MenuItem::LaserWindow => vm.active.is_some(),
         MenuItem::ExportDiagnostics => true,
+        MenuItem::Recent(_) | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
+    }
+}
+
+/// As [`menu_enabled`], knowing how many recent projects the menu offers.
+pub fn menu_enabled_with_recent(item: MenuItem, vm: &AppViewModel, recent: usize) -> bool {
+    match item {
+        MenuItem::Recent(n) => n < recent,
+        MenuItem::ClearRecent => recent > 0,
+        _ => menu_enabled(item, vm),
+    }
+}
+
+/// What choosing a recent-projects entry does: open that path. `item` must be `Recent(n)` with `n`
+/// inside `recent`; anything else (a stale index) does nothing.
+pub fn recent_open_reaction(item: MenuItem, recent: &[PathBuf]) -> Reaction {
+    match item {
+        MenuItem::Recent(n) => match recent.get(n) {
+            Some(path) => Reaction::Intent(UiIntent::Open { path: path.clone() }),
+            None => Reaction::Nothing,
+        },
+        _ => Reaction::Nothing,
     }
 }
 
@@ -808,7 +871,9 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::ImportImage
         | MenuItem::TraceImage
         | MenuItem::LaserWindow
-        | MenuItem::ExportDiagnostics => false,
+        | MenuItem::ExportDiagnostics
+        | MenuItem::Recent(_)
+        | MenuItem::ClearRecent => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -824,6 +889,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::ExportDiagnostics => {
             crate::panels::laser_text(crate::panels::LaserText::DiagnosticsItem, locale).to_owned()
         }
+        MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
+        // The entries are titled with their file name when the menu is built (`recent::recent_title`).
+        MenuItem::Recent(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),

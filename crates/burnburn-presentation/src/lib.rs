@@ -46,7 +46,7 @@ pub use image_panel::{
 pub use image_task::{BitmapInput, BitmapJob, BitmapSource};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
-    OperationKind, ParamKey, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
+    OperationKind, ParamKey, RefPoint, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
 pub use laser::{
     AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,

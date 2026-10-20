@@ -68,6 +68,7 @@ impl AppController {
         let (Some(document), Some(id)) = (self.next_id::<DocumentId>(), self.next_id::<TaskId>()) else {
             return (error(None, MessageKey::OpenFailed), None);
         };
+        let path_for_recent = path.clone();
         let cancel = CancellationSource::new();
         let source = burnburn_types::RevisionId::INITIAL;
         let request = TaskRequest {
@@ -80,6 +81,7 @@ impl AppController {
         };
         match self.ports.tasks.submit(request) {
             Ok(()) => {
+                self.opening_paths.insert(id, path_for_recent);
                 self.opening.insert(id, (document, cancel));
                 (AppUpdate::default(), Some(id))
             }

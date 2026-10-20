@@ -30,6 +30,9 @@ impl BundleSpec {
 /// The UTI exported for `.burnburn` project containers.
 pub const PROJECT_UTI: &str = "app.burnburn.project";
 
+/// The pasteboard type of Cut/Copy (`burnburn_macos::pasteboard::CLIPBOARD_TYPE`), exported as plain data.
+pub const CLIPBOARD_UTI: &str = "app.burnburn.clipboard.v1";
+
 /// The `Info.plist` XML for `spec`.
 pub fn info_plist(spec: &BundleSpec) -> String {
     let e = |v: &str| escape(v);
@@ -110,6 +113,16 @@ pub fn info_plist(spec: &BundleSpec) -> String {
 				</array>
 			</dict>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>{clipboard_uti}</string>
+			<key>UTTypeDescription</key>
+			<string>BurnBurn-objecten op het klembord</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
@@ -120,6 +133,7 @@ pub fn info_plist(spec: &BundleSpec) -> String {
         version = e(&spec.version),
         minimum = e(&spec.minimum_macos),
         uti = PROJECT_UTI,
+        clipboard_uti = CLIPBOARD_UTI,
         icon = ICON_NAME,
         camera = e(camera_usage("en")),
     )
@@ -388,6 +402,25 @@ mod tests {
             "{uti}"
         );
         assert!(uti.contains("<string>public.data</string>") && uti.contains("<string>public.zip-archive</string>"));
+    }
+
+    /// W2-L1: Cut/Copy put BurnBurn's objects on the pasteboard under a private type. It is declared
+    /// (exported, a plain data type that is not a document) so other apps never mistake it for text.
+    #[test]
+    fn info_plist_exports_the_clipboard_type_as_plain_data() {
+        let plist = info_plist(&BundleSpec::burnburn("0.1.0"));
+        let exported = plist.split("<key>UTExportedTypeDeclarations</key>").nth(1).unwrap_or_default();
+        // The same string as `burnburn_macos::pasteboard::CLIPBOARD_TYPE` (xtask does not depend on the host).
+        let declaration = exported
+            .split("<dict>")
+            .find(|d| d.contains("<string>app.burnburn.clipboard.v1</string>"))
+            .unwrap_or_else(|| panic!("clipboard type not declared: {exported}"));
+        assert_eq!(value_after(declaration, "UTTypeIdentifier"), Some("app.burnburn.clipboard.v1"));
+        assert!(declaration.contains("<string>public.data</string>"), "{declaration}");
+        assert!(!declaration.contains("public.filename-extension"), "an in-memory type owns no file extension");
+        assert!(!declaration.contains("public.zip-archive"), "it is not a project container: {declaration}");
+        // The project type is still declared next to it.
+        assert!(exported.contains(&format!("<string>{PROJECT_UTI}</string>")));
     }
 
     #[test]

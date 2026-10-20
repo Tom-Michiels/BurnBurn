@@ -120,11 +120,14 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             label: obj.name().to_owned(),
             depth: 0,
             selected: s.selection.contains(gid),
-            visible: true,
+            visible: !snapshot.is_hidden(gid),
+            locked: snapshot.is_locked(gid),
+            groups: obj.groups().to_vec(),
         })
         .collect();
-    let inspector = s.selection.single().and_then(|gid| snapshot.object(gid).map(|o| (gid, o))).and_then(|(gid, o)| {
-        let b = o.bounds()?;
+    let inspector = s.selection.reference().and_then(|gid| {
+        let b = s.selection.bounds(&snapshot)?;
+        let at = super::arrange::reference_in(&b, s.arrange.reference);
         let field = |key: FieldKey, mm: f64| FieldViewModel {
             key,
             label: MessageKey::Field(key),
@@ -133,14 +136,20 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             editable: true,
             error: s.field_errors.get(&key).copied(),
         };
+        // Action fields show the neutral value; a commit applies the typed amount to the selection.
+        let action = |key: FieldKey, neutral: &str| FieldViewModel { text: neutral.into(), ..field(key, 0.0) };
         Some(InspectorViewModel {
             object: gid,
             fields: vec![
-                field(FieldKey::X, b.min().x),
-                field(FieldKey::Y, b.min().y),
+                field(FieldKey::X, at.x),
+                field(FieldKey::Y, at.y),
                 field(FieldKey::Width, b.width()),
                 field(FieldKey::Height, b.height()),
-                FieldViewModel { text: "0".into(), ..field(FieldKey::Rotation, 0.0) },
+                action(FieldKey::Rotation, "0"),
+                action(FieldKey::ScaleX, "100"),
+                action(FieldKey::ScaleY, "100"),
+                action(FieldKey::ShearX, "0"),
+                action(FieldKey::ShearY, "0"),
             ],
         })
     });
@@ -166,6 +175,9 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         snap_settings: s.snap,
         selection_cycle: s.cycle,
         align_reference: (s.selection.len() >= 2).then(|| s.selection.reference()).flatten(),
+        reference_point: s.arrange.reference,
+        aspect_locked: s.arrange.aspect_locked,
+        wireframe: s.arrange.wireframe,
         issues: s.issues.clone(),
         tool_size_error: s.tool_size_error,
         boolean_preview: current_boolean_preview(s).cloned(),
@@ -202,6 +214,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),
         (CommandKey::Delete, Some(s)) => (!s.selection.is_empty(), false),
         (CommandKey::SelectAll, Some(s)) => (!s.doc.snapshot().is_empty(), false),
+        (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (
@@ -277,6 +290,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SaveProcessedBitmap,
             Some(s),
         ) => (super::image::command_enabled(key, s), false),
+        (other, Some(s)) if super::arrange::command_enabled(other, s).is_some() => {
+            (super::arrange::command_enabled(other, s).unwrap_or(false), false)
+        }
         (other, Some(s)) => match tool_for(other) {
             Some(tool) => (true, !s.trim_mode && s.editor.tool() == tool),
             None => (true, false),

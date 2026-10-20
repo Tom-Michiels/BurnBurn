@@ -2,6 +2,7 @@
 //! message key and every host-only text (menus, sheets, panels). Missing text is a test failure,
 //! never an empty label on screen.
 
+use burnburn_document::{ArrangeLabel, UndoLabel};
 use burnburn_macos::l10n::{
     HostText, Locale, close_alert_title, host_text, known_message_keys, locale_from_preferred, message,
 };
@@ -95,4 +96,85 @@ fn locale_follows_the_first_supported_preferred_language() {
     assert_eq!(locale_from_preferred(["nld"]), Locale::Nl);
     // A language that merely starts with the letters "nl…" but is not Dutch does not count.
     assert_eq!(locale_from_preferred(["nlx"]), Locale::En);
+}
+
+/// W2-L1 (bewerken): the new transform fields, messages and Arrange undo labels are listed in the
+/// catalogue (so `all_message_keys_have_nl_and_en` checks them) and read as Dutch / English.
+#[test]
+fn edit_round_keys_are_listed_with_nl_and_en() {
+    let mut keys = vec![
+        MessageKey::ClipboardUnreadable,
+        MessageKey::NoDuplicatesFound,
+        MessageKey::NothingFound,
+        MessageKey::ObjectsLocked,
+    ];
+    keys.extend([FieldKey::ScaleX, FieldKey::ScaleY, FieldKey::ShearX, FieldKey::ShearY].map(MessageKey::Field));
+    let arrange = [
+        ArrangeLabel::DrawOrder,
+        ArrangeLabel::Lock,
+        ArrangeLabel::Unlock,
+        ArrangeLabel::Hide,
+        ArrangeLabel::Show,
+        ArrangeLabel::Paste,
+        ArrangeLabel::BreakApart,
+        ArrangeLabel::AutoGroup,
+        ArrangeLabel::Ungroup,
+    ];
+    for label in arrange {
+        keys.push(MessageKey::UndoAction(UndoLabel::Arrange(label)));
+        keys.push(MessageKey::RedoAction(UndoLabel::Arrange(label)));
+    }
+    let known = known_message_keys();
+    for key in keys {
+        assert!(known.contains(&key), "catalogue does not list {key:?}");
+        for locale in [Locale::Nl, Locale::En] {
+            assert!(message(key, locale).is_some_and(|t| !t.trim().is_empty()), "{key:?} {locale:?}");
+        }
+    }
+    let pairs = [
+        (MessageKey::Command(CommandKey::PasteInPlace), "Plak op plaats", "Paste in Place"),
+        (MessageKey::Command(CommandKey::Group), "Groepeer", "Group"),
+        (MessageKey::Command(CommandKey::ViewWireframe), "Draadmodel", "Wireframe"),
+        (MessageKey::Field(FieldKey::ShearX), "Scheef X", "Shear X"),
+        (
+            MessageKey::ObjectsLocked,
+            "Vergrendelde objecten kunnen niet gewijzigd worden.",
+            "Locked objects cannot be changed.",
+        ),
+    ];
+    for (key, nl, en) in pairs {
+        assert_eq!(message(key, Locale::Nl).as_deref(), Some(nl), "{key:?}");
+        assert_eq!(message(key, Locale::En).as_deref(), Some(en), "{key:?}");
+    }
+    assert_eq!(
+        message(MessageKey::UndoAction(UndoLabel::Arrange(ArrangeLabel::Lock)), Locale::Nl).as_deref(),
+        Some("Herstel Vergrendelen")
+    );
+    assert_eq!(
+        message(MessageKey::RedoAction(UndoLabel::Arrange(ArrangeLabel::DrawOrder)), Locale::En).as_deref(),
+        Some("Redo Change Draw Order")
+    );
+}
+
+/// The menu headings, the recent-projects entries and the inspector captions of this round.
+#[test]
+fn edit_round_host_texts_read_as_dutch_and_english() {
+    let pairs = [
+        (HostText::MenuView, "Beeld", "View"),
+        (HostText::RecentProjects, "Recente projecten", "Open Recent"),
+        (HostText::ClearRecent, "Wis menu", "Clear Menu"),
+        (HostText::MenuAlign, "Uitlijnen", "Align"),
+        (HostText::MenuDistribute, "Verdelen", "Distribute"),
+        (HostText::UnitPercent, "%", "%"),
+        (HostText::AspectLock, "Verhouding vergrendelen", "Lock Aspect Ratio"),
+        (HostText::ReferencePoint, "Referentiepunt", "Reference Point"),
+        (HostText::RefPointTopLeft, "Linksboven", "Top left"),
+        (HostText::RefPointCenter, "Midden", "Center"),
+        (HostText::RefPointBottomRight, "Rechtsonder", "Bottom right"),
+    ];
+    for (text, nl, en) in pairs {
+        assert_eq!(host_text(text, Locale::Nl), nl, "{text:?}");
+        assert_eq!(host_text(text, Locale::En), en, "{text:?}");
+    }
+    assert!(HostText::ALL.contains(&HostText::RefPointTop), "ALL lists every reference point caption");
 }

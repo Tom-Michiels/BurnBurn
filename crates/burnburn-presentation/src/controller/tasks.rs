@@ -23,15 +23,30 @@ impl AppController {
     pub fn task_finished(&mut self, outcome: TaskOutcome) -> AppUpdate {
         if let Some((document, _)) = self.opening.remove(&outcome.id) {
             let restored = self.restoring.remove(&outcome.id);
-            return self.opened(document, outcome, restored);
+            let requested = self.opening_paths.remove(&outcome.id);
+            let (succeeded, cancelled) = (outcome.result.is_ok(), matches!(outcome.result, Err(TaskError::Cancelled)));
+            let recent = match requested {
+                // A recovered document is unsaved and untitled: it is not a recent project.
+                Some(path) if restored.is_none() && succeeded => self.note_recent(&path),
+                Some(path) if restored.is_none() && !cancelled => self.forget_recent(&path),
+                _ => Vec::new(),
+            };
+            let mut update = self.opened(document, outcome, restored);
+            update.effects.extend(recent);
+            return update;
         }
+        let saved_path = match &outcome.result {
+            Ok(TaskOutput::Saved { path }) => Some(path.clone()),
+            _ => None,
+        };
+        let recent = saved_path.map(|p| self.note_recent(&p)).unwrap_or_default();
         if self.app_tasks.remove(&outcome.id).is_some() {
             return self.app_task_finished(outcome);
         }
         let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
         let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
         let document = outcome.document;
-        let mut update = AppUpdate { view_changed: true, ..AppUpdate::default() };
+        let mut update = AppUpdate { view_changed: true, effects: recent, ..AppUpdate::default() };
         if kind.is_revision_sensitive() && outcome.source != s.doc.revision() {
             return update;
         }

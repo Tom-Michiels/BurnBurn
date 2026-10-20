@@ -23,18 +23,18 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
-use burnburn_presentation::{CutField, FieldKey};
+use burnburn_presentation::{CommandKey, CutField, FieldKey};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
-use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
+use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAccessibilityElement, NSAccessibilityLayoutAreaRole, NSAccessibilityLayoutItemRole,
-    NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOn,
-    NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation, NSPopUpButton, NSResponder,
-    NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate, NSTextField,
-    NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem, NSTrackingArea,
-    NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
+    NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
+    NSPopUpButton, NSResponder, NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource,
+    NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem,
+    NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -44,7 +44,9 @@ use objc2_foundation::{
 use super::app::HostApp;
 use super::canvas::Canvas;
 use super::panels::cut_settings::OptionControl;
-use crate::adapter::{CommitCause, MouseButton, MousePhase, NativeEvent, menu_enabled, menu_item, menu_title};
+use crate::adapter::{
+    CommitCause, MouseButton, MousePhase, NativeEvent, menu_checked, menu_enabled_with_recent, menu_item, menu_title,
+};
 use crate::l10n::{HostText, host_text};
 use crate::panels::{LayerColumn, OperationLine, SketchColumn, SketchLine};
 use crate::text_input::Composer;
@@ -65,6 +67,8 @@ pub(crate) fn ffi_guard<T>(what: &str, default: T, body: impl FnOnce() -> T) -> 
 
 /// Identifier of the toolbar item with the Schets (sketch) commands.
 pub(crate) const SKETCH_ITEM: &str = "app.burnburn.toolbar.sketch";
+/// Identifier of the toolbar item with the Uitlijnen (align and distribute) commands.
+pub(crate) const ARRANGE_ITEM: &str = "app.burnburn.toolbar.arrange";
 
 pub(crate) struct AppIvars {
     app: RefCell<Weak<HostApp>>,
@@ -122,8 +126,13 @@ define_class!(
                     return false;
                 };
                 let vm = app.view();
-                menu_item_obj.setTitle(&NSString::from_str(&menu_title(item, &vm, app.locale())));
-                menu_enabled(item, &vm)
+                // Recent-project entries keep the file name they were built with.
+                let title = menu_title(item, &vm, app.locale());
+                if !title.is_empty() {
+                    menu_item_obj.setTitle(&NSString::from_str(&title));
+                }
+                menu_item_obj.setState(if menu_checked(item, &vm) { NSControlStateValueOn } else { NSControlStateValueOff });
+                menu_enabled_with_recent(item, &vm, app.recent_count())
             })
         }
     }
@@ -241,6 +250,9 @@ pub(crate) struct ControllerParts {
     /// Toolbar segments of the Schets commands.
     pub(crate) sketch_tools: Retained<NSSegmentedControl>,
     pub(crate) sketch_tools_label: String,
+    /// Toolbar segments of the Uitlijnen commands.
+    pub(crate) arrange_tools: Retained<NSSegmentedControl>,
+    pub(crate) arrange_tools_label: String,
 }
 
 pub(crate) struct ControllerIvars {
@@ -260,6 +272,8 @@ pub(crate) struct ControllerIvars {
     param_inputs: [Retained<NSTextField>; 2],
     sketch_tools: Retained<NSSegmentedControl>,
     sketch_tools_label: String,
+    arrange_tools: Retained<NSSegmentedControl>,
+    arrange_tools_label: String,
     /// Layer-table rows, copied from the view model.
     operation_rows: RefCell<Vec<OperationLine>>,
     /// Constraint-table and parameter-table rows, copied from the view model.
@@ -401,6 +415,34 @@ define_class!(
                 let ivars = self.ivars();
                 let [name, text] = ivars.param_inputs.each_ref().map(|f| f.stringValue().to_string());
                 self.send(NativeEvent::SketchParameterCommitted { document: ivars.document, name, text });
+            });
+        }
+
+        /// One of the inspector's reference-point buttons: its tag is the index in `RefPoint::ALL`.
+        #[unsafe(method(referencePoint:))]
+        fn reference_point(&self, sender: Option<&AnyObject>) {
+            ffi_guard("referencePoint:", (), || {
+                let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
+                self.send(NativeEvent::ReferencePointChosen { document: self.ivars().document, index: button.tag() });
+            });
+        }
+
+        /// The inspector's aspect-lock checkbox.
+        #[unsafe(method(aspectLock:))]
+        fn aspect_lock(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("aspectLock:", (), || {
+                self.send(NativeEvent::AspectLockToggled { document: self.ivars().document });
+            });
+        }
+
+        /// The toolbar's Uitlijnen control (momentary segments).
+        #[unsafe(method(arrangeToolbar:))]
+        fn arrange_toolbar(&self, sender: Option<&AnyObject>) {
+            ffi_guard("arrangeToolbar:", (), || {
+                let Some(control) = sender.and_then(|s| s.downcast_ref::<NSSegmentedControl>()) else { return };
+                if let Some(command) = crate::panels::arrange_toolbar_command(control.selectedSegment()) {
+                    self.send(NativeEvent::PanelCommand { document: self.ivars().document, command });
+                }
             });
         }
 
@@ -730,6 +772,7 @@ define_class!(
                 // The drawing tools live in the tool strip; the native toolbar keeps the Schets item.
                 let (control, label) = match identifier.to_string().as_str() {
                     SKETCH_ITEM => (&self.ivars().sketch_tools, &self.ivars().sketch_tools_label),
+                    ARRANGE_ITEM => (&self.ivars().arrange_tools, &self.ivars().arrange_tools_label),
                     _ => return None,
                 };
                 let mtm = MainThreadMarker::new()?;
@@ -744,12 +787,12 @@ define_class!(
 
         #[unsafe(method_id(toolbarDefaultItemIdentifiers:))]
         fn toolbar_default(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(SKETCH_ITEM)])
+            NSArray::from_retained_slice(&[NSString::from_str(ARRANGE_ITEM), NSString::from_str(SKETCH_ITEM)])
         }
 
         #[unsafe(method_id(toolbarAllowedItemIdentifiers:))]
         fn toolbar_allowed(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(SKETCH_ITEM)])
+            NSArray::from_retained_slice(&[NSString::from_str(ARRANGE_ITEM), NSString::from_str(SKETCH_ITEM)])
         }
     }
 );
@@ -838,6 +881,8 @@ impl WindowController {
             param_inputs,
             sketch_tools,
             sketch_tools_label,
+            arrange_tools,
+            arrange_tools_label,
         } = parts;
         let this = Self::alloc(mtm).set_ivars(ControllerIvars {
             app,
@@ -856,6 +901,8 @@ impl WindowController {
             param_inputs,
             sketch_tools,
             sketch_tools_label,
+            arrange_tools,
+            arrange_tools_label,
             operation_rows: RefCell::new(Vec::new()),
             sketch_rows: RefCell::new(Vec::new()),
             sketch_params: RefCell::new(Vec::new()),
@@ -1134,6 +1181,29 @@ define_class!(
             });
         }
 
+        /// Edit ▸ Knip, Kopieer, Plak, Plak op plaats go through the responder chain (nil target),
+        /// like Select All: a focused text field keeps normal text editing; on the canvas they
+        /// act on the selection and on the pasteboard.
+        #[unsafe(method(cut:))]
+        fn cut(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("cut:", (), || self.edit_command(CommandKey::Cut));
+        }
+
+        #[unsafe(method(copy:))]
+        fn copy(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("copy:", (), || self.edit_command(CommandKey::Copy));
+        }
+
+        #[unsafe(method(paste:))]
+        fn paste(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("paste:", (), || self.edit_command(CommandKey::Paste));
+        }
+
+        #[unsafe(method(pasteInPlace:))]
+        fn paste_in_place(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("pasteInPlace:", (), || self.edit_command(CommandKey::PasteInPlace));
+        }
+
         // ---- NSAccessibility: the canvas is a layout area, objects are layout items ----
 
         #[unsafe(method(isAccessibilityElement))]
@@ -1162,6 +1232,32 @@ define_class!(
     }
 
     unsafe impl NSObjectProtocol for CanvasView {}
+
+    /// Enablement of the responder-chain Edit items, from the view model (and, for Paste, the
+    /// pasteboard). Anything else that reaches the canvas stays enabled as AppKit would have it.
+    unsafe impl NSMenuItemValidation for CanvasView {
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, menu_item: &NSMenuItem) -> bool {
+            ffi_guard("validateMenuItem:", false, || {
+                let Some(app) = self.ivars().app.upgrade() else { return false };
+                let Some(action) = menu_item.action() else { return true };
+                let command = if action == sel!(cut:) {
+                    CommandKey::Cut
+                } else if action == sel!(copy:) {
+                    CommandKey::Copy
+                } else if action == sel!(paste:) {
+                    CommandKey::Paste
+                } else if action == sel!(pasteInPlace:) {
+                    CommandKey::PasteInPlace
+                } else if action == sel!(selectAll:) {
+                    CommandKey::SelectAll
+                } else {
+                    return true;
+                };
+                app.edit_item_enabled(command)
+            })
+        }
+    }
 
     unsafe impl NSTextInputClient for CanvasView {
         #[unsafe(method(insertText:replacementRange:))]
@@ -1330,6 +1426,17 @@ impl CanvasView {
     fn resized(&self) {
         if let Some(app) = self.ivars().app.upgrade() {
             app.canvas_resized(self.ivars().document);
+        }
+    }
+
+    /// Cut, Copy and the two pastes of the canvas.
+    fn edit_command(&self, command: CommandKey) {
+        let Some(app) = self.ivars().app.upgrade() else { return };
+        let document = self.ivars().document;
+        match command {
+            CommandKey::Paste => app.paste(document, false),
+            CommandKey::PasteInPlace => app.paste(document, true),
+            _ => app.clipboard_command(document, command),
         }
     }
 

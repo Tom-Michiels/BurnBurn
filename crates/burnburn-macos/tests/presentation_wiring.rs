@@ -46,7 +46,11 @@ fn field_text(h: &HeadlessEditorHarness, doc: DocumentId, key: FieldKey) -> Stri
 
 #[test]
 fn inspector_offers_rotation_in_degrees_and_a_commit_turns_the_selection() {
-    assert_eq!(INSPECTOR_FIELDS[..], [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation]);
+    // W2-L1 added scale and shear after these five (see tests/inspector_controls.rs).
+    assert_eq!(
+        INSPECTOR_FIELDS[..5],
+        [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation]
+    );
     assert_eq!(field_unit(FieldKey::Rotation, Locale::Nl), "°");
     assert_eq!(field_unit(FieldKey::Width, Locale::Nl), "mm");
     assert_eq!(message_or_key(MessageKey::Field(FieldKey::Rotation), Locale::Nl), "Rotatie");

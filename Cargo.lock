@@ -316,6 +316,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation",
  "raw-window-handle",
+ "serde_json",
  "toml",
  "wgpu",
 ]

@@ -129,6 +129,22 @@ impl AppController {
             | CommandKey::CancelImageAdjust
             | CommandKey::MaskImage
             | CommandKey::RefreshImage => self.image_command(document, command),
+            CommandKey::Cut
+            | CommandKey::Copy
+            | CommandKey::Paste
+            | CommandKey::PasteInPlace
+            | CommandKey::Duplicate => self.clipboard_command(document, command),
+            CommandKey::ZoomPage => {
+                let bed = self.machine.as_ref().and_then(|m| {
+                    let frame = m.profile.frame();
+                    burnburn_geometry::Bounds::from_corners(
+                        burnburn_geometry::Point::new(0.0, 0.0),
+                        burnburn_geometry::Point::new(frame.width_mm(), frame.height_mm()),
+                    )
+                    .into()
+                });
+                self.with_session(document, |s| super::arrange::zoom_page(s, document, bed))
+            }
             CommandKey::BooleanUnion => self.submit_boolean(document, BooleanOp::Union),
             CommandKey::BooleanDifference => self.submit_boolean(document, BooleanOp::Difference),
             CommandKey::BooleanIntersection => self.submit_boolean(document, BooleanOp::Intersection),
@@ -180,6 +196,9 @@ pub(super) fn invoke_in_session(
         s.selection.retain_existing(&s.doc.snapshot());
         return update;
     }
+    if let Some(update) = super::arrange::command(s, document, command, request) {
+        return update;
+    }
     match command {
         CommandKey::Undo | CommandKey::Redo => {
             // A gesture in progress is cancelled first; it never reaches history (A4).
@@ -216,7 +235,8 @@ pub(super) fn invoke_in_session(
             apply_edit(s, document, payload, request)
         }
         CommandKey::SelectAll => {
-            let all = s.doc.snapshot().objects().map(|(id, _)| id).collect();
+            let snapshot = s.doc.snapshot();
+            let all = snapshot.draw_order().into_iter().filter(|id| snapshot.is_selectable(*id)).collect();
             apply_selection(s, &SelectionChange::Replace(all));
             AppUpdate::redraw(document)
         }

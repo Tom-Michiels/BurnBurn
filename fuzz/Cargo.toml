@@ -113,3 +113,10 @@ path = "fuzz_targets/io_bundle.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "io_clipboard"
+path = "fuzz_targets/io_clipboard.rs"
+test = false
+doc = false
+bench = false

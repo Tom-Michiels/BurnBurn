@@ -4,6 +4,7 @@ use std::sync::Arc;
 use burnburn_geometry::{Affine, Path, Point};
 use burnburn_types::{DocumentId, GeometryId, IdAllocator, RevisionId};
 
+use crate::arrange::ArrangeLayer;
 use crate::command::{
     Anchor, Axis, ChangeSet, CommandError, CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, UndoLabel,
     ValueError,
@@ -43,7 +44,15 @@ pub struct DocumentSession {
     saved: Option<Saved>,
 }
 
-type Saved = (Objects, Arc<ProcessLayer>, Arc<SketchLayer>, Arc<StructureLayer>, Arc<TextLayer>, Arc<EngineLayer>);
+type Saved = (
+    Objects,
+    Arc<ProcessLayer>,
+    Arc<SketchLayer>,
+    Arc<StructureLayer>,
+    Arc<TextLayer>,
+    Arc<EngineLayer>,
+    Arc<ArrangeLayer>,
+);
 
 fn content_of(s: &DocumentSnapshot) -> Saved {
     (
@@ -53,6 +62,7 @@ fn content_of(s: &DocumentSnapshot) -> Saved {
         Arc::clone(&s.structure),
         Arc::clone(&s.texts),
         Arc::clone(&s.engines),
+        Arc::clone(&s.arrange),
     )
 }
 
@@ -64,6 +74,7 @@ struct Txn {
     structure: StructureLayer,
     texts: TextLayer,
     engines: EngineLayer,
+    arrange: ArrangeLayer,
     ids: IdAllocator,
     changes: ChangeSet,
     warnings: Vec<CommandWarning>,
@@ -120,6 +131,7 @@ impl DocumentSession {
             structure: (*self.current.structure).clone(),
             texts: (*self.current.texts).clone(),
             engines: (*self.current.engines).clone(),
+            arrange: (*self.current.arrange).clone(),
             ids: IdAllocator::resume_at(self.current.next_id),
             changes: ChangeSet::default(),
             warnings: Vec::new(),
@@ -127,6 +139,10 @@ impl DocumentSession {
         let label = cmd.payload.undo_label();
         // On error the working copy is dropped: snapshot, revision, ids and history stay untouched.
         txn.execute(cmd.payload)?;
+        {
+            let objects = &txn.objects;
+            txn.arrange.retain_existing(|id| objects.contains_key(&id));
+        }
         txn.evaluate(revision, evaluators)?;
         txn.evaluate_structure()?;
         // Keep sharing the process layer when the command did not touch it.
@@ -152,6 +168,11 @@ impl DocumentSession {
         } else {
             Arc::new(txn.engines)
         };
+        let arrange = if txn.arrange == *self.current.arrange {
+            Arc::clone(&self.current.arrange)
+        } else {
+            Arc::new(txn.arrange)
+        };
         let after = DocumentSnapshot::from_txn(
             revision,
             Arc::new(txn.objects),
@@ -161,7 +182,8 @@ impl DocumentSession {
             structure,
             texts,
             engines,
-        );
+        )
+        .with_arrange_layer(arrange);
         reference_warnings(&self.current, &after, &mut txn.warnings);
         let before = (*self.current).clone();
         self.current = Arc::new(after.clone());
@@ -201,16 +223,19 @@ impl DocumentSession {
         let previous = self.revision();
         // The id counter never goes back: undoing a create must not let its id be reissued.
         let next_id = content.next_id.max(self.current.next_id);
-        self.current = Arc::new(DocumentSnapshot::from_txn(
-            revision,
-            Arc::clone(&content.objects),
-            next_id,
-            Arc::clone(&content.process),
-            Arc::clone(&content.sketches),
-            Arc::clone(&content.structure),
-            Arc::clone(&content.texts),
-            Arc::clone(&content.engines),
-        ));
+        self.current = Arc::new(
+            DocumentSnapshot::from_txn(
+                revision,
+                Arc::clone(&content.objects),
+                next_id,
+                Arc::clone(&content.process),
+                Arc::clone(&content.sketches),
+                Arc::clone(&content.structure),
+                Arc::clone(&content.texts),
+                Arc::clone(&content.engines),
+            )
+            .with_arrange_layer(Arc::clone(&content.arrange)),
+        );
         CommandOutcome { previous, revision, changes, warnings: Vec::new(), undo_label: label }
     }
 
@@ -229,13 +254,14 @@ impl DocumentSession {
 
     /// True when the current content differs from the last content marked as saved.
     pub fn is_dirty(&self) -> bool {
-        self.saved.as_ref().is_none_or(|(objects, process, sketches, structure, texts, engines)| {
+        self.saved.as_ref().is_none_or(|(objects, process, sketches, structure, texts, engines, arrange)| {
             !Arc::ptr_eq(objects, &self.current.objects)
                 || !Arc::ptr_eq(process, &self.current.process)
                 || !Arc::ptr_eq(sketches, &self.current.sketches)
                 || !Arc::ptr_eq(structure, &self.current.structure)
                 || !Arc::ptr_eq(texts, &self.current.texts)
                 || !Arc::ptr_eq(engines, &self.current.engines)
+                || !Arc::ptr_eq(arrange, &self.current.arrange)
         })
     }
 
@@ -453,6 +479,17 @@ impl Txn {
                 },
             )
             .map_err(CommandError::Shape),
+            CommandPayload::Arrange(cmd) => crate::arrange_edit::apply(
+                cmd,
+                crate::arrange_edit::ArrangeTxn {
+                    objects: &mut self.objects,
+                    ids: &mut self.ids,
+                    changes: &mut self.changes,
+                    process: &mut self.process,
+                    arrange: &mut self.arrange,
+                },
+            )
+            .map_err(CommandError::Arrange),
             CommandPayload::Rename { target, name } => {
                 let obj = self.get(target)?;
                 self.warn_duplicate_name(&name, target);
@@ -651,6 +688,7 @@ impl Txn {
             Arc::new(self.texts.clone()),
             Arc::new(self.engines.clone()),
         )
+        .with_arrange_layer(Arc::new(self.arrange.clone()))
     }
 
     /// Applies a text evaluator patch: outputs and missing glyphs on success; only the record on

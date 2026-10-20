@@ -89,6 +89,27 @@ pub fn parse_number(text: &str, suffixes: &[&str]) -> Result<f64, FieldError> {
     parse_signed(number).map(Length::mm)
 }
 
+/// Parses a percentage typed in a scale field: `50`, `150 %`, `33,3%`. Must be greater than zero.
+pub fn parse_percent(text: &str) -> Result<f64, FieldError> {
+    let value = parse_number(text, &["%"])?;
+    if value <= 0.0 {
+        Err(FieldError::NotPositive)
+    } else if value > 1e6 {
+        Err(FieldError::NotFinite)
+    } else {
+        Ok(value)
+    }
+}
+
+/// Shear angles at or beyond this (degrees) collapse the shape; they are refused.
+pub const MAX_SHEAR_DEGREES: f64 = 89.0;
+
+/// Parses a shear angle in degrees, strictly between ±[`MAX_SHEAR_DEGREES`].
+pub fn parse_shear(text: &str) -> Result<f64, FieldError> {
+    let degrees = parse_angle(text)?;
+    if degrees.abs() > MAX_SHEAR_DEGREES { Err(FieldError::NotFinite) } else { Ok(degrees) }
+}
+
 /// Field display text in millimetres: at most three decimals, trailing zeros trimmed.
 pub fn format_mm(mm: f64) -> String {
     let s = format!("{mm:.3}");
@@ -139,6 +160,27 @@ mod tests {
         assert_eq!(pos("abc"), Err(FieldError::NotANumber));
         assert_eq!(pos(""), Err(FieldError::Empty));
         assert_eq!(pos("1,000.5"), Err(FieldError::AmbiguousSeparator));
+    }
+
+    #[test]
+    fn percentages_must_be_positive_and_accept_the_percent_sign() {
+        assert_eq!(parse_percent("50"), Ok(50.0));
+        assert_eq!(parse_percent(" 33,3 % "), Ok(33.3));
+        assert_eq!(parse_percent("0"), Err(FieldError::NotPositive));
+        assert_eq!(parse_percent("-5%"), Err(FieldError::NotPositive));
+        assert_eq!(parse_percent("abc"), Err(FieldError::NotANumber));
+        assert_eq!(parse_percent(""), Err(FieldError::Empty));
+        assert_eq!(parse_percent("99999999999"), Err(FieldError::NotFinite));
+    }
+
+    #[test]
+    fn shear_angles_stop_short_of_the_degenerate_ninety_degrees() {
+        assert_eq!(parse_shear("45"), Ok(45.0));
+        assert_eq!(parse_shear("-30°"), Ok(-30.0));
+        assert_eq!(parse_shear("0"), Ok(0.0));
+        assert_eq!(parse_shear("90"), Err(FieldError::NotFinite));
+        assert_eq!(parse_shear("-89,5"), Err(FieldError::NotFinite));
+        assert_eq!(parse_shear("x"), Err(FieldError::NotANumber));
     }
 
     #[test]

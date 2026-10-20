@@ -68,6 +68,8 @@ pub enum CommandPayload {
     Generator(GeneratorCommand),
     /// Parametric basic shapes: create, edit parameters, convert to path (W1-L2b).
     Shape(crate::shape_edit::ShapeCommand),
+    /// Draw order, locks, paste, break apart and auto-group (W2-L1-bewerken).
+    Arrange(crate::arrange_edit::ArrangeCommand),
 }
 
 impl CommandPayload {
@@ -87,6 +89,7 @@ impl CommandPayload {
             CommandPayload::Trace(t) => UndoLabel::Trace(t.label()),
             CommandPayload::Generator(g) => UndoLabel::Generator(g.label()),
             CommandPayload::Shape(s) => UndoLabel::Shape(s.label()),
+            CommandPayload::Arrange(a) => UndoLabel::Arrange(a.label()),
         }
     }
 }
@@ -123,6 +126,7 @@ pub enum UndoLabel {
     Trace(TraceLabel),
     Generator(GeneratorLabel),
     Shape(crate::shape_edit::ShapeLabel),
+    Arrange(crate::arrange_edit::ArrangeLabel),
 }
 
 /// Which objects a committed command (or undo/redo) created, modified or deleted.
@@ -243,6 +247,8 @@ pub enum CommandError {
     Engine(EngineError),
     /// A parametric shape command was rejected (W1-L2b); nothing changed.
     Shape(crate::shape_edit::ShapeError),
+    /// An arrangement command was rejected (W2-L1-bewerken); nothing changed.
+    Arrange(crate::arrange_edit::ArrangeError),
 }
 
 impl fmt::Display for CommandError {
@@ -273,6 +279,7 @@ impl fmt::Display for CommandError {
             CommandError::Text(e) => write!(f, "text: {e}"),
             CommandError::Engine(e) => write!(f, "{e}"),
             CommandError::Shape(e) => write!(f, "shape: {e}"),
+            CommandError::Arrange(e) => write!(f, "arrange: {e}"),
         }
     }
 }

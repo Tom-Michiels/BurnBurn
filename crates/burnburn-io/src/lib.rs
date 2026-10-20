@@ -8,8 +8,10 @@
 //!
 //! No GUI, GPU or network dependency.
 
+pub mod arrange_dto;
 pub mod art_library;
 pub mod bundle;
+pub mod clipboard;
 mod container;
 pub mod dto;
 pub mod engine_dto;
