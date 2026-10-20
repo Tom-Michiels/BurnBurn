@@ -504,6 +504,86 @@ pub enum FilesMessage {
     ExportWriteFailed,
 }
 
+impl FilesMessage {
+    /// Every message, for the hosts' completeness checks.
+    pub const ALL: &'static [FilesMessage] = &[
+        FilesMessage::ImportLegacyIllustrator,
+        FilesMessage::ImportEncryptedPdf,
+        FilesMessage::TemplateWrongExtension,
+        FilesMessage::TemplateSaveFailed,
+        FilesMessage::TemplateOpenFailed,
+        FilesMessage::LibraryUnreadable,
+        FilesMessage::LibrarySaveFailed,
+        FilesMessage::MaterialInvalid,
+        FilesMessage::MaterialImageLayer,
+        FilesMessage::MaterialUnknown,
+        FilesMessage::ArtNameInvalid,
+        FilesMessage::ArtGroupExists,
+        FilesMessage::ArtGroupUnknown,
+        FilesMessage::ArtGroupNotEmpty,
+        FilesMessage::ArtItemUnknown,
+        FilesMessage::ArtFileUnreadable,
+        FilesMessage::ArtFileFormat,
+        FilesMessage::ArtScaleRequired,
+        FilesMessage::ArtNothingSelected,
+        FilesMessage::ArtLibraryFull,
+        FilesMessage::BundleNothingSelected,
+        FilesMessage::BundleUnreadable,
+        FilesMessage::BundleWriteFailed,
+        FilesMessage::BundleApplyFailed,
+        FilesMessage::ExportEmpty,
+        FilesMessage::ExportNeedsAcknowledgement,
+        FilesMessage::ExportInvalidOption,
+        FilesMessage::ExportWriteFailed,
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FilesMessage;
+
+    /// A new `FilesMessage` does not compile here until it is listed in `ALL` (and so in the
+    /// hosts' catalogues).
+    fn position(m: FilesMessage) -> usize {
+        match m {
+            FilesMessage::ImportLegacyIllustrator => 0,
+            FilesMessage::ImportEncryptedPdf => 1,
+            FilesMessage::TemplateWrongExtension => 2,
+            FilesMessage::TemplateSaveFailed => 3,
+            FilesMessage::TemplateOpenFailed => 4,
+            FilesMessage::LibraryUnreadable => 5,
+            FilesMessage::LibrarySaveFailed => 6,
+            FilesMessage::MaterialInvalid => 7,
+            FilesMessage::MaterialImageLayer => 8,
+            FilesMessage::MaterialUnknown => 9,
+            FilesMessage::ArtNameInvalid => 10,
+            FilesMessage::ArtGroupExists => 11,
+            FilesMessage::ArtGroupUnknown => 12,
+            FilesMessage::ArtGroupNotEmpty => 13,
+            FilesMessage::ArtItemUnknown => 14,
+            FilesMessage::ArtFileUnreadable => 15,
+            FilesMessage::ArtFileFormat => 16,
+            FilesMessage::ArtScaleRequired => 17,
+            FilesMessage::ArtNothingSelected => 18,
+            FilesMessage::ArtLibraryFull => 19,
+            FilesMessage::BundleNothingSelected => 20,
+            FilesMessage::BundleUnreadable => 21,
+            FilesMessage::BundleWriteFailed => 22,
+            FilesMessage::BundleApplyFailed => 23,
+            FilesMessage::ExportEmpty => 24,
+            FilesMessage::ExportNeedsAcknowledgement => 25,
+            FilesMessage::ExportInvalidOption => 26,
+            FilesMessage::ExportWriteFailed => 27,
+        }
+    }
+
+    #[test]
+    fn all_lists_every_message_once_in_order() {
+        let positions: Vec<usize> = FilesMessage::ALL.iter().map(|m| position(*m)).collect();
+        assert_eq!(positions, (0..positions.len()).collect::<Vec<_>>());
+    }
+}
+
 /// Everything the file panels of one window show.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FilesViewModel {

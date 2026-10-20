@@ -34,6 +34,10 @@ pub struct ImportPanel {
     pub size: String,
     pub report: String,
     pub commit_enabled: bool,
+    /// The unit pop-up is for SVG and DXF only; the other formats know their unit.
+    pub show_units: bool,
+    /// PDF/AI: one item per page, then "all pages"; empty for every other format.
+    pub pages: crate::panels_files::Popup,
 }
 
 fn unit_label(mm_per_unit: f64) -> Option<&'static str> {
@@ -46,7 +50,9 @@ fn unit_label(mm_per_unit: f64) -> Option<&'static str> {
 pub fn import_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Option<ImportPanel> {
     let import = vm.document(document)?.import.as_ref()?;
     let nl = locale == Locale::Nl;
-    let unit_prompt = if import.needs_unit {
+    let unit_prompt = if let Some(line) = crate::panels_files::import_unit_line(import, locale) {
+        line
+    } else if import.needs_unit {
         if nl {
             "Het bestand noemt geen eenheid: kies er een.".to_owned()
         } else {
@@ -115,6 +121,8 @@ pub fn import_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
         r.push_str(&format!("; {open} open contour{}", if open == 1 { "" } else { "s" }));
         r
     };
+    let details = crate::panels_files::import_details(import, locale);
+    let report = if details.is_empty() { report } else { format!("{report}\n{details}") };
     let commit_enabled = vm.commands.get(&CommandKey::CommitImport).is_some_and(|c| c.enabled) && !import.needs_unit;
     Some(ImportPanel {
         file: import.file.clone(),
@@ -123,5 +131,10 @@ pub fn import_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
         size,
         report,
         commit_enabled,
+        show_units: matches!(
+            import.kind,
+            burnburn_presentation::ImportKind::Svg | burnburn_presentation::ImportKind::Dxf
+        ),
+        pages: crate::panels_files::import_pages_popup(import, locale),
     })
 }

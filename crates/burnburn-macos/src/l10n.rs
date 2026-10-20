@@ -913,6 +913,14 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ZoomIn => ("Zoom in", "Zoom In"),
         C::ZoomOut => ("Zoom uit", "Zoom Out"),
         C::ViewWireframe => ("Draadmodel", "Wireframe"),
+        C::SaveAsTemplate => ("Bewaar als template…", "Save as Template…"),
+        C::NewFromTemplate => ("Nieuw van template…", "New from Template…"),
+        C::ExportSvg => ("SVG…", "SVG…"),
+        C::ExportDxf => ("DXF…", "DXF…"),
+        C::ExportBundle => ("Bundel exporteren…", "Export Bundle…"),
+        C::ImportBundle => ("Bundel importeren…", "Import Bundle…"),
+        C::ShowMaterialLibrary => ("Materiaalbibliotheek", "Material Library"),
+        C::ShowArtLibrary => ("Kunstbibliotheek", "Art Library"),
         _ => return None,
     })
 }
@@ -1100,6 +1108,96 @@ pub fn choice_label(choice: burnburn_presentation::CutChoice, locale: Locale) ->
     }
 }
 
+/// Why a file feature did nothing (import, templates, libraries, bundles, export).
+fn files_pair(m: burnburn_presentation::FilesMessage) -> Option<(&'static str, &'static str)> {
+    use burnburn_presentation::FilesMessage as F;
+    Some(match m {
+        F::ImportLegacyIllustrator => (
+            "Dit is een oud Illustrator-bestand (PostScript). Bewaar het in Illustrator met PDF-compatibiliteit of als SVG en importeer dat.",
+            "This is an old Illustrator file (PostScript). Save it from Illustrator with PDF compatibility or as SVG and import that.",
+        ),
+        F::ImportEncryptedPdf => (
+            "Dit PDF-bestand is beveiligd met een wachtwoord en wordt niet gelezen.",
+            "This PDF is password protected and is not read.",
+        ),
+        F::TemplateWrongExtension => (
+            "Een template eindigt op .burnburntemplate; er is niets bewaard.",
+            "A template ends in .burnburntemplate; nothing was saved.",
+        ),
+        F::TemplateSaveFailed => ("De template kon niet bewaard worden.", "The template could not be saved."),
+        F::TemplateOpenFailed => (
+            "De template kon niet gelezen worden; er is geen venster geopend.",
+            "The template could not be read; no window was opened.",
+        ),
+        F::LibraryUnreadable => (
+            "Het bibliotheekbestand kan niet gelezen worden en blijft ongemoeid. Wijzigingen blijven alleen in het geheugen.",
+            "The library file cannot be read and is left alone. Changes stay in memory only.",
+        ),
+        F::LibrarySaveFailed => (
+            "De bibliotheek kon niet bewaard worden; de wijziging bestaat alleen in het geheugen.",
+            "The library could not be saved; the change exists in memory only.",
+        ),
+        F::MaterialInvalid => (
+            "Geef een naam, een materiaal en een dikte groter dan nul.",
+            "Give a name, a material and a thickness greater than zero.",
+        ),
+        F::MaterialImageLayer => (
+            "Een beeldlaag past niet in de bibliotheek en kan geen bibliotheekinstellingen krijgen.",
+            "An image layer does not fit the library and cannot take library settings.",
+        ),
+        F::MaterialUnknown => {
+            ("Die laag of dat bibliotheekitem bestaat niet meer.", "That layer or library entry no longer exists.")
+        }
+        F::ArtNameInvalid => (
+            "Die naam is leeg, te lang of bevat stuurtekens.",
+            "That name is empty, too long or contains control characters.",
+        ),
+        F::ArtGroupExists => ("Die groep bestaat al.", "That group already exists."),
+        F::ArtGroupUnknown => ("Die groep bestaat niet.", "That group does not exist."),
+        F::ArtGroupNotEmpty => (
+            "De groep bevat nog items: verplaats of verwijder ze eerst.",
+            "The group still holds items: move or remove them first.",
+        ),
+        F::ArtItemUnknown => ("Dat item bestaat niet meer.", "That item no longer exists."),
+        F::ArtFileUnreadable => (
+            "Het bestand kon niet als tekening gelezen worden of bevat geen vormen.",
+            "The file could not be read as a drawing or holds no shapes.",
+        ),
+        F::ArtFileFormat => (
+            "Alleen SVG-, DXF-, HP-GL-, PDF- en AI-bestanden gaan in de bibliotheek.",
+            "Only SVG, DXF, HP-GL, PDF and AI files go into the library.",
+        ),
+        F::ArtScaleRequired => {
+            ("Het DXF-bestand noemt geen eenheid: kies er een.", "The DXF file names no unit: choose one.")
+        }
+        F::ArtNothingSelected => {
+            ("Selecteer eerst de objecten die je wilt toevoegen.", "Select the objects you want to add first.")
+        }
+        F::ArtLibraryFull => ("De bibliotheek is vol.", "The library is full."),
+        F::BundleNothingSelected => ("Kies wat in de bundel moet.", "Choose what goes into the bundle."),
+        F::BundleUnreadable => (
+            "Dit bestand is geen leesbare bundel; er is niets veranderd.",
+            "This file is not a readable bundle; nothing changed.",
+        ),
+        F::BundleWriteFailed => ("De bundel kon niet geschreven worden.", "The bundle could not be written."),
+        F::BundleApplyFailed => (
+            "De bundel kon niet toegepast worden; er is niets veranderd.",
+            "The bundle could not be applied; nothing changed.",
+        ),
+        F::ExportEmpty => ("Er is niets om te exporteren.", "There is nothing to export."),
+        F::ExportNeedsAcknowledgement => (
+            "Bevestig eerst dat de randvoorwaarden of modifiers verloren gaan.",
+            "First confirm that the constraints or modifiers are lost.",
+        ),
+        F::ExportInvalidOption => (
+            "Een optie bevat een onbruikbare waarde; de laatste goede opties blijven gelden.",
+            "An option holds an unusable value; the last good options stay in use.",
+        ),
+        F::ExportWriteFailed => ("Het bestand kon niet geschreven worden.", "The file could not be written."),
+        _ => return None,
+    })
+}
+
 fn cut_caption(field: burnburn_presentation::CutField, locale: Locale) -> &'static str {
     option_caption(field, locale)
 }
@@ -1121,6 +1219,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     }
     let pair: (&str, &str) = match key {
         M::Command(k) => command_pair(k)?,
+        M::Files(m) => files_pair(m)?,
         M::UndoAction(l) => {
             let (nl, en) = undo_pair(l)?;
             return Some(match locale {
@@ -1434,6 +1533,7 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
 pub fn known_message_keys() -> Vec<MessageKey> {
     let mut keys: Vec<MessageKey> = CommandKey::ALL.iter().map(|k| MessageKey::Command(*k)).collect();
     keys.push(MessageKey::DiagnosticsFailed);
+    keys.extend(burnburn_presentation::FilesMessage::ALL.iter().map(|m| MessageKey::Files(*m)));
     keys.extend(all_laser_whys().into_iter().map(MessageKey::LaserRefused));
     let mut undo = vec![
         UndoLabel::CreateRectangle,

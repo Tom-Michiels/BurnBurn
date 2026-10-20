@@ -26,7 +26,7 @@ pub const TRACE_PREVIEW_PX: u32 = 280;
 const PREVIEW_MARGIN: u32 = 4;
 
 /// `template` with `{0}`, `{1}`, … replaced by `args`.
-fn fill(template: &str, args: &[&str]) -> String {
+pub(crate) fn fill(template: &str, args: &[&str]) -> String {
     let mut out = template.to_owned();
     for (i, arg) in args.iter().enumerate() {
         out = out.replace(&format!("{{{i}}}"), arg);
@@ -35,7 +35,7 @@ fn fill(template: &str, args: &[&str]) -> String {
 }
 
 /// `value` with at most `decimals` decimals, trailing zeros dropped, in the locale's decimal sign.
-fn number(value: f64, decimals: usize, locale: Locale) -> String {
+pub(crate) fn number(value: f64, decimals: usize, locale: Locale) -> String {
     let mut text = format!("{value:.decimals$}");
     if text.contains('.') {
         text = text.trim_end_matches('0').trim_end_matches('.').to_owned();
