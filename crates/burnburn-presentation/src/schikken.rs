@@ -90,10 +90,74 @@ pub enum PlaceFailure {
     Refused,
 }
 
+/// Which features Resize Slots touches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SlotChoice {
+    /// Notches cut into the material and rectangular holes.
+    #[default]
+    Slots,
+    /// Protrusions of the material.
+    Tabs,
+    Both,
+}
+
+/// The fields of the Resize Slots dialog, as typed (DR-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotsInput {
+    /// The width of the features to find (mm).
+    pub from: String,
+    /// The width they get (mm).
+    pub to: String,
+    /// A feature matches when its width is this close to `from` (mm).
+    pub tolerance: String,
+    pub select: SlotChoice,
+}
+
+impl Default for SlotsInput {
+    fn default() -> Self {
+        SlotsInput {
+            from: String::new(),
+            to: String::new(),
+            tolerance: "0,01".to_owned(),
+            select: SlotChoice::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlotField {
+    From,
+    To,
+    Tolerance,
+}
+
+/// Why Resize Slots did nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlotsFailure {
+    /// The text of this field is not a valid value.
+    InvalidField(SlotField),
+    /// No feature of the chosen kind has the width to find.
+    NoSlotsFound,
+    /// The new width would make a neighbouring edge collapse or reverse.
+    Collision,
+    /// Nothing would change.
+    NothingChanged,
+    Refused,
+}
+
+/// The open Resize Slots dialog: what was typed and why the last OK did nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotsDialogViewModel {
+    pub input: SlotsInput,
+    pub error: Option<SchikkenMessage>,
+}
+
 /// Messages of this module's flows (localised by the host).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SchikkenMessage {
+    /// Resize Slots refused.
+    Slots(SlotsFailure),
     /// Dock refused; says why.
     Dock(PlaceFailure),
     /// Move Together refused.
@@ -141,6 +205,8 @@ pub struct SchikkenViewModel {
     pub place: PlaceOptionsViewModel,
     /// `Some` while the Warp or Deform tool is active on a usable selection.
     pub reshape: Option<ReshapeViewModel>,
+    /// The Resize Slots dialog while it is open.
+    pub slots: Option<SlotsDialogViewModel>,
 }
 
 /// A user action of this module (everything but the command keys, which carry no payload).
@@ -148,7 +214,22 @@ pub struct SchikkenViewModel {
 #[non_exhaustive]
 pub enum SchikkenIntent {
     /// The Dock / Move Together options panel. Invalid text keeps the old options and says why.
-    SetPlaceOptions { document: burnburn_types::DocumentId, options: PlaceOptionsInput },
+    SetPlaceOptions {
+        document: burnburn_types::DocumentId,
+        options: PlaceOptionsInput,
+    },
     /// Warp: bilinear (`true`) or projective interpolation of the four corners.
-    SetWarpKind { document: burnburn_types::DocumentId, bilinear: bool },
+    SetWarpKind {
+        document: burnburn_types::DocumentId,
+        bilinear: bool,
+    },
+    /// OK in the Resize Slots dialog. Valid input is one document command and closes the dialog;
+    /// anything else keeps it open with the reason.
+    ApplySlots {
+        document: burnburn_types::DocumentId,
+        input: SlotsInput,
+    },
+    CancelSlots {
+        document: burnburn_types::DocumentId,
+    },
 }

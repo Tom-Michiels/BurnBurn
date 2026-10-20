@@ -3,7 +3,9 @@
 //! gets a hook per table (the Windows host compiles the same files).
 
 use burnburn_document::EditLabel;
-use burnburn_presentation::{CommandKey, MessageKey, PlaceFailure, ReshapeProblem, SchikkenMessage};
+use burnburn_presentation::{
+    CommandKey, MessageKey, PlaceFailure, ReshapeProblem, SchikkenMessage, SlotField, SlotsFailure,
+};
 
 use super::{Locale, pick};
 
@@ -20,6 +22,7 @@ pub(super) fn command_pair(key: CommandKey) -> Option<(&'static str, &'static st
         C::ToolDeform => ("Vervorm selectie (16 punten)", "Deform Selection (16 Points)"),
         C::ReshapeApply => ("Pas vervorming toe", "Apply Reshape"),
         C::ReshapeReset => ("Zet grepen terug", "Reset Handles"),
+        C::ResizeSlots => ("Sleuven aanpassen…", "Resize Slots…"),
         _ => return None,
     })
 }
@@ -62,10 +65,45 @@ fn failure_pair(f: PlaceFailure) -> (&'static str, &'static str) {
     }
 }
 
+const SLOT_FAILURES: [SlotsFailure; 7] = [
+    SlotsFailure::InvalidField(SlotField::From),
+    SlotsFailure::InvalidField(SlotField::To),
+    SlotsFailure::InvalidField(SlotField::Tolerance),
+    SlotsFailure::NoSlotsFound,
+    SlotsFailure::Collision,
+    SlotsFailure::NothingChanged,
+    SlotsFailure::Refused,
+];
+
+fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
+    match f {
+        SlotsFailure::InvalidField(SlotField::From) => (
+            "De huidige breedte moet een getal groter dan 0 zijn.",
+            "The current width must be a number greater than 0.",
+        ),
+        SlotsFailure::InvalidField(SlotField::To) => {
+            ("De nieuwe breedte moet een getal groter dan 0 zijn.", "The new width must be a number greater than 0.")
+        }
+        SlotsFailure::InvalidField(SlotField::Tolerance) => {
+            ("De tolerantie moet een getal van 0 of meer zijn.", "The tolerance must be a number of 0 or more.")
+        }
+        SlotsFailure::NoSlotsFound => ("Geen sleuven met die breedte gevonden.", "No slots of that width were found."),
+        SlotsFailure::Collision => (
+            "Een naburige rand zou dichtklappen; kies een andere breedte.",
+            "A neighbouring edge would collapse; choose another width.",
+        ),
+        SlotsFailure::NothingChanged => ("Er verandert niets.", "Nothing would change."),
+        SlotsFailure::Refused => {
+            ("De opdracht is geweigerd; er is niets gewijzigd.", "The command was refused; nothing changed.")
+        }
+    }
+}
+
 /// Text of a Schikken status message.
 pub(super) fn message(m: SchikkenMessage, locale: Locale) -> String {
     match m {
         SchikkenMessage::Dock(f) | SchikkenMessage::MoveTogether(f) => pick(failure_pair(f), locale),
+        SchikkenMessage::Slots(f) => pick(slots_pair(f), locale),
         SchikkenMessage::InvalidGap => pick(
             ("De tussenruimte moet een getal van 0 of meer zijn.", "The gap must be a number of 0 or more."),
             locale,
@@ -111,6 +149,7 @@ pub(super) fn known_keys() -> Vec<MessageKey> {
         keys.push(MessageKey::Schikken(SchikkenMessage::MoveTogether(f)));
     }
     keys.push(MessageKey::Schikken(SchikkenMessage::InvalidGap));
+    keys.extend(SLOT_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Slots(f))));
     for label in EDIT_LABELS {
         let label = burnburn_document::UndoLabel::Edit(label);
         keys.push(MessageKey::UndoAction(label));

@@ -833,6 +833,8 @@ pub enum CommandKey {
     ReshapeApply,
     /// Put the handles of the Warp or Deform tool back on their start positions.
     ReshapeReset,
+    /// Gereedschap ▸ Sleuven aanpassen…: opens the Resize Slots dialog for the selection.
+    ResizeSlots,
 }
 
 impl CommandKey {
@@ -960,6 +962,7 @@ impl CommandKey {
         CommandKey::ToolDeform,
         CommandKey::ReshapeApply,
         CommandKey::ReshapeReset,
+        CommandKey::ResizeSlots,
     ];
 }
 

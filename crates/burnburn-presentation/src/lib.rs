@@ -60,10 +60,7 @@ pub use production::{
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
 };
-pub use schikken::{
-    DockContactChoice, DockReference, PlaceFailure, PlaceOptionsInput, PlaceOptionsViewModel, ReshapeProblem,
-    ReshapeViewModel, SchikkenIntent, SchikkenMessage, SchikkenViewModel, TogetherAnchorChoice,
-};
+pub use schikken::*;
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,

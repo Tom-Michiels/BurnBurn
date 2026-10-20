@@ -5,20 +5,23 @@ use std::collections::BTreeSet;
 
 use burnburn_document::{
     ArrangeCommand, ArrangeError, CommandError, CommandPayload, DocumentCommand, DocumentSnapshot, EditError,
-    GeometryCommand, GeometrySource, MoveAnchor, ObjectKind, OrderChange, PlaceCommand, PlaceUnits,
+    GeometryCommand, GeometrySource, MoveAnchor, ObjectKind, OrderChange, PlaceCommand, PlaceUnits, ReshapeCommand,
 };
 use burnburn_editor::{
     ArrangeError as OperandError, ReferenceChoice, SelectionChange, dock_operands, expand_to_groups,
-    move_together_operands,
+    move_together_operands, path_op_operands,
 };
-use burnburn_geometry::{Affine, Bounds, Direction, DockDirection, DockError, Point, ProductionTolerance, Vector};
+use burnburn_geometry::{
+    Affine, Bounds, Direction, DockDirection, DockError, Point, ProductionTolerance, ResizeSlots, SlotSelect,
+    SlotsError, Vector,
+};
 use burnburn_types::{Angle, DocumentId, GeometryId, Length, RequestId};
 
-use crate::field::parse_position;
+use crate::field::{parse_length, parse_position};
 use crate::intent::{CommandKey, RefPoint};
 use crate::schikken::{
-    DockReference, PlaceFailure, PlaceOptionsInput, PlaceOptionsViewModel, SchikkenIntent, SchikkenMessage,
-    TogetherAnchorChoice,
+    DockReference, PlaceFailure, PlaceOptionsInput, PlaceOptionsViewModel, SchikkenIntent, SchikkenMessage, SlotChoice,
+    SlotField, SlotsDialogViewModel, SlotsFailure, SlotsInput, TogetherAnchorChoice,
 };
 use crate::view_model::{MessageKey, StatusMessage};
 
@@ -35,6 +38,17 @@ pub(super) struct ArrangeState {
     pub wireframe: bool,
     /// Dock and Move Together options (W3-UI-schikken).
     pub place: PlaceOptions,
+    /// The open Resize Slots dialog.
+    pub slots: Option<SlotsDialog>,
+    /// The fields of the last accepted Resize Slots, the next dialog starts from.
+    pub last_slots: SlotsInput,
+}
+
+/// The open Resize Slots dialog: what was typed last (kept across a refusal) and the refusal.
+#[derive(Debug, Clone)]
+pub(super) struct SlotsDialog {
+    input: SlotsInput,
+    error: Option<SchikkenMessage>,
 }
 
 /// The Dock / Move Together options in force: the last valid input of the options panel.
@@ -54,6 +68,13 @@ impl AppController {
             SchikkenIntent::SetPlaceOptions { document, options } => {
                 self.with_session(document, |s| set_place_options(s, options))
             }
+            SchikkenIntent::ApplySlots { document, input } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| apply_slots(s, document, input, request))
+            }
+            SchikkenIntent::CancelSlots { document } => self.with_session(document, |s| {
+                if s.arrange.slots.take().is_some() { AppUpdate::redraw(document) } else { AppUpdate::default() }
+            }),
             SchikkenIntent::SetWarpKind { document, bilinear } => {
                 self.with_session(document, |s| super::reshape::set_warp_kind(s, document, bilinear))
             }
@@ -70,6 +91,72 @@ fn set_place_options(s: &mut Session, options: PlaceOptionsInput) -> AppUpdate {
         _ => s.arrange.place.error = Some(SchikkenMessage::InvalidGap),
     }
     AppUpdate { view_changed: true, ..AppUpdate::default() }
+}
+
+/// Resize Slots: the fields as typed → one document command. A refusal keeps the dialog open
+/// with what was typed and the reason; nothing is recorded in the history.
+fn apply_slots(s: &mut Session, document: DocumentId, input: SlotsInput, request: Option<RequestId>) -> AppUpdate {
+    if s.arrange.slots.is_none() {
+        return AppUpdate::default();
+    }
+    let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+    let refuse = |s: &mut Session, input: SlotsInput, f: SlotsFailure| {
+        s.arrange.slots = Some(SlotsDialog { input, error: Some(SchikkenMessage::Slots(f)) });
+        AppUpdate::redraw(document)
+    };
+    let width = |text: &str, field: SlotField| {
+        parse_length(text).map(|l| l.mm()).map_err(|_| SlotsFailure::InvalidField(field))
+    };
+    let (from, to) = match (width(&input.from, SlotField::From), width(&input.to, SlotField::To)) {
+        (Ok(from), Ok(to)) => (from, to),
+        (Err(f), _) | (_, Err(f)) => return refuse(s, input, f),
+    };
+    let tolerance = match parse_position(&input.tolerance) {
+        Ok(t) if t.mm() >= 0.0 => t.mm(),
+        _ => return refuse(s, input, SlotsFailure::InvalidField(SlotField::Tolerance)),
+    };
+    let snapshot = s.doc.snapshot();
+    let Ok(targets) = path_op_operands(&snapshot, &s.selection) else {
+        return refuse(s, input, SlotsFailure::Refused);
+    };
+    if targets.iter().any(|id| snapshot.is_locked(*id)) {
+        return error(Some(document), MessageKey::ObjectsLocked);
+    }
+    let select = match input.select {
+        SlotChoice::Slots => SlotSelect::Slots,
+        SlotChoice::Tabs => SlotSelect::Tabs,
+        SlotChoice::Both => SlotSelect::Both,
+    };
+    let spec = ResizeSlots { from_width: from, to_width: to, match_tolerance: tolerance, select };
+    let payload = CommandPayload::Edit(GeometryCommand::Reshape(ReshapeCommand::ResizeSlots { targets, spec }));
+    let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
+    match apply_command(&s.fonts, &mut s.doc, cmd) {
+        Ok(outcome) => {
+            s.arrange.slots = None;
+            s.arrange.last_slots = input;
+            // The selection stays what it was: the resized objects are the ones selected.
+            let keep = s.selection.clone();
+            let update = after_change(s, document, Ok(outcome));
+            s.selection = keep;
+            s.selection.retain_existing(&s.doc.snapshot());
+            update
+        }
+        Err(CommandError::Edit(EditError::Slots(e))) => refuse(
+            s,
+            input,
+            match e {
+                SlotsError::NoSlotsFound => SlotsFailure::NoSlotsFound,
+                SlotsError::Collision => SlotsFailure::Collision,
+                _ => SlotsFailure::Refused,
+            },
+        ),
+        Err(CommandError::Edit(EditError::NothingChanged)) => refuse(s, input, SlotsFailure::NothingChanged),
+        Err(_) => refuse(s, input, SlotsFailure::Refused),
+    }
+}
+
+pub(super) fn slots_view(s: &Session) -> Option<SlotsDialogViewModel> {
+    s.arrange.slots.as_ref().map(|d| SlotsDialogViewModel { input: d.input.clone(), error: d.error })
 }
 
 fn dock_direction(command: CommandKey) -> Option<DockDirection> {
@@ -353,6 +440,13 @@ pub(super) fn command(
             }
             place_edit(s, document, command, request)
         }
+        CommandKey::ResizeSlots => {
+            if command_enabled(command, s) != Some(true) {
+                return Some(AppUpdate::default());
+            }
+            s.arrange.slots = Some(SlotsDialog { input: s.arrange.last_slots.clone(), error: None });
+            AppUpdate::redraw(document)
+        }
         CommandKey::DeleteDuplicates => delete_duplicates(s, document, request),
         CommandKey::ViewWireframe => {
             s.arrange.wireframe = !s.arrange.wireframe;
@@ -507,6 +601,7 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         CommandKey::MoveTogetherHorizontal | CommandKey::MoveTogetherVertical => {
             move_together_operands(&snapshot, &s.selection).is_ok()
         }
+        CommandKey::ResizeSlots => path_op_operands(&snapshot, &s.selection).is_ok(),
         CommandKey::Group => selected.len() >= 2,
         CommandKey::Ungroup => any(&|id| snapshot.object(id).is_some_and(|o| !o.groups().is_empty())),
         CommandKey::AutoGroup => snapshot.len() >= 2,

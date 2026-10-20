@@ -200,6 +200,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         schikken: crate::schikken::SchikkenViewModel {
             place: super::arrange::place_view(s),
             reshape: super::reshape::view(s),
+            slots: super::arrange::slots_view(s),
         },
     }
 }
