@@ -804,15 +804,15 @@ pub enum CommandKey {
     SelectSmaller,
     /// Edit ▸ Kies alle cirkels.
     SelectCircles,
-    /// Beeld ▸ Zoom naar het werkblad (bed van de machine, anders alle objecten).
+    /// Weergave ▸ Zoom naar het werkblad (bed van de machine, anders alle objecten).
     ZoomPage,
-    /// Beeld ▸ Zoom naar de selectie.
+    /// Weergave ▸ Zoom naar de selectie.
     ZoomSelection,
-    /// Beeld ▸ Zoom in.
+    /// Weergave ▸ Zoom in.
     ZoomIn,
-    /// Beeld ▸ Zoom uit.
+    /// Weergave ▸ Zoom uit.
     ZoomOut,
-    /// Beeld ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
+    /// Weergave ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
     ViewWireframe,
 }
 

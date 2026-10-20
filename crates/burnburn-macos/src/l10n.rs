@@ -737,7 +737,7 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         ),
         T::TracerApply => ("Pas trace toe", "Apply Trace"),
         T::TracerClose => ("Sluit", "Close"),
-        T::MenuView => ("Beeld", "View"),
+        T::MenuView => ("Weergave", "View"),
         T::RecentProjects => ("Recente projecten", "Open Recent"),
         T::ClearRecent => ("Wis menu", "Clear Menu"),
         T::MenuAlign => ("Uitlijnen", "Align"),

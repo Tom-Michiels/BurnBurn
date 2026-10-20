@@ -160,7 +160,7 @@ fn edit_round_keys_are_listed_with_nl_and_en() {
 #[test]
 fn edit_round_host_texts_read_as_dutch_and_english() {
     let pairs = [
-        (HostText::MenuView, "Beeld", "View"),
+        (HostText::MenuView, "Weergave", "View"),
         (HostText::RecentProjects, "Recente projecten", "Open Recent"),
         (HostText::ClearRecent, "Wis menu", "Clear Menu"),
         (HostText::MenuAlign, "Uitlijnen", "Align"),

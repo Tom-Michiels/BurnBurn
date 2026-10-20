@@ -220,7 +220,7 @@ fn recents() -> Result<(), String> {
 }
 
 /// The menu bar of this round: headings, no shortcut used twice, Arrange acting on the selection
-/// through the real menu, and the checked Beeld ▸ Draadmodel redrawing the canvas.
+/// through the real menu, and the checked Weergave ▸ Draadmodel redrawing the canvas.
 #[cfg(target_os = "macos")]
 fn arrange_and_view() -> Result<(), String> {
     use burnburn_macos::adapter::MenuItem;
@@ -236,8 +236,21 @@ fn arrange_and_view() -> Result<(), String> {
     expect(
         || format!("menu bar {headings:?}"),
         headings
-            == ["BurnBurn", "Archief", "Wijzig", "Schikken", "Gereedschap", "Beeld", "Schets", "Productie"]
-                .map(String::from),
+            == [
+                "BurnBurn",
+                "Archief",
+                "Wijzig",
+                "Schikken",
+                "Gereedschap",
+                "Weergave",
+                "Vormen",
+                "Schets",
+                "Beeld",
+                "Productie",
+                "Laser",
+                "Help",
+            ]
+            .map(String::from),
     )?;
 
     // Every key equivalent is used once (a duplicate would silently shadow an item).
@@ -278,7 +291,7 @@ fn arrange_and_view() -> Result<(), String> {
     expect(|| "the menu grouped both rectangles".into(), grouped)?;
     expect(|| "Ungroup is now on".into(), enabled(CommandKey::Ungroup) == Some(true))?;
 
-    // Beeld ▸ Draadmodel: a check mark, a redraw, no document change.
+    // Weergave ▸ Draadmodel: a check mark, a redraw, no document change.
     let wire = MenuItem::Command(CommandKey::ViewWireframe);
     expect(|| "wireframe starts off".into(), s.menu_item_checked(wire) == Some(false))?;
     let (frames, revision) =
