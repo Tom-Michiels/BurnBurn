@@ -27,14 +27,25 @@ pub enum MenuItem {
     ImportImage,
     /// Beeld ▸ Beeld tracen…: first an image from NSOpenPanel, then presentation's tracer.
     TraceImage,
+    /// Laser ▸ Laservenster: shows or hides the laser panel of the active window.
+    LaserWindow,
+    /// Help ▸ Diagnose exporteren…: options and a save panel first, then presentation's export.
+    ExportDiagnostics,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
 pub fn menu_items() -> Vec<MenuItem> {
-    [MenuItem::Open, MenuItem::Import, MenuItem::ImportImage, MenuItem::TraceImage]
-        .into_iter()
-        .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
-        .collect()
+    [
+        MenuItem::Open,
+        MenuItem::Import,
+        MenuItem::ImportImage,
+        MenuItem::TraceImage,
+        MenuItem::LaserWindow,
+        MenuItem::ExportDiagnostics,
+    ]
+    .into_iter()
+    .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
+    .collect()
 }
 
 /// Tag of Open; commands use 1 + their index in `CommandKey::ALL` (0 is AppKit's default tag).
@@ -42,6 +53,8 @@ const OPEN_TAG: isize = 1000;
 const IMPORT_TAG: isize = 1001;
 const IMPORT_IMAGE_TAG: isize = 1002;
 const TRACE_IMAGE_TAG: isize = 1003;
+const LASER_WINDOW_TAG: isize = 1004;
+const DIAGNOSTICS_TAG: isize = 1005;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
@@ -50,6 +63,8 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::Import => IMPORT_TAG,
         MenuItem::ImportImage => IMPORT_IMAGE_TAG,
         MenuItem::TraceImage => TRACE_IMAGE_TAG,
+        MenuItem::LaserWindow => LASER_WINDOW_TAG,
+        MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
         MenuItem::Command(key) => CommandKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize + 1),
     }
 }
@@ -67,6 +82,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == TRACE_IMAGE_TAG {
         return Some(MenuItem::TraceImage);
+    }
+    if tag == LASER_WINDOW_TAG {
+        return Some(MenuItem::LaserWindow);
+    }
+    if tag == DIAGNOSTICS_TAG {
+        return Some(MenuItem::ExportDiagnostics);
     }
     let index = usize::try_from(tag.checked_sub(1)?).ok()?;
     CommandKey::ALL.get(index).map(|k| MenuItem::Command(*k))
@@ -353,6 +374,12 @@ pub enum NativeEvent {
         slot: usize,
         text: String,
     },
+    /// The diagnostic export's save panel closed: where to write (`None`: cancelled) and which
+    /// private data the user ticked.
+    DiagnosticsPanelFinished {
+        options: burnburn_presentation::DiagnosticOptions,
+        path: Option<PathBuf>,
+    },
 }
 
 /// What the AppKit layer must do with one event.
@@ -373,6 +400,11 @@ pub enum Reaction {
     /// Show NSOpenPanel for an image to trace; the result comes back as
     /// [`NativeEvent::TraceFileChosen`].
     ShowTracePanel,
+    /// Show or hide the laser panel of the active window.
+    ToggleLaserPanel,
+    /// Ask which private data may go into the diagnostic report, then show a save panel; the answer
+    /// comes back as [`NativeEvent::DiagnosticsPanelFinished`].
+    ShowDiagnosticsPanel,
 }
 
 /// `NSEventModifierFlags` bits (stable AppKit ABI values).
@@ -436,6 +468,10 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::TraceImage) => return Reaction::ShowTracePanel,
         E::Menu(MenuItem::Command(CommandKey::ReplaceImage)) => return Reaction::ShowReplaceImagePanel,
         E::Menu(MenuItem::Command(CommandKey::SaveProcessedBitmap)) => return Reaction::ShowBitmapSavePanel,
+        E::Menu(MenuItem::LaserWindow) => return Reaction::ToggleLaserPanel,
+        E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
+        E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
+        E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
         E::OpenPanelFinished { path: Some(path) } => UiIntent::Open { path },
         E::OpenPanelFinished { path: None } => return Reaction::Nothing,
@@ -757,6 +793,9 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::Open => true,
         // Importing needs a document window to import into.
         MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => vm.active.is_some(),
+        // The laser panel belongs to a window; the diagnostic export reads the journal only.
+        MenuItem::LaserWindow => vm.active.is_some(),
+        MenuItem::ExportDiagnostics => true,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -764,7 +803,12 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
 /// Checkmark state (active tool, snapping toggles).
 pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
-        MenuItem::Open | MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => false,
+        MenuItem::Open
+        | MenuItem::Import
+        | MenuItem::ImportImage
+        | MenuItem::TraceImage
+        | MenuItem::LaserWindow
+        | MenuItem::ExportDiagnostics => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -776,6 +820,10 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::Import => host_text(HostText::Import, locale).to_owned(),
         MenuItem::ImportImage => host_text(HostText::ImageMenuImport, locale).to_owned(),
         MenuItem::TraceImage => host_text(HostText::ImageMenuTrace, locale).to_owned(),
+        MenuItem::LaserWindow => crate::panels::laser_text(crate::panels::LaserText::MenuWindowItem, locale).to_owned(),
+        MenuItem::ExportDiagnostics => {
+            crate::panels::laser_text(crate::panels::LaserText::DiagnosticsItem, locale).to_owned()
+        }
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),

@@ -14,12 +14,17 @@ mod harness;
 mod image_panel;
 mod image_task;
 mod intent;
+mod laser;
 mod production;
 mod task;
 mod view_model;
 
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
+/// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
+pub use burnburn_machine::{
+    ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
+};
 pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
     CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
@@ -43,9 +48,14 @@ pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
     OperationKind, ParamKey, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
+pub use laser::{
+    AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,
+    LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
+};
 pub use production::{
-    ActionId, ActionSubject, Dispatched, ExecutionRecord, HandledAction, HistoryStore, HistoryStoreError, IntentRecord,
-    JobInputs, MachineAction, MachineError, MachineIntent, MachinePort, MachineService, MachineStatus, OrderDraft,
+    ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,
+    HistoryStoreError, IntentRecord, JobInputs, LaserCall, LaserIntent, LiveIntentRecord, LiveKind, LiveOutcomeRecord,
+    LiveStatus, MachineAction, MachineError, MachineIntent, MachinePort, MachineService, MachineStatus, OrderDraft,
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
 };

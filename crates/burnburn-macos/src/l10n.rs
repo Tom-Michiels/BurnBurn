@@ -13,8 +13,8 @@ use burnburn_document::structure::StructureLabel;
 use burnburn_document::{EditLabel, ShapeLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
-    CommandKey, Feature, FieldError, FieldKey, ImageField, ImageIssue, MachineAction, MachineStatusKey, MessageKey,
-    OperationField, Outcome, SketchConstraintKind, ToolRejection,
+    CommandKey, Feature, FieldError, FieldKey, ImageField, ImageIssue, JogKey, LaserWhy, LiveFeature, MachineAction,
+    MachineStatusKey, MessageKey, OperationField, Outcome, SketchConstraintKind, ToolRejection,
 };
 
 /// UI language. Physical values never depend on it (fields accept both decimal signs, DR-05).
@@ -1005,6 +1005,19 @@ fn cut_caption(field: burnburn_presentation::CutField, locale: Locale) -> &'stat
 
 pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     use MessageKey as M;
+    match key {
+        M::LaserRefused(why) => return Some(laser_why_text(why, locale)),
+        M::DiagnosticsFailed => {
+            return Some(pick(
+                (
+                    "Het diagnoserapport kon niet gemaakt of geschreven worden.",
+                    "The diagnostic report could not be made or written.",
+                ),
+                locale,
+            ));
+        }
+        _ => {}
+    }
     let pair: (&str, &str) = match key {
         M::Command(k) => command_pair(k)?,
         M::UndoAction(l) => {
@@ -1310,6 +1323,8 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
 /// Every message key the catalogue covers (for the completeness test and for review).
 pub fn known_message_keys() -> Vec<MessageKey> {
     let mut keys: Vec<MessageKey> = CommandKey::ALL.iter().map(|k| MessageKey::Command(*k)).collect();
+    keys.push(MessageKey::DiagnosticsFailed);
+    keys.extend(all_laser_whys().into_iter().map(MessageKey::LaserRefused));
     let mut undo = vec![
         UndoLabel::CreateRectangle,
         UndoLabel::SetDimension,
@@ -1508,6 +1523,145 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::MachineAction),
     );
     keys
+}
+
+/// One of each laser-window refusal (the features of the evidence-bound ones are examples).
+pub fn all_laser_whys() -> Vec<LaserWhy> {
+    use LaserWhy as W;
+    let needs = LiveFeature::Home.required_evidence();
+    vec![
+        W::NoMachine,
+        W::NoMachineProfile,
+        W::NotVerified { feature: LiveFeature::Home, needs },
+        W::Unsupported(LiveFeature::Jog),
+        W::NoWireForm(LiveFeature::FileUpload),
+        W::JobMayBeActive,
+        W::RequestInFlight,
+        W::JogKeyHeld(JogKey::XLeft),
+        W::PortFailed,
+        W::NotRecorded,
+        W::PositionUnknown,
+        W::UserOriginNotSet,
+        W::OutsideBed,
+        W::InvalidCoordinate,
+        W::InvalidNumber,
+        W::InvalidFileName,
+        W::NoReviewedPlan,
+        W::NothingSelected,
+        W::NoObjects,
+        W::PlacementOutsideBed,
+        W::PlacementStale,
+        W::NotAllowed,
+        W::Refused,
+    ]
+}
+
+/// Name of a laser-window feature, for refusals.
+pub fn live_feature_name(feature: LiveFeature, locale: Locale) -> &'static str {
+    let (nl, en) = match feature {
+        LiveFeature::Jog => ("Jog (ingedrukt houden)", "Jog (hold)"),
+        LiveFeature::Home => ("Home", "Home"),
+        LiveFeature::MoveAbsolute => ("Verplaatsen naar een positie", "Moving to a position"),
+        LiveFeature::PauseResume => ("Pauzeren en hervatten", "Pause and resume"),
+        LiveFeature::ReadPosition => ("Positie uitlezen", "Reading the position"),
+        LiveFeature::FileList => ("Bestandslijst van de controller", "Controller file list"),
+        LiveFeature::FileMetadata => ("Bestandsinformatie", "File information"),
+        LiveFeature::FileRun => ("Bestand op de controller uitvoeren", "Running a controller file"),
+        LiveFeature::FileDelete => ("Bestand op de controller verwijderen", "Deleting a controller file"),
+        LiveFeature::FileUpload => ("RD naar de controller bewaren", "Saving RD to the controller"),
+    };
+    match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    }
+}
+
+/// The words for a laser-window refusal or for why a control is off. A feature that is not
+/// proven on the controller says so and names the hardware evidence that is missing.
+pub fn laser_why_text(why: LaserWhy, locale: Locale) -> String {
+    use LaserWhy as W;
+    let (nl, en): (String, String) = match why {
+        W::NotVerified { feature, needs } => {
+            let (n, e) = (live_feature_name(feature, Locale::Nl), live_feature_name(feature, Locale::En));
+            (
+                format!(
+                    "Niet geverifieerd: {n} is op deze controller nog niet bewezen en wordt daarom niet verstuurd. Bewijs nodig: {needs}"
+                ),
+                format!(
+                    "Not verified: {e} is not yet proven on this controller and is therefore not sent. Evidence needed: {needs}"
+                ),
+            )
+        }
+        W::Unsupported(f) => (
+            format!("{} wordt door deze controller niet ondersteund.", live_feature_name(f, Locale::Nl)),
+            format!("{} is not supported by this controller.", live_feature_name(f, Locale::En)),
+        ),
+        W::NoWireForm(f) => (
+            format!(
+                "{}: deze versie van BurnBurn kan dit nog niet naar de controller sturen, ook niet als het bewezen zou zijn.",
+                live_feature_name(f, Locale::Nl)
+            ),
+            format!(
+                "{}: this version of BurnBurn cannot send this to the controller yet, even if it were proven.",
+                live_feature_name(f, Locale::En)
+            ),
+        ),
+        other => {
+            let (n, e) = match other {
+                W::NoMachine => ("Geen machine verbonden.", "No machine connected."),
+                W::NoMachineProfile => ("Kies eerst een machineprofiel.", "Choose a machine profile first."),
+                W::JobMayBeActive => (
+                    "Er kan een job actief zijn: de kop wordt nu niet bewogen en er wordt geen bestand uitgevoerd of verwijderd.",
+                    "A job may be active: the head is not moved now and no file is run or deleted.",
+                ),
+                W::RequestInFlight => (
+                    "Er wacht nog een verzoek op het antwoord van de controller.",
+                    "A request is still waiting for the controller's reply.",
+                ),
+                W::JogKeyHeld(_) => (
+                    "Een jogtoets is nog ingedrukt, of het loslaten is niet bevestigd.",
+                    "A jog key is still held, or its release is unconfirmed.",
+                ),
+                W::PortFailed => {
+                    ("De verbinding kon het verzoek niet versturen.", "The connection could not send the request.")
+                }
+                W::NotRecorded => (
+                    "De actie kon niet in het journaal worden vastgelegd en is niet verstuurd.",
+                    "The action could not be recorded in the journal and was not sent.",
+                ),
+                W::PositionUnknown => (
+                    "De positie van de kop is onbekend (niet 0). Lees eerst de positie uit.",
+                    "The head position is unknown (not 0). Read the position first.",
+                ),
+                W::UserOriginNotSet => ("De gebruikersoorsprong is niet ingesteld.", "The user origin is not set."),
+                W::OutsideBed => ("Dat punt ligt buiten het bed.", "That point is outside the bed."),
+                W::InvalidCoordinate => ("Ongeldige coördinaat.", "Invalid coordinate."),
+                W::InvalidNumber => ("Geen geldig getal.", "Not a valid number."),
+                W::InvalidFileName => (
+                    "Ongeldige bestandsnaam (leesbare ASCII, niet leeg).",
+                    "Invalid file name (printable ASCII, not empty).",
+                ),
+                W::NoReviewedPlan => (
+                    "Compileer en beoordeel eerst een plan zonder fouten.",
+                    "Compile and review a plan without errors first.",
+                ),
+                W::NothingSelected => ("Er is niets geselecteerd.", "Nothing is selected."),
+                W::NoObjects => ("Er is niets om te branden.", "There is nothing to burn."),
+                W::PlacementOutsideBed => ("De job zou buiten het bed vallen.", "The job would fall outside the bed."),
+                W::PlacementStale => (
+                    "Het plan is gemaakt met een andere instelling of een andere positie van de kop: compileer opnieuw.",
+                    "The plan was made with another setup or another head position: compile again.",
+                ),
+                W::NotAllowed => ("Niet toegestaan.", "Not allowed."),
+                _ => ("De actie is geweigerd.", "The action was refused."),
+            };
+            (n.to_owned(), e.to_owned())
+        }
+    };
+    match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    }
 }
 
 /// Text for `key`, or a visible placeholder naming the key: never an empty label.

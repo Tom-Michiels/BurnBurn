@@ -114,8 +114,19 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
-                s.compiled = Some(Compiled { plan, preview, report });
+                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0 });
                 update.scenes_changed.push(document);
+            }
+            Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
+                let setup_key = placement.setup_key;
+                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key });
+                update.scenes_changed.push(document);
+            }
+            Err(TaskError::Placement(why)) => {
+                s.messages.push(StatusMessage { key: MessageKey::LaserRefused(why) });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::LaserRefused(why) });
             }
             Err(TaskError::Compile(_)) => s.messages.push(StatusMessage { key: MessageKey::CompileFailed }),
             Ok(TaskOutput::ExportedRd { plan, path, rd_hash, bytes }) => {
@@ -163,15 +174,28 @@ impl AppController {
                         name: s.title.clone(),
                         inputs: Some(Arc::new(inputs)),
                     };
-                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false });
+                    let placed_from = s
+                        .compiled
+                        .as_ref()
+                        .filter(|c| c.plan.id() == source.id())
+                        .and_then(|c| c.placement.as_ref())
+                        .and_then(|p| p.from_position_um);
+                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false, placed_from });
                 }
             }
             Ok(TaskOutput::RecoverySaved { path }) => {
                 s.autosaved = Some(outcome.source);
                 s.recovery_path = Some(path);
             }
-            Ok(TaskOutput::Opened { .. } | TaskOutput::RecoveryFound { .. } | TaskOutput::RecoveryRemoved { .. })
-            | Ok(TaskOutput::Centerlined(_) | TaskOutput::ImagePreview { .. } | TaskOutput::BitmapSaved { .. })
+            Ok(
+                TaskOutput::Opened { .. }
+                | TaskOutput::RecoveryFound { .. }
+                | TaskOutput::RecoveryRemoved { .. }
+                | TaskOutput::TextWritten { .. }
+                | TaskOutput::Centerlined(_)
+                | TaskOutput::ImagePreview { .. }
+                | TaskOutput::BitmapSaved { .. },
+            )
             | Err(TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing) => {}
             Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
                 // The replace happened: this revision is on disk, only durability is unconfirmed.

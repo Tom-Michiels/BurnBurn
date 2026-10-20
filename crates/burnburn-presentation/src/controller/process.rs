@@ -30,6 +30,10 @@ pub(super) struct Compiled {
     pub(super) plan: Arc<JobPlan>,
     pub(super) preview: Arc<PlanPreview>,
     pub(super) report: PreflightReport,
+    /// Where the laser window's setup put the plan; `None` for the plain compile.
+    pub(super) placement: Option<crate::laser::AppliedPlacement>,
+    /// Setup the plan was compiled with (0: plain). A different current key makes it stale.
+    pub(super) setup_key: u64,
 }
 
 impl AppController {
@@ -39,18 +43,36 @@ impl AppController {
         let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
         let Some(options) = compile_options() else { return error(Some(document), MessageKey::CompileFailed) };
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::CommandRejected) };
+        let laser = match self.laser_compile_input(document) {
+            Ok(laser) => laser,
+            Err(why) => {
+                self.laser.last_refusal = Some(why);
+                return error(Some(document), MessageKey::LaserRefused(why));
+            }
+        };
         let tasks = Arc::clone(&self.ports.tasks);
         self.with_session(document, |s| {
             let snapshot = s.doc.snapshot();
             let source = snapshot.revision();
             let cancel = CancellationSource::new();
+            let input = match laser {
+                None => TaskInput::Compile { snapshot, profile: machine.profile, options, assets: s.assets.clone() },
+                Some((laser, setup_key)) => TaskInput::CompilePlaced {
+                    snapshot,
+                    profile: machine.profile,
+                    options,
+                    assets: s.assets.clone(),
+                    laser: Arc::new(laser),
+                    setup_key,
+                },
+            };
             let request = TaskRequest {
                 id,
                 document,
                 source,
                 key: revision_key(TaskKind::Compile, document, source),
                 cancel: cancel.token(),
-                input: TaskInput::Compile { snapshot, profile: machine.profile, options, assets: s.assets.clone() },
+                input,
             };
             submit(s, &tasks, request, cancel, document)
         })
@@ -61,6 +83,9 @@ impl AppController {
     pub(super) fn submit_prepare(&mut self, document: DocumentId) -> AppUpdate {
         let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::PrepareFailed) };
+        if self.placement_stale(document) {
+            return error(Some(document), MessageKey::LaserRefused(crate::laser::LaserWhy::PlacementStale));
+        }
         let tasks = Arc::clone(&self.ports.tasks);
         self.with_session(document, |s| {
             if !preparable(s, Some(&machine)) {

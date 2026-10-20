@@ -30,6 +30,8 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
+mod laser_host;
+
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
 use super::window::{CanvasStatus, DocWindow};
@@ -291,6 +293,8 @@ impl HostApp {
             Reaction::ShowReplaceImagePanel => self.show_image_file_panel(ImageFilePanel::Replace),
             Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
+            Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
+            Reaction::ShowDiagnosticsPanel => self.show_diagnostics_panel(),
         }
     }
 
@@ -702,13 +706,24 @@ impl HostApp {
 
     fn refresh(&self) {
         let vm = self.view();
-        let (machine, camera) = match self.controller.try_borrow() {
-            Ok(c) => (c.machine_view(), c.camera_view()),
-            Err(_) => (None, None),
+        let (machine, camera, laser) = match self.controller.try_borrow() {
+            Ok(c) => {
+                let laser: BTreeMap<DocumentId, Option<burnburn_presentation::LaserViewModel>> = vm
+                    .documents
+                    .iter()
+                    .filter(|d| self.laser_shown_in(d.id))
+                    .map(|d| (d.id, c.laser_view_for(Some(d.id))))
+                    .collect();
+                (c.machine_view(), c.camera_view(), laser)
+            }
+            Err(_) => (None, None, BTreeMap::new()),
         };
         if let Ok(mut windows) = self.windows.try_borrow_mut() {
             for (document, w) in windows.iter_mut() {
                 w.refresh(&vm, *document, machine.as_ref(), camera.as_ref());
+                if w.laser.shown {
+                    w.refresh_laser(laser.get(document).and_then(Option::as_ref));
+                }
             }
         }
     }
@@ -1349,6 +1364,14 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
     main.addItem(&submenu(
         t(HostText::MenuProduction),
         vec![item(c(CommandKey::Compile), "b", false), item(c(CommandKey::ExportRd), "e", true)],
+    ));
+    main.addItem(&submenu(
+        crate::panels::laser_text(crate::panels::LaserText::MenuLaser, locale),
+        vec![item(MenuItem::LaserWindow, "l", true)],
+    ));
+    main.addItem(&submenu(
+        crate::panels::laser_text(crate::panels::LaserText::HelpMenu, locale),
+        vec![item(MenuItem::ExportDiagnostics, "", false)],
     ));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));
     main

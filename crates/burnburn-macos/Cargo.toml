@@ -168,6 +168,11 @@ name = "image_sheets"
 path = "../../tests/native/macos/image_sheets.rs"
 harness = false
 
+[[test]]
+name = "laser_window"
+path = "../../tests/native/macos/laser_window.rs"
+harness = false
+
 [dependencies]
 # Platform-independent adapter (event -> UiIntent) and the app wiring: tested headlessly everywhere.
 burnburn-document = { workspace = true }

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use burnburn_io::Project;
 use burnburn_types::{CancellationSource, DocumentId, RevisionId, TaskId};
 
-use crate::task::{TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
+use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
 
 use super::{AppController, AppUpdate, HostEffect, error, submit};
@@ -86,6 +86,7 @@ impl AppController {
             Ok(TaskOutput::RecoveryFound { files }) if !files.is_empty() => {
                 AppUpdate { effects: vec![HostEffect::OfferRecovery { files }], ..AppUpdate::default() }
             }
+            Err(TaskError::Write(_)) => error(None, MessageKey::DiagnosticsFailed),
             _ => AppUpdate::default(),
         }
     }

@@ -15,7 +15,7 @@ use burnburn_image::{DecodeLimits, SourceImage, decode, encode_png_gray8};
 use burnburn_io::fs::FileSystem;
 use burnburn_io::{Project, load_project};
 use burnburn_presentation::{
-    CommandKey, HeadlessEditorHarness, ImageAdjustInput, ImageField, ImageIssue, SelectMode, UiIntent,
+    CommandKey, HeadlessEditorHarness, ImageAdjustInput, ImageField, ImageIssue, LaserSetup, SelectMode, UiIntent,
 };
 use burnburn_types::{DocumentId, GeometryId};
 
@@ -253,6 +253,21 @@ mod import {
         let plan = h.document(doc).unwrap().plan.expect("the plan compiled");
         assert!(plan.errors == 0, "{:?}", plan.findings);
         // The black left half of 8 × 8 mm is 4 mm wide on 80 scan rows of 0.1 mm.
+        assert!((plan.preview.scan_length_mm - 320.0).abs() < 8.0, "scan length {}", plan.preview.scan_length_mm);
+    }
+
+    /// Regression (merge of golf 2): a compile with the laser window's setup ("Cut Selected
+    /// Graphics") also gets the stored pixels, not an image operation without a source.
+    #[test]
+    fn a_laser_window_compile_also_gets_the_stored_pixels() {
+        let (mut h, doc, _) = with_image(&eight_by_eight());
+        let frame = frame_of(&mut h, doc);
+        select(&mut h, doc, vec![frame]);
+        h.send(UiIntent::LaserSetup { setup: LaserSetup::CutSelected(true) });
+        h.invoke(doc, CommandKey::Compile);
+        h.run_tasks();
+        let plan = h.document(doc).unwrap().plan.expect("the plan compiled");
+        assert!(plan.errors == 0, "{:?}", plan.findings);
         assert!((plan.preview.scan_length_mm - 320.0).abs() < 8.0, "scan length {}", plan.preview.scan_length_mm);
     }
 }

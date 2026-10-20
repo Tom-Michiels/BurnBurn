@@ -27,6 +27,7 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{HostApp, HostOptions, QuitOutcome, WindowParts};
+pub use panels::laser::LaserParts;
 pub use toolstrip::{ToolStrip, image_pixels};
 pub use window::CanvasStatus;
 

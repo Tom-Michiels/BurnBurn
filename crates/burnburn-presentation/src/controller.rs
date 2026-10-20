@@ -38,6 +38,7 @@ mod fields;
 mod geometry;
 mod image;
 mod import;
+mod laser;
 mod layers;
 mod machine;
 mod process;
@@ -307,6 +308,8 @@ pub struct AppController {
     restoring: BTreeMap<TaskId, PathBuf>,
     /// The last chosen variant of each toolbar group (window-independent preference).
     toolbar_variants: VariantMemory,
+    /// The laser window's setup (window state, never document data).
+    laser: laser::LaserState,
 }
 
 impl AppController {
@@ -331,6 +334,7 @@ impl AppController {
             app_tasks: BTreeMap::new(),
             restoring: BTreeMap::new(),
             toolbar_variants: VariantMemory::new(),
+            laser: laser::LaserState::default(),
         }
     }
 
@@ -403,6 +407,10 @@ impl AppController {
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
             UiIntent::SetTraceRecipe { document, recipe } => self.set_trace_recipe(document, *recipe),
             UiIntent::Machine { document, action, seen } => self.machine_action(document, action, seen, None).0,
+            UiIntent::Laser { document, action, seen, command } => self.laser_call(document, action, seen, command),
+            UiIntent::LaserSetup { setup } => self.laser_setup(setup),
+            UiIntent::LaserReleaseJog => self.laser_release_jog(),
+            UiIntent::ExportDiagnostics { options, path } => self.export_diagnostics(options, path),
             UiIntent::AddSketchConstraint { document, sketch, constraint } => {
                 self.sketch_edit(document, SketchCommand::AddConstraint { sketch, constraint })
             }
@@ -680,7 +688,9 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
-        UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } => *document,
+        UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {
+            *document
+        }
         _ => None,
     }
 }

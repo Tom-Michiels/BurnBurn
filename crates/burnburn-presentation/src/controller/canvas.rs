@@ -22,6 +22,9 @@ use super::{AppController, AppUpdate, Session, after_change, apply_command, appl
 
 impl AppController {
     pub(super) fn pointer(&mut self, document: DocumentId, event: ViewPointerEvent) -> AppUpdate {
+        if let Some(update) = self.laser_pointer(document, &event) {
+            return update;
+        }
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             // DR-04: the one place where canvas points become world millimetres.

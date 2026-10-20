@@ -26,6 +26,7 @@ use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
 use super::panels::image::{ImageSheets, image_sheets};
 use super::panels::import::{ImportSheet, import_sheet};
+use super::panels::laser::{LaserSection, laser_section};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
 use super::panels::shapes::{ShapesSection, shapes_section};
@@ -76,6 +77,8 @@ pub(crate) struct DocWindow {
     pub(crate) sketch: SketchSection,
     /// The shape parameters, tool options and the geometry dialog.
     pub(crate) shapes: ShapesSection,
+    /// The laser window (floating panel, shown from the Laser menu).
+    pub(crate) laser: LaserSection,
     pub(crate) canvas_status: CanvasStatus,
     /// The sheet currently shown for this window (tests drive it like a user would).
     pub(crate) save_panel: Option<Retained<NSSavePanel>>,
@@ -140,6 +143,7 @@ impl DocWindow {
         let cut_settings = cut_settings_sheet(mtm, locale);
         let sketch = sketch_section(mtm, locale);
         let shapes = shapes_section(mtm, app.clone(), document, locale);
+        let laser = laser_section(mtm, app.clone(), document, locale);
 
         // Right: inspector fields, message line, plan preview.
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
@@ -369,6 +373,7 @@ impl DocWindow {
             camera,
             sketch,
             shapes,
+            laser,
             canvas_status,
             save_panel: None,
             export_panel: None,
@@ -549,6 +554,7 @@ impl Drop for DocWindow {
         if self.sketch.shown {
             self.sketch.panel.orderOut(None);
         }
+        self.laser.clear();
         // SAFETY: nil data source / delegate cannot dangle.
         unsafe { self.table.setDataSource(None) };
         // SAFETY: as above.

@@ -5,6 +5,7 @@ pub(crate) mod camera;
 pub(crate) mod cut_settings;
 pub(crate) mod image;
 pub(crate) mod import;
+pub(crate) mod laser;
 pub(crate) mod operations;
 pub(crate) mod production;
 // `define_class!` and `msg_send!` need unsafe (the shape panel has its own small target object).
