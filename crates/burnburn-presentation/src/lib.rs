@@ -15,6 +15,7 @@ mod image_panel;
 mod image_task;
 mod intent;
 mod laser;
+mod nest_task;
 mod production;
 mod schikken;
 mod task;

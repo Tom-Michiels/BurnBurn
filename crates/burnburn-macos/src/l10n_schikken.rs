@@ -4,7 +4,8 @@
 
 use burnburn_document::EditLabel;
 use burnburn_presentation::{
-    CommandKey, MessageKey, PlaceFailure, ReshapeProblem, SchikkenMessage, SlotField, SlotsFailure,
+    CommandKey, MessageKey, NestFailure, NestField, NestSkipReason, NestUnplacedReason, PlaceFailure, ReshapeProblem,
+    SchikkenMessage, SlotField, SlotsFailure,
 };
 
 use super::{Locale, pick};
@@ -23,6 +24,8 @@ pub(super) fn command_pair(key: CommandKey) -> Option<(&'static str, &'static st
         C::ReshapeApply => ("Pas vervorming toe", "Apply Reshape"),
         C::ReshapeReset => ("Zet grepen terug", "Reset Handles"),
         C::ResizeSlots => ("Sleuven aanpassen…", "Resize Slots…"),
+        C::QuickNest => ("Snel nesten…", "Quick Nest…"),
+        C::NestSelected => ("Nest selectie…", "Nest Selected…"),
         _ => return None,
     })
 }
@@ -34,13 +37,20 @@ pub(super) fn edit_label_pair(label: EditLabel) -> Option<(&'static str, &'stati
         EditLabel::Warp => ("Vervormen (4 punten)", "Warp"),
         EditLabel::Deform => ("Vervormen (16 punten)", "Deform"),
         EditLabel::ResizeSlots => ("Sleuven aanpassen", "Resize Slots"),
+        EditLabel::Nest => ("Nesten", "Nest"),
         _ => return None,
     })
 }
 
 /// The edit labels this module owns (for the completeness test).
-pub(super) const EDIT_LABELS: [EditLabel; 5] =
-    [EditLabel::Dock, EditLabel::MoveTogether, EditLabel::Warp, EditLabel::Deform, EditLabel::ResizeSlots];
+pub(super) const EDIT_LABELS: [EditLabel; 6] = [
+    EditLabel::Dock,
+    EditLabel::MoveTogether,
+    EditLabel::Warp,
+    EditLabel::Deform,
+    EditLabel::ResizeSlots,
+    EditLabel::Nest,
+];
 
 fn failure_pair(f: PlaceFailure) -> (&'static str, &'static str) {
     match f {
@@ -99,11 +109,84 @@ fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
     }
 }
 
+const NEST_FAILURES: [NestFailure; 8] = [
+    NestFailure::InvalidField(NestField::Padding),
+    NestFailure::InvalidField(NestField::EdgeBuffer),
+    NestFailure::InvalidField(NestField::Step),
+    NestFailure::NothingToNest,
+    NestFailure::GridTooLarge,
+    NestFailure::Geometry,
+    NestFailure::Stale,
+    NestFailure::Refused,
+];
+
+fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
+    match f {
+        NestFailure::InvalidField(NestField::Padding) => (
+            "De tussenruimte tussen onderdelen moet een getal van 0 of meer zijn.",
+            "The padding between parts must be a number of 0 or more.",
+        ),
+        NestFailure::InvalidField(NestField::EdgeBuffer) => {
+            ("De randmarge moet een getal van 0 of meer zijn.", "The edge buffer must be a number of 0 or more.")
+        }
+        NestFailure::InvalidField(NestField::Step) => {
+            ("De rasterstap moet een getal groter dan 0 zijn.", "The grid step must be a number greater than 0.")
+        }
+        NestFailure::NothingToNest => (
+            "Er is niets om te nesten: kies gesloten, niet-vergrendelde vormen.",
+            "There is nothing to nest: choose closed, unlocked shapes.",
+        ),
+        NestFailure::GridTooLarge => (
+            "Het raster wordt te groot voor deze stap; kies een grotere stap.",
+            "The grid would be too large for this step; choose a larger step.",
+        ),
+        NestFailure::Geometry => (
+            "Een onderdeel of het plaatmateriaal kon niet verwerkt worden.",
+            "A part or the sheet could not be processed.",
+        ),
+        NestFailure::Stale => (
+            "Het document is gewijzigd na het nesten; nest opnieuw.",
+            "The document changed after nesting; nest again.",
+        ),
+        NestFailure::Refused => (
+            "Het resultaat kon niet worden toegepast; er is niets gewijzigd.",
+            "The result could not be applied; nothing changed.",
+        ),
+    }
+}
+
+/// Why a part was not placed (the report of a finished nest).
+pub fn nest_unplaced_text(reason: NestUnplacedReason, locale: Locale) -> String {
+    pick(
+        match reason {
+            NestUnplacedReason::NoFit => ("past niet op het plaatmateriaal", "does not fit on the sheet"),
+            NestUnplacedReason::NoAllowedRotation => ("geen toegestane draaiing past", "no allowed rotation fits"),
+            NestUnplacedReason::Budget => {
+                ("zoekbudget op; probeer een grotere stap", "search budget used up; try a larger step")
+            }
+        },
+        locale,
+    )
+}
+
+/// Why an object was left out of the nest.
+pub fn nest_skip_text(reason: NestSkipReason, locale: Locale) -> String {
+    pick(
+        match reason {
+            NestSkipReason::OpenContour => ("open pad: niets om te plaatsen", "open path: nothing to place"),
+            NestSkipReason::NoGeometry => ("geen geometrie", "no geometry"),
+            NestSkipReason::Derived => ("afgeleide vorm: verplaats de bron", "derived shape: move its source"),
+        },
+        locale,
+    )
+}
+
 /// Text of a Schikken status message.
 pub(super) fn message(m: SchikkenMessage, locale: Locale) -> String {
     match m {
         SchikkenMessage::Dock(f) | SchikkenMessage::MoveTogether(f) => pick(failure_pair(f), locale),
         SchikkenMessage::Slots(f) => pick(slots_pair(f), locale),
+        SchikkenMessage::Nest(f) => pick(nest_pair(f), locale),
         SchikkenMessage::InvalidGap => pick(
             ("De tussenruimte moet een getal van 0 of meer zijn.", "The gap must be a number of 0 or more."),
             locale,
@@ -150,6 +233,7 @@ pub(super) fn known_keys() -> Vec<MessageKey> {
     }
     keys.push(MessageKey::Schikken(SchikkenMessage::InvalidGap));
     keys.extend(SLOT_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Slots(f))));
+    keys.extend(NEST_FAILURES.map(|f| MessageKey::Schikken(SchikkenMessage::Nest(f))));
     for label in EDIT_LABELS {
         let label = burnburn_document::UndoLabel::Edit(label);
         keys.push(MessageKey::UndoAction(label));

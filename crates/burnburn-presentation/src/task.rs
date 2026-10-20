@@ -91,6 +91,8 @@ pub enum TaskInput {
     WriteText { text: Arc<str>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Remove one recovery file (after a save, or when the user declines the offer).
     RemoveRecovery { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Pack the parts of a nest job on its sheet (W3-UI-schikken, C10); cancellable.
+    Nest(Box<crate::nest_task::NestJob>),
 }
 
 impl fmt::Debug for TaskInput {
@@ -123,6 +125,7 @@ impl fmt::Debug for TaskInput {
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
             TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
             TaskInput::WriteText { path, .. } => write!(f, "WriteText({})", path.display()),
+            TaskInput::Nest(job) => write!(f, "Nest({} parts)", job.part_count()),
         }
     }
 }
@@ -147,6 +150,7 @@ impl TaskInput {
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
             TaskInput::WriteText { .. } => TaskKind::TextExport,
+            TaskInput::Nest(_) => TaskKind::Nest,
         }
     }
 }
@@ -182,13 +186,15 @@ pub enum TaskKind {
     Recovery,
     /// Writes a text export (diagnostic report); not tied to a document revision.
     TextExport,
+    /// A nest of one revision: cancelled by an edit, and a result of another revision is dropped.
+    Nest,
 }
 
 impl TaskKind {
     /// Results that describe one revision and are worthless after an edit: cancelled when the
     /// document changes. A save is not: it must finish writing the revision it started with.
     pub fn is_revision_sensitive(self) -> bool {
-        matches!(self, TaskKind::Measure | TaskKind::Boolean | TaskKind::Compile)
+        matches!(self, TaskKind::Measure | TaskKind::Boolean | TaskKind::Compile | TaskKind::Nest)
     }
 }
 
@@ -276,6 +282,8 @@ pub enum TaskOutput {
     TextWritten {
         path: PathBuf,
     },
+    /// The placements of a nest.
+    Nested(Arc<crate::nest_task::NestOutput>),
 }
 
 /// A parsed import file. A DXF stays in drawing units until the unit decision.
@@ -315,6 +323,8 @@ pub enum TaskError {
     SourceMissing,
     /// Neither `.svg` nor `.dxf`.
     UnsupportedFormat,
+    /// The nest could not be made.
+    Nest(burnburn_cam::nest::NestError),
 }
 
 impl fmt::Display for TaskError {
@@ -337,6 +347,7 @@ impl fmt::Display for TaskError {
             TaskError::Raster(e) => write!(f, "image processing failed: {e:?}"),
             TaskError::SourceMissing => f.write_str("source image not in the project"),
             TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
+            TaskError::Nest(e) => write!(f, "nesting failed: {e}"),
         }
     }
 }
@@ -493,6 +504,7 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             fs.remove_file(&path).map_err(TaskError::Write)?;
             Ok(TaskOutput::RecoveryRemoved { path })
         }
+        TaskInput::Nest(job) => crate::nest_task::run_nest(&job, cancel).map(|o| TaskOutput::Nested(Arc::new(o))),
         TaskInput::Trace(request) => match trace(&request, cancel) {
             Ok(result) => Ok(TaskOutput::Traced(Arc::new(result))),
             Err(TraceError::Cancelled(_)) => Err(TaskError::Cancelled),
@@ -584,6 +596,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::SaveBitmap => 15,
         TaskKind::Centerline => 16,
         TaskKind::TextExport => 17,
+        TaskKind::Nest => 41,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

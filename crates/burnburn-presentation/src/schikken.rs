@@ -152,10 +152,174 @@ pub struct SlotsDialogViewModel {
     pub error: Option<SchikkenMessage>,
 }
 
+/// What a nest works on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestScope {
+    /// Every object of the drawing that can move.
+    #[default]
+    Quick,
+    /// The selected objects only; the others stay and are avoided.
+    Selected,
+}
+
+/// How many turns a part may take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestRotations {
+    /// Parts keep their orientation.
+    Fixed,
+    /// 0° and 180°.
+    Half,
+    /// Quarter turns.
+    #[default]
+    Quarter,
+    /// Steps of 45°.
+    Eighth,
+}
+
+impl NestRotations {
+    pub(crate) fn degrees(self) -> Vec<f64> {
+        match self {
+            NestRotations::Fixed => vec![0.0],
+            NestRotations::Half => vec![0.0, 180.0],
+            NestRotations::Quarter => vec![0.0, 90.0, 180.0, 270.0],
+            NestRotations::Eighth => (0..8).map(|k| f64::from(k) * 45.0).collect(),
+        }
+    }
+}
+
+/// The fields of the nest panel, as typed (DR-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestInput {
+    /// Minimum distance between parts (mm).
+    pub padding: String,
+    /// Minimum distance to the edge of the sheet and to what stays (mm).
+    pub edge_buffer: String,
+    /// Grid step of the search (mm); finer packs tighter and takes longer.
+    pub step: String,
+    pub rotations: NestRotations,
+}
+
+impl Default for NestInput {
+    fn default() -> Self {
+        NestInput {
+            padding: "1".to_owned(),
+            edge_buffer: "1".to_owned(),
+            step: "1".to_owned(),
+            rotations: NestRotations::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NestField {
+    Padding,
+    EdgeBuffer,
+    Step,
+}
+
+/// Why a nest did not run or gave nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NestFailure {
+    InvalidField(NestField),
+    /// No object can be nested (none selected, all open or locked).
+    NothingToNest,
+    /// The raster of the sheet would be too large for this step: use a coarser step.
+    GridTooLarge,
+    /// A part or the sheet could not be processed.
+    Geometry,
+    /// The result no longer fits the document: it changed while or after nesting.
+    Stale,
+    Refused,
+}
+
+/// Where the nest stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NestRun {
+    Idle,
+    /// A cancellable task is running.
+    Running,
+    /// A result for the current document is ready to apply.
+    Done,
+    /// The document changed after the result was computed: nest again.
+    Stale,
+    /// The result was applied.
+    Applied,
+}
+
+/// The sheet the parts go on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NestSheetView {
+    pub width_mm: f64,
+    pub height_mm: f64,
+    /// The machine's bed (otherwise the bounds of what is being nested).
+    pub is_bed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NestUnplacedReason {
+    /// No free position on the sheet.
+    NoFit,
+    /// No allowed rotation fits the grain rule.
+    NoAllowedRotation,
+    /// The search budget ran out.
+    Budget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NestSkipReason {
+    /// The outline is not closed: nothing to pack.
+    OpenContour,
+    /// The object has no geometry.
+    NoGeometry,
+    /// Generated geometry (sketch, text, array output) moves with its definition.
+    Derived,
+}
+
+/// A part that could not be placed (one row per part; a group is one part).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestUnplacedRow {
+    pub objects: Vec<burnburn_types::GeometryId>,
+    pub reason: NestUnplacedReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestSkippedRow {
+    pub object: burnburn_types::GeometryId,
+    pub reason: NestSkipReason,
+}
+
+/// What the finished nest says (C10): what was placed, what was not and why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestReportViewModel {
+    pub placed: usize,
+    pub unplaced: Vec<NestUnplacedRow>,
+    pub skipped: Vec<NestSkippedRow>,
+    /// Share of the sheet the placed parts cover, 0…1.
+    pub utilisation: f64,
+}
+
+/// The nest panel (Quick Nest, Nest Selected) while it is open.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestPanelViewModel {
+    pub scope: NestScope,
+    pub input: NestInput,
+    /// Why the last Start did nothing.
+    pub error: Option<SchikkenMessage>,
+    pub run: NestRun,
+    /// Objects that would be nested as parts, and the sheet they would go on.
+    pub parts: usize,
+    pub sheet: Option<NestSheetView>,
+    pub report: Option<NestReportViewModel>,
+    /// Apply is available: a fresh result with at least one placement.
+    pub can_apply: bool,
+}
+
 /// Messages of this module's flows (localised by the host).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SchikkenMessage {
+    /// A nest did not run or gave nothing.
+    Nest(NestFailure),
     /// Resize Slots refused.
     Slots(SlotsFailure),
     /// Dock refused; says why.
@@ -200,13 +364,15 @@ pub struct ReshapeViewModel {
 }
 
 /// Everything this module adds to a document window's view model.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SchikkenViewModel {
     pub place: PlaceOptionsViewModel,
     /// `Some` while the Warp or Deform tool is active on a usable selection.
     pub reshape: Option<ReshapeViewModel>,
     /// The Resize Slots dialog while it is open.
     pub slots: Option<SlotsDialogViewModel>,
+    /// The nest panel while it is open.
+    pub nest: Option<NestPanelViewModel>,
 }
 
 /// A user action of this module (everything but the command keys, which carry no payload).
@@ -230,6 +396,31 @@ pub enum SchikkenIntent {
         input: SlotsInput,
     },
     CancelSlots {
+        document: burnburn_types::DocumentId,
+    },
+    /// The options of the nest panel as typed; invalid text keeps the old options and says why.
+    /// A result of other options is dropped.
+    SetNestOptions {
+        document: burnburn_types::DocumentId,
+        input: NestInput,
+    },
+    /// Start the nest as a cancellable task (an older one is cancelled).
+    StartNest {
+        document: burnburn_types::DocumentId,
+    },
+    /// Stop the running nest; no result is delivered.
+    CancelNest {
+        document: burnburn_types::DocumentId,
+    },
+    /// Move the parts to the placements of the finished nest (one undo entry).
+    ApplyNest {
+        document: burnburn_types::DocumentId,
+    },
+    /// Select the objects the finished nest could not place.
+    SelectNestUnplaced {
+        document: burnburn_types::DocumentId,
+    },
+    CloseNest {
         document: burnburn_types::DocumentId,
     },
 }

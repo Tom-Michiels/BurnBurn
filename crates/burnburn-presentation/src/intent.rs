@@ -835,6 +835,10 @@ pub enum CommandKey {
     ReshapeReset,
     /// Gereedschap ▸ Sleuven aanpassen…: opens the Resize Slots dialog for the selection.
     ResizeSlots,
+    /// Schikken ▸ Quick Nest: pack every object that can move on the sheet (panel).
+    QuickNest,
+    /// Schikken ▸ Nest Selected: pack the selection, avoiding what stays (panel).
+    NestSelected,
 }
 
 impl CommandKey {
@@ -963,6 +967,8 @@ impl CommandKey {
         CommandKey::ReshapeApply,
         CommandKey::ReshapeReset,
         CommandKey::ResizeSlots,
+        CommandKey::QuickNest,
+        CommandKey::NestSelected,
     ];
 }
 

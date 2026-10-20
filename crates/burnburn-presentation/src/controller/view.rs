@@ -91,7 +91,8 @@ impl AppController {
         let preview = s.editor.preview();
         let result_preview =
             s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result));
-        let sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
+        let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
+        sketch_overlays.extend(super::nest::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
@@ -201,6 +202,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             place: super::arrange::place_view(s),
             reshape: super::reshape::view(s),
             slots: super::arrange::slots_view(s),
+            nest: super::nest::view(s, machine),
         },
     }
 }
@@ -295,6 +297,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SaveProcessedBitmap,
             Some(s),
         ) => (super::image::command_enabled(key, s), false),
+        (other, Some(s)) if super::nest::command_enabled(other, s).is_some() => {
+            (super::nest::command_enabled(other, s).unwrap_or(false), false)
+        }
         (other, Some(s)) if super::reshape::command_enabled(other, s).is_some() => {
             (super::reshape::command_enabled(other, s).unwrap_or(false), false)
         }

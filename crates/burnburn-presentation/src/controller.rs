@@ -44,6 +44,7 @@ mod import;
 mod laser;
 mod layers;
 mod machine;
+mod nest;
 mod process;
 mod recent;
 mod recovery;
@@ -213,6 +214,8 @@ struct Session {
     image: image::ImageState,
     /// Inspector reference point, aspect lock and wireframe view (window state).
     arrange: arrange::ArrangeState,
+    /// The nest panel (Quick Nest, Nest Selected) and its result (window state).
+    nest: nest::NestState,
 }
 
 impl Session {
@@ -266,6 +269,7 @@ impl Session {
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
+            nest: nest::NestState::default(),
         })
     }
 
@@ -734,7 +738,16 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetReferencePoint { document, .. }
         | UiIntent::SetAspectLock { document, .. }
         | UiIntent::Schikken(
-            SchikkenIntent::SetPlaceOptions { document, .. } | SchikkenIntent::SetWarpKind { document, .. },
+            SchikkenIntent::SetPlaceOptions { document, .. }
+            | SchikkenIntent::SetWarpKind { document, .. }
+            | SchikkenIntent::ApplySlots { document, .. }
+            | SchikkenIntent::CancelSlots { document }
+            | SchikkenIntent::SetNestOptions { document, .. }
+            | SchikkenIntent::StartNest { document }
+            | SchikkenIntent::CancelNest { document }
+            | SchikkenIntent::ApplyNest { document }
+            | SchikkenIntent::SelectNestUnplaced { document }
+            | SchikkenIntent::CloseNest { document },
         )
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,

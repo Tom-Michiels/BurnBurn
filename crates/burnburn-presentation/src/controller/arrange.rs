@@ -75,6 +75,12 @@ impl AppController {
             SchikkenIntent::CancelSlots { document } => self.with_session(document, |s| {
                 if s.arrange.slots.take().is_some() { AppUpdate::redraw(document) } else { AppUpdate::default() }
             }),
+            intent @ (SchikkenIntent::SetNestOptions { .. }
+            | SchikkenIntent::StartNest { .. }
+            | SchikkenIntent::CancelNest { .. }
+            | SchikkenIntent::ApplyNest { .. }
+            | SchikkenIntent::SelectNestUnplaced { .. }
+            | SchikkenIntent::CloseNest { .. }) => self.nest_intent(intent),
             SchikkenIntent::SetWarpKind { document, bilinear } => {
                 self.with_session(document, |s| super::reshape::set_warp_kind(s, document, bilinear))
             }

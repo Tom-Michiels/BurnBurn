@@ -205,6 +205,9 @@ pub(super) fn invoke_in_session(
     if let Some(update) = super::reshape::command(s, document, command, request) {
         return update;
     }
+    if let Some(update) = super::nest::command(s, document, command, request) {
+        return update;
+    }
     match command {
         CommandKey::Undo | CommandKey::Redo => {
             // A gesture in progress is cancelled first; it never reaches history (A4).
