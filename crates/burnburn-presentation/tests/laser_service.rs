@@ -225,3 +225,35 @@ fn running_a_controller_file_is_its_own_request_and_creates_no_execution() {
     assert!(l.service.status().current.is_none(), "no execution, no job start");
     assert!(!l.peer.sent().contains(&Request::Start));
 }
+
+/// A quick tap: the key-up arrives while the key-down's reply is still on its way. The release is
+/// not lost (the head must never keep moving): it goes out as soon as the controller has answered.
+#[test]
+fn a_release_that_arrives_before_the_press_was_answered_is_sent_right_after_the_answer() {
+    let l = lab();
+    l.service.set_capabilities(all_supported());
+    l.peer.script(
+        Step::expect(Request::Live(LiveRequest::JogStart(JogKey::XLeft)))
+            .reply_after(std::time::Duration::from_millis(100), Reply::Ack),
+    );
+    l.peer.script(Step::expect(Request::Live(LiveRequest::JogStop(JogKey::XLeft))).reply(Reply::Ack));
+    act(&l, LaserAction::JogPress(JogKey::XLeft)).unwrap();
+
+    // Key-up at once: the press is unanswered, so the stop cannot go out yet.
+    assert!(act(&l, LaserAction::JogRelease(JogKey::XLeft)).is_ok());
+    assert_eq!(live_requests(&l.peer), vec![LiveRequest::JogStart(JogKey::XLeft)]);
+    assert_eq!(l.service.status().live.jog_held, Some(JogKey::XLeft));
+
+    l.clock.advance(std::time::Duration::from_millis(150));
+    settle(&l);
+    settle(&l);
+    assert_eq!(
+        live_requests(&l.peer),
+        vec![LiveRequest::JogStart(JogKey::XLeft), LiveRequest::JogStop(JogKey::XLeft)],
+        "the queued release followed the answer"
+    );
+    assert_eq!(l.service.status().live.jog_held, None);
+    assert_eq!(l.history.intents.lock().unwrap().len(), 2, "the release is journaled like any action");
+    let outcomes = l.history.outcomes.lock().unwrap();
+    assert_eq!(outcomes.len(), 2);
+}

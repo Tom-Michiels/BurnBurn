@@ -515,6 +515,9 @@ struct Inner<P: ControllerPort> {
     frames: Vec<ExecutionId>,
     /// Which journaled laser-window action each actor live attempt belongs to.
     live_tracks: Vec<LiveTrack>,
+    /// A jog release that arrived while another request was in flight: it is sent as soon as the
+    /// controller has answered, because a held key must never keep the head moving.
+    release_queued: bool,
 }
 
 struct LiveTrack {
@@ -563,6 +566,7 @@ impl<P: ControllerPort> MachineService<P> {
                 last: None,
                 frames: Vec::new(),
                 live_tracks: Vec::new(),
+                release_queued: false,
             }),
         })
     }
@@ -575,6 +579,7 @@ impl<P: ControllerPort> MachineService<P> {
     pub fn poll(&self) -> Result<(), ActorError> {
         let mut s = self.lock();
         let result = s.actor.poll();
+        s.send_queued_release();
         s.journal();
         s.journal_live();
         result
@@ -747,6 +752,48 @@ impl<P: ControllerPort> Inner<P> {
         }
     }
 
+    /// Sends the queued jog release once nothing else is in flight. A failure to journal keeps it
+    /// queued (the intent must be durable first); anything else drops it.
+    fn send_queued_release(&mut self) {
+        if !self.release_queued {
+            return;
+        }
+        let Some(key) = self.actor.jog_held() else {
+            self.release_queued = false;
+            return;
+        };
+        let request = LiveRequest::JogStop(key);
+        match self.actor.live_preflight(&request) {
+            Err(LiveError::RequestInFlight) => return,
+            Err(_) => {
+                self.release_queued = false;
+                return;
+            }
+            Ok(()) => {}
+        }
+        let kind = MachineAction::Live(LiveKind::JogRelease);
+        let generation = self.counts.get(&(kind, ActionSubject::Machine)).copied().unwrap_or(0);
+        let action = ActionId { kind, subject: ActionSubject::Machine, generation };
+        let record = LiveIntentRecord { action, machine: self.actor.machine().id.clone(), request: request.clone() };
+        match self.history.record_live_intent(&record) {
+            Ok(Recorded::Fresh) => {}
+            Ok(Recorded::AlreadyRecorded) => {
+                // That id is taken (an older run): move on to the next one at the next poll.
+                *self.counts.entry((kind, ActionSubject::Machine)).or_insert(0) += 1;
+                return;
+            }
+            // Not journaled: not sent. Try again at the next poll.
+            Err(_) => return,
+        }
+        self.release_queued = false;
+        *self.counts.entry((kind, ActionSubject::Machine)).or_insert(0) += 1;
+        let attempts = self.actor.live_attempts().len();
+        let _ = self.actor.live(request);
+        if self.actor.live_attempts().len() > attempts {
+            self.live_tracks.push(LiveTrack { seq: attempts, action, journaled: false });
+        }
+    }
+
     /// "Save RD to controller": gated like the other file operations; this build has no wire form
     /// for a named upload, so it is always refused and nothing is sent or journaled.
     fn save_rd(&mut self, intent: &LaserIntent) -> Result<(), MachineError> {
@@ -771,6 +818,13 @@ impl<P: ControllerPort> Inner<P> {
             user_origin: intent.user_origin,
         };
         let request = burnburn_machine::plan_action(action, &context).map_err(MachineError::Laser)?;
+        if matches!(request, LiveRequest::JogStop(_))
+            && matches!(self.actor.live_preflight(&request), Err(LiveError::RequestInFlight))
+        {
+            // The key-down is not answered yet: the release waits for the answer (see `poll`).
+            self.release_queued = true;
+            return Ok(None);
+        }
         self.actor.live_preflight(&request).map_err(MachineError::Live)?;
         let record = LiveIntentRecord {
             action: intent.action,

@@ -18,6 +18,10 @@ mod view_model;
 
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
+/// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
+pub use burnburn_machine::{
+    ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
+};
 pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
     CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
