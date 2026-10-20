@@ -24,6 +24,7 @@ use super::classes::{
 };
 use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
+use super::panels::image::{ImageSheets, image_sheets};
 use super::panels::import::{ImportSheet, import_sheet};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
@@ -68,6 +69,7 @@ pub(crate) struct DocWindow {
     /// Fixed slots for the machine controls (shown/hidden per view model).
     pub(crate) machine_buttons: Vec<Retained<NSButton>>,
     pub(crate) import: ImportSheet,
+    pub(crate) image: ImageSheets,
     pub(crate) operations: OperationsSection,
     pub(crate) cut_settings: CutSettingsSheet,
     pub(crate) camera: CameraSection,
@@ -214,6 +216,7 @@ impl DocWindow {
             machine_buttons.push(b);
         }
         let import = import_sheet(mtm, target, locale);
+        let image = image_sheets(mtm, target, app.clone(), document, locale);
 
         centre.addSubview(&canvas_view);
         centre.addSubview(&strip);
@@ -360,6 +363,7 @@ impl DocWindow {
             machine_labels: [machine_status, machine_message, machine_progress, machine_job],
             machine_buttons,
             import,
+            image,
             operations,
             cut_settings,
             camera,
@@ -442,6 +446,7 @@ impl DocWindow {
             }
         }
         self.refresh_import(vm, document);
+        self.refresh_image(vm, document);
         self.refresh_operations(vm, document);
         self.refresh_cut_settings(vm, document);
         self.refresh_camera(camera);
@@ -503,6 +508,7 @@ impl Drop for DocWindow {
         for w in &self.cut_settings.options {
             w.control.set_target(None);
         }
+        self.image.clear_targets();
         // SAFETY: as above.
         unsafe { self.operations.table.setTarget(None) };
         for b in [
@@ -561,6 +567,7 @@ impl Drop for DocWindow {
         }
         self.shapes.clear_targets();
         self.shapes.hide(&self.window);
+        self.image.end_all(&self.window);
         if !self.closing {
             self.controller.allow_close();
             self.window.close();

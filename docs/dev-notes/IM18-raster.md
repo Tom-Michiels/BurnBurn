@@ -102,3 +102,41 @@ volgende ring 0,491 > 0,251); unsharp piek `[0,0,90,0,0]`, r=1 → blur 30 → 9
 - Hoek-scans en grayscale hebben geen RD-bewijs (zie IM25). Halftone op anisotrope rasters (`pitch ≠ interval`) is niet
   dot-vierkant. Mask maskeert het *resultaat* (foutdiffusie loopt door gemaskeerde cellen heen).
 - Image-specifieke UI (paneel, live preview, replace/refresh/replace-to-fit) staat in de integratiewachtrij.
+
+## W2-L1-beeld — bitmap-UI: import met DPI-voorstel, Adjust Image, crop, mask, replace/refresh, processed bitmap
+
+Presentatie `controller/image.rs` (+ `image_panel.rs` types, `image_task.rs` worker), host: zie IM20.md. Het beeld in het document is
+een **kader** (geïmporteerde rechthoek met het bitmap-asset als herkomst) plus een **Image-operatie** die het kader target; de pixels
+worden over de kadergrenzen gerekt (domeincontract W1-L5a). Voorbeeld/decodeerde bronnen zijn vensterstaat, nooit documentdata.
+
+### Keuzes
+- **Resolutie**: een PNG/JPEG met `pHYs`/JFIF stelt zijn DPI *voor*; zonder resolutie in het bestand is Importeer uitgeschakeld tot de
+  gebruiker een DPI typt (zelfde principe als een DXF zonder eenheid, T01). BMP/TIFF: de decoder weigert ze (alleen PNG/JPEG,
+  `DecodeError::UnsupportedFormat`) → `ImageFailed`, niets geïmporteerd. **Open**: BMP/TIFF-decoder in `burnburn-image` (L5).
+- **Standaardoperatie** bij import: Jarvis, 0,1 mm pitch/interval, 100 mm/s, 20 %. Plaatsing linksonder in de oorsprong.
+- **Undo-granulariteit (open)**: import = 2 historiestappen (kader, daarna operatie); Mask Image = 3 (assign, unassign, update).
+  Het document heeft geen samengesteld commando; wachtrij-regel voor de document/L3-lane.
+- **Preview** = `burnburn_cam::processed_bitmap` op een worker (`TaskInput::ImagePreview`), vers alleen als `latest == task-id`;
+  eerdere previews worden geannuleerd en genegeerd. Geen document-revisie, geen undo. **Open**: preview op het canvas (render-laag);
+  nu in het paneel.
+- **Crop** in bronpixels (alle vier leeg = geen); validatie tegen de brondimensies (`CropOutsideSource`/`CropIncomplete`).
+- **Mask Image**: de gesloten vorm(en) moeten binnen het kader liggen; ze worden de target (domein: raster = vormbounds) en het
+  cropvenster wordt het deel van het beeld dat de vorm dekt, zodat het beeld **op zijn plaats en schaal blijft**. Vorm buiten het
+  kader → uitgeschakeld.
+- **Replace** behoudt kader, plaatsing en alle opties (nieuw `ImageSettings::with_source`); een crop die niet in de nieuwe pixels past
+  vervalt. **Refresh** leest het bestand van de import opnieuw (herkomst is vensterstaat; weg na heropenen) — gelijke pixels = geen entry.
+  *Replace to Fit* (schaalbeleid) is **niet** gedaan.
+- **Compileren** krijgt de pixels uit de projectassets (`TaskInput::Compile.assets`, decode op de worker, op pixel-hash); een geopend
+  project warmt zijn bronnen op (`warm_images`).
+
+### Cycli (TDD) — `crates/burnburn-presentation/tests/image_flow.rs`
+| Test | Rode fase | Groene fase |
+|---|---|---|
+| import: `png_phys_is_offered_as_the_dpi_proposal_with_the_physical_size`, `a_bitmap_without_resolution_needs_an_explicit_dpi_before_commit`, `committing_a_bitmap_adds_the_frame_the_operation_and_the_asset`, `bitmap_formats_the_decoder_cannot_read_are_refused_without_importing`, `an_imported_image_compiles_from_the_stored_pixels` | `CARGO_TARGET_DIR=target/beeld cargo test -p burnburn-presentation --test image_flow` tegen compileerbare stubs → 18 FAILED, 3 passed (o.a. `expect("bitmap import sheet")` op `None`, `objects[0]` index out of range, geen ShowError). De 3 geslaagde zijn negatieve tests (`cancelling_a_bitmap_import_changes_nothing`, `nothing_is_written_without_a_selected_image`, `without_a_selected_image_the_panel_does_not_open`) en slaagden vacuüm tegen de stub | 21 passed |
+| adjust: `the_preview_shows_the_scanned_pixels_and_apply_is_one_undo_entry`, `a_preview_for_older_values_is_cancelled_and_never_shown`, `invalid_input_names_the_field_and_starts_no_preview`, `closing_the_panel_cancels_the_preview_and_changes_nothing`, `crop_is_checked_against_the_source_pixels_and_applies_as_a_window`, `the_gray_method_reaches_the_operation` | idem (FAILED, zelfde run) | passed |
+| `bitmap_file::the_processed_bitmap_holds_exactly_the_scanned_pixels` | idem; oracle onafhankelijk van de implementatie: zwart/wit-bron, elke dither laat 0/255 ongemoeid → 80×80 met linkerhelft 0 | passed |
+| replace: `replacing_keeps_the_frame_and_the_settings_and_changes_the_pixels`, `a_crop_that_does_not_fit_the_new_pixels_is_dropped_by_replace`, `refresh_rereads_the_file_and_an_unchanged_file_changes_nothing` | idem | passed |
+| mask: `masking_targets_the_shape_and_keeps_the_picture_in_place`, `a_shape_that_leaves_the_image_cannot_mask_it`, `masking_needs_an_image_and_a_shape` | idem | passed na test-fix: objectsnapping (standaard aan) trok de hoeken van de getekende vorm naar het kader (`(0,0)–(5,10)`); de test schakelt `SnapToObjects` uit — testfout, geen codefout |
+| `document::image_settings::another_source_keeps_every_other_option` | achteraf toegevoegd (`with_source` was al door de presentatietests gedekt; geen aparte rode fase) | `-p burnburn-document --test image_settings` → 7 passed |
+
+Commando's: `export PATH="$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=target/beeld; cargo test -p burnburn-presentation`.

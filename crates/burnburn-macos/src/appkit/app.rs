@@ -288,6 +288,9 @@ impl HostApp {
             }
             Reaction::ShowOpenPanel => self.show_open_panel(),
             Reaction::ShowImportPanel => self.show_import_panel(),
+            Reaction::ShowReplaceImagePanel => self.show_image_file_panel(ImageFilePanel::Replace),
+            Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
+            Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
         }
     }
 
@@ -811,6 +814,12 @@ impl HostApp {
         panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&[
             NSString::from_str("dxf"),
             NSString::from_str("svg"),
+            NSString::from_str("png"),
+            NSString::from_str("jpg"),
+            NSString::from_str("jpeg"),
+            NSString::from_str("bmp"),
+            NSString::from_str("tif"),
+            NSString::from_str("tiff"),
         ])));
         let me = self.me.clone();
         let reader = panel.clone();
@@ -830,6 +839,41 @@ impl HostApp {
         {
             eprintln!("burnburn: {e}");
         }
+    }
+
+    /// Beeld ▸ Beeld vervangen… / Beeld tracen…: one picture for the active document, as a sheet.
+    fn show_image_file_panel(&self, kind: ImageFilePanel) {
+        use super::panels::image::{BITMAP_TYPES, TRACE_TYPES, show_image_open_panel};
+        let Some(document) = self.view().active else { return };
+        let Some(window) = self.window(document) else { return };
+        match kind {
+            ImageFilePanel::Replace => show_image_open_panel(
+                self.mtm,
+                &window,
+                self.me.clone(),
+                &BITMAP_TYPES,
+                "replace image panel completion",
+                move |path| NativeEvent::ReplaceImageFileChosen { document, path },
+            ),
+            ImageFilePanel::Trace => show_image_open_panel(
+                self.mtm,
+                &window,
+                self.me.clone(),
+                &TRACE_TYPES,
+                "trace panel completion",
+                move |path| NativeEvent::TraceFileChosen { document, path },
+            ),
+        }
+    }
+
+    /// Beeld ▸ Verwerkte bitmap bewaren…: a PNG name for the active document.
+    fn show_bitmap_save_panel(&self) {
+        let Some(document) = self.view().active else { return };
+        let Some(window) = self.window(document) else { return };
+        let name = crate::panels_image::suggested_bitmap_name(&window_title(&self.view(), document));
+        super::panels::image::show_bitmap_save_panel(self.mtm, &window, self.me.clone(), &name, move |path| {
+            NativeEvent::BitmapSavePanelFinished { document, path }
+        });
     }
 
     fn show_open_panel(&self) {
@@ -914,6 +958,24 @@ impl HostApp {
             import_labels: [&w.import.labels[0], &w.import.labels[1], &w.import.labels[2], &w.import.labels[3]],
             import_units: &w.import.units,
             import_commit: &w.import.commit,
+            image_import_sheet: w.image.import.shown.then_some(&*w.image.import.sheet),
+            image_import_labels: w.image.import.labels.each_ref().map(|l| &**l),
+            image_dpi: &w.image.import.dpi,
+            image_commit: &w.image.import.commit,
+            adjust_sheet: w.image.adjust.shown.map(|_| &*w.image.adjust.sheet),
+            adjust_labels: w.image.adjust.labels.each_ref().map(|l| &**l),
+            adjust_fields: w.image.adjust.fields.each_ref().map(|f| &**f),
+            adjust_gray: &w.image.adjust.gray,
+            adjust_preview: &w.image.adjust.preview,
+            adjust_apply: &w.image.adjust.apply,
+            tracer_sheet: w.image.tracer.shown.then_some(&*w.image.tracer.sheet),
+            tracer_labels: w.image.tracer.labels.each_ref().map(|l| &**l),
+            tracer_fields: w.image.tracer.fields.each_ref().map(|f| &**f),
+            tracer_mode: &w.image.tracer.mode,
+            tracer_recipe: &w.image.tracer.recipe,
+            tracer_preview: &w.image.tracer.preview,
+            tracer_apply: &w.image.tracer.apply,
+            tracer_close: &w.image.tracer.close,
             operations_table: &w.operations.table,
             operation_inputs: [&w.operations.inputs[0], &w.operations.inputs[1], &w.operations.inputs[2]],
             operation_kind: &w.operations.kind,
@@ -997,6 +1059,13 @@ impl Drop for HostApp {
     }
 }
 
+/// The picture file panels of the Beeld menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ImageFilePanel {
+    Replace,
+    Trace,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SaveKind {
     Project,
@@ -1032,6 +1101,30 @@ pub struct WindowParts<'a> {
     pub import_labels: [&'a objc2_app_kit::NSTextField; 4],
     pub import_units: &'a objc2_app_kit::NSPopUpButton,
     pub import_commit: &'a objc2_app_kit::NSButton,
+    /// Bitmap import sheet (W2-L1-beeld) while presentation shows an image import.
+    pub image_import_sheet: Option<&'a objc2_app_kit::NSWindow>,
+    /// File, pixels, DPI caption, proposal, size, issue.
+    pub image_import_labels: [&'a objc2_app_kit::NSTextField; 6],
+    pub image_dpi: &'a objc2_app_kit::NSTextField,
+    pub image_commit: &'a objc2_app_kit::NSButton,
+    /// Adjust Image sheet: title, source size, issue, computing; the nine fields; gray pop-up,
+    /// preview and Pas toe.
+    pub adjust_sheet: Option<&'a objc2_app_kit::NSWindow>,
+    pub adjust_labels: [&'a objc2_app_kit::NSTextField; 4],
+    pub adjust_fields: [&'a objc2_app_kit::NSTextField; 9],
+    pub adjust_gray: &'a objc2_app_kit::NSPopUpButton,
+    pub adjust_preview: &'a objc2_app_kit::NSImageView,
+    pub adjust_apply: &'a objc2_app_kit::NSButton,
+    /// Tracer sheet: source, summary, computing, scale hint, issue; the four fields; mode and
+    /// recipe pop-ups, preview, Pas trace toe and Sluit.
+    pub tracer_sheet: Option<&'a objc2_app_kit::NSWindow>,
+    pub tracer_labels: [&'a objc2_app_kit::NSTextField; 5],
+    pub tracer_fields: [&'a objc2_app_kit::NSTextField; 4],
+    pub tracer_mode: &'a objc2_app_kit::NSPopUpButton,
+    pub tracer_recipe: &'a objc2_app_kit::NSPopUpButton,
+    pub tracer_preview: &'a objc2_app_kit::NSImageView,
+    pub tracer_apply: &'a objc2_app_kit::NSButton,
+    pub tracer_close: &'a objc2_app_kit::NSButton,
     /// Operations panel: table, new-operation inputs (name, speed, power), kind, Add, message.
     pub operations_table: &'a objc2_app_kit::NSTableView,
     pub operation_inputs: [&'a objc2_app_kit::NSTextField; 3],
@@ -1237,6 +1330,20 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Reta
             sep(),
             item(c(CommandKey::SketchDimension), "", false),
             item(c(CommandKey::SketchRemoveConstraint), "", false),
+        ],
+    ));
+    main.addItem(&submenu(
+        t(HostText::ImageMenu),
+        vec![
+            item(MenuItem::ImportImage, "", false),
+            item(c(CommandKey::AdjustImage), "", false),
+            item(c(CommandKey::MaskImage), "", false),
+            sep(),
+            item(c(CommandKey::ReplaceImage), "", false),
+            item(c(CommandKey::RefreshImage), "", false),
+            item(c(CommandKey::SaveProcessedBitmap), "", false),
+            sep(),
+            item(MenuItem::TraceImage, "", false),
         ],
     ));
     main.addItem(&submenu(

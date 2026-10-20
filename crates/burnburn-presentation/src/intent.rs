@@ -11,6 +11,7 @@ use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
 use crate::camera::BedCameraIntent;
 use crate::cut_options::CutExtras;
+use crate::image_panel::{ImageAdjustInput, TraceFormInput, TracePreset};
 use crate::production::{ActionId, OrderDraft, OrderId};
 
 /// A semantic user action. Native hosts translate OS events into these; they never change
@@ -273,6 +274,41 @@ pub enum UiIntent {
     },
     CancelCutSettings {
         document: DocumentId,
+    },
+    /// Bitmap import sheet (P03): the resolution as typed (`254`, `300 dpi`). Window state until
+    /// the import is committed.
+    SetImageDpi {
+        document: DocumentId,
+        dpi: String,
+    },
+    /// Adjust Image panel: all field text as typed. Valid input starts a preview task (the older
+    /// one is cancelled and its result dropped); nothing reaches the document before
+    /// `CommandKey::ApplyImageAdjust`.
+    SetImageAdjust {
+        document: DocumentId,
+        input: Box<ImageAdjustInput>,
+    },
+    /// File chosen for Replace Image: the pixels of the selected image operation are replaced,
+    /// frame and placement stay (one history entry).
+    ReplaceImage {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// Location chosen for Save Processed Bitmap of the selected image operation. Writes exactly
+    /// the pixels the compiler scans; the document is untouched.
+    SaveProcessedBitmap {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// Tracer panel (T01, T02, T04): all field text as typed. Valid input starts a new trace task.
+    SetTraceForm {
+        document: DocumentId,
+        input: Box<TraceFormInput>,
+    },
+    /// Tracer recipe choice (T10): replaces every recipe value but the declared resolution.
+    ApplyTracePreset {
+        document: DocumentId,
+        preset: TracePreset,
     },
     /// Bed camera panel (IM27).
     BedCamera(BedCameraIntent),
@@ -537,10 +573,28 @@ pub enum CommandKey {
     CloseTracer,
     /// Freeze the current (fresh, error-free) plan with its RD bytes as the job of this document (C1).
     PrepareJob,
-    /// Commit the import preview (one history entry); disabled until the unit is known.
+    /// Commit the import preview (one history entry); disabled until the unit (or, for a
+    /// bitmap, the resolution) is known. A bitmap also gets its image operation.
     CommitImport,
     /// Close the import preview; the document is unchanged.
     CancelImport,
+    /// Bitmap ▸ Adjust Image: opens the panel for the selected image.
+    AdjustImage,
+    /// Apply the adjusted values of the open Adjust Image panel (one history entry).
+    ApplyImageAdjust,
+    /// Close the Adjust Image panel; the image operation is unchanged.
+    CancelImageAdjust,
+    /// Bitmap ▸ Mask Image: the selected closed shape(s) clip the selected image.
+    MaskImage,
+    /// Bitmap ▸ Replace Image… (the host asks for a file, then sends `UiIntent::ReplaceImage`);
+    /// this key carries the enablement.
+    ReplaceImage,
+    /// Bitmap ▸ Refresh Image: re-read the file the image came from (one history entry when the
+    /// pixels changed).
+    RefreshImage,
+    /// Bitmap ▸ Save Processed Bitmap… (the host asks for a file, then sends
+    /// `UiIntent::SaveProcessedBitmap`); this key carries the enablement.
+    SaveProcessedBitmap,
     /// Trim mode (E05): a click on a line removes the piece up to the nearest crossings.
     ToolTrim,
     /// Release the prepared job for the operator view (designer only, IM31).
@@ -634,6 +688,13 @@ impl CommandKey {
         CommandKey::ToolTrim,
         CommandKey::CommitImport,
         CommandKey::CancelImport,
+        CommandKey::AdjustImage,
+        CommandKey::ApplyImageAdjust,
+        CommandKey::CancelImageAdjust,
+        CommandKey::MaskImage,
+        CommandKey::ReplaceImage,
+        CommandKey::RefreshImage,
+        CommandKey::SaveProcessedBitmap,
         CommandKey::SketchNew,
         CommandKey::SketchFromSelection,
         CommandKey::SketchEdit,

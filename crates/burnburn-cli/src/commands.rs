@@ -77,6 +77,7 @@ fn compile_project(env: &CliEnv, a: &Args) -> Result<Compiled, CliError> {
         snapshot: Arc::new(project.document.clone()),
         profile: Arc::new(profile.profile.clone()),
         options: compile_options()?,
+        assets: project.assets.clone(),
     };
     match run_task(input, &env.cancel) {
         Ok(TaskOutput::Compiled { plan, preview, report }) => {

@@ -11,6 +11,8 @@ mod controller;
 mod cut_options;
 mod field;
 mod harness;
+mod image_panel;
+mod image_task;
 mod intent;
 mod production;
 mod task;
@@ -32,6 +34,11 @@ pub use cut_options::{
 };
 pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
+pub use image_panel::{
+    ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,
+    ThresholdChoice, TraceFormInput, TraceFormViewModel, TraceMode, TracePreset,
+};
+pub use image_task::{BitmapInput, BitmapJob, BitmapSource};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
     OperationKind, ParamKey, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
