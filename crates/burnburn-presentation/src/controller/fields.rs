@@ -16,6 +16,17 @@ use super::{AppController, AppUpdate, Session, after_change, apply_command, erro
 
 impl AppController {
     pub(super) fn commit_field(&mut self, document: DocumentId, field: FieldKey, text: &str) -> AppUpdate {
+        if field == FieldKey::Priority {
+            // One command per selected shape: one request id each.
+            let count = self.sessions.get(&document).map_or(0, |s| s.selection.len());
+            let mut requests: Vec<Option<RequestId>> = (0..count).map(|_| self.next_id::<RequestId>()).collect();
+            return self.with_session(document, |s| {
+                if s.selection.is_empty() {
+                    return AppUpdate::default();
+                }
+                super::process::commit_priority(s, document, text, &mut || requests.pop().flatten())
+            });
+        }
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             if s.selection.is_empty() {
@@ -29,6 +40,7 @@ impl AppController {
                 FieldKey::Width | FieldKey::Height => size(s, &bounds, field, text),
                 FieldKey::ScaleX | FieldKey::ScaleY => percent(s, &bounds, field, text),
                 FieldKey::ShearX | FieldKey::ShearY => shear(s, &bounds, field, text),
+                FieldKey::Priority => Outcome::Unchanged, // handled before the match
             };
             match outcome {
                 Outcome::Invalid(e) => {

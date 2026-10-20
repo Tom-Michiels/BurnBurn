@@ -373,6 +373,25 @@ pub enum UiIntent {
         key: ParamKey,
         text: String,
     },
+    /// Laser Tools / Edit ▸ one of the CAM dialogs (Optimization Settings, Material / Interval /
+    /// Focus Test, Device Settings): opens it with a fresh draft from the document / profile.
+    OpenCamDialog {
+        document: DocumentId,
+        dialog: crate::CamDialog,
+    },
+    /// One field of an open CAM dialog, as the user typed it. Nothing is applied before Apply.
+    SetCamField {
+        document: DocumentId,
+        dialog: crate::CamDialog,
+        field: crate::DialogField,
+        value: crate::DialogValue,
+    },
+    /// A button of an open CAM dialog (Apply, Generate, Save RD, order up/down, flat bed, Close).
+    CamDialogAction {
+        document: DocumentId,
+        dialog: crate::CamDialog,
+        action: crate::DialogAction,
+    },
     /// Edit ▸ Plak with an object payload read from the OS pasteboard by the host (the
     /// controller's own copy of the last Copy is used when the host has none: `Invoke`).
     /// Start: the list the host stored under Archief ▸ Recente projecten. Not a change to persist.
@@ -626,6 +645,9 @@ pub enum FieldKey {
     ShearX,
     /// Shear along y in degrees.
     ShearY,
+    /// Cut order priority of the selected shapes, a whole number in ±10 000 (0 = default, lower is
+    /// cut first). Only reorders when `Priority` is a level of the optimization `Order by`.
+    Priority,
 }
 
 /// Stable command ids shared by menu, toolbar, shortcuts and command palette (X02).

@@ -59,6 +59,10 @@ impl AppController {
                 super::trace::centerline_finished(s, outcome.id, outcome.result, &mut update);
                 return update;
             }
+            TaskKind::TestJob => {
+                super::tests_gen::finished(s, outcome.id, outcome.result, &mut update);
+                return update;
+            }
             _ => {}
         }
         match outcome.result {
@@ -152,11 +156,11 @@ impl AppController {
                     .map_or(outcome.source, |c| c.plan.source().document_revision);
                 s.export = Some(ExportViewModel { plan, plan_revision, path, rd_hash, bytes });
             }
-            Err(TaskError::Lower(_) | TaskError::Encode(_) | TaskError::Write(_)) => {
-                s.messages.push(StatusMessage { key: MessageKey::ExportFailed });
-                update
-                    .effects
-                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::ExportFailed });
+            Err(e @ (TaskError::Lower(_) | TaskError::Encode(_) | TaskError::Write(_))) => {
+                // A feature without a proven RD form is said in words (cross-hatch, dot, ramp, Z).
+                let key = super::process::export_failure(&e);
+                s.messages.push(StatusMessage { key });
+                update.effects.push(HostEffect::ShowError { document: Some(document), message: key });
             }
             Ok(TaskOutput::ImportParsed { path, bytes, parsed }) => {
                 let media = match parsed {

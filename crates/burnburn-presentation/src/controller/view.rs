@@ -150,6 +150,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
                 action(FieldKey::ScaleY, "100"),
                 action(FieldKey::ShearX, "0"),
                 action(FieldKey::ShearY, "0"),
+                super::process::priority_field(s).unwrap_or_else(|| action(FieldKey::Priority, "0")),
             ],
         })
     });

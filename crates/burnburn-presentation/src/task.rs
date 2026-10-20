@@ -91,6 +91,11 @@ pub enum TaskInput {
     WriteText { text: Arc<str>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Remove one recovery file (after a save, or when the user declines the offer).
     RemoveRecovery { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Compile a private test job (Material / Interval / Focus Test) with the ordinary compiler;
+    /// the open document is not involved.
+    CompileTest { job: Arc<burnburn_cam::test_job::TestJob>, profile: Arc<MachineProfile>, options: CompileOptions },
+    /// Lower exactly this test plan to RD and write it atomically; never the project.
+    ExportTest { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
 }
 
 impl fmt::Debug for TaskInput {
@@ -123,6 +128,10 @@ impl fmt::Debug for TaskInput {
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
             TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
             TaskInput::WriteText { path, .. } => write!(f, "WriteText({})", path.display()),
+            TaskInput::CompileTest { job, profile, .. } => {
+                write!(f, "CompileTest({} cells for {})", job.cells().len(), profile.revision().id)
+            }
+            TaskInput::ExportTest { plan, path, .. } => write!(f, "ExportTest({:?} to {})", plan.id(), path.display()),
         }
     }
 }
@@ -147,6 +156,7 @@ impl TaskInput {
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
             TaskInput::WriteText { .. } => TaskKind::TextExport,
+            TaskInput::CompileTest { .. } | TaskInput::ExportTest { .. } => TaskKind::TestJob,
         }
     }
 }
@@ -182,6 +192,9 @@ pub enum TaskKind {
     Recovery,
     /// Writes a text export (diagnostic report); not tied to a document revision.
     TextExport,
+    /// Compiles or writes a private test job; freshness is by task identity (only the newest
+    /// counts), never by document revision: an unrelated edit keeps a test valid.
+    TestJob,
 }
 
 impl TaskKind {
@@ -489,6 +502,28 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             write_atomically(fs.as_ref(), &path, text.as_bytes()).map_err(TaskError::Write)?;
             Ok(TaskOutput::TextWritten { path })
         }
+        TaskInput::CompileTest { job, profile, options } => {
+            let plan = job.compile(&profile, &options, cancel).map_err(|e| match e {
+                CompileError::Cancelled => TaskError::Cancelled,
+                e => TaskError::Compile(e),
+            })?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let preview = Arc::new(preview(&plan, &profile));
+            let report = preflight(job.snapshot(), &plan, &profile);
+            Ok(TaskOutput::Compiled { plan: Arc::new(plan), preview, report })
+        }
+        TaskInput::ExportTest { plan, ruida, path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let program = lower(&plan, &ruida).map_err(TaskError::Lower)?;
+            let bytes = program.to_rd_file(ruida.magic).map_err(TaskError::Encode)?;
+            write_atomically(fs.as_ref(), &path, &bytes).map_err(TaskError::Write)?;
+            Ok(TaskOutput::ExportedRd {
+                plan: program.plan(),
+                path,
+                rd_hash: ContentHash::of(HashDomain::Rd, &bytes),
+                bytes: bytes.len(),
+            })
+        }
         TaskInput::RemoveRecovery { path, fs } => {
             fs.remove_file(&path).map_err(TaskError::Write)?;
             Ok(TaskOutput::RecoveryRemoved { path })
@@ -584,6 +619,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::SaveBitmap => 15,
         TaskKind::Centerline => 16,
         TaskKind::TextExport => 17,
+        TaskKind::TestJob => 18,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

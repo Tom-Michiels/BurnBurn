@@ -770,4 +770,6 @@ pub enum MessageKey {
     NothingFound,
     /// The change would move or delete locked objects (unlock them first).
     ObjectsLocked,
+    /// RD output is refused for a feature the Ruida backend has no proven form for (W3-UI-cam).
+    RdRefused(crate::RdRefusal),
 }

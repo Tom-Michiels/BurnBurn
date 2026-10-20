@@ -35,6 +35,7 @@ mod canvas;
 mod clipboard;
 mod commands;
 mod cut_options;
+mod device;
 mod document;
 mod fields;
 mod geometry;
@@ -49,6 +50,7 @@ mod recovery;
 mod shapes;
 mod sketch;
 mod tasks;
+mod tests_gen;
 mod text;
 mod trace;
 mod view;
@@ -211,6 +213,8 @@ struct Session {
     image: image::ImageState,
     /// Inspector reference point, aspect lock and wireframe view (window state).
     arrange: arrange::ArrangeState,
+    /// The open CAM dialogs of this window: Optimization Settings and the test generators.
+    cam: process::CamState,
 }
 
 impl Session {
@@ -264,6 +268,7 @@ impl Session {
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
+            cam: process::CamState::default(),
         })
     }
 
@@ -331,6 +336,8 @@ pub struct AppController {
     recent: Vec<PathBuf>,
     /// The path each pending open task was asked for (to forget it when it fails).
     opening_paths: BTreeMap<TaskId, PathBuf>,
+    /// Device Settings: the draft of the machine profile dialog (app-wide, like the profile).
+    device: device::DeviceState,
 }
 
 impl AppController {
@@ -359,6 +366,7 @@ impl AppController {
             clipboard: None,
             recent: Vec::new(),
             opening_paths: BTreeMap::new(),
+            device: device::DeviceState::default(),
         }
     }
 
@@ -577,6 +585,9 @@ impl AppController {
             UiIntent::SetToolOption { document, key, text } => {
                 self.with_session(document, |s| shapes::set_tool_option(s, document, key, &text))
             }
+            UiIntent::OpenCamDialog { document, dialog } => self.cam_open(document, dialog),
+            UiIntent::SetCamField { document, dialog, field, value } => self.cam_set(document, dialog, field, value),
+            UiIntent::CamDialogAction { document, dialog, action } => self.cam_action(document, dialog, action),
             UiIntent::CommitShapeParam { document, key, text } => {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
@@ -726,6 +737,9 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::CancelGeometryDialog { document }
         | UiIntent::SetToolOption { document, .. }
         | UiIntent::CommitShapeParam { document, .. }
+        | UiIntent::OpenCamDialog { document, .. }
+        | UiIntent::SetCamField { document, .. }
+        | UiIntent::CamDialogAction { document, .. }
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
         | UiIntent::SetReferencePoint { document, .. }
