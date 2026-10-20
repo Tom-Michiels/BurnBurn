@@ -103,7 +103,9 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
             label: obj.name().to_owned(),
             depth: 0,
             selected: s.selection.contains(gid),
-            visible: true,
+            visible: !snapshot.is_hidden(gid),
+            locked: snapshot.is_locked(gid),
+            groups: obj.groups().to_vec(),
         })
         .collect();
     let inspector = s.selection.single().and_then(|gid| snapshot.object(gid).map(|o| (gid, o))).and_then(|(gid, o)| {
@@ -149,6 +151,9 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         snap_settings: s.snap,
         selection_cycle: s.cycle,
         align_reference: (s.selection.len() >= 2).then(|| s.selection.reference()).flatten(),
+        reference_point: s.arrange.reference,
+        aspect_locked: s.arrange.aspect_locked,
+        wireframe: s.arrange.wireframe,
         issues: s.issues.clone(),
         tool_size_error: s.tool_size_error,
         boolean_preview: current_boolean_preview(s).cloned(),
@@ -180,6 +185,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),
         (CommandKey::Delete, Some(s)) => (!s.selection.is_empty(), false),
         (CommandKey::SelectAll, Some(s)) => (!s.doc.snapshot().is_empty(), false),
+        (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (
@@ -222,6 +228,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         ) => (sketch::command_enabled(key, s), false),
         (CommandKey::CommitImport, Some(s)) => (s.import.as_ref().is_some_and(|i| i.draft().is_ok()), false),
         (CommandKey::CancelImport, Some(s)) => (s.import.is_some(), false),
+        (other, Some(s)) if super::arrange::command_enabled(other, s).is_some() => {
+            (super::arrange::command_enabled(other, s).unwrap_or(false), false)
+        }
         (other, Some(s)) => match tool_for(other) {
             Some(tool) => (true, !s.trim_mode && s.editor.tool() == tool),
             None => (true, false),

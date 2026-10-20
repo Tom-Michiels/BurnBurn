@@ -288,6 +288,71 @@ pub enum UiIntent {
     DiscardRecovery {
         path: PathBuf,
     },
+    /// Edit ▸ Plak with an object payload read from the OS pasteboard by the host (the
+    /// controller's own copy of the last Copy is used when the host has none: `Invoke`).
+    PasteData {
+        document: Option<DocumentId>,
+        bytes: Vec<u8>,
+        in_place: bool,
+    },
+    /// The 3×3 reference point of the inspector: the point of the selection's bounds that X and
+    /// Y show and that stays in place when the size changes. Window state.
+    SetReferencePoint {
+        document: DocumentId,
+        point: RefPoint,
+    },
+    /// Aspect lock of the size fields: a width or height commit scales both axes. Window state.
+    SetAspectLock {
+        document: DocumentId,
+        locked: bool,
+    },
+}
+
+/// One of the nine reference points of a selection's bounds (the inspector's 3×3 grid).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RefPoint {
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Center,
+    Right,
+    #[default]
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+impl RefPoint {
+    pub const ALL: [RefPoint; 9] = [
+        RefPoint::TopLeft,
+        RefPoint::Top,
+        RefPoint::TopRight,
+        RefPoint::Left,
+        RefPoint::Center,
+        RefPoint::Right,
+        RefPoint::BottomLeft,
+        RefPoint::Bottom,
+        RefPoint::BottomRight,
+    ];
+
+    /// Horizontal position: 0 left edge, 1 centre, 2 right edge.
+    pub fn column(self) -> u8 {
+        match self {
+            RefPoint::TopLeft | RefPoint::Left | RefPoint::BottomLeft => 0,
+            RefPoint::Top | RefPoint::Center | RefPoint::Bottom => 1,
+            RefPoint::TopRight | RefPoint::Right | RefPoint::BottomRight => 2,
+        }
+    }
+
+    /// Vertical position: 0 top edge, 1 middle, 2 bottom edge.
+    pub fn row(self) -> u8 {
+        match self {
+            RefPoint::TopLeft | RefPoint::Top | RefPoint::TopRight => 0,
+            RefPoint::Left | RefPoint::Center | RefPoint::Right => 1,
+            RefPoint::BottomLeft | RefPoint::Bottom | RefPoint::BottomRight => 2,
+        }
+    }
 }
 
 /// Which dimension "Maat" adds. `Auto` follows the selection: a line → its length, two points →
@@ -434,6 +499,14 @@ pub enum FieldKey {
     /// Rotation of the selection about its bounds centre, degrees counter-clockwise. The field
     /// always shows 0: a commit turns the selection by the typed angle (objects carry no angle).
     Rotation,
+    /// Scale of the selection in percent of its current width (shows 100; a commit scales by it).
+    ScaleX,
+    /// Scale in percent of the current height; with the aspect lock on it scales both axes.
+    ScaleY,
+    /// Shear along x in degrees (shows 0; a commit shears by it about the reference point).
+    ShearX,
+    /// Shear along y in degrees.
+    ShearY,
 }
 
 /// Stable command ids shared by menu, toolbar, shortcuts and command palette (X02).
@@ -511,6 +584,74 @@ pub enum CommandKey {
     SketchDimension,
     /// Remove the selected constraints of the open sketch (one history entry).
     SketchRemoveConstraint,
+    /// Edit ▸ Knip: copy the selection to the clipboard and delete it (one undo entry).
+    Cut,
+    /// Edit ▸ Kopieer: the selection goes to the clipboard; the document does not change.
+    Copy,
+    /// Edit ▸ Plak: the clipboard's objects, centred on the view (one undo entry).
+    Paste,
+    /// Edit ▸ Plak op plaats: the clipboard's objects at their original position.
+    PasteInPlace,
+    /// Edit ▸ Dupliceer: a copy of the selection at the same position; the clipboard stays as it is.
+    Duplicate,
+    /// Edit ▸ Verwijder dubbelen: of identical stacked shapes only the first stays.
+    DeleteDuplicates,
+    /// Arrange ▸ Een stap naar voren in de tekenvolgorde (render order; not the cut order).
+    PushForward,
+    /// Arrange ▸ Een stap naar achteren in de tekenvolgorde.
+    PushBackward,
+    /// Arrange ▸ Voorop in de tekenvolgorde.
+    PushToFront,
+    /// Arrange ▸ Achteraan in de tekenvolgorde.
+    PushToBack,
+    /// Arrange ▸ Groepeer de selectie.
+    Group,
+    /// Arrange ▸ Splits de buitenste groep van de selectie (één niveau).
+    Ungroup,
+    /// Arrange ▸ Groepeer vormen die in elkaar liggen (buitenomtrek met gaten).
+    AutoGroup,
+    /// Arrange ▸ Haal samengestelde vormen uit elkaar: één object per deelpad.
+    BreakApart,
+    /// Arrange ▸ Spiegel horizontaal om het midden van de selectie.
+    FlipHorizontal,
+    /// Arrange ▸ Spiegel verticaal om het midden van de selectie.
+    FlipVertical,
+    /// Arrange ▸ Draai 90° met de klok mee om het midden van de selectie.
+    Rotate90Cw,
+    /// Arrange ▸ Draai 90° tegen de klok in.
+    Rotate90Ccw,
+    /// Arrange ▸ Vergrendel de selectie: niet te kiezen op het canvas.
+    LockSelected,
+    /// Arrange ▸ Ontgrendel de geselecteerde vormen (kies ze in de objectenlijst).
+    UnlockSelected,
+    /// Arrange ▸ Ontgrendel alle vormen.
+    UnlockAll,
+    /// Arrange ▸ Verberg de selectie op het canvas; de vormen blijven deel van de job.
+    HideSelected,
+    /// Arrange ▸ Toon alle verborgen vormen.
+    ShowAll,
+    /// Edit ▸ Keer de selectie om (alleen kiesbare vormen).
+    InvertSelection,
+    /// Edit ▸ Kies open paden.
+    SelectOpenShapes,
+    /// Edit ▸ Kies alle vormen in de laag van de selectie.
+    SelectInLayer,
+    /// Edit ▸ Kies de vormen die in de selectie liggen.
+    SelectContained,
+    /// Edit ▸ Kies vormen kleiner dan de geselecteerde vorm.
+    SelectSmaller,
+    /// Edit ▸ Kies alle cirkels.
+    SelectCircles,
+    /// Beeld ▸ Zoom naar het werkblad (bed van de machine, anders alle objecten).
+    ZoomPage,
+    /// Beeld ▸ Zoom naar de selectie.
+    ZoomSelection,
+    /// Beeld ▸ Zoom in.
+    ZoomIn,
+    /// Beeld ▸ Zoom uit.
+    ZoomOut,
+    /// Beeld ▸ Draadmodel: alleen omtrekken, geen vulling (aangevinkt = draadmodel).
+    ViewWireframe,
 }
 
 impl CommandKey {
@@ -569,6 +710,40 @@ impl CommandKey {
         CommandKey::SketchFix,
         CommandKey::SketchDimension,
         CommandKey::SketchRemoveConstraint,
+        CommandKey::Cut,
+        CommandKey::Copy,
+        CommandKey::Paste,
+        CommandKey::PasteInPlace,
+        CommandKey::Duplicate,
+        CommandKey::DeleteDuplicates,
+        CommandKey::PushForward,
+        CommandKey::PushBackward,
+        CommandKey::PushToFront,
+        CommandKey::PushToBack,
+        CommandKey::Group,
+        CommandKey::Ungroup,
+        CommandKey::AutoGroup,
+        CommandKey::BreakApart,
+        CommandKey::FlipHorizontal,
+        CommandKey::FlipVertical,
+        CommandKey::Rotate90Cw,
+        CommandKey::Rotate90Ccw,
+        CommandKey::LockSelected,
+        CommandKey::UnlockSelected,
+        CommandKey::UnlockAll,
+        CommandKey::HideSelected,
+        CommandKey::ShowAll,
+        CommandKey::InvertSelection,
+        CommandKey::SelectOpenShapes,
+        CommandKey::SelectInLayer,
+        CommandKey::SelectContained,
+        CommandKey::SelectSmaller,
+        CommandKey::SelectCircles,
+        CommandKey::ZoomPage,
+        CommandKey::ZoomSelection,
+        CommandKey::ZoomIn,
+        CommandKey::ZoomOut,
+        CommandKey::ViewWireframe,
     ];
 }
 

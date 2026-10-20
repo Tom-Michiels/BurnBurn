@@ -29,8 +29,10 @@ use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
 };
 
+mod arrange;
 mod camera;
 mod canvas;
+mod clipboard;
 mod commands;
 mod document;
 mod fields;
@@ -119,6 +121,11 @@ pub enum HostEffect {
         constraint: burnburn_document::sketch::ConstraintId,
         text: String,
     },
+    /// Put these bytes on the OS pasteboard under BurnBurn's own type (Copy and Cut). The host
+    /// answers a later Paste with `UiIntent::PasteData` when the pasteboard holds that type.
+    SetClipboard {
+        bytes: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -187,6 +194,8 @@ struct Session {
     close_after_save: bool,
     /// Sketch mode: the open sketch and its selection (window state, never document data).
     sketch: sketch::SketchState,
+    /// Inspector reference point, aspect lock and wireframe view (window state).
+    arrange: arrange::ArrangeState,
 }
 
 impl Session {
@@ -236,6 +245,7 @@ impl Session {
             assets: project.1,
             close_after_save: false,
             sketch: sketch::SketchState::default(),
+            arrange: arrange::ArrangeState::default(),
         })
     }
 
@@ -295,6 +305,8 @@ pub struct AppController {
     restoring: BTreeMap<TaskId, PathBuf>,
     /// The last chosen variant of each toolbar group (window-independent preference).
     toolbar_variants: VariantMemory,
+    /// The last Copy or Cut: all windows paste from it; the host mirrors it to the OS pasteboard.
+    clipboard: Option<burnburn_io::clipboard::Clipboard>,
 }
 
 impl AppController {
@@ -319,6 +331,7 @@ impl AppController {
             app_tasks: BTreeMap::new(),
             restoring: BTreeMap::new(),
             toolbar_variants: VariantMemory::new(),
+            clipboard: None,
         }
     }
 
@@ -489,6 +502,13 @@ impl AppController {
                     _ => error(None, MessageKey::MachineActionRefused),
                 }
             }
+            UiIntent::PasteData { document, bytes, in_place } => self.paste_data(document, bytes, in_place),
+            UiIntent::SetReferencePoint { document, point } => {
+                self.with_session(document, |s| arrange::set_reference_point(s, point))
+            }
+            UiIntent::SetAspectLock { document, locked } => {
+                self.with_session(document, |s| arrange::set_aspect_lock(s, locked))
+            }
             UiIntent::SketchSelect { document, entities, constraints, mode } => {
                 self.sketch_select(document, entities, constraints, mode)
             }
@@ -633,7 +653,10 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SelectSketchProblem { document }
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
+        | UiIntent::SetReferencePoint { document, .. }
+        | UiIntent::SetAspectLock { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
+        UiIntent::PasteData { document, .. } => *document,
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } => *document,
         _ => None,
     }

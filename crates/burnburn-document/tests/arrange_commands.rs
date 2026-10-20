@@ -357,3 +357,34 @@ fn unknown_targets_are_rejected_and_change_nothing() {
     assert!(arrange(&mut s, ArrangeCommand::SetLocked { targets: vec![ghost], locked: true }).is_err());
     assert_eq!(s.revision(), revision);
 }
+
+#[test]
+fn ungroup_removes_the_outermost_group_of_the_targets_in_one_step() {
+    let mut s = session();
+    let (a, b, c) = (rect(&mut s, 0.0, 0.0, 5.0, 5.0), rect(&mut s, 10.0, 0.0, 5.0, 5.0), rect(&mut s, 20.0, 0.0, 5.0, 5.0));
+    run(&mut s, CommandPayload::Edit(burnburn_document::GeometryCommand::Group { targets: vec![a, b] })).unwrap();
+    let inner = run(&mut s, CommandPayload::Edit(burnburn_document::GeometryCommand::Group { targets: vec![a, b, c] })).unwrap();
+    let outer_group = inner.changes.groups[0];
+    // Group chains are outermost first: the second Group nests *inside* the groups all targets share
+    // (none), so `a` and `b` carry [first, second]... check what the document says, then ungroup it.
+    let chain = s.snapshot().object(a).unwrap().groups().to_vec();
+    assert_eq!(chain.len(), 2);
+    let out = arrange(&mut s, ArrangeCommand::Ungroup { targets: vec![a, b, c] }).unwrap();
+    assert_eq!(out.undo_label, UndoLabel::Arrange(ArrangeLabel::Ungroup));
+    let snap = s.snapshot();
+    assert_eq!(snap.object(a).unwrap().groups(), &chain[1..], "one level is removed");
+    assert_eq!(snap.object(c).unwrap().groups(), &[] as &[burnburn_types::GroupId]);
+    assert!(out.changes.groups.contains(&chain[0]) || out.changes.groups.contains(&outer_group));
+    s.undo(s.revision()).unwrap();
+    assert_eq!(s.snapshot().object(a).unwrap().groups(), chain.as_slice());
+}
+
+#[test]
+fn ungroup_of_ungrouped_objects_is_refused() {
+    let mut s = session();
+    let a = rect(&mut s, 0.0, 0.0, 5.0, 5.0);
+    assert_eq!(
+        arrange(&mut s, ArrangeCommand::Ungroup { targets: vec![a] }).unwrap_err(),
+        CommandError::Arrange(ArrangeError::NothingChanged)
+    );
+}

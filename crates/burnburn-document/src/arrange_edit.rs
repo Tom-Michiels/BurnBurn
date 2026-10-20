@@ -64,6 +64,10 @@ pub enum ArrangeCommand {
     AutoGroup {
         targets: Vec<GeometryId>,
     },
+    /// Takes the outermost group off every target (one level).
+    Ungroup {
+        targets: Vec<GeometryId>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,6 +81,7 @@ pub enum ArrangeLabel {
     Paste,
     BreakApart,
     AutoGroup,
+    Ungroup,
 }
 
 impl ArrangeCommand {
@@ -90,6 +95,7 @@ impl ArrangeCommand {
             ArrangeCommand::Paste { .. } => ArrangeLabel::Paste,
             ArrangeCommand::BreakApart { .. } => ArrangeLabel::BreakApart,
             ArrangeCommand::AutoGroup { .. } => ArrangeLabel::AutoGroup,
+            ArrangeCommand::Ungroup { .. } => ArrangeLabel::Ungroup,
         }
     }
 }
@@ -198,6 +204,7 @@ pub(crate) fn apply(cmd: ArrangeCommand, mut txn: ArrangeTxn<'_>) -> Result<(), 
         ArrangeCommand::Paste { items, offset } => paste(&mut txn, items, offset),
         ArrangeCommand::BreakApart { targets } => break_apart(&mut txn, &targets),
         ArrangeCommand::AutoGroup { targets } => auto_group(&mut txn, &targets),
+        ArrangeCommand::Ungroup { targets } => ungroup(&mut txn, &targets),
     }
 }
 
@@ -351,6 +358,20 @@ fn auto_group(txn: &mut ArrangeTxn<'_>, targets: &[GeometryId]) -> Result<(), Ar
         grouped = true;
     }
     if grouped { Ok(()) } else { Err(ArrangeError::NothingChanged) }
+}
+
+fn ungroup(txn: &mut ArrangeTxn<'_>, targets: &[GeometryId]) -> Result<(), ArrangeError> {
+    let targets = txn.existing(targets)?;
+    for target in targets {
+        let Some(obj) = txn.objects.get(&target).cloned() else { continue };
+        let Some((outer, rest)) = obj.groups().split_first() else { continue };
+        if !txn.changes.groups.contains(outer) {
+            txn.changes.groups.push(*outer);
+        }
+        txn.objects.insert(target, Arc::new(obj.as_ref().clone().with_groups(rest.to_vec())));
+        txn.changes.modified.push(target);
+    }
+    if txn.changes.modified.is_empty() { Err(ArrangeError::NothingChanged) } else { Ok(()) }
 }
 
 /// Distance from the outline of the outer shape that an inner shape must keep (mm).

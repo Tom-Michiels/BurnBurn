@@ -30,7 +30,7 @@ pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
-    OperationKind, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
+    OperationKind, RefPoint, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
 pub use production::{
     ActionId, ActionSubject, Dispatched, ExecutionRecord, HandledAction, HistoryStore, HistoryStoreError, IntentRecord,

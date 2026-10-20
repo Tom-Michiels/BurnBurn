@@ -156,6 +156,7 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
     match step {
         ToolStep::Nothing => AppUpdate::default(),
         ToolStep::Select(change) => {
+            let change = if s.editor.tool() == ToolKind::Select { super::arrange::whole_groups(s, change) } else { change };
             apply_selection(s, &change);
             s.cycle = None;
             AppUpdate::redraw(document)
