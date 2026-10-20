@@ -18,6 +18,7 @@ pub fn operation_kind_name(kind: OperationKind, locale: Locale) -> &'static str 
         OperationKind::Line => HostText::OperationKindLine,
         OperationKind::Fill => HostText::OperationKindFill,
         OperationKind::OffsetFill => HostText::OperationKindOffsetFill,
+        OperationKind::Image => HostText::OperationKindImage,
         _ => HostText::OperationKindOther,
     };
     host_text(text, locale)

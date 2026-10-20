@@ -170,6 +170,7 @@ fn double_click_opens_cut_settings_and_ok_sends_the_typed_text() {
         kerf: kerf.into(),
         output: false,
         visible: true,
+        options: Vec::new(),
     };
     assert_eq!(
         intent(&h, ok(0, "250 mm/s", "0,15 mm")),
@@ -185,6 +186,7 @@ fn double_click_opens_cut_settings_and_ok_sends_the_typed_text() {
                 kerf: "0,15 mm".into(),
                 output_enabled: false,
                 visible: true,
+                extras: Default::default(),
             },
         }),
         "raw text, unparsed"
@@ -250,6 +252,7 @@ fn blocked_mode_is_listed_disabled_with_the_missing_capability() {
             kerf: String::new(),
             output: true,
             visible: true,
+            options: Vec::new(),
         },
     )
     .unwrap();

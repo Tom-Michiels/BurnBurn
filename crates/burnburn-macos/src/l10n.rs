@@ -102,6 +102,7 @@ pub enum HostText {
     OperationKindLine,
     OperationKindFill,
     OperationKindOther,
+    OperationKindImage,
     NoOperations,
     OperationKindOffsetFill,
     PaletteLabel,
@@ -219,6 +220,7 @@ impl HostText {
         HostText::OperationKindLine,
         HostText::OperationKindFill,
         HostText::OperationKindOther,
+        HostText::OperationKindImage,
         HostText::NoOperations,
         HostText::OperationKindOffsetFill,
         HostText::PaletteLabel,
@@ -350,6 +352,7 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::OperationKindLine => ("Lijn", "Line"),
         T::OperationKindFill => ("Vulling", "Fill"),
         T::OperationKindOther => ("Andere", "Other"),
+        T::OperationKindImage => ("Afbeelding", "Image"),
         T::NoOperations => (
             "Nog geen bewerkingen: selecteer objecten en voeg er een toe.",
             "No operations yet: select objects and add one.",
@@ -613,6 +616,10 @@ fn pick(pair: (&str, &str), locale: Locale) -> String {
 
 /// The text for a view-model message; `None` for a key this catalogue does not know yet (a test
 /// failure for every key in [`known_message_keys`]).
+fn cut_caption(field: burnburn_presentation::CutField, locale: Locale) -> &'static str {
+    crate::panels::option_caption(field, locale)
+}
+
 pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     use MessageKey as M;
     let pair: (&str, &str) = match key {
@@ -640,6 +647,24 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             FieldError::NotPositive => ("De maat moet groter dan 0 zijn.", "The size must be greater than 0."),
         },
         M::CommandRejected => ("De wijziging is geweigerd.", "The change was rejected."),
+        M::InvalidCutField(f) => {
+            let (nl, en) = (cut_caption(f, Locale::Nl), cut_caption(f, Locale::En));
+            return Some(match locale {
+                Locale::Nl => format!("Geen geldige waarde voor \u{201c}{nl}\u{201d}; er is niets gewijzigd."),
+                Locale::En => format!("Not a valid value for \u{201c}{en}\u{201d}; nothing was changed."),
+            });
+        }
+        M::CutOptionsConflict => (
+            "Dot-modus sluit tabs, aanloop/uitloop, overcut en perforatie uit.",
+            "Dot mode excludes tabs, leads, overcut and perforation.",
+        ),
+        M::CutOptionNotForMode(f) => {
+            let (nl, en) = (cut_caption(f, Locale::Nl), cut_caption(f, Locale::En));
+            return Some(match locale {
+                Locale::Nl => format!("\u{201c}{nl}\u{201d} past niet bij deze beeldmodus (alleen 0°)."),
+                Locale::En => format!("\u{201c}{en}\u{201d} does not apply to this image mode (0° only)."),
+            });
+        }
         M::SaveFailed => ("Bewaren is mislukt.", "Saving failed."),
         M::OpenFailed => ("Openen is mislukt.", "Opening failed."),
         M::Snap(s) => match s {
@@ -970,6 +995,11 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::InvalidNumber),
     );
     keys.push(MessageKey::SelectObjectsFirst);
+    keys.extend(burnburn_presentation::CutField::ALL.map(MessageKey::InvalidCutField));
+    keys.extend([
+        MessageKey::CutOptionsConflict,
+        MessageKey::CutOptionNotForMode(burnburn_presentation::CutField::ImageAngle),
+    ]);
     keys.extend(
         [
             SketchConstraintKind::Coincident,

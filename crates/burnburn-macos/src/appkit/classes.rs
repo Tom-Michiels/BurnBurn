@@ -452,6 +452,7 @@ define_class!(
                     kerf,
                     output,
                     visible,
+                    options: Vec::new(),
                 });
             });
         }

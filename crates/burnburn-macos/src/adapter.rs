@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use burnburn_editor::{CanvasKey, Modifiers, PointerButton, PointerId, PointerPhase, Viewport};
 use burnburn_presentation::{
-    AppViewModel, CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, MessageKey,
-    OperationField, SelectMode, UiIntent, ViewPointerEvent,
+    AppViewModel, CameraIntent, CloseChoice, CommandKey, CutField, CutSettingsInput, CutValue, DialogKind, FieldKey,
+    MessageKey, OperationField, SelectMode, UiIntent, ViewPointerEvent,
 };
 use burnburn_types::{DocumentId, MonotonicTime};
 
@@ -240,6 +240,8 @@ pub enum NativeEvent {
         kerf: String,
         output: bool,
         visible: bool,
+        /// The option fields the sheet shows (tabs, leads, fill and image options), raw.
+        options: Vec<(CutField, CutValue)>,
     },
     CutSettingsCancelled {
         document: DocumentId,
@@ -521,11 +523,12 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             kerf,
             output,
             visible,
+            options,
         } => {
             let Some(sheet) = vm.document(document).and_then(|d| d.cut_settings.as_ref()) else {
                 return Reaction::Nothing;
             };
-            let mode = crate::panels::sheet_mode(mode_index).unwrap_or(sheet.mode);
+            let mode = crate::panels::sheet_mode_of(sheet, mode_index);
             UiIntent::ApplyCutSettings {
                 document,
                 operation: sheet.operation,
@@ -538,6 +541,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                     kerf,
                     output_enabled: output,
                     visible,
+                    extras: crate::panels::confirmed_extras(options),
                 },
             }
         }
