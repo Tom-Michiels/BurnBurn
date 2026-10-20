@@ -163,6 +163,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         cut_settings: layers::cut_settings_view(s, machine.map(|m| m.profile.capabilities())),
         import: s.import.as_ref().map(import_view),
         sketch_mode: sketch::mode_view(s, &snapshot),
+        image: super::image::image_view(s),
     }
 }
 
@@ -198,7 +199,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::ApplyPreview, Some(s)) => (current_boolean_preview(s).is_some(), false),
         (CommandKey::Compile, Some(s)) => (has_machine && !s.doc.snapshot().process().is_empty(), false),
         (CommandKey::ExportRd, Some(s)) => (has_machine && s.compiled.is_some(), false),
-        (CommandKey::ApplyTrace, Some(s)) => (s.tracer.as_ref().is_some_and(|t| t.result.is_some()), false),
+        (CommandKey::ApplyTrace, Some(s)) => (s.tracer.as_ref().is_some_and(|t| t.has_result()), false),
         (CommandKey::CloseTracer, Some(s)) => (s.tracer.is_some(), false),
         (CommandKey::PrepareJob, Some(s)) => (preparable(s, machine), false),
         (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
@@ -220,8 +221,20 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SketchRemoveConstraint,
             Some(s),
         ) => (sketch::command_enabled(key, s), false),
-        (CommandKey::CommitImport, Some(s)) => (s.import.as_ref().is_some_and(|i| i.draft().is_ok()), false),
-        (CommandKey::CancelImport, Some(s)) => (s.import.is_some(), false),
+        (CommandKey::CommitImport, Some(s)) => {
+            (s.import.as_ref().is_some_and(|i| i.draft().is_ok()) || super::image::commit_enabled(s), false)
+        }
+        (CommandKey::CancelImport, Some(s)) => (s.import.is_some() || s.image.pending.is_some(), false),
+        (
+            CommandKey::AdjustImage
+            | CommandKey::ApplyImageAdjust
+            | CommandKey::CancelImageAdjust
+            | CommandKey::MaskImage
+            | CommandKey::ReplaceImage
+            | CommandKey::RefreshImage
+            | CommandKey::SaveProcessedBitmap,
+            Some(s),
+        ) => (super::image::command_enabled(key, s), false),
         (other, Some(s)) => match tool_for(other) {
             Some(tool) => (true, !s.trim_mode && s.editor.tool() == tool),
             None => (true, false),

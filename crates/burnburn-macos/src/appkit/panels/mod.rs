@@ -3,8 +3,10 @@
 
 pub(crate) mod camera;
 pub(crate) mod cut_settings;
+pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod operations;
 pub(crate) mod production;
 pub(crate) mod sketch;
+pub(crate) mod tracer;
 pub(crate) mod widgets;

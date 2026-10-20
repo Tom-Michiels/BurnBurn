@@ -23,11 +23,15 @@ pub enum MenuItem {
     Open,
     /// Archief ▸ Importeer…: first a file from NSOpenPanel, then presentation's import preview.
     Import,
+    /// Beeld ▸ Beeld importeren…: the same file panel as Import, with the bitmap types first.
+    ImportImage,
+    /// Beeld ▸ Beeld tracen…: first an image from NSOpenPanel, then presentation's tracer.
+    TraceImage,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
 pub fn menu_items() -> Vec<MenuItem> {
-    [MenuItem::Open, MenuItem::Import]
+    [MenuItem::Open, MenuItem::Import, MenuItem::ImportImage, MenuItem::TraceImage]
         .into_iter()
         .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
         .collect()
@@ -36,12 +40,16 @@ pub fn menu_items() -> Vec<MenuItem> {
 /// Tag of Open; commands use 1 + their index in `CommandKey::ALL` (0 is AppKit's default tag).
 const OPEN_TAG: isize = 1000;
 const IMPORT_TAG: isize = 1001;
+const IMPORT_IMAGE_TAG: isize = 1002;
+const TRACE_IMAGE_TAG: isize = 1003;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
     match item {
         MenuItem::Open => OPEN_TAG,
         MenuItem::Import => IMPORT_TAG,
+        MenuItem::ImportImage => IMPORT_IMAGE_TAG,
+        MenuItem::TraceImage => TRACE_IMAGE_TAG,
         MenuItem::Command(key) => CommandKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize + 1),
     }
 }
@@ -53,6 +61,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == IMPORT_TAG {
         return Some(MenuItem::Import);
+    }
+    if tag == IMPORT_IMAGE_TAG {
+        return Some(MenuItem::ImportImage);
+    }
+    if tag == TRACE_IMAGE_TAG {
+        return Some(MenuItem::TraceImage);
     }
     let index = usize::try_from(tag.checked_sub(1)?).ok()?;
     CommandKey::ALL.get(index).map(|k| MenuItem::Command(*k))
@@ -269,6 +283,52 @@ pub enum NativeEvent {
         name: String,
         text: String,
     },
+    /// The Replace Image file panel closed: a path on OK, `None` on cancel.
+    ReplaceImageFileChosen {
+        document: DocumentId,
+        path: Option<PathBuf>,
+    },
+    /// The Save Processed Bitmap sheet closed: a path on OK, `None` on cancel.
+    BitmapSavePanelFinished {
+        document: DocumentId,
+        path: Option<PathBuf>,
+    },
+    /// The Trace Image file panel closed: a path on OK, `None` on cancel.
+    TraceFileChosen {
+        document: DocumentId,
+        path: Option<PathBuf>,
+    },
+    /// The DPI field of the bitmap import sheet committed (Return or end of editing), raw text.
+    ImageDpiCommitted {
+        document: DocumentId,
+        text: String,
+    },
+    /// A field or the gray pop-up of the Adjust Image sheet committed: every field's raw text in
+    /// [`crate::panels_image::ADJUST_FIELDS`] order and the gray pop-up item.
+    ImageAdjustEdited {
+        document: DocumentId,
+        fields: [String; 9],
+        gray_index: isize,
+    },
+    /// A field, pop-up or checkbox of the tracer panel changed: the four fields in
+    /// [`crate::panels_image::TRACE_FIELDS`] order, both pop-ups' items and both checkboxes.
+    TraceFormEdited {
+        document: DocumentId,
+        fields: [String; 4],
+        mode_index: isize,
+        threshold_index: isize,
+        invert: bool,
+        curves: bool,
+    },
+    /// The tracer's recipe pop-up: item `index` of `TracePreset::ALL`.
+    TracePresetChosen {
+        document: DocumentId,
+        index: isize,
+    },
+    /// The tracer's "Gebruik voorstel" button.
+    TraceSuggestionClicked {
+        document: DocumentId,
+    },
     /// The recovery alert closed with this `NSModalResponse` (buttons in
     /// [`crate::lifecycle::RECOVERY_ALERT_BUTTONS`] order).
     RecoveryAnswered {
@@ -286,6 +346,15 @@ pub enum Reaction {
     ShowOpenPanel,
     /// Show NSOpenPanel for a DXF/SVG; its result comes back as [`NativeEvent::ImportFileChosen`].
     ShowImportPanel,
+    /// Show NSOpenPanel for the picture of Replace Image; the result comes back as
+    /// [`NativeEvent::ReplaceImageFileChosen`].
+    ShowReplaceImagePanel,
+    /// Show NSSavePanel for Save Processed Bitmap; the result comes back as
+    /// [`NativeEvent::BitmapSavePanelFinished`].
+    ShowBitmapSavePanel,
+    /// Show NSOpenPanel for an image to trace; the result comes back as
+    /// [`NativeEvent::TraceFileChosen`].
+    ShowTracePanel,
 }
 
 /// `NSEventModifierFlags` bits (stable AppKit ABI values).
@@ -345,7 +414,10 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
     let open = |d: DocumentId| vm.document(d).is_some();
     let intent = match event {
         E::Menu(MenuItem::Open) => return Reaction::ShowOpenPanel,
-        E::Menu(MenuItem::Import) => return Reaction::ShowImportPanel,
+        E::Menu(MenuItem::Import | MenuItem::ImportImage) => return Reaction::ShowImportPanel,
+        E::Menu(MenuItem::TraceImage) => return Reaction::ShowTracePanel,
+        E::Menu(MenuItem::Command(CommandKey::ReplaceImage)) => return Reaction::ShowReplaceImagePanel,
+        E::Menu(MenuItem::Command(CommandKey::SaveProcessedBitmap)) => return Reaction::ShowBitmapSavePanel,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
         E::OpenPanelFinished { path: Some(path) } => UiIntent::Open { path },
         E::OpenPanelFinished { path: None } => return Reaction::Nothing,
@@ -568,6 +640,65 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                 None => return Reaction::Nothing,
             }
         }
+        E::ReplaceImageFileChosen { document, path: Some(path) } if open(document) => {
+            UiIntent::ReplaceImage { document, path }
+        }
+        E::BitmapSavePanelFinished { document, path: Some(path) } if open(document) => {
+            UiIntent::SaveProcessedBitmap { document, path }
+        }
+        E::TraceFileChosen { document, path: Some(path) } if open(document) => {
+            UiIntent::OpenTraceSource { document, path }
+        }
+        E::ImageDpiCommitted { document, text } => {
+            let Some(shown) = vm.document(document).and_then(|d| d.image.import.as_ref()) else {
+                return Reaction::Nothing;
+            };
+            match crate::panels_image::image_dpi_intent(document, shown, text) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::ImageAdjustEdited { document, fields, gray_index } => {
+            let Some(shown) = vm.document(document).and_then(|d| d.image.adjust.as_ref()) else {
+                return Reaction::Nothing;
+            };
+            match crate::panels_image::image_adjust_intent(document, shown, fields, gray_index) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::TraceFormEdited { document, fields, mode_index, threshold_index, invert, curves } => {
+            let Some(shown) = vm.document(document).and_then(|d| d.tracer.as_ref()) else {
+                return Reaction::Nothing;
+            };
+            match crate::panels_image::trace_form_intent(
+                document,
+                &shown.form,
+                fields,
+                mode_index,
+                threshold_index,
+                invert,
+                curves,
+            ) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::TracePresetChosen { document, index } if vm.document(document).is_some_and(|d| d.tracer.is_some()) => {
+            match crate::panels_image::trace_preset_intent(document, index) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::TraceSuggestionClicked { document } => {
+            let Some(shown) = vm.document(document).and_then(|d| d.tracer.as_ref()) else {
+                return Reaction::Nothing;
+            };
+            match crate::panels_image::trace_suggestion_intent(document, &shown.form) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
         E::RecoveryAnswered { path, response } => match crate::lifecycle::recovery_choice(response) {
             Some(crate::lifecycle::RecoveryChoice::Restore) => UiIntent::RestoreRecovery { path },
             Some(crate::lifecycle::RecoveryChoice::Discard) => UiIntent::DiscardRecovery { path },
@@ -589,7 +720,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
         MenuItem::Open => true,
         // Importing needs a document window to import into.
-        MenuItem::Import => vm.active.is_some(),
+        MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => vm.active.is_some(),
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -597,7 +728,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
 /// Checkmark state (active tool, snapping toggles).
 pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
-        MenuItem::Open | MenuItem::Import => false,
+        MenuItem::Open | MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -607,6 +738,8 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
     match item {
         MenuItem::Open => host_text(HostText::Open, locale).to_owned(),
         MenuItem::Import => host_text(HostText::Import, locale).to_owned(),
+        MenuItem::ImportImage => host_text(HostText::ImageMenuImport, locale).to_owned(),
+        MenuItem::TraceImage => host_text(HostText::ImageMenuTrace, locale).to_owned(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),

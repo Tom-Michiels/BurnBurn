@@ -50,7 +50,7 @@ impl AppController {
                 source,
                 key: revision_key(TaskKind::Compile, document, source),
                 cancel: cancel.token(),
-                input: TaskInput::Compile { snapshot, profile: machine.profile, options },
+                input: TaskInput::Compile { snapshot, profile: machine.profile, options, assets: s.assets.clone() },
             };
             submit(s, &tasks, request, cancel, document)
         })

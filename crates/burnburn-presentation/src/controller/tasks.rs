@@ -35,6 +35,17 @@ impl AppController {
         if kind.is_revision_sensitive() && outcome.source != s.doc.revision() {
             return update;
         }
+        match kind {
+            TaskKind::LoadBitmap | TaskKind::ImagePreview | TaskKind::SaveBitmap => {
+                super::image::finished(s, document, kind, outcome.id, outcome.result, &mut update);
+                return update;
+            }
+            TaskKind::Centerline => {
+                super::trace::centerline_finished(s, outcome.id, outcome.result, &mut update);
+                return update;
+            }
+            _ => {}
+        }
         match outcome.result {
             Ok(TaskOutput::Measured(m)) => {
                 s.measure = Some(MeasureViewModel {
@@ -83,7 +94,7 @@ impl AppController {
                     Some("jpg" | "jpeg") => "image/jpeg",
                     _ => "image/png",
                 };
-                s.tracer = Some(Tracer { source, bytes, media, recipe: None, latest: None, result: None });
+                s.tracer = Some(Tracer::new(source, bytes, media));
             }
             Ok(TaskOutput::Traced(result)) => {
                 if let Some(t) = s.tracer.as_mut() {
@@ -160,7 +171,8 @@ impl AppController {
                 s.recovery_path = Some(path);
             }
             Ok(TaskOutput::Opened { .. } | TaskOutput::RecoveryFound { .. } | TaskOutput::RecoveryRemoved { .. })
-            | Err(TaskError::Cancelled) => {}
+            | Ok(TaskOutput::Centerlined(_) | TaskOutput::ImagePreview { .. } | TaskOutput::BitmapSaved { .. })
+            | Err(TaskError::Cancelled | TaskError::Raster(_) | TaskError::SourceMissing) => {}
             Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
                 // The replace happened: this revision is on disk, only durability is unconfirmed.
                 s.doc.mark_saved(outcome.source);
@@ -177,6 +189,11 @@ impl AppController {
                     .push(HostEffect::ShowError { document: Some(document), message: MessageKey::SaveFailed });
             }
             Err(TaskError::Open(_)) => {}
+        }
+        // The file's own resolution is enough for a first trace.
+        if s.tracer.as_mut().is_some_and(|t| std::mem::take(&mut t.autostart)) {
+            let started = self.submit_trace(document);
+            update.effects.extend(started.effects);
         }
         update
     }

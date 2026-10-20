@@ -2,19 +2,22 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile, preflight};
+use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile_with, preflight};
 use burnburn_document::DocumentSnapshot;
 use burnburn_geometry::{BooleanError, BooleanOp, Bounds, Path, boolean};
-use burnburn_image::{DecodeError, DecodeLimits, SourceImage, decode};
+use burnburn_image::{DecodeError, DecodeLimits, RasterError, SourceImage, decode};
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::{DxfDocument, ImportDraft, ParseError, parse_dxf, parse_svg};
-use burnburn_io::{LoadError, Project, SaveError, load_project, save_project};
+use burnburn_io::{AssetStore, LoadError, Project, SaveError, load_project, save_project};
 use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
 use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
-use burnburn_trace::{TraceError, TraceRequest, TraceResult, trace};
+use burnburn_trace::{CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, trace};
 use burnburn_types::{
     CancellationToken, ContentHash, DocumentId, GeometryId, HashDomain, RevisionId, StableId, TaskId,
 };
+
+use crate::image_panel::ImagePreview;
+use crate::image_task::{BitmapInput, BitmapJob};
 
 /// One background job, bound to the document revision of its input snapshot.
 #[derive(Debug, Clone)]
@@ -43,7 +46,13 @@ pub enum TaskInput {
     Boolean { snapshot: Arc<DocumentSnapshot>, op: BooleanOp, operands: Vec<GeometryId> },
     /// Compile one revision for one machine profile into an immutable JobPlan, with its preview
     /// and preflight (B12).
-    Compile { snapshot: Arc<DocumentSnapshot>, profile: Arc<MachineProfile>, options: CompileOptions },
+    /// `assets` holds the source pixels of image operations (decoded on the worker).
+    Compile {
+        snapshot: Arc<DocumentSnapshot>,
+        profile: Arc<MachineProfile>,
+        options: CompileOptions,
+        assets: AssetStore,
+    },
     /// Lower exactly this plan to RD and write it atomically (M03). Never touches the document.
     ExportRd { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Read and decode an image for the tracer (bounded by `DecodeLimits`).
@@ -54,6 +63,15 @@ pub enum TaskInput {
     ParseImport { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Lower exactly this plan to RD bytes for the prepared job (C1); same lowering as `ExportRd`.
     PrepareJob { plan: Arc<JobPlan>, ruida: RuidaProfile },
+    /// Read and decode a bitmap for the image flows: import, replace/refresh, or the pixels of an
+    /// image operation already in the project (W2-L1-beeld).
+    LoadBitmap { input: BitmapInput },
+    /// The processed pixels of an image operation, for the live preview of Adjust Image.
+    ImagePreview(Box<BitmapJob>),
+    /// The same pixels, written as a gray PNG ("Save Processed Bitmap").
+    SaveBitmap { job: Box<BitmapJob>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Centre-line trace of a source image (T04).
+    Centerline(Box<CenterlineRequest>),
     /// Autosave: the same atomic save as `Save`, to a recovery file (never the project file).
     SaveRecovery { project: Box<Project>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Recovery files (`*.burnburn`) in `dir`; a missing directory has none.
@@ -80,6 +98,10 @@ impl fmt::Debug for TaskInput {
             TaskInput::LoadImage { path, .. } => write!(f, "LoadImage({})", path.display()),
             TaskInput::Trace(r) => write!(f, "Trace(task {})", r.task),
             TaskInput::PrepareJob { plan, .. } => write!(f, "PrepareJob({:?})", plan.id()),
+            TaskInput::LoadBitmap { input } => write!(f, "LoadBitmap({input:?})"),
+            TaskInput::ImagePreview(_) => f.write_str("ImagePreview"),
+            TaskInput::SaveBitmap { path, .. } => write!(f, "SaveBitmap({})", path.display()),
+            TaskInput::Centerline(r) => write!(f, "Centerline(task {})", r.task),
             TaskInput::ParseImport { path, .. } => write!(f, "ParseImport({})", path.display()),
             TaskInput::SaveRecovery { path, .. } => write!(f, "SaveRecovery({})", path.display()),
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
@@ -100,6 +122,10 @@ impl TaskInput {
             TaskInput::LoadImage { .. } => TaskKind::LoadImage,
             TaskInput::Trace(_) => TaskKind::Trace,
             TaskInput::PrepareJob { .. } => TaskKind::PrepareJob,
+            TaskInput::LoadBitmap { .. } => TaskKind::LoadBitmap,
+            TaskInput::ImagePreview(_) => TaskKind::ImagePreview,
+            TaskInput::SaveBitmap { .. } => TaskKind::SaveBitmap,
+            TaskInput::Centerline(_) => TaskKind::Centerline,
             TaskInput::ParseImport { .. } => TaskKind::ParseImport,
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
@@ -124,6 +150,14 @@ pub enum TaskKind {
     PrepareJob,
     /// Reads a file; independent of the document revision.
     ParseImport,
+    /// Reads a bitmap; independent of the document revision (the controller keeps the purpose).
+    LoadBitmap,
+    /// Freshness is by task identity: only the newest preview of the open Adjust Image panel counts.
+    ImagePreview,
+    /// Writes a processed bitmap; finishes what it started.
+    SaveBitmap,
+    /// Like `Trace`: freshness by task identity and input key.
+    Centerline,
     /// Writes a recovery file of one revision; like a save it finishes what it started.
     Autosave,
     /// Lists or removes recovery files; not tied to a document revision.
@@ -179,6 +213,18 @@ pub enum TaskOutput {
         path: PathBuf,
     },
     Traced(Arc<TraceResult>),
+    Centerlined(Arc<CenterlineResult>),
+    /// The processed pixels of an image operation (live preview).
+    ImagePreview {
+        preview: ImagePreview,
+        /// The decoded original pixels, so the controller can reuse them for the next preview.
+        source: Arc<SourceImage>,
+    },
+    BitmapSaved {
+        path: PathBuf,
+        width: u32,
+        height: u32,
+    },
     /// RD bytes of exactly `plan`.
     Prepared {
         plan: JobPlanId,
@@ -232,6 +278,9 @@ pub enum TaskError {
     Decode(DecodeError),
     Trace(TraceError),
     Parse(ParseError),
+    Raster(RasterError),
+    /// The source pixels an image operation names are not among the project's assets.
+    SourceMissing,
     /// Neither `.svg` nor `.dxf`.
     UnsupportedFormat,
 }
@@ -252,6 +301,8 @@ impl fmt::Display for TaskError {
             TaskError::Decode(e) => write!(f, "image decoding failed: {e:?}"),
             TaskError::Trace(e) => write!(f, "trace failed: {e:?}"),
             TaskError::Parse(e) => write!(f, "import failed: {e}"),
+            TaskError::Raster(e) => write!(f, "image processing failed: {e:?}"),
+            TaskError::SourceMissing => f.write_str("source image not in the project"),
             TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
         }
     }
@@ -309,8 +360,9 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             let result = boolean_of(&snapshot, op, &operands, cancel)?;
             Ok(TaskOutput::Boolean { op, operands, result })
         }
-        TaskInput::Compile { snapshot, profile, options } => {
-            let plan = compile(&snapshot, &profile, &options, cancel).map_err(|e| match e {
+        TaskInput::Compile { snapshot, profile, options, assets } => {
+            let rasters = crate::image_task::compile_rasters(&snapshot, &assets);
+            let plan = compile_with(&snapshot, &profile, &options, &rasters, cancel).map_err(|e| match e {
                 CompileError::Cancelled => TaskError::Cancelled,
                 e => TaskError::Compile(e),
             })?;
@@ -350,6 +402,19 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             };
             Ok(TaskOutput::ImportParsed { path, bytes: Arc::from(bytes), parsed })
         }
+        TaskInput::LoadBitmap { input } => crate::image_task::load_bitmap(input, cancel),
+        TaskInput::ImagePreview(job) => crate::image_task::render_preview(&job, cancel),
+        TaskInput::SaveBitmap { job, path, fs } => {
+            let (bytes, width, height) = crate::image_task::processed_png(&job, cancel)?;
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            write_atomically(fs.as_ref(), &path, &bytes).map_err(TaskError::Write)?;
+            Ok(TaskOutput::BitmapSaved { path, width, height })
+        }
+        TaskInput::Centerline(request) => match burnburn_trace::trace_centerline(&request, cancel) {
+            Ok(result) => Ok(TaskOutput::Centerlined(Arc::new(result))),
+            Err(TraceError::Cancelled(_)) => Err(TaskError::Cancelled),
+            Err(e) => Err(TaskError::Trace(e)),
+        },
         TaskInput::PrepareJob { plan, ruida } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
             let program = lower(&plan, &ruida).map_err(TaskError::Lower)?;
@@ -469,6 +534,10 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::ParseImport => 10,
         TaskKind::Autosave => 11,
         TaskKind::Recovery => 12,
+        TaskKind::LoadBitmap => 13,
+        TaskKind::ImagePreview => 14,
+        TaskKind::SaveBitmap => 15,
+        TaskKind::Centerline => 16,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

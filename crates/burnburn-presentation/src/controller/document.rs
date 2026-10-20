@@ -46,6 +46,7 @@ impl AppController {
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
                 self.sessions.insert(document, session);
                 self.active = Some(document);
+                self.warm_images(document);
                 AppUpdate {
                     effects: vec![HostEffect::OpenWindow { document }],
                     view_changed: true,

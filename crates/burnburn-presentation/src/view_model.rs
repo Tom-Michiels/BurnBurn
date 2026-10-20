@@ -97,6 +97,8 @@ pub struct DocumentViewModel {
     pub cut_settings: Option<CutSettingsViewModel>,
     /// Sketch mode (B8): the open sketch's constraint list, freedom and diagnosis.
     pub sketch_mode: Option<SketchModeViewModel>,
+    /// Bitmap import sheet and Adjust Image panel (W2-L1-beeld).
+    pub image: crate::image_panel::ImageViewModel,
 }
 
 /// Number of colours in the layer palette (slots `0..LAYER_SLOTS`). Hosts draw slot `n` in the
@@ -296,6 +298,8 @@ pub struct TracerViewModel {
     /// A trace task is running ("berekenen…"); the last valid result stays visible.
     pub computing: bool,
     pub result: Option<TraceSummary>,
+    /// The panel's fields, the recipe in force and the last refused input.
+    pub form: crate::image_panel::TraceFormViewModel,
 }
 
 #[derive(Debug, Clone, PartialEq)]

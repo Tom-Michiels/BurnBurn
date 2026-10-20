@@ -10,6 +10,8 @@ mod commit;
 mod controller;
 mod field;
 mod harness;
+mod image_panel;
+mod image_task;
 mod intent;
 mod production;
 mod task;
@@ -28,6 +30,11 @@ pub use catalog::{
 pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
 pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
+pub use image_panel::{
+    ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,
+    ThresholdChoice, TraceFormInput, TraceFormViewModel, TraceMode, TracePreset,
+};
+pub use image_task::{BitmapInput, BitmapJob, BitmapSource};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
     OperationKind, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,

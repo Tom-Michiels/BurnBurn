@@ -35,6 +35,7 @@ mod commands;
 mod document;
 mod fields;
 mod geometry;
+mod image;
 mod import;
 mod layers;
 mod machine;
@@ -187,6 +188,8 @@ struct Session {
     close_after_save: bool,
     /// Sketch mode: the open sketch and its selection (window state, never document data).
     sketch: sketch::SketchState,
+    /// Bitmap import sheet, Adjust Image panel and decoded sources (window state).
+    image: image::ImageState,
 }
 
 impl Session {
@@ -236,6 +239,7 @@ impl Session {
             assets: project.1,
             close_after_save: false,
             sketch: sketch::SketchState::default(),
+            image: image::ImageState::default(),
         })
     }
 
@@ -401,6 +405,12 @@ impl AppController {
                 self.sketch_edit(document, SketchCommand::SetDimensionValue { sketch, constraint, text })
             }
             UiIntent::Import { document, path } => self.parse_import(document, path),
+            UiIntent::SetImageDpi { document, dpi } => self.set_image_dpi(document, &dpi),
+            UiIntent::SetImageAdjust { document, input } => self.set_image_adjust(document, *input),
+            UiIntent::ReplaceImage { document, path } => self.replace_image(document, path),
+            UiIntent::SaveProcessedBitmap { document, path } => self.save_processed_bitmap(document, path),
+            UiIntent::SetTraceForm { document, input } => self.set_trace_form(document, *input),
+            UiIntent::ApplyTracePreset { document, preset } => self.apply_trace_preset(document, preset),
             UiIntent::SetImportUnit { document, unit } => self.set_import_unit(document, unit),
             UiIntent::Offset { document, distance } => {
                 let request = self.next_id::<RequestId>();
@@ -576,6 +586,7 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             s.problem = None;
             layers::sync(s);
             sketch::sync(s);
+            image::sync(s);
             AppUpdate::redraw(document)
         }
         Err(_) => {
@@ -626,6 +637,12 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::ExportRd { document, .. }
         | UiIntent::OpenTraceSource { document, .. }
         | UiIntent::SetTraceRecipe { document, .. }
+        | UiIntent::SetImageDpi { document, .. }
+        | UiIntent::SetImageAdjust { document, .. }
+        | UiIntent::ReplaceImage { document, .. }
+        | UiIntent::SaveProcessedBitmap { document, .. }
+        | UiIntent::SetTraceForm { document, .. }
+        | UiIntent::ApplyTracePreset { document, .. }
         | UiIntent::SetSketchParameter { document, .. }
         | UiIntent::SketchSelect { document, .. }
         | UiIntent::AddSketchDimension { document, .. }

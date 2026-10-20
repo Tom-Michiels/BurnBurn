@@ -7,6 +7,7 @@ use burnburn_io::import::{DxfScale, ImportDraft, ImportError};
 use burnburn_types::{CancellationSource, DocumentId, TaskId};
 
 use super::{AppController, AppUpdate, error, submit};
+use crate::image_task::BitmapInput;
 use crate::intent::ImportUnit;
 use crate::task::{ParsedImport, TaskInput, TaskKind, TaskRequest, revision_key};
 use crate::view_model::{ImportViewModel, MessageKey};
@@ -60,6 +61,11 @@ pub(super) fn import_view(i: &PendingImport) -> ImportViewModel {
 impl AppController {
     /// Parses a file on a worker; the preview opens when the result arrives (P03).
     pub(super) fn parse_import(&mut self, document: DocumentId, path: PathBuf) -> AppUpdate {
+        // Bitmaps have their own preview (resolution instead of unit) and commit.
+        if super::image::is_bitmap_path(&path) {
+            let fs = Arc::clone(&self.ports.fs);
+            return self.load_bitmap(document, BitmapInput::File { path, fs }, super::image::LoadPurpose::Import);
+        }
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::ImportFailed) };
         let (tasks, fs) = (Arc::clone(&self.ports.tasks), Arc::clone(&self.ports.fs));
         self.with_session(document, |s| {

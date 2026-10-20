@@ -533,6 +533,13 @@ impl ImageSettings {
         })
     }
 
+    /// The same settings for other original pixels (Replace/Refresh Image): every option stays;
+    /// the caller drops a crop that does not fit the new pixels.
+    pub fn with_source(mut self, source: ContentHash) -> Self {
+        self.source = source;
+        self
+    }
+
     /// Burn light instead of dark: the toned gray value is inverted before dithering or
     /// power mapping.
     pub fn with_negative(mut self, negative: bool) -> Self {

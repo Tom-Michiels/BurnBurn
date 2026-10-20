@@ -10,6 +10,9 @@ use burnburn_types::{DocumentId, RequestId};
 
 use crate::commit::boolean_options;
 
+use std::sync::Arc;
+
+use crate::image_panel::TraceMode;
 use crate::intent::CommandKey;
 use crate::task::TaskKind;
 use crate::view_model::MessageKey;
@@ -88,6 +91,16 @@ impl AppController {
                 },
                 _ => AppUpdate::default(),
             },
+            CommandKey::CommitImport | CommandKey::CancelImport
+                if self.sessions.get(&document).is_some_and(|s| s.image.pending.is_some()) =>
+            {
+                self.image_command(document, command)
+            }
+            CommandKey::AdjustImage
+            | CommandKey::ApplyImageAdjust
+            | CommandKey::CancelImageAdjust
+            | CommandKey::MaskImage
+            | CommandKey::RefreshImage => self.image_command(document, command),
             CommandKey::BooleanUnion => self.submit_boolean(document, BooleanOp::Union),
             CommandKey::BooleanDifference => self.submit_boolean(document, BooleanOp::Difference),
             CommandKey::BooleanIntersection => self.submit_boolean(document, BooleanOp::Intersection),
@@ -189,19 +202,36 @@ pub(super) fn invoke_in_session(
         }
         CommandKey::ApplyTrace => {
             let Some(t) = s.tracer.as_ref() else { return AppUpdate::default() };
-            let Some(result) = t.result.clone() else { return AppUpdate::default() };
             // The source image travels with the project; objects keep it as provenance.
-            let asset = s.assets.add(t.media, &t.bytes);
-            let items: Vec<ImportItem> = (0..result.components.len())
-                .filter_map(|i| {
-                    let path = result.component_path(i)?;
-                    Some(ImportItem {
-                        name: format!("Trace {}", i + 1),
-                        entity: Some(format!("trace/component/{i}")),
-                        path,
-                    })
-                })
-                .collect();
+            let items: Vec<ImportItem> = match t.form.mode {
+                TraceMode::Contour => {
+                    let Some(result) = t.result.clone() else { return AppUpdate::default() };
+                    (0..result.components.len())
+                        .filter_map(|i| {
+                            let path = result.component_path(i)?;
+                            Some(ImportItem {
+                                name: format!("Trace {}", i + 1),
+                                entity: Some(format!("trace/component/{i}")),
+                                path,
+                            })
+                        })
+                        .collect()
+                }
+                TraceMode::Centerline => {
+                    let Some(c) = t.centerline.as_ref() else { return AppUpdate::default() };
+                    c.strokes
+                        .iter()
+                        .enumerate()
+                        .map(|(i, path)| ImportItem {
+                            name: format!("Centerline {}", i + 1),
+                            entity: Some(format!("trace/centerline/{i}")),
+                            path: path.clone(),
+                        })
+                        .collect()
+                }
+            };
+            let (media, bytes) = (t.media, Arc::clone(&t.bytes));
+            let asset = s.assets.add(media, &bytes);
             apply_edit(s, document, CommandPayload::Edit(GeometryCommand::Import { asset, items }), request)
         }
         CommandKey::CommitImport => {
@@ -221,7 +251,7 @@ pub(super) fn invoke_in_session(
         }
         CommandKey::CloseTracer => {
             for (kind, src) in s.pending.values() {
-                if matches!(kind, TaskKind::Trace | TaskKind::LoadImage) {
+                if matches!(kind, TaskKind::Trace | TaskKind::LoadImage | TaskKind::Centerline) {
                     src.cancel();
                 }
             }

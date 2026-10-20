@@ -180,3 +180,22 @@ fn each_new_option_and_mode_changes_the_canonical_form() {
         seen.push(e);
     }
 }
+
+/// W2-L1-beeld (Replace/Refresh Image): other pixels, every other option stays as it was.
+#[test]
+fn another_source_keeps_every_other_option() {
+    let crop = ImageCrop { x: 1, y: 2, width: 3, height: 4 };
+    let configured = base()
+        .with_negative(true)
+        .with_scan_angle(30.0)
+        .unwrap()
+        .with_crop(Some(crop))
+        .unwrap()
+        .with_sharpen(Some(ImageSharpen::new(1.5, mm(0.3)).unwrap()))
+        .with_mask(true);
+    let other = ContentHash::of(HashDomain::SourcePixels, b"other pixels");
+    let replaced = configured.with_source(other);
+    assert_eq!(replaced.source(), other);
+    assert_ne!(replaced, configured);
+    assert_eq!(replaced.with_source(configured.source()), configured, "nothing but the source changed");
+}
