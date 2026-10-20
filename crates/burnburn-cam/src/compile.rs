@@ -140,6 +140,9 @@ pub fn compile_with(
     let optimization = process.optimization();
     let heuristics = Heuristics::from(optimization);
     let mut plan = JobPlanBuilder::new(source, frame, frame.to_machine(head)?);
+    if let Some(rotary) = profile.rotary() {
+        plan = plan.with_rotary(*rotary);
+    }
 
     // Settings blocks are registered per unit, in unit order, before any motion: chunks of one
     // unit may be interleaved with chunks of another, but each keeps the same block.

@@ -1,6 +1,6 @@
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain};
 
-use crate::{MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio};
+use crate::{MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio, RotaryConfig, RotaryKind};
 
 /// Identity and revision of a machine profile. A plan compiled for one revision is stale for
 /// another (M01: a profile change invalidates the old compile result). `revision` is a display
@@ -24,6 +24,14 @@ pub struct MachineProfile {
     min_power: PowerRatio,
     max_power: PowerRatio,
     capabilities: MachineCapabilities,
+    rotary: Option<RotaryState>,
+}
+
+/// The rotary setting and the flat-bed frame to return to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RotaryState {
+    config: RotaryConfig,
+    flatbed: MachineFrame,
 }
 
 impl MachineProfile {
@@ -51,6 +59,7 @@ impl MachineProfile {
             min_power,
             max_power,
             capabilities: MachineCapabilities::conservative(),
+            rotary: None,
         };
         profile.revision.content = profile.content_hash()?;
         Ok(profile)
@@ -76,7 +85,58 @@ impl MachineProfile {
             w.f64(v);
         }
         self.capabilities.encode(&mut w);
+        // Only a profile with a rotary writes more, so flat-bed profiles keep their hash.
+        if let Some(r) = &self.rotary {
+            w.tag("rotary");
+            match r.config.kind() {
+                RotaryKind::Chuck { object_diameter_mm } => {
+                    w.tag("chuck");
+                    w.f64(object_diameter_mm);
+                }
+                RotaryKind::Roller { roller_diameter_mm } => {
+                    w.tag("roller");
+                    w.f64(roller_diameter_mm);
+                }
+            }
+            w.u64(u64::from(r.config.steps_per_rotation()));
+            w.f64(r.config.y_steps_per_mm());
+            w.bool(r.config.mirror());
+        }
         Ok(ContentHash::of(HashDomain::Profile, &w.finish().map_err(|_| PlanError::NotFinite)?))
+    }
+
+    /// The same profile with a rotary attached (M08). The flat-bed frame is remembered so that
+    /// [`MachineProfile::without_rotary`] restores it exactly. With a chuck the bed is the
+    /// unrolled surface: one wrap high (`π · object diameter`), same width and origin. A roller
+    /// feeds the object through the unchanged bed. Attaching again replaces the setting and keeps
+    /// the original flat bed.
+    pub fn with_rotary(mut self, config: RotaryConfig) -> Result<Self, PlanError> {
+        let flatbed = self.rotary.map_or(self.frame, |r| r.flatbed);
+        self.frame = match config.kind() {
+            RotaryKind::Chuck { .. } => {
+                MachineFrame::new(flatbed.width_mm(), config.surface_per_rotation_mm(), flatbed.origin())?
+            }
+            RotaryKind::Roller { .. } => flatbed,
+        };
+        self.rotary = Some(RotaryState { config, flatbed });
+        self.revision.content = self.content_hash()?;
+        Ok(self)
+    }
+
+    /// The same profile back on the flat bed: frame and content hash are the ones it had before
+    /// any rotary was attached; capabilities and limits changed meanwhile are kept.
+    pub fn without_rotary(mut self) -> Self {
+        if let Some(state) = self.rotary.take() {
+            self.frame = state.flatbed;
+            if let Ok(content) = self.content_hash() {
+                self.revision.content = content;
+            }
+        }
+        self
+    }
+
+    pub fn rotary(&self) -> Option<&RotaryConfig> {
+        self.rotary.as_ref().map(|r| &r.config)
     }
 
     pub fn capabilities(&self) -> &MachineCapabilities {

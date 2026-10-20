@@ -8,6 +8,9 @@
 //! through-power, laser-2 powers) are **not** written: a controller accepting this reduced
 //! envelope is unverified on hardware.
 //!
+//! A rotary plan (profile setting, M08) holds surface millimetres; the Y axis is scaled to the
+//! controller's flat-bed millimetres (and mirrored when configured) just before quantisation.
+//!
 //! Quantisation: round-half-away-from-zero to µm (`f64::round`) on absolute positions;
 //! relative moves are differences of already quantised absolute points, so rounding never
 //! accumulates. Power: `round(ratio × 16383)` (matches 1 %, 20 % and 60 % in the fixtures; the
@@ -104,6 +107,8 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
     }
     let mut blocks: Vec<Block> = Vec::new();
     let mut at: Option<(u64, u64)> = None;
+    // A rotary plan is in surface millimetres: Y becomes controller millimetres here, once.
+    let y_mm = |v: f64| plan.rotary().map_or(v, |r| r.to_controller_y(v, plan.frame().height_mm()));
     for (event, e) in plan.events().iter().enumerate() {
         let field = |error| LowerError::Field { event, error };
         match *e {
@@ -141,7 +146,10 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
             PlanEvent::Travel { to } => {
                 let block =
                     blocks.last_mut().ok_or(LowerError::Unsupported { event, what: "travel before operation" })?;
-                let p = (quantise_positive(to.x_mm() * 1000.0, event)?, quantise_positive(to.y_mm() * 1000.0, event)?);
+                let p = (
+                    quantise_positive(to.x_mm() * 1000.0, event)?,
+                    quantise_positive(y_mm(to.y_mm()) * 1000.0, event)?,
+                );
                 if at == Some(p) {
                     continue;
                 }
@@ -164,14 +172,17 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
                     return Err(LowerError::Unsupported { event, what: "overscan" });
                 }
                 let block = blocks.last_mut().ok_or(LowerError::Unsupported { event, what: "cut before operation" })?;
-                let p = (quantise_positive(to.x_mm() * 1000.0, event)?, quantise_positive(to.y_mm() * 1000.0, event)?);
+                let p = (
+                    quantise_positive(to.x_mm() * 1000.0, event)?,
+                    quantise_positive(y_mm(to.y_mm()) * 1000.0, event)?,
+                );
                 // The burn starts at the current head position, which is the plan start when no
                 // travel came first: it belongs to the header/part bounds too.
                 let from = match at {
                     Some(prev) => prev,
                     None => (
                         quantise_positive(plan.start().x_mm() * 1000.0, event)?,
-                        quantise_positive(plan.start().y_mm() * 1000.0, event)?,
+                        quantise_positive(y_mm(plan.start().y_mm()) * 1000.0, event)?,
                     ),
                 };
                 block.points.push(from);

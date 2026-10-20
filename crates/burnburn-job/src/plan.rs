@@ -4,8 +4,8 @@ use burnburn_geometry::{Bounds, Point};
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain, RevisionId, StableId};
 
 use crate::{
-    MachineFrame, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, ProfileRevision, ScanAxis,
-    SettingsIndex,
+    MachineFrame, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, ProfileRevision, RotaryConfig,
+    ScanAxis, SettingsIndex,
 };
 
 /// Content address of a plan: hash of its canonical content (no addresses, no log time,
@@ -62,6 +62,7 @@ pub struct JobPlan {
     start: MachinePoint,
     settings: Vec<OperationSettings>,
     events: Vec<PlanEvent>,
+    rotary: Option<RotaryConfig>,
 }
 
 impl JobPlan {
@@ -86,6 +87,11 @@ impl JobPlan {
     }
     pub fn events(&self) -> &[PlanEvent] {
         &self.events
+    }
+    /// The rotary this plan was compiled for. Positions stay surface millimetres; a backend maps
+    /// them with [`RotaryConfig::to_controller_y`].
+    pub fn rotary(&self) -> Option<&RotaryConfig> {
+        self.rotary.as_ref()
     }
 
     /// Bounds of every position the head reaches (travel targets, both ends of every cut, scan
@@ -140,6 +146,7 @@ pub struct JobPlanBuilder {
     events: Vec<PlanEvent>,
     current: Option<SettingsIndex>,
     position: MachinePoint,
+    rotary: Option<RotaryConfig>,
 }
 
 impl JobPlanBuilder {
@@ -152,7 +159,14 @@ impl JobPlanBuilder {
             events: Vec::new(),
             current: None,
             position: start,
+            rotary: None,
         }
+    }
+
+    /// Records the rotary the plan is built for (part of the plan's content).
+    pub fn with_rotary(mut self, rotary: RotaryConfig) -> Self {
+        self.rotary = Some(rotary);
+        self
     }
 
     /// Registers a settings block and returns its index.
@@ -235,6 +249,7 @@ impl JobPlanBuilder {
             start: self.start,
             settings: self.settings,
             events: self.events,
+            rotary: self.rotary,
         })
     }
 }
@@ -353,6 +368,23 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
                 origin(&mut w, o);
             }
         }
+    }
+    // Only a rotary plan writes more, so flat-bed plans keep their id.
+    if let Some(r) = &b.rotary {
+        w.tag("rotary");
+        match r.kind() {
+            crate::RotaryKind::Chuck { object_diameter_mm } => {
+                w.tag("chuck");
+                w.f64(object_diameter_mm);
+            }
+            crate::RotaryKind::Roller { roller_diameter_mm } => {
+                w.tag("roller");
+                w.f64(roller_diameter_mm);
+            }
+        }
+        w.u64(u64::from(r.steps_per_rotation()));
+        w.f64(r.y_steps_per_mm());
+        w.bool(r.mirror());
     }
     w.finish().map_err(|_| PlanError::NotFinite)
 }
