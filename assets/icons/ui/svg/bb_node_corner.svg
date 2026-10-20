@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Corner node</title>
+  <path d="M32 14L18 24M32 14L48 20" fill="none" stroke="#6f879c" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="18" cy="24" r="2.6" fill="#6f879c"/>
+  <circle cx="48" cy="20" r="2.6" fill="#6f879c"/>
+  <path d="M8 52L32 14L56 52" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="32" cy="14" r="5.8" fill="#ffffff"/><circle cx="32" cy="14" r="3.4" fill="#236ead"/>
+</svg>

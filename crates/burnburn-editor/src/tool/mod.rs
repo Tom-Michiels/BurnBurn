@@ -24,7 +24,6 @@ mod parametric;
 mod pattern;
 mod pick;
 mod point;
-mod polygon;
 mod rect;
 mod rectangle;
 mod round_corner;
@@ -55,10 +54,11 @@ use crate::snap::{SnapCandidate, SnapSettings, snap_point};
 pub use arc::TangentArcTool;
 pub use circle::TangentCircleTool;
 pub use click::DrawTool;
+pub use constraint::{ConstraintKind, constraint_relations};
 pub use draw::{CircleTool, EllipseTool, LineTool, PenTool, PolylineTool};
 pub use modify::{Measurement, ModifyParam, ModifyTool, Rejection, Unavailable, modify_tool_kind};
 pub use node::{NodeTarget, NodeTool, path_nodes};
-pub use parametric::{BasicShapeTool, ShapeDefaults};
+pub use parametric::{BasicShapeTool, PolygonConstruction, ShapeDefaults};
 pub(crate) use rectangle::rect_from_bounds;
 pub use rectangle::{RectanglePreview, RectangleTool};
 pub use round_corner::RoundCornerTool;
@@ -268,9 +268,10 @@ pub enum ToolPreview {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum ToolParam {
-    /// Number of sides of the polygon tools (at least 3).
+    /// Number of sides of the polygon tool (at least 3); the editor's [`ShapeDefaults`] hold it.
     Sides(u32),
-    /// Corner radius in millimetres of the rounded rectangle (positive, finite).
+    /// Corner radius in millimetres of the rounded rectangle (not negative, finite); also held in
+    /// the [`ShapeDefaults`].
     CornerRadius(f64),
     /// Settings of the modify, pattern and constraint tools.
     Modify(ModifyParam),
@@ -333,7 +334,10 @@ pub enum ToolKind {
     Line,
     Polyline,
     Pen,
-    /// Basic shapes (W1-L2b); sides, points, ratio and radius come from [`ShapeDefaults`].
+    /// Basic shapes (W1-L2b); sides, points, ratio and radius come from [`ShapeDefaults`]. They are
+    /// also the SolidCraft rounded rectangle and the inscribed, circumscribed and edge polygons:
+    /// one implementation per tool, with the construction mode as input
+    /// ([`PolygonConstruction`]) and an editable shape as the result.
     Triangle,
     Polygon,
     Pentagon,
@@ -350,7 +354,6 @@ pub enum ToolKind {
     Centerline,
     RectangleCenter,
     RectangleThreePoint,
-    RectangleRounded,
     CircleTwoPoint,
     CircleThreePoint,
     CircleTwoTangent,
@@ -360,9 +363,6 @@ pub enum ToolKind {
     ArcTangent,
     /// Centre, major-axis end, minor-axis point (the bounding-box ellipse stays `Ellipse`).
     EllipseAxes,
-    PolygonInscribed,
-    PolygonCircumscribed,
-    PolygonEdge,
     SlotCenterToCenter,
     SlotOverall,
     SlotCenterPoint,
@@ -449,15 +449,11 @@ impl Active {
             | ToolKind::Centerline
             | ToolKind::RectangleCenter
             | ToolKind::RectangleThreePoint
-            | ToolKind::RectangleRounded
             | ToolKind::CircleTwoPoint
             | ToolKind::CircleThreePoint
             | ToolKind::ArcThreePoint
             | ToolKind::ArcCenterPoint
             | ToolKind::EllipseAxes
-            | ToolKind::PolygonInscribed
-            | ToolKind::PolygonCircumscribed
-            | ToolKind::PolygonEdge
             | ToolKind::SlotCenterToCenter
             | ToolKind::SlotOverall
             | ToolKind::SlotCenterPoint
@@ -575,9 +571,20 @@ impl Editor {
     }
 
     /// Sets a tool setting (polygon sides, rounded-rectangle radius); `false` when the active tool
-    /// has no such setting or the value is invalid.
+    /// has no such setting or the value is invalid. Sides and radius live in the shape defaults, so
+    /// they survive a tool switch like every other option of the basic shapes.
     pub fn set_param(&mut self, param: ToolParam) -> bool {
-        self.active.tool().set_param(param)
+        let defaults = match param {
+            ToolParam::Sides(polygon_sides) if self.kind == ToolKind::Polygon => {
+                ShapeDefaults { polygon_sides, ..self.defaults }
+            }
+            ToolParam::CornerRadius(corner_radius) if self.kind == ToolKind::RoundedRectangle => {
+                ShapeDefaults { corner_radius, ..self.defaults }
+            }
+            ToolParam::Sides(_) | ToolParam::CornerRadius(_) => return false,
+            other => return self.active.tool().set_param(other),
+        };
+        self.set_shape_defaults(defaults).is_ok()
     }
 
     pub fn exact_size(&mut self, width: Length, height: Length) -> ToolStep {

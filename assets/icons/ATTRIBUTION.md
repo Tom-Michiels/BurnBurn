@@ -77,3 +77,11 @@ Alle SVG's in `assets/icons/ui/svg/` en `assets/icons/ui/palette.toml` zijn onge
 | `ui/svg/trim.svg` | `assets/icons/ui/design/svg/model/trim.svg` | SolidCraft contributors | MIT OR Apache-2.0 |
 | `ui/svg/undo.svg` | `assets/icons/ui/design/svg/flat/undo.svg` | SolidCraft contributors | MIT OR Apache-2.0 |
 | `ui/svg/zoom.svg` | `assets/icons/ui/design/svg/flat/zoom.svg` | SolidCraft contributors | MIT OR Apache-2.0 |
+
+## BurnBurn-eigen iconen (W2-L1-tekenen)
+
+De bestanden `ui/svg/bb_*.svg` zijn **geen** SolidCraft-artwork maar door BurnBurn getekend in dezelfde stijl en met alleen
+de kleuren van `palette.toml` (zodat licht/donker werkt): basisvormen, vormbewerkingen en knoopknoppen (het knoopgereedschap `node` heeft nog geen icoon en toont zijn tekst).
+Licentie: MIT OR Apache-2.0 (zoals BurnBurn). `geometry.round_corners`, `node.delete`, `node.break`, `node.smooth` hergebruiken
+bestaande SolidCraft-bestanden via `icons.toml`.
+

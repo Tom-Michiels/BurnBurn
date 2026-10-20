@@ -30,7 +30,7 @@ pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
-    OperationKind, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
+    OperationKind, ParamKey, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
 pub use production::{
     ActionId, ActionSubject, Dispatched, ExecutionRecord, HandledAction, HistoryStore, HistoryStoreError, IntentRecord,
@@ -44,9 +44,10 @@ pub use task::{
 };
 pub use view_model::{
     AppViewModel, BooleanPreview, CommandState, ConstraintHealth, ConstraintRow, CutSettingsViewModel,
-    DocumentViewModel, ExportViewModel, FieldViewModel, ImportViewModel, InspectorViewModel, JobCardViewModel,
-    LAYER_SLOTS, MachineButton, MachineStatusKey, MachineViewModel, MeasureViewModel, MessageKey, ModeChoice,
-    ObjectRow, OperationRow, OperatorJobRow, OperatorViewModel, OrderViewModel, PlanViewModel, ProblemViewModel,
-    SelectionCycle, SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TaskBadge,
+    DocumentViewModel, ExportViewModel, FieldViewModel, GeometryDialogKind, GeometryDialogViewModel, ImportViewModel,
+    InspectorViewModel, JobCardViewModel, LAYER_SLOTS, MachineButton, MachineStatusKey, MachineViewModel,
+    MeasureViewModel, MessageKey, ModeChoice, ObjectRow, OperationRow, OperatorJobRow, OperatorViewModel,
+    OrderViewModel, ParamRow, PlanViewModel, ProblemViewModel, SelectionCycle, ShapePanelViewModel,
+    SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TaskBadge,
     ToolMeasurement, ToolRejection, TraceSummary, TracerViewModel,
 };

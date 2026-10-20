@@ -275,6 +275,22 @@ pub enum NativeEvent {
         path: PathBuf,
         response: isize,
     },
+    /// OK in the geometry dialog (join, round corners, optimize): the typed value, unparsed.
+    GeometryDialogConfirmed {
+        document: DocumentId,
+        text: String,
+    },
+    GeometryDialogCancelled {
+        document: DocumentId,
+    },
+    /// A shape or tool option row of the inspector edited (Return or end of editing), raw text;
+    /// a checkbox sends `1` or `0`.
+    ParamCommitted {
+        document: DocumentId,
+        section: crate::panels::ParamSection,
+        slot: usize,
+        text: String,
+    },
 }
 
 /// What the AppKit layer must do with one event.
@@ -564,6 +580,22 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         },
         E::SketchParameterCommitted { document, name, text } => {
             match crate::panels::sketch_parameter_intent(vm, document, &name, &text) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::GeometryDialogConfirmed { document, text } => {
+            match crate::panels::geometry_dialog_confirm_intent(vm, document, &text) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::GeometryDialogCancelled { document } => match crate::panels::geometry_dialog_cancel_intent(vm, document) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::ParamCommitted { document, section, slot, text } => {
+            match crate::panels::param_intent(vm, document, section, slot, &text) {
                 Some(i) => i,
                 None => return Reaction::Nothing,
             }

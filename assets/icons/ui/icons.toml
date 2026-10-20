@@ -359,3 +359,135 @@ file = "paste.svg"
 category = "flat"
 solidcraft_icon = "paste"
 
+# W2-L1-tekenen: basic shapes, shape operations and node buttons. `bb_*.svg` are BurnBurn's own artwork
+# in the SolidCraft style (see ATTRIBUTION.md); the others reuse SolidCraft files that fit.
+
+[tools."shape.triangle"]
+file = "bb_triangle.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."shape.polygon"]
+file = "bb_polygon_box.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."shape.pentagon"]
+file = "bb_pentagon.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."shape.octagon"]
+file = "bb_octagon.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."shape.star"]
+file = "bb_star.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."shape.double_star"]
+file = "bb_double_star.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.join"]
+file = "bb_join.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.cut"]
+file = "bb_cut.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.round_corners"]
+file = "sketch_fillet.svg"
+category = "reused"
+solidcraft_icon = ""
+
+[tools."geometry.round_corners_all"]
+file = "bb_round_all.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.start_point"]
+file = "bb_start_point.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.reverse"]
+file = "bb_reverse.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.clockwise"]
+file = "bb_clockwise.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.counter_clockwise"]
+file = "bb_counter_clockwise.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.optimize"]
+file = "bb_optimize.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."geometry.convert_to_path"]
+file = "bb_convert_to_path.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.delete"]
+file = "delete.svg"
+category = "reused"
+solidcraft_icon = ""
+
+[tools."node.break"]
+file = "break.svg"
+category = "reused"
+solidcraft_icon = ""
+
+[tools."node.smooth"]
+file = "c_smooth.svg"
+category = "reused"
+solidcraft_icon = ""
+
+[tools."node.symmetric"]
+file = "bb_node_symmetric.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.corner"]
+file = "bb_node_corner.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.to_line"]
+file = "bb_to_line.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.to_curve"]
+file = "bb_to_curve.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.close_path"]
+file = "bb_close_path.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.join_ends"]
+file = "bb_join_ends.svg"
+category = "burnburn"
+solidcraft_icon = ""
+
+[tools."node.start_point"]
+file = "bb_start_point.svg"
+category = "burnburn"
+solidcraft_icon = ""

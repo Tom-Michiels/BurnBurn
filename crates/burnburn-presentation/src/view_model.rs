@@ -8,7 +8,7 @@ use burnburn_document::sketch::{ConstraintId, DimensionRole, EntityId, SketchId}
 use burnburn_editor::{
     Camera, GeometryIssue, IssueKind, SnapCandidate, SnapKind, SnapSettings, ToolKind, ToolPreview, Viewport,
 };
-use burnburn_geometry::{BooleanOp, Path};
+use burnburn_geometry::{BooleanOp, NodeRef, Path};
 use burnburn_job::{JobPlanId, PlanPreview};
 use burnburn_types::{DocumentId, GeometryId, OperationId, RevisionId, TaskId, Unit};
 
@@ -16,7 +16,7 @@ use burnburn_machine::{ExecutionId, ExecutionState, MachineId};
 
 use crate::catalog::ToolbarViewModel;
 use crate::field::FieldError;
-use crate::intent::{CommandKey, FieldKey, ImportUnit, OperationField, OperationKind};
+use crate::intent::{CommandKey, FieldKey, ImportUnit, OperationField, OperationKind, ParamKey};
 use crate::production::{ActionId, MachineAction, OrderId};
 use crate::task::TaskKind;
 
@@ -97,6 +97,51 @@ pub struct DocumentViewModel {
     pub cut_settings: Option<CutSettingsViewModel>,
     /// Sketch mode (B8): the open sketch's constraint list, freedom and diagnosis.
     pub sketch_mode: Option<SketchModeViewModel>,
+    /// The geometry dialog (join, round corners, optimize) while it is open.
+    pub geometry_dialog: Option<GeometryDialogViewModel>,
+    /// The parameters of the single selected basic shape (the inspector's shape section); `None`
+    /// for an ordinary path, which has no definition.
+    pub shape_panel: Option<ShapePanelViewModel>,
+    /// The options of the active tool (sides, ratio, radius, pattern counts, mirror copies).
+    pub tool_options: Vec<ParamRow>,
+    /// The selected nodes in node-edit mode; empty for every other tool.
+    pub node_selection: Vec<NodeRef>,
+}
+
+/// What the geometry dialog asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GeometryDialogKind {
+    /// Gap tolerance of Join/Close.
+    Join,
+    /// Radius of Round Corners for the whole selection.
+    RoundCorners,
+    /// Error budget of Optimize Shapes.
+    Optimize,
+}
+
+/// The value sheet of a selection-wide geometry command: the text is the default or what the
+/// user typed last; `error` is why the last OK did nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeometryDialogViewModel {
+    pub kind: GeometryDialogKind,
+    pub text: String,
+    pub error: Option<MessageKey>,
+}
+
+/// One setting row: a number as text, or an on/off choice (`toggle`, text `1` or `0`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamRow {
+    pub key: ParamKey,
+    pub text: String,
+    pub toggle: bool,
+    pub error: Option<MessageKey>,
+}
+
+/// The inspector section of one parametric basic shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShapePanelViewModel {
+    pub object: GeometryId,
+    pub rows: Vec<ParamRow>,
 }
 
 /// Number of colours in the layer palette (slots `0..LAYER_SLOTS`). Hosts draw slot `n` in the
@@ -524,12 +569,14 @@ pub enum ToolRejection {
     CurvedCorner,
     /// Only lines and arcs can be extended.
     BezierExtend,
+    /// The gesture needs one selected object: the document has no atomic command for several.
+    SingleObjectOnly,
     /// Not available for another reason that the tool names itself.
     Unavailable,
 }
 
 impl ToolRejection {
-    pub const ALL: [ToolRejection; 15] = [
+    pub const ALL: [ToolRejection; 16] = [
         ToolRejection::NothingPicked,
         ToolRejection::DerivedGeometry,
         ToolRejection::NeedsSelection,
@@ -544,6 +591,7 @@ impl ToolRejection {
         ToolRejection::ConstructionOutsideSketch,
         ToolRejection::CurvedCorner,
         ToolRejection::BezierExtend,
+        ToolRejection::SingleObjectOnly,
         ToolRejection::Unavailable,
     ];
 }
@@ -662,4 +710,8 @@ pub enum MessageKey {
     SketchConversionImpossible,
     /// The sketch edit was refused by the document.
     SketchEditRefused,
+    /// The operation would leave these shapes as they are (already smooth, already optimal, …).
+    NothingToChange,
+    /// A shape parameter outside what the shape allows (sides, tips, ratio, radius).
+    ShapeParamInvalid,
 }

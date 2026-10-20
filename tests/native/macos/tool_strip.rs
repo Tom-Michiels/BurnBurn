@@ -56,7 +56,7 @@ fn scenario() -> Result<(), String> {
     let titles = s.app.with_window(doc, |w| w.strip.panel_titles()).ok_or("no strip")?;
     expect(
         || format!("panel titles {titles:?}"),
-        titles == ["MAKEN", "WIJZIGEN", "PATROON", "BEPERKINGEN", "INVOEGEN", "SELECTEREN"],
+        titles == ["MAKEN", "WIJZIGEN", "VORMEN", "KNOPEN", "PATROON", "BEPERKINGEN", "INVOEGEN", "SELECTEREN"],
     )?;
 
     // Every catalog id: a button (single tool, or the group's face) or a drop-down entry, with a

@@ -91,6 +91,10 @@ pub fn reason_text(reason: DisabledReason, locale: Locale) -> &'static str {
         DisabledReason::OperatorRole => {
             ("Niet beschikbaar in de operatorweergave", "Not available in the operator view")
         }
+        DisabledReason::NeedsSelection => ("Selecteer eerst passende vormen", "Select suitable shapes first"),
+        DisabledReason::NeedsNodes => {
+            ("Kies het knooppuntgereedschap en selecteer knooppunten", "Use the node tool and select nodes")
+        }
     };
     match locale {
         Locale::Nl => nl,

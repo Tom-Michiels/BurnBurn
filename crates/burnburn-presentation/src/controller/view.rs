@@ -19,6 +19,7 @@ use super::geometry::current_boolean_preview;
 use super::import::import_view;
 use super::machine::Machine;
 use super::process::{plan_view, preparable};
+use super::shapes;
 use super::sketch;
 use super::sketch::sketch_rows;
 use super::trace::tracer_view;
@@ -60,10 +61,25 @@ impl AppController {
             .collect();
         let toolbar = ToolbarViewModel::build(
             ToolCatalog::standard(),
-            ToolState { document: active.is_some(), operator: self.role == Role::Operator, in_sketch: false },
-            ActiveTool { tool: active.map(|s| s.editor.tool()), trim: active.is_some_and(|s| s.trim_mode) },
+            ToolState {
+                document: active.is_some(),
+                operator: self.role == Role::Operator,
+                in_sketch: active.is_some_and(|s| s.sketch.active.is_some()),
+            },
+            ActiveTool {
+                tool: active.map(|s| s.editor.tool()),
+                trim: active.is_some_and(|s| s.trim_mode),
+                polygon: active
+                    .filter(|s| s.editor.tool() == burnburn_editor::ToolKind::Polygon)
+                    .map(|s| s.editor.shape_defaults().polygon_construction),
+            },
             &self.toolbar_variants,
         );
+        // Commands that cannot act on the current selection say why on their button.
+        let mut toolbar = toolbar;
+        if let Some(s) = active {
+            toolbar.refine(ToolCatalog::standard(), |key| shapes::disabled_reason(key, s));
+        }
         Arc::new(AppViewModel { documents, active: self.active, commands, toolbar })
     }
 
@@ -86,6 +102,7 @@ impl AppController {
             issues: &s.issues,
             extra: &sketch_overlays,
             result_preview,
+            selected_nodes: s.editor.node_selection(),
             camera: s.camera,
             viewport: s.viewport,
         });
@@ -163,6 +180,10 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         cut_settings: layers::cut_settings_view(s, machine.map(|m| m.profile.capabilities())),
         import: s.import.as_ref().map(import_view),
         sketch_mode: sketch::mode_view(s, &snapshot),
+        geometry_dialog: shapes::dialog_view(s),
+        shape_panel: shapes::shape_panel(s),
+        tool_options: shapes::option_rows(s),
+        node_selection: s.editor.node_selection().to_vec(),
     }
 }
 
@@ -220,6 +241,27 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::SketchRemoveConstraint,
             Some(s),
         ) => (sketch::command_enabled(key, s), false),
+        (
+            CommandKey::ShapesJoin
+            | CommandKey::ShapesCut
+            | CommandKey::ShapesRoundCorners
+            | CommandKey::ShapesOptimize
+            | CommandKey::ShapesReverse
+            | CommandKey::ShapesClockwise
+            | CommandKey::ShapesCounterClockwise
+            | CommandKey::ShapesConvertToPath
+            | CommandKey::NodeDelete
+            | CommandKey::NodeBreak
+            | CommandKey::NodeSmooth
+            | CommandKey::NodeSymmetric
+            | CommandKey::NodeCorner
+            | CommandKey::NodeToLine
+            | CommandKey::NodeToCurve
+            | CommandKey::NodeClosePath
+            | CommandKey::NodeJoinEnds
+            | CommandKey::NodeStartPoint,
+            Some(s),
+        ) => (shapes::command_enabled(key, s).unwrap_or(false), false),
         (CommandKey::CommitImport, Some(s)) => (s.import.as_ref().is_some_and(|i| i.draft().is_ok()), false),
         (CommandKey::CancelImport, Some(s)) => (s.import.is_some(), false),
         (other, Some(s)) => match tool_for(other) {

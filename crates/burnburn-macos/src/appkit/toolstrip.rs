@@ -84,7 +84,7 @@ impl ToolStrip {
         let layout = ToolbarViewModel::build(
             burnburn_presentation::ToolCatalog::standard(),
             burnburn_presentation::ToolState { document: false, operator: false, in_sketch: false },
-            burnburn_presentation::ActiveTool { tool: None, trim: false },
+            burnburn_presentation::ActiveTool { tool: None, trim: false, polygon: None },
             &burnburn_presentation::VariantMemory::new(),
         );
         let content = ToolStripView::new(mtm, rect(0.0, 0.0, 10.0, STRIP_HEIGHT), app, document);

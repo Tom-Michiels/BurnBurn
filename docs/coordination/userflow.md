@@ -261,13 +261,13 @@ Log: `docs/dev-notes/solidcraft-look-draw.md`. Tools in `burnburn-editor` (`Tool
 | `sketch.line.midpoint` | `LineMidpoint` | midden, dan eind |
 | `sketch.centerline` | `Centerline` | commit `CreateConstruction` — **uitgeschakeld tot het document een construction-vlag voor getekende geometrie heeft** |
 | `sketch.rectangle.two_point` | `Rectangle` | bestaand |
-| `sketch.rectangle.center` / `.three_point` / `.rounded` | `RectangleCenter` / `RectangleThreePoint` / `RectangleRounded` | rounded: `Editor::set_param(ToolParam::CornerRadius(mm))`, vastgeklemd op halve korte zijde |
+| `sketch.rectangle.center` / `.three_point` / `.rounded` | `RectangleCenter` / `RectangleThreePoint` / `RoundedRectangle` | rounded = de parametrische afgeronde rechthoek (W2-L1-tekenen): `Editor::set_param(ToolParam::CornerRadius(mm))`, vastgeklemd op halve korte zijde; resultaat blijft bewerkbaar |
 | `sketch.circle.center` | `Circle` | bestaand |
 | `sketch.circle.two_point` / `.three_point` | `CircleTwoPoint` / `CircleThreePoint` | |
 | `sketch.circle.two_tangent` / `.three_tangent` | `CircleTwoTangent` / `CircleThreeTangent` | pikt rechte segmenten (geen bogen); cirkel volgt de aanwijzer, klik bevestigt |
 | `sketch.arc.three_point` / `.center_point` / `.tangent` | `ArcThreePoint` / `ArcCenterPoint` / `ArcTangent` | center_point loopt linksom; tangent start op een vrij uiteinde van lijn/boog |
 | `sketch.ellipse` | `EllipseAxes` | midden, grote-as-eind, kleine-aspunt. De bestaande bbox-`Ellipse` blijft apart |
-| `sketch.polygon.inscribed` / `.circumscribed` / `.edge` | `PolygonInscribed` / `PolygonCircumscribed` / `PolygonEdge` | zijden: `Editor::set_param(ToolParam::Sides(n))`, n ≥ 3, standaard 6 |
+| `sketch.polygon.inscribed` / `.circumscribed` / `.edge` | `Polygon` met `ShapeDefaults::polygon_construction` = `Inscribed` / `Circumscribed` / `Edge` (W2-L1-tekenen; geen aparte `ToolKind`s meer) | zijden: `Editor::set_param(ToolParam::Sides(n))`, n ≥ 3, standaard 6; resultaat is een bewerkbare parametrische veelhoek |
 | `sketch.slot.center_to_center` / `.overall` / `.center_point` / `.arc_three_point` / `.arc_center` | `SlotCenterToCenter` / `SlotOverall` / `SlotCenterPoint` / `SlotArcThreePoint` / `SlotArcCenter` | breedte uit de laatste klik |
 | `sketch.point` | `Point` | commit `CreatePoint` — **uitgeschakeld tot het document een puntobject heeft** |
 

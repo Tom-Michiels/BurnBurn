@@ -18,6 +18,7 @@ mod import;
 mod machine;
 mod operations;
 mod plan;
+mod shapes;
 mod sketch;
 
 pub use camera::*;
@@ -26,6 +27,7 @@ pub use import::*;
 pub use machine::*;
 pub use operations::*;
 pub use plan::*;
+pub use shapes::*;
 pub use sketch::*;
 
 /// Segments of the toolbar's Schets control (momentary), left to right.

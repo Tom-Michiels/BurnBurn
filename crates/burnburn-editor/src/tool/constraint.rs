@@ -14,6 +14,122 @@ use crate::input::PointerEvent;
 const AXIS_ANGLE_DEG: f64 = 1.0;
 const COINCIDENT_MM: f64 = 0.05;
 
+/// Which relation a constraint tool or a constraint panel button adds. One table
+/// ([`constraint_relations`]) serves both, so the two routes cannot disagree about what a
+/// selection means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ConstraintKind {
+    Coincident,
+    Collinear,
+    Concentric,
+    Equal,
+    Fix,
+    /// Exactly horizontal.
+    Horizontal,
+    /// Exactly vertical.
+    Vertical,
+    /// Whichever of the two the line is closest to.
+    HorizontalVertical,
+    Midpoint,
+    Parallel,
+    Perpendicular,
+    Symmetry,
+    Tangent,
+}
+
+impl ConstraintKind {
+    /// The constraint of a constraint tool.
+    pub fn of_tool(tool: ToolKind) -> Option<ConstraintKind> {
+        Some(match tool {
+            ToolKind::ConstraintCoincident => ConstraintKind::Coincident,
+            ToolKind::ConstraintCollinear => ConstraintKind::Collinear,
+            ToolKind::ConstraintConcentric => ConstraintKind::Concentric,
+            ToolKind::ConstraintEqual => ConstraintKind::Equal,
+            ToolKind::ConstraintFix => ConstraintKind::Fix,
+            ToolKind::ConstraintHorizontalVertical => ConstraintKind::HorizontalVertical,
+            ToolKind::ConstraintMidpoint => ConstraintKind::Midpoint,
+            ToolKind::ConstraintParallel => ConstraintKind::Parallel,
+            ToolKind::ConstraintPerpendicular => ConstraintKind::Perpendicular,
+            ToolKind::ConstraintSymmetry => ConstraintKind::Symmetry,
+            ToolKind::ConstraintTangent => ConstraintKind::Tangent,
+            _ => return None,
+        })
+    }
+}
+
+/// The relations `kind` adds for `entities` of `sketch`, or `None` when the entities do not fit.
+/// The order of the entities does not matter, except for which of two equal-kind entities is the
+/// first argument of the relation.
+pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[EntityId]) -> Option<Vec<Relation>> {
+    use PickKind::{Line, Point as Pt};
+    if entities.iter().enumerate().any(|(i, e)| entities[..i].contains(e)) {
+        return None; // one entity twice is not a pair
+    }
+    let kinds: Vec<PickKind> = entities.iter().map(|e| pick_kind(sketch, *e)).collect::<Option<_>>()?;
+    let e = entities;
+    let is_curve = |k: PickKind| k.is_curve();
+    Some(match (kind, kinds.as_slice()) {
+        (ConstraintKind::Coincident, [Pt, Pt]) => vec![Relation::Coincident(e[0], e[1])],
+        (ConstraintKind::Coincident, [Pt, k]) if *k == Line || is_curve(*k) => {
+            vec![Relation::PointOn { point: e[0], curve: e[1] }]
+        }
+        (ConstraintKind::Coincident, [k, Pt]) if *k == Line || is_curve(*k) => {
+            vec![Relation::PointOn { point: e[1], curve: e[0] }]
+        }
+        (ConstraintKind::Collinear, [Line, Line]) => {
+            let Entity::Line { start, .. } = sketch.entity(e[1])?.entity else { return None };
+            vec![Relation::Parallel(e[0], e[1]), Relation::PointOn { point: start, curve: e[0] }]
+        }
+        (ConstraintKind::Concentric, [a, b]) if is_curve(*a) && is_curve(*b) => {
+            vec![Relation::Concentric(e[0], e[1])]
+        }
+        (ConstraintKind::Equal, [Line, Line]) => vec![Relation::Equal(e[0], e[1])],
+        (ConstraintKind::Equal, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Equal(e[0], e[1])],
+        (ConstraintKind::Fix, points) if !points.is_empty() && points.iter().all(|k| *k == Pt) => {
+            e.iter().map(|p| Some(Relation::Fix { point: *p, at: point_of(sketch, *p)? })).collect::<Option<_>>()?
+        }
+        (ConstraintKind::Horizontal, [Line]) => vec![Relation::Horizontal(e[0])],
+        (ConstraintKind::Vertical, [Line]) => vec![Relation::Vertical(e[0])],
+        (ConstraintKind::HorizontalVertical, [Line]) => {
+            let Entity::Line { start, end } = sketch.entity(e[0])?.entity else { return None };
+            let (a, b) = (point_of(sketch, start)?, point_of(sketch, end)?);
+            vec![if (b.x - a.x).abs() >= (b.y - a.y).abs() {
+                Relation::Horizontal(e[0])
+            } else {
+                Relation::Vertical(e[0])
+            }]
+        }
+        (ConstraintKind::Midpoint, [Pt, Line]) => vec![Relation::Midpoint { point: e[0], line: e[1] }],
+        (ConstraintKind::Midpoint, [Line, Pt]) => vec![Relation::Midpoint { point: e[1], line: e[0] }],
+        (ConstraintKind::Parallel, [Line, Line]) => vec![Relation::Parallel(e[0], e[1])],
+        (ConstraintKind::Perpendicular, [Line, Line]) => vec![Relation::Perpendicular(e[0], e[1])],
+        (ConstraintKind::Symmetry, kinds) if kinds.len() == 3 => {
+            let of = |wanted: PickKind| -> Vec<EntityId> {
+                e.iter().zip(kinds).filter(|(_, k)| **k == wanted).map(|(id, _)| *id).collect()
+            };
+            let (points, axes) = (of(Pt), of(Line));
+            let (&[a, b], &[about]) = (points.as_slice(), axes.as_slice()) else { return None };
+            vec![Relation::Symmetric { a, b, about }]
+        }
+        (ConstraintKind::Tangent, [Line, k]) | (ConstraintKind::Tangent, [k, Line]) if is_curve(*k) => {
+            vec![Relation::Tangent(e[0], e[1])]
+        }
+        (ConstraintKind::Tangent, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Tangent(e[0], e[1])],
+        _ => return None,
+    })
+}
+
+fn pick_kind(sketch: &Sketch, id: EntityId) -> Option<PickKind> {
+    Some(match sketch.entity(id)?.entity {
+        Entity::Point { .. } => PickKind::Point,
+        Entity::Line { .. } => PickKind::Line,
+        Entity::Circle { .. } => PickKind::Circle,
+        Entity::Arc { .. } => PickKind::Arc,
+        _ => return None,
+    })
+}
+
 fn commit(sketch: SketchId, relations: Vec<Relation>) -> ToolStep {
     let commands = relations
         .into_iter()
@@ -48,54 +164,10 @@ impl ConstraintAction {
         }
     }
 
-    /// The relations for the complete pick list, or why it does not fit.
+    /// The relations for the complete pick list, or `None` when it does not fit.
     fn relations(&self, sketch: &Sketch) -> Option<Vec<Relation>> {
-        use PickKind::{Line, Point as Pt};
-        let kinds: Vec<PickKind> = self.picks.iter().map(|p| p.kind).collect();
-        let e: Vec<EntityId> = self.picks.iter().map(|p| p.entity).collect();
-        let is_curve = |k: PickKind| k.is_curve();
-        Some(match (self.kind, kinds.as_slice()) {
-            (ToolKind::ConstraintCoincident, [Pt, Pt]) => vec![Relation::Coincident(e[0], e[1])],
-            (ToolKind::ConstraintCoincident, [Pt, k]) if *k == Line || is_curve(*k) => {
-                vec![Relation::PointOn { point: e[0], curve: e[1] }]
-            }
-            (ToolKind::ConstraintCoincident, [k, Pt]) if *k == Line || is_curve(*k) => {
-                vec![Relation::PointOn { point: e[1], curve: e[0] }]
-            }
-            (ToolKind::ConstraintCollinear, [Line, Line]) => {
-                let Entity::Line { start, .. } = sketch.entity(e[1])?.entity else { return None };
-                vec![Relation::Parallel(e[0], e[1]), Relation::PointOn { point: start, curve: e[0] }]
-            }
-            (ToolKind::ConstraintConcentric, [a, b]) if is_curve(*a) && is_curve(*b) => {
-                vec![Relation::Concentric(e[0], e[1])]
-            }
-            (ToolKind::ConstraintEqual, [Line, Line]) => vec![Relation::Equal(e[0], e[1])],
-            (ToolKind::ConstraintEqual, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Equal(e[0], e[1])],
-            (ToolKind::ConstraintFix, [Pt]) => vec![Relation::Fix { point: e[0], at: point_of(sketch, e[0])? }],
-            (ToolKind::ConstraintHorizontalVertical, [Line]) => {
-                let Entity::Line { start, end } = sketch.entity(e[0])?.entity else { return None };
-                let (a, b) = (point_of(sketch, start)?, point_of(sketch, end)?);
-                vec![if (b.x - a.x).abs() >= (b.y - a.y).abs() {
-                    Relation::Horizontal(e[0])
-                } else {
-                    Relation::Vertical(e[0])
-                }]
-            }
-            (ToolKind::ConstraintMidpoint, [Pt, Line]) => vec![Relation::Midpoint { point: e[0], line: e[1] }],
-            (ToolKind::ConstraintMidpoint, [Line, Pt]) => vec![Relation::Midpoint { point: e[1], line: e[0] }],
-            (ToolKind::ConstraintParallel, [Line, Line]) => vec![Relation::Parallel(e[0], e[1])],
-            (ToolKind::ConstraintPerpendicular, [Line, Line]) => vec![Relation::Perpendicular(e[0], e[1])],
-            (ToolKind::ConstraintSymmetry, [Pt, Pt, Line]) => {
-                vec![Relation::Symmetric { a: e[0], b: e[1], about: e[2] }]
-            }
-            (ToolKind::ConstraintTangent, [Line, k]) | (ToolKind::ConstraintTangent, [k, Line]) if is_curve(*k) => {
-                vec![Relation::Tangent(e[0], e[1])]
-            }
-            (ToolKind::ConstraintTangent, [a, b]) if is_curve(*a) && is_curve(*b) => {
-                vec![Relation::Tangent(e[0], e[1])]
-            }
-            _ => return None,
-        })
+        let entities: Vec<EntityId> = self.picks.iter().map(|p| p.entity).collect();
+        constraint_relations(ConstraintKind::of_tool(self.kind)?, sketch, &entities)
     }
 
     fn outcome(&self, ctx: &ToolContext<'_>) -> (Outcome, Option<(SketchId, Vec<Relation>)>) {
@@ -215,6 +287,7 @@ mod tests {
     use super::super::modify::Rejection;
     use super::super::modify::kit::*;
     use super::super::{EditCommit, ToolKind, ToolStep};
+    use super::{ConstraintKind, constraint_relations};
     use crate::input::CanvasKey;
 
     // Entity ids by construction order.
@@ -411,5 +484,62 @@ mod tests {
         assert!(commits(&steps).is_empty());
         assert_eq!(rejection(&steps), Some(Rejection::NothingToConstrain));
         assert_eq!(rejection(&click(&mut ed, &f, 100.0, 100.0)), Some(Rejection::NothingPicked));
+    }
+
+    // --- The shared table (W2-L1-tekenen): tools and panel buttons read the same relations. ---
+
+    fn table(kind: ConstraintKind, entities: &[u32]) -> Option<Vec<Relation>> {
+        let ids: Vec<EntityId> = entities.iter().map(|e| id(*e)).collect();
+        constraint_relations(kind, &sketch(), &ids)
+    }
+
+    #[test]
+    fn the_shared_table_gives_the_relations_the_tools_send() {
+        assert_eq!(table(ConstraintKind::Coincident, &[A, C]), Some(vec![Relation::Coincident(id(A), id(C))]));
+        assert_eq!(
+            table(ConstraintKind::Coincident, &[L1, E]),
+            Some(vec![Relation::PointOn { point: id(E), curve: id(L1) }])
+        );
+        assert_eq!(
+            table(ConstraintKind::Collinear, &[L1, L2]),
+            Some(vec![Relation::Parallel(id(L1), id(L2)), Relation::PointOn { point: id(C), curve: id(L1) }])
+        );
+        assert_eq!(table(ConstraintKind::Tangent, &[C1, L1]), Some(vec![Relation::Tangent(id(C1), id(L1))]));
+        assert_eq!(table(ConstraintKind::Parallel, &[L1, L2]), Some(vec![Relation::Parallel(id(L1), id(L2))]));
+    }
+
+    #[test]
+    fn symmetry_finds_its_axis_whatever_the_order() {
+        let expected = Some(vec![Relation::Symmetric { a: id(A), b: id(B), about: id(L3) }]);
+        assert_eq!(table(ConstraintKind::Symmetry, &[A, B, L3]), expected);
+        assert_eq!(table(ConstraintKind::Symmetry, &[L3, A, B]), expected);
+        assert_eq!(table(ConstraintKind::Symmetry, &[A, L3, B]), expected);
+        assert_eq!(table(ConstraintKind::Symmetry, &[A, L3, L2]), None);
+    }
+
+    #[test]
+    fn fix_pins_every_selected_point_and_horizontal_or_vertical_can_be_forced() {
+        assert_eq!(
+            table(ConstraintKind::Fix, &[A, B]),
+            Some(vec![
+                Relation::Fix { point: id(A), at: Point::new(0.0, 0.0) },
+                Relation::Fix { point: id(B), at: Point::new(10.0, 0.0) }
+            ])
+        );
+        assert_eq!(table(ConstraintKind::Fix, &[A, L1]), None, "only points can be fixed");
+        // The exact kinds do what they say, even for the line the other one would suit.
+        assert_eq!(table(ConstraintKind::Horizontal, &[L3]), Some(vec![Relation::Horizontal(id(L3))]));
+        assert_eq!(table(ConstraintKind::Vertical, &[L1]), Some(vec![Relation::Vertical(id(L1))]));
+        assert_eq!(table(ConstraintKind::HorizontalVertical, &[L3]), Some(vec![Relation::Vertical(id(L3))]));
+    }
+
+    #[test]
+    fn an_entity_set_that_does_not_fit_gives_nothing() {
+        assert_eq!(table(ConstraintKind::Parallel, &[L1, A]), None);
+        assert_eq!(table(ConstraintKind::Parallel, &[L1]), None);
+        assert_eq!(table(ConstraintKind::Parallel, &[]), None);
+        assert_eq!(table(ConstraintKind::Parallel, &[L1, L1]), None, "one entity twice is not a pair");
+        assert_eq!(table(ConstraintKind::Parallel, &[L1, 99]), None, "an entity the sketch does not have");
+        assert_eq!(table(ConstraintKind::Midpoint, &[L1, L2]), None);
     }
 }

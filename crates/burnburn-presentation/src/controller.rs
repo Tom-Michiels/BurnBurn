@@ -40,6 +40,7 @@ mod layers;
 mod machine;
 mod process;
 mod recovery;
+mod shapes;
 mod sketch;
 mod tasks;
 mod text;
@@ -187,6 +188,10 @@ struct Session {
     close_after_save: bool,
     /// Sketch mode: the open sketch and its selection (window state, never document data).
     sketch: sketch::SketchState,
+    /// The geometry dialog (join, round corners, optimize) while it is open.
+    geometry_dialog: Option<shapes::GeometryDialog>,
+    /// Options of the pattern and mirror tools.
+    options: shapes::ToolOptions,
 }
 
 impl Session {
@@ -236,6 +241,8 @@ impl Session {
             assets: project.1,
             close_after_save: false,
             sketch: sketch::SketchState::default(),
+            geometry_dialog: None,
+            options: shapes::ToolOptions::default(),
         })
     }
 
@@ -500,6 +507,20 @@ impl AppController {
             UiIntent::SetSketchParameter { document, sketch, name, text } => {
                 self.sketch_edit(document, SketchCommand::SetParameter { sketch, name, text })
             }
+            UiIntent::ApplyGeometryDialog { document, text } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| shapes::apply_dialog(s, document, &text, request))
+            }
+            UiIntent::CancelGeometryDialog { document } => {
+                self.with_session(document, |s| shapes::cancel_dialog(s, document))
+            }
+            UiIntent::SetToolOption { document, key, text } => {
+                self.with_session(document, |s| shapes::set_tool_option(s, document, key, &text))
+            }
+            UiIntent::CommitShapeParam { document, key, text } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
+            }
         }
     }
 
@@ -631,6 +652,10 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::AddSketchDimension { document, .. }
         | UiIntent::SetSketchDimensionRole { document, .. }
         | UiIntent::SelectSketchProblem { document }
+        | UiIntent::ApplyGeometryDialog { document, .. }
+        | UiIntent::CancelGeometryDialog { document }
+        | UiIntent::SetToolOption { document, .. }
+        | UiIntent::CommitShapeParam { document, .. }
         | UiIntent::Pointer { document, .. }
         | UiIntent::Key { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),

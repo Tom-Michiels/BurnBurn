@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Join ends</title>
+  <path d="M8 46L8 20L26 20" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M38 20L56 20L56 46" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M26 20L38 20" fill="none" stroke="#236ead" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="0.1 5"/>
+  <circle cx="26" cy="20" r="5.8" fill="#ffffff"/><circle cx="26" cy="20" r="3.4" fill="#236ead"/>
+  <circle cx="38" cy="20" r="5.8" fill="#ffffff"/><circle cx="38" cy="20" r="3.4" fill="#236ead"/>
+</svg>

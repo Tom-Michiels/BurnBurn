@@ -4,7 +4,7 @@ use super::canvas::clear_tool_report;
 use crate::catalog::{Action, ToolCatalog, ToolState, enablement};
 use crate::production::Role;
 use burnburn_document::{AlignTarget, CommandError, CommandPayload, GeometryCommand, ImportItem};
-use burnburn_editor::{SelectionChange, ToolKind};
+use burnburn_editor::{SelectionChange, ShapeDefaults, ToolKind};
 use burnburn_geometry::{AlignEdge, BooleanOp, Direction, Spacing};
 use burnburn_types::{DocumentId, RequestId};
 
@@ -15,6 +15,7 @@ use crate::task::TaskKind;
 use crate::view_model::MessageKey;
 
 use super::geometry::current_boolean_preview;
+use super::shapes;
 use super::sketch;
 use super::{
     AppController, AppUpdate, DEFAULT_SNAP_GRID_MM, HostEffect, Session, after_change, apply_edit, apply_selection,
@@ -38,18 +39,45 @@ impl AppController {
         let state = ToolState {
             document: self.sessions.contains_key(&document),
             operator: self.role == Role::Operator,
-            in_sketch: false,
+            in_sketch: self.sessions.get(&document).is_some_and(|s| s.sketch.active.is_some()),
         };
         if !enablement(spec, state).is_enabled() {
+            return AppUpdate::default();
+        }
+        // A command that cannot act on the selection (the button says why) changes nothing,
+        // not even the variant a group remembers.
+        if let Action::Command(command) = spec.action
+            && self.sessions.get(&document).is_some_and(|s| shapes::disabled_reason(command, s).is_some())
+        {
             return AppUpdate::default();
         }
         if let Some(name) = spec.group {
             self.toolbar_variants.insert(name, spec.id);
         }
         match spec.action {
-            Action::Tool(tool) => self.with_session(document, |s| {
+            Action::Tool(tool) => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| {
+                    // A constraint tool with a fitting sketch selection is done at once.
+                    if let Some(update) = sketch::constraint_for_selection(s, document, tool, request) {
+                        return update;
+                    }
+                    s.trim_mode = false;
+                    s.editor.select_tool(tool);
+                    shapes::apply_options(s);
+                    s.tool_size_error = None;
+                    clear_tool_report(s);
+                    AppUpdate::redraw(document)
+                })
+            }
+            Action::Polygon(construction) => self.with_session(document, |s| {
                 s.trim_mode = false;
-                s.editor.select_tool(tool);
+                let defaults = ShapeDefaults { polygon_construction: construction, ..*s.editor.shape_defaults() };
+                if s.editor.set_shape_defaults(defaults).is_err() {
+                    return AppUpdate::default();
+                }
+                s.editor.select_tool(ToolKind::Polygon);
+                shapes::apply_options(s);
                 s.tool_size_error = None;
                 clear_tool_report(s);
                 AppUpdate::redraw(document)
@@ -242,16 +270,22 @@ pub(super) fn invoke_in_session(
             s.trim_mode = true;
             AppUpdate::redraw(document)
         }
-        other => match tool_for(other) {
-            Some(tool) => {
-                s.trim_mode = false;
-                s.editor.select_tool(tool);
-                s.tool_size_error = None;
-                super::canvas::clear_tool_report(s);
-                AppUpdate::redraw(document)
+        other => {
+            if let Some(update) = shapes::run_command(s, document, other, request) {
+                return update;
             }
-            None => AppUpdate::default(),
-        },
+            match tool_for(other) {
+                Some(tool) => {
+                    s.trim_mode = false;
+                    s.editor.select_tool(tool);
+                    shapes::apply_options(s);
+                    s.tool_size_error = None;
+                    super::canvas::clear_tool_report(s);
+                    AppUpdate::redraw(document)
+                }
+                None => AppUpdate::default(),
+            }
+        }
     }
 }
 

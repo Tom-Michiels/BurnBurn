@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Reverse direction</title>
+  <path d="M10 24L50 24" fill="none" stroke="#8e9faf" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M56 24L47 18.6L47 29.4Z" fill="#8e9faf" stroke="#8e9faf" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M54 42L14 42" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M8 42L17 47.4L17 36.6Z" fill="#236ead" stroke="#236ead" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

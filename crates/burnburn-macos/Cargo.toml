@@ -153,6 +153,11 @@ name = "sketch_mode"
 path = "../../tests/native/macos/sketch_mode.rs"
 harness = false
 
+[[test]]
+name = "shape_tools"
+path = "../../tests/native/macos/shape_tools.rs"
+harness = false
+
 [dependencies]
 # Platform-independent adapter (event -> UiIntent) and the app wiring: tested headlessly everywhere.
 burnburn-document = { workspace = true }

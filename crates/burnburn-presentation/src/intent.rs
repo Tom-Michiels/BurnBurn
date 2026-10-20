@@ -288,6 +288,54 @@ pub enum UiIntent {
     DiscardRecovery {
         path: PathBuf,
     },
+    /// OK in the geometry dialog (join, round corners, optimize): the value as typed, with its
+    /// unit (DR-05). Valid input is one document command and closes the dialog; invalid input
+    /// keeps it open with the reason (W2-L1-tekenen).
+    ApplyGeometryDialog {
+        document: DocumentId,
+        text: String,
+    },
+    CancelGeometryDialog {
+        document: DocumentId,
+    },
+    /// Tool options (sides, points, ratio, radius, pattern counts, mirror copies): one option of
+    /// the active tool, raw text (`1`/`0` for a toggle). The tool uses it from the next gesture.
+    SetToolOption {
+        document: DocumentId,
+        key: ParamKey,
+        text: String,
+    },
+    /// The shape section of the inspector: one parameter of the selected basic shape, raw text.
+    /// Valid input is one `ShapeCommand::SetParams` (one undo entry); invalid input keeps the
+    /// shape and shows the reason in the row.
+    CommitShapeParam {
+        document: DocumentId,
+        key: ParamKey,
+        text: String,
+    },
+}
+
+/// A numeric (or on/off) setting of a basic shape or of a tool; the host shows one row per key
+/// the view model lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum ParamKey {
+    /// Sides of a regular polygon.
+    Sides,
+    /// Tips of a star or double star.
+    Points,
+    /// Inner over outer radius of a star (0 < ratio < 1).
+    Ratio,
+    /// Corner radius of a rounded rectangle (mm), also the Round Corners tool's radius.
+    CornerRadius,
+    /// Rectangular pattern columns and rows.
+    Columns,
+    Rows,
+    /// Circular pattern copies (including the original) and sweep in degrees.
+    Count,
+    Sweep,
+    /// Mirror keeps the originals (`1`) or mirrors them in place (`0`).
+    KeepOriginal,
 }
 
 /// Which dimension "Maat" adds. `Auto` follows the selection: a line → its length, two points →
@@ -511,6 +559,31 @@ pub enum CommandKey {
     SketchDimension,
     /// Remove the selected constraints of the open sketch (one history entry).
     SketchRemoveConstraint,
+    /// Vormen ▸ Verbinden/sluiten…: join or close the selected paths within a tolerance (dialog).
+    ShapesJoin,
+    /// Vormen ▸ Snijden: the last selected shape cuts the others.
+    ShapesCut,
+    /// Vormen ▸ Hoeken afronden…: every straight corner of the selection (dialog with the radius).
+    ShapesRoundCorners,
+    /// Vormen ▸ Optimaliseren…: fewer nodes within an error budget (dialog).
+    ShapesOptimize,
+    /// Vormen ▸ Richting omkeren, met de klok mee, tegen de klok in.
+    ShapesReverse,
+    ShapesClockwise,
+    ShapesCounterClockwise,
+    /// Bewerken ▸ Omzetten naar pad: a basic shape loses its parameters, the outline stays.
+    ShapesConvertToPath,
+    /// Knopen (Node tool): act on the selected nodes of the selected path.
+    NodeDelete,
+    NodeBreak,
+    NodeSmooth,
+    NodeSymmetric,
+    NodeCorner,
+    NodeToLine,
+    NodeToCurve,
+    NodeClosePath,
+    NodeJoinEnds,
+    NodeStartPoint,
 }
 
 impl CommandKey {
@@ -569,6 +642,24 @@ impl CommandKey {
         CommandKey::SketchFix,
         CommandKey::SketchDimension,
         CommandKey::SketchRemoveConstraint,
+        CommandKey::ShapesJoin,
+        CommandKey::ShapesCut,
+        CommandKey::ShapesRoundCorners,
+        CommandKey::ShapesOptimize,
+        CommandKey::ShapesReverse,
+        CommandKey::ShapesClockwise,
+        CommandKey::ShapesCounterClockwise,
+        CommandKey::ShapesConvertToPath,
+        CommandKey::NodeDelete,
+        CommandKey::NodeBreak,
+        CommandKey::NodeSmooth,
+        CommandKey::NodeSymmetric,
+        CommandKey::NodeCorner,
+        CommandKey::NodeToLine,
+        CommandKey::NodeToCurve,
+        CommandKey::NodeClosePath,
+        CommandKey::NodeJoinEnds,
+        CommandKey::NodeStartPoint,
     ];
 }
 
