@@ -69,6 +69,8 @@ pub struct ToolStrip {
     /// Appearance and scale the images were drawn for.
     drawn: Cell<Option<(Theme, u32)>>,
     model: RefCell<ToolbarViewModel>,
+    /// The user's shortcut for a tool id (`None`: removed), when it is not the catalogue's.
+    shortcuts: RefCell<std::collections::BTreeMap<String, Option<String>>>,
 }
 
 impl ToolStrip {
@@ -159,12 +161,28 @@ impl ToolStrip {
             locale,
             drawn: Cell::new(None),
             model: RefCell::new(layout),
+            shortcuts: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
 
     /// The view to put into the window.
     pub(crate) fn view(&self) -> &NSView {
         &self.scroll
+    }
+
+    /// The shortcuts the user chose for tools (id → text, `None` = no shortcut); the next
+    /// `refresh` writes them into the tooltips.
+    pub(crate) fn set_shortcuts(&self, shortcuts: std::collections::BTreeMap<String, Option<String>>) {
+        if let Ok(mut current) = self.shortcuts.try_borrow_mut() {
+            *current = shortcuts;
+        }
+    }
+
+    fn shortcut_text(&self, id: &str, default: Option<&'static str>) -> Option<String> {
+        match self.shortcuts.try_borrow().ok().and_then(|m| m.get(id).cloned()) {
+            Some(chosen) => chosen,
+            None => default.map(str::to_owned),
+        }
     }
 
     /// Copy the view model into the buttons; draw the icons again when the appearance or the
@@ -188,7 +206,8 @@ impl ToolStrip {
             e.main.setTag(tag);
             e.main.setEnabled(face.enablement.is_enabled());
             e.main.setState(if g.selected() { NSControlStateValueOn } else { NSControlStateValueOff });
-            let tip = NSString::from_str(&tooltip(face.id, face.shortcut, face.enablement, self.locale));
+            let shortcut = self.shortcut_text(face.id, face.shortcut);
+            let tip = NSString::from_str(&tooltip(face.id, shortcut.as_deref(), face.enablement, self.locale));
             e.main.setToolTip(Some(&tip));
             let label = NSString::from_str(&tool_label(face.id, self.locale));
             e.main.setAccessibilityLabel(Some(&label));
@@ -281,7 +300,8 @@ impl ToolStrip {
             item.setTag(tag_for_id(v.id).unwrap_or(-1));
             item.setEnabled(v.enablement.is_enabled());
             item.setState(if v.id == group.active.id { NSControlStateValueOn } else { NSControlStateValueOff });
-            item.setToolTip(Some(&NSString::from_str(&tooltip(v.id, v.shortcut, v.enablement, self.locale))));
+            let shortcut = self.shortcut_text(v.id, v.shortcut);
+            item.setToolTip(Some(&NSString::from_str(&tooltip(v.id, shortcut.as_deref(), v.enablement, self.locale))));
             if let Some(image) = icon_image(v.icon, MENU_ICON_PT, scale, theme) {
                 item.setImage(Some(&image));
             }

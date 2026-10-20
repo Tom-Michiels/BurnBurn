@@ -841,8 +841,10 @@ impl HostApp {
             }
             Err(_) => (None, None, BTreeMap::new()),
         };
+        let tool_shortcuts = self.tool_shortcuts();
         if let Ok(mut windows) = self.windows.try_borrow_mut() {
             for (document, w) in windows.iter_mut() {
+                w.strip.set_shortcuts(tool_shortcuts.clone());
                 w.refresh(&vm, *document, machine.as_ref(), camera.as_ref());
                 if w.laser.shown {
                     w.refresh_laser(laser.get(document).and_then(Option::as_ref));

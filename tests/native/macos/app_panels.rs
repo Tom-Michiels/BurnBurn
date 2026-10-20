@@ -470,6 +470,25 @@ fn shortcuts() -> Result<(), String> {
     let save = s.menu_item_state(MenuItem::Command(burnburn_presentation::CommandKey::Save));
     expect(|| format!("Save menu state {save:?}"), save.is_some())?;
 
+    // The tool strip's tooltip shows the tool's own shortcut: choose H for the Select tool.
+    search.setStringValue(&NSString::from_str("selecteren"));
+    fire(&search)?;
+    let texts = s.app.shortcut_texts();
+    let row = texts
+        .iter()
+        .position(|(n, k, _)| k == "V" && n.to_lowercase().contains("selecteren"))
+        .ok_or_else(|| format!("no tool line with V in {texts:?}"))?;
+    table.selectRowIndexes_byExtendingSelection(&objc2_foundation::NSIndexSet::indexSetWithIndex(row), false);
+    s.pump(0.1);
+    expect(|| "recorder takes H".into(), record("h", 4, NSEventModifierFlags::empty())?)?;
+    s.pump(0.1);
+    let doc_window = s.app.window(doc).ok_or("no document window")?;
+    let tips: Vec<String> = controls(&doc_window).iter().filter_map(|v| v.toolTip().map(|t| t.to_string())).collect();
+    expect(
+        || format!("the select tool's tooltip names H: {tips:?}"),
+        tips.iter().any(|t| t.contains("(H)")) && !tips.iter().any(|t| t.contains("Selecteer (V)")),
+    )?;
+
     // Reset all: the defaults are back, in the menu too, and the file has no overrides left.
     click(&buttons[3]);
     s.pump(0.2);
@@ -733,7 +752,10 @@ fn inspector_unit() -> Result<(), String> {
     s.draw_rectangle(doc, (10.0, 10.0), (130.0, 90.0))?;
     let window = s.app.window(doc).ok_or("no window")?;
     let x_value = || -> String {
-        s.app.with_window(doc, |w| w.field(FieldKey::X).map(|f| f.stringValue().to_string())).flatten().unwrap_or_default()
+        s.app
+            .with_window(doc, |w| w.field(FieldKey::X).map(|f| f.stringValue().to_string()))
+            .flatten()
+            .unwrap_or_default()
     };
     let has_caption = |text: &str| text_fields(&window).iter().any(|t| t == text);
     expect(|| format!("X shows 10 mm, got {:?}", x_value()), x_value() == "10")?;
@@ -746,7 +768,10 @@ fn inspector_unit() -> Result<(), String> {
     fire(&units)?;
     s.pump(0.1);
     expect(|| format!("X shows 0.394 in, got {:?}", x_value()), x_value() == "0.394")?;
-    expect(|| "caption in inches".into(), has_caption("X (in)") && has_caption("Breedte (in)") && !has_caption("X (mm)"))?;
+    expect(
+        || "caption in inches".into(),
+        has_caption("X (in)") && has_caption("Breedte (in)") && !has_caption("X (mm)"),
+    )?;
     expect(|| "rotation and scale captions are unchanged".into(), has_caption("Rotatie (°)"))?;
     units.selectItemAtIndex(0);
     fire(&units)?;

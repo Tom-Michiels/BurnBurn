@@ -354,6 +354,23 @@ impl HostApp {
             && self.controller.try_borrow().map(|c| c.debug_log_view().enabled).unwrap_or(false)
     }
 
+    /// The tool shortcuts the user changed (tool id → shortcut text, `None` = removed), for the
+    /// tool strip's tooltips.
+    pub(super) fn tool_shortcuts(&self) -> std::collections::BTreeMap<String, Option<String>> {
+        let Ok(c) = self.controller.try_borrow() else { return Default::default() };
+        c.shortcuts_view()
+            .rows
+            .iter()
+            .filter(|r| r.customized)
+            .filter_map(|r| match r.target {
+                burnburn_presentation::ShortcutTarget::Tool(id) => {
+                    Some((id.to_owned(), r.binding.as_ref().map(KeyBinding::display)))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The preferences in force (tests).
     pub fn preferences(&self) -> burnburn_presentation::Preferences {
         self.controller.try_borrow().map(|c| *c.preferences()).unwrap_or_default()

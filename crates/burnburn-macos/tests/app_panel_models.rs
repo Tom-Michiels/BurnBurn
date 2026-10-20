@@ -562,3 +562,13 @@ fn the_rd_panel_lists_offset_bytes_name_and_decoded_record_and_warns_about_an_ol
     let panel = rd_panel(&h.controller().rd_inspect_view(doc).unwrap(), Locale::Nl);
     assert!(panel.banner.as_deref().is_some_and(|b| b.contains("ouder plan")), "{:?}", panel.banner);
 }
+
+#[test]
+fn tool_lines_are_named_like_the_tool_strip_in_both_languages() {
+    let mut h = HeadlessEditorHarness::new();
+    let view = h.controller().shortcuts_view();
+    let name = |locale, id: &str| shortcut_lines(&view, "", locale).into_iter().find(|l| l.id == id).map(|l| l.name);
+    assert_eq!(name(Locale::Nl, "tool.select").as_deref(), Some("Selecteren"));
+    assert_eq!(name(Locale::En, "tool.select").as_deref(), Some("Select"));
+    assert_eq!(name(Locale::Nl, "tool.select").map(|n| n.to_lowercase().contains("selecteren")), Some(true));
+}
