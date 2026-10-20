@@ -9,24 +9,11 @@ use std::sync::Arc;
 use burnburn_geometry::{Path, Point, Rect, Shape};
 
 use super::{
-    DRAG_THRESHOLD_PT, EditCommit, ShapeKind, Tool, ToolContext, ToolKind, ToolParam, ToolPreview, ToolStep, arc,
-    circle, ellipse, is_escape, line, point, polygon, rect, slot, tool_pointer,
+    DRAG_THRESHOLD_PT, EditCommit, ShapeKind, Tool, ToolContext, ToolKind, ToolPreview, ToolStep, arc, circle, ellipse,
+    is_escape, line, point, rect, slot, tool_pointer,
 };
 use crate::input::{CanvasInput, PointerPhase};
 use crate::snap::SnapCandidate;
-
-/// Tool parameters that are not part of the gesture.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct Params {
-    pub sides: u32,
-    pub corner_radius: f64,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Params { sides: 6, corner_radius: 3.0 }
-    }
-}
 
 /// What a finished (or previewed) gesture produces.
 #[derive(Debug, Clone, PartialEq)]
@@ -68,15 +55,11 @@ pub(super) enum Variant {
     Centerline,
     RectCenter,
     RectThreePoint,
-    RectRounded,
     CircleTwoPoint,
     CircleThreePoint,
     ArcThreePoint,
     ArcCenterPoint,
     EllipseAxes,
-    PolygonInscribed,
-    PolygonCircumscribed,
-    PolygonEdge,
     SlotCenterToCenter,
     SlotOverall,
     SlotCenterPoint,
@@ -92,15 +75,11 @@ impl Variant {
             ToolKind::Centerline => Variant::Centerline,
             ToolKind::RectangleCenter => Variant::RectCenter,
             ToolKind::RectangleThreePoint => Variant::RectThreePoint,
-            ToolKind::RectangleRounded => Variant::RectRounded,
             ToolKind::CircleTwoPoint => Variant::CircleTwoPoint,
             ToolKind::CircleThreePoint => Variant::CircleThreePoint,
             ToolKind::ArcThreePoint => Variant::ArcThreePoint,
             ToolKind::ArcCenterPoint => Variant::ArcCenterPoint,
             ToolKind::EllipseAxes => Variant::EllipseAxes,
-            ToolKind::PolygonInscribed => Variant::PolygonInscribed,
-            ToolKind::PolygonCircumscribed => Variant::PolygonCircumscribed,
-            ToolKind::PolygonEdge => Variant::PolygonEdge,
             ToolKind::SlotCenterToCenter => Variant::SlotCenterToCenter,
             ToolKind::SlotOverall => Variant::SlotOverall,
             ToolKind::SlotCenterPoint => Variant::SlotCenterPoint,
@@ -115,14 +94,7 @@ impl Variant {
     pub(super) fn needed(self) -> usize {
         match self {
             Variant::Point => 1,
-            Variant::LineMidpoint
-            | Variant::Centerline
-            | Variant::RectCenter
-            | Variant::RectRounded
-            | Variant::CircleTwoPoint
-            | Variant::PolygonInscribed
-            | Variant::PolygonCircumscribed
-            | Variant::PolygonEdge => 2,
+            Variant::LineMidpoint | Variant::Centerline | Variant::RectCenter | Variant::CircleTwoPoint => 2,
             Variant::RectThreePoint
             | Variant::CircleThreePoint
             | Variant::ArcThreePoint
@@ -149,13 +121,12 @@ impl Variant {
     }
 
     /// The shape for exactly `needed()` points; `None` for a degenerate set.
-    pub(super) fn build(self, pts: &[Point], params: &Params) -> Option<Out> {
+    pub(super) fn build(self, pts: &[Point]) -> Option<Out> {
         line::build(self, pts)
-            .or_else(|| rect::build(self, pts, params))
+            .or_else(|| rect::build(self, pts))
             .or_else(|| circle::build(self, pts))
             .or_else(|| arc::build(self, pts))
             .or_else(|| ellipse::build(self, pts))
-            .or_else(|| polygon::build(self, pts, params))
             .or_else(|| slot::build(self, pts))
             .or_else(|| point::build(self, pts))
     }
@@ -182,12 +153,9 @@ impl Variant {
         let (sx, sy) = (sign(d.x), sign(d.y));
         Some(match self {
             Variant::RectCenter => vec![p0, Point::new(p0.x + sx * w / 2.0, p0.y + sy * h / 2.0)],
-            Variant::RectRounded => vec![p0, Point::new(p0.x + sx * w, p0.y + sy * h)],
             // The width is the diameter / the full length / the circumscribed diameter.
             Variant::CircleTwoPoint | Variant::Centerline => vec![p0, p0 + dir * w],
             Variant::LineMidpoint => vec![p0, p0 + dir * (w / 2.0)],
-            Variant::PolygonInscribed | Variant::PolygonCircumscribed => vec![p0, p0 + dir * (w / 2.0)],
-            Variant::PolygonEdge => vec![p0, p0 + dir * w],
             // Length along the pointer direction, then the slot width.
             Variant::SlotCenterToCenter | Variant::SlotOverall => {
                 let end = p0 + dir * w;
@@ -202,7 +170,6 @@ impl Variant {
 #[derive(Debug, Clone)]
 pub struct DrawTool {
     variant: Variant,
-    params: Params,
     pts: Vec<Point>,
     hover: Option<Point>,
     /// The first press is still down: a release far away places the second point.
@@ -212,7 +179,7 @@ pub struct DrawTool {
 
 impl DrawTool {
     pub(super) fn new(variant: Variant) -> Self {
-        DrawTool { variant, params: Params::default(), pts: Vec::new(), hover: None, pressed: false, snap: None }
+        DrawTool { variant, pts: Vec::new(), hover: None, pressed: false, snap: None }
     }
 
     /// The tool for a draw [`ToolKind`] (`Point` for any other kind, which `Active::new` never passes).
@@ -228,7 +195,7 @@ impl DrawTool {
 
     fn finish(&mut self, pts: &[Point]) -> ToolStep {
         self.reset();
-        match self.variant.build(pts, &self.params) {
+        match self.variant.build(pts) {
             Some(out) => ToolStep::Commit(out.commit()),
             None => ToolStep::Cancelled,
         }
@@ -300,7 +267,7 @@ impl Tool for DrawTool {
         pts.extend(self.hover);
         if pts.len() >= self.variant.needed() {
             pts.truncate(self.variant.needed());
-            self.variant.build(&pts, &self.params)?.preview()
+            self.variant.build(&pts)?.preview()
         } else {
             self.variant.guide(&pts)?.preview()
         }
@@ -320,26 +287,6 @@ impl Tool for DrawTool {
         match self.variant.typed(p0, cur, width.mm(), height.mm()) {
             Some(pts) => self.finish(&pts),
             None => ToolStep::Nothing,
-        }
-    }
-
-    fn set_param(&mut self, param: ToolParam) -> bool {
-        match param {
-            ToolParam::Sides(n)
-                if n >= 3
-                    && matches!(
-                        self.variant,
-                        Variant::PolygonInscribed | Variant::PolygonCircumscribed | Variant::PolygonEdge
-                    ) =>
-            {
-                self.params.sides = n;
-                true
-            }
-            ToolParam::CornerRadius(r) if r.is_finite() && r > 0.0 && self.variant == Variant::RectRounded => {
-                self.params.corner_radius = r;
-                true
-            }
-            _ => false,
         }
     }
 }
@@ -442,15 +389,11 @@ mod tests {
             (ToolKind::Centerline, vec![(0.0, 0.0), (20.0, 0.0)]),
             (ToolKind::RectangleCenter, vec![(0.0, 0.0), (5.0, 3.0)]),
             (ToolKind::RectangleThreePoint, vec![(0.0, 0.0), (4.0, 0.0), (1.0, 3.0)]),
-            (ToolKind::RectangleRounded, vec![(0.0, 0.0), (20.0, 10.0)]),
             (ToolKind::CircleTwoPoint, vec![(0.0, 0.0), (10.0, 0.0)]),
             (ToolKind::CircleThreePoint, vec![(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)]),
             (ToolKind::ArcThreePoint, vec![(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0)]),
             (ToolKind::ArcCenterPoint, vec![(0.0, 0.0), (10.0, 0.0), (0.0, 25.0)]),
             (ToolKind::EllipseAxes, vec![(1.0, 1.0), (5.0, 1.0), (2.0, 3.0)]),
-            (ToolKind::PolygonInscribed, vec![(0.0, 0.0), (10.0, 0.0)]),
-            (ToolKind::PolygonCircumscribed, vec![(0.0, 0.0), (5.0, 0.0)]),
-            (ToolKind::PolygonEdge, vec![(0.0, 0.0), (2.0, 0.0)]),
             (ToolKind::SlotCenterToCenter, vec![(0.0, 0.0), (10.0, 0.0), (5.0, 2.0)]),
             (ToolKind::SlotOverall, vec![(0.0, 0.0), (14.0, 0.0), (7.0, 2.0)]),
             (ToolKind::SlotCenterPoint, vec![(0.0, 0.0), (5.0, 0.0), (0.0, 1.0)]),
@@ -574,24 +517,6 @@ mod tests {
         assert!(commits(&steps).is_empty(), "{steps:?}");
         assert_eq!(steps.iter().filter(|s| **s == ToolStep::Cancelled).count(), 1, "{steps:?}");
         assert_eq!(ed.preview(), None);
-        // A rounded rectangle without area.
-        let (_, steps) = clicks(ToolKind::RectangleRounded, &[(0.0, 0.0), (20.0, 0.0)]);
-        assert!(commits(&steps).is_empty(), "{steps:?}");
-    }
-
-    #[test]
-    fn tool_parameters_are_validated_and_only_accepted_by_tools_that_use_them() {
-        let mut ed = editor(ToolKind::PolygonInscribed);
-        assert!(ed.set_param(ToolParam::Sides(8)));
-        assert!(!ed.set_param(ToolParam::Sides(2)));
-        assert!(!ed.set_param(ToolParam::CornerRadius(3.0)), "a polygon has no corner radius");
-        let mut ed = editor(ToolKind::Select);
-        assert!(!ed.set_param(ToolParam::Sides(8)));
-        let mut ed = editor(ToolKind::RectangleRounded);
-        assert!(ed.set_param(ToolParam::CornerRadius(2.0)));
-        assert!(!ed.set_param(ToolParam::CornerRadius(0.0)));
-        assert!(!ed.set_param(ToolParam::CornerRadius(-1.0)));
-        assert!(!ed.set_param(ToolParam::CornerRadius(f64::INFINITY)));
     }
 
     #[test]

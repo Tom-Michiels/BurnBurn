@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use burnburn_editor::ToolKind;
+use burnburn_editor::{PolygonConstruction, ToolKind};
 
 use crate::CommandKey;
 
@@ -16,6 +16,10 @@ use crate::CommandKey;
 pub enum PanelId {
     Make,
     Modify,
+    /// Selection-wide shape operations (join, cut, round corners, direction, optimize).
+    Shapes,
+    /// Node editing (delete, break, smooth, line/curve, close, join ends).
+    Nodes,
     Pattern,
     Constraints,
     Insert,
@@ -23,14 +27,24 @@ pub enum PanelId {
 }
 
 impl PanelId {
-    pub const ALL: [PanelId; 6] =
-        [PanelId::Make, PanelId::Modify, PanelId::Pattern, PanelId::Constraints, PanelId::Insert, PanelId::Select];
+    pub const ALL: [PanelId; 8] = [
+        PanelId::Make,
+        PanelId::Modify,
+        PanelId::Shapes,
+        PanelId::Nodes,
+        PanelId::Pattern,
+        PanelId::Constraints,
+        PanelId::Insert,
+        PanelId::Select,
+    ];
 
     /// Stable key for the panel title in `assets/l10n/tools.toml`.
     pub fn key(self) -> &'static str {
         match self {
             PanelId::Make => "create",
             PanelId::Modify => "modify",
+            PanelId::Shapes => "shapes",
+            PanelId::Nodes => "nodes",
             PanelId::Pattern => "pattern",
             PanelId::Constraints => "constraints",
             PanelId::Insert => "insert",
@@ -52,6 +66,9 @@ pub enum ToolContext {
 pub enum Action {
     /// Activates this editor tool.
     Tool(ToolKind),
+    /// Activates the regular-polygon tool with this construction mode (the SolidCraft modes and
+    /// the bounding-box drag are one tool with an editable result).
+    Polygon(PolygonConstruction),
     /// Runs this command (for example trim mode, which is a mode and not a `ToolKind`).
     Command(CommandKey),
     /// No domain behind it yet.
@@ -87,6 +104,10 @@ pub enum DisabledReason {
     NoDocument,
     /// The operator role may not edit.
     OperatorRole,
+    /// The command needs a selection it does not have (a path, two shapes, a basic shape).
+    NeedsSelection,
+    /// The command acts on selected nodes: use the Node tool and select some.
+    NeedsNodes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,8 +145,8 @@ const fn sketch_only(mut s: ToolSpec) -> ToolSpec {
     s
 }
 
-use Action::{Deferred, Tool, Unavailable};
-use PanelId::{Constraints, Insert, Make, Modify, Pattern, Select};
+use Action::{Command, Polygon, Tool, Unavailable};
+use PanelId::{Constraints, Insert, Make, Modify, Nodes, Pattern, Select, Shapes};
 
 static SPECS: &[ToolSpec] = &[
     // Select
@@ -141,7 +162,8 @@ static SPECS: &[ToolSpec] = &[
     spec("sketch.rectangle.two_point", Make, Some("R"), Some("sketch.rectangle"), Tool(ToolKind::Rectangle)),
     spec("sketch.rectangle.center", Make, None, Some("sketch.rectangle"), Tool(ToolKind::RectangleCenter)),
     spec("sketch.rectangle.three_point", Make, None, Some("sketch.rectangle"), Tool(ToolKind::RectangleThreePoint)),
-    spec("sketch.rectangle.rounded", Make, None, Some("sketch.rectangle"), Tool(ToolKind::RectangleRounded)),
+    // The rounded rectangle is the basic shape of the same name: two corners in, an editable shape out.
+    spec("sketch.rectangle.rounded", Make, None, Some("sketch.rectangle"), Tool(ToolKind::RoundedRectangle)),
     spec("sketch.circle.center", Make, Some("C"), Some("sketch.circle"), Tool(ToolKind::Circle)),
     spec("sketch.circle.two_point", Make, None, Some("sketch.circle"), Tool(ToolKind::CircleTwoPoint)),
     spec("sketch.circle.three_point", Make, None, Some("sketch.circle"), Tool(ToolKind::CircleThreePoint)),
@@ -153,9 +175,23 @@ static SPECS: &[ToolSpec] = &[
     spec("sketch.ellipse", Make, Some("E"), Some("sketch.ellipse"), Tool(ToolKind::EllipseAxes)),
     // The bounding-box ellipse (drag a box) stays reachable as a variant; it has no artwork yet.
     spec("sketch.ellipse.box", Make, None, Some("sketch.ellipse"), Tool(ToolKind::Ellipse)),
-    spec("sketch.polygon.inscribed", Make, Some("G"), Some("sketch.polygon"), Tool(ToolKind::PolygonInscribed)),
-    spec("sketch.polygon.circumscribed", Make, None, Some("sketch.polygon"), Tool(ToolKind::PolygonCircumscribed)),
-    spec("sketch.polygon.edge", Make, None, Some("sketch.polygon"), Tool(ToolKind::PolygonEdge)),
+    // One polygon tool; the construction mode is the input, the result an editable regular polygon.
+    spec("sketch.polygon.inscribed", Make, Some("G"), Some("sketch.polygon"), Polygon(PolygonConstruction::Inscribed)),
+    spec(
+        "sketch.polygon.circumscribed",
+        Make,
+        None,
+        Some("sketch.polygon"),
+        Polygon(PolygonConstruction::Circumscribed),
+    ),
+    spec("sketch.polygon.edge", Make, None, Some("sketch.polygon"), Polygon(PolygonConstruction::Edge)),
+    // Basic shapes with parameters (sides, tips, ratio): the polygon by bounding box and the presets.
+    spec("shape.triangle", Make, None, Some("shape"), Tool(ToolKind::Triangle)),
+    spec("shape.polygon", Make, None, Some("shape"), Polygon(PolygonConstruction::Box)),
+    spec("shape.pentagon", Make, None, Some("shape"), Tool(ToolKind::Pentagon)),
+    spec("shape.octagon", Make, None, Some("shape"), Tool(ToolKind::Octagon)),
+    spec("shape.star", Make, None, Some("shape"), Tool(ToolKind::Star)),
+    spec("shape.double_star", Make, None, Some("shape"), Tool(ToolKind::DoubleStar)),
     spec("sketch.slot.center_to_center", Make, Some("S"), Some("sketch.slot"), Tool(ToolKind::SlotCenterToCenter)),
     spec("sketch.slot.overall", Make, None, Some("sketch.slot"), Tool(ToolKind::SlotOverall)),
     spec("sketch.slot.center_point", Make, None, Some("sketch.slot"), Tool(ToolKind::SlotCenterPoint)),
@@ -182,16 +218,50 @@ static SPECS: &[ToolSpec] = &[
     spec("sketch.extend", Modify, Some("Shift+T"), None, Tool(ToolKind::Extend)),
     spec("sketch.break", Modify, Some("K"), None, Tool(ToolKind::Break)),
     spec("sketch.offset", Modify, Some("O"), None, Tool(ToolKind::Offset)),
-    spec("sketch.mirror", Modify, Some("M"), None, Deferred),
+    spec("sketch.mirror", Modify, Some("M"), None, Tool(ToolKind::Mirror)),
     spec("sketch.move", Modify, Some("Shift+M"), None, Tool(ToolKind::Move)),
     spec("sketch.scale", Modify, Some("Shift+S"), None, Tool(ToolKind::Scale)),
     sketch_only(spec("sketch.construction", Modify, Some("Q"), None, Tool(ToolKind::Construction))),
+    // Shapes: operations on the whole selection or on a clicked corner or node.
+    spec("geometry.join", Shapes, None, None, Command(CommandKey::ShapesJoin)),
+    spec("geometry.cut", Shapes, None, None, Command(CommandKey::ShapesCut)),
+    spec("geometry.round_corners", Shapes, None, Some("geometry.round"), Tool(ToolKind::RoundCorner)),
+    spec("geometry.round_corners_all", Shapes, None, Some("geometry.round"), Command(CommandKey::ShapesRoundCorners)),
+    spec("geometry.start_point", Shapes, None, None, Tool(ToolKind::StartPoint)),
+    spec("geometry.reverse", Shapes, None, Some("geometry.direction"), Command(CommandKey::ShapesReverse)),
+    spec("geometry.clockwise", Shapes, None, Some("geometry.direction"), Command(CommandKey::ShapesClockwise)),
+    spec(
+        "geometry.counter_clockwise",
+        Shapes,
+        None,
+        Some("geometry.direction"),
+        Command(CommandKey::ShapesCounterClockwise),
+    ),
+    spec("geometry.optimize", Shapes, None, None, Command(CommandKey::ShapesOptimize)),
+    spec("geometry.convert_to_path", Shapes, None, None, Command(CommandKey::ShapesConvertToPath)),
+    // Nodes: act on the nodes selected with the Node tool.
+    spec("node.delete", Nodes, None, None, Command(CommandKey::NodeDelete)),
+    spec("node.break", Nodes, None, None, Command(CommandKey::NodeBreak)),
+    spec("node.smooth", Nodes, None, Some("node.kind"), Command(CommandKey::NodeSmooth)),
+    spec("node.symmetric", Nodes, None, Some("node.kind"), Command(CommandKey::NodeSymmetric)),
+    spec("node.corner", Nodes, None, Some("node.kind"), Command(CommandKey::NodeCorner)),
+    spec("node.to_line", Nodes, None, Some("node.segment"), Command(CommandKey::NodeToLine)),
+    spec("node.to_curve", Nodes, None, Some("node.segment"), Command(CommandKey::NodeToCurve)),
+    spec("node.close_path", Nodes, None, None, Command(CommandKey::NodeClosePath)),
+    spec("node.join_ends", Nodes, None, None, Command(CommandKey::NodeJoinEnds)),
+    spec("node.start_point", Nodes, None, None, Command(CommandKey::NodeStartPoint)),
     // Pattern
-    spec("sketch.pattern.rectangular", Pattern, Some("Shift+R"), Some("sketch.pattern"), Deferred),
-    spec("sketch.pattern.circular", Pattern, None, Some("sketch.pattern"), Deferred),
+    spec(
+        "sketch.pattern.rectangular",
+        Pattern,
+        Some("Shift+R"),
+        Some("sketch.pattern"),
+        Tool(ToolKind::PatternRectangular),
+    ),
+    spec("sketch.pattern.circular", Pattern, None, Some("sketch.pattern"), Tool(ToolKind::PatternCircular)),
     // Constraints (only while editing a sketch)
     sketch_only(spec("sketch.constraint.coincident", Constraints, None, None, Tool(ToolKind::ConstraintCoincident))),
-    sketch_only(spec("sketch.constraint.collinear", Constraints, None, None, Deferred)),
+    sketch_only(spec("sketch.constraint.collinear", Constraints, None, None, Tool(ToolKind::ConstraintCollinear))),
     sketch_only(spec("sketch.constraint.concentric", Constraints, None, None, Tool(ToolKind::ConstraintConcentric))),
     sketch_only(spec("sketch.constraint.equal", Constraints, None, None, Tool(ToolKind::ConstraintEqual))),
     sketch_only(spec("sketch.constraint.fix", Constraints, None, None, Tool(ToolKind::ConstraintFix))),
@@ -213,7 +283,7 @@ static SPECS: &[ToolSpec] = &[
     )),
     sketch_only(spec("sketch.constraint.symmetry", Constraints, None, None, Tool(ToolKind::ConstraintSymmetry))),
     sketch_only(spec("sketch.constraint.tangent", Constraints, None, None, Tool(ToolKind::ConstraintTangent))),
-    sketch_only(spec("sketch.auto_constrain", Constraints, None, None, Deferred)),
+    sketch_only(spec("sketch.auto_constrain", Constraints, None, None, Tool(ToolKind::AutoConstrain))),
     // Insert (the import route is a file-menu flow, not a tool)
     spec("sketch.insert_svg", Insert, None, None, Unavailable),
     spec("sketch.insert_dxf", Insert, None, None, Unavailable),
@@ -266,7 +336,7 @@ pub fn enablement(spec: &ToolSpec, state: ToolState) -> Enablement {
     match spec.action {
         Action::Unavailable => return Enablement::Disabled(DisabledReason::NotAvailable),
         Action::Deferred => return Enablement::Disabled(DisabledReason::Follows),
-        Action::Tool(_) | Action::Command(_) => {}
+        Action::Tool(_) | Action::Polygon(_) | Action::Command(_) => {}
     }
     if !state.document {
         return Enablement::Disabled(DisabledReason::NoDocument);
@@ -289,6 +359,8 @@ pub struct ActiveTool {
     pub tool: Option<ToolKind>,
     /// Trim mode is on (it is a mode on top of the tool).
     pub trim: bool,
+    /// The construction mode of the polygon tool (`Some` while that tool is active).
+    pub polygon: Option<PolygonConstruction>,
 }
 
 /// One button (or one drop-down entry).
@@ -343,6 +415,9 @@ impl ToolbarViewModel {
                 // The legacy trim mode (menu command) is the Trim tool as far as the toolbar shows.
                 Action::Tool(t) if active.trim => t == ToolKind::Trim,
                 Action::Tool(t) => active.tool == Some(t),
+                Action::Polygon(c) => {
+                    !active.trim && active.tool == Some(ToolKind::Polygon) && active.polygon == Some(c)
+                }
                 Action::Command(CommandKey::ToolTrim) => active.trim,
                 Action::Command(_) | Action::Unavailable | Action::Deferred => false,
             },
@@ -380,6 +455,23 @@ impl ToolbarViewModel {
         ToolbarViewModel { panels }
     }
 
+    /// Disables the command buttons whose command cannot act on the current selection, with the
+    /// reason `why` names (`None`: the command is available). Tools and other states are untouched.
+    pub fn refine(&mut self, catalog: &ToolCatalog, why: impl Fn(CommandKey) -> Option<DisabledReason>) {
+        let apply = |b: &mut ToolButton| {
+            if let (Some(Action::Command(key)), Enablement::Enabled) =
+                (catalog.get(b.id).map(|s| s.action), b.enablement)
+                && let Some(reason) = why(key)
+            {
+                b.enablement = Enablement::Disabled(reason);
+            }
+        };
+        for g in self.panels.iter_mut().flat_map(|p| p.groups.iter_mut()) {
+            apply(&mut g.active);
+            g.variants.iter_mut().for_each(apply);
+        }
+    }
+
     /// Every button including drop-down entries, in toolbar order.
     pub fn buttons(&self) -> impl Iterator<Item = &ToolButton> {
         self.panels.iter().flat_map(|p| p.groups.iter()).flat_map(|g| {
@@ -405,7 +497,7 @@ mod tests {
     use super::*;
 
     const OPEN: ToolState = ToolState { document: true, operator: false, in_sketch: false };
-    const NONE: ActiveTool = ActiveTool { tool: None, trim: false };
+    const NONE: ActiveTool = ActiveTool { tool: None, trim: false, polygon: None };
 
     fn standard() -> &'static ToolCatalog {
         ToolCatalog::standard()
@@ -430,6 +522,7 @@ mod tests {
         for s in standard().specs() {
             let key = match s.action {
                 Action::Tool(t) => format!("{t:?}"),
+                Action::Polygon(c) => format!("Polygon/{c:?}"),
                 Action::Command(c) => format!("{c:?}"),
                 Action::Unavailable | Action::Deferred => continue,
             };
@@ -477,12 +570,59 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_waiting_for_a_batch_command_is_disabled_as_following() {
-        for id in ["sketch.mirror", "sketch.auto_constrain", "sketch.constraint.collinear", "sketch.pattern.circular"] {
-            let spec = standard().get(id).expect("registered");
-            assert_eq!(spec.action, Action::Deferred, "{id}");
-            assert_eq!(enablement(spec, OPEN), Enablement::Disabled(DisabledReason::Follows), "{id}");
+    fn the_batch_tools_are_wired_to_their_tools() {
+        for (id, tool) in [
+            ("sketch.mirror", ToolKind::Mirror),
+            ("sketch.pattern.rectangular", ToolKind::PatternRectangular),
+            ("sketch.pattern.circular", ToolKind::PatternCircular),
+            ("sketch.constraint.collinear", ToolKind::ConstraintCollinear),
+            ("sketch.auto_constrain", ToolKind::AutoConstrain),
+        ] {
+            assert_eq!(standard().get(id).expect("registered").action, Action::Tool(tool), "{id}");
         }
+        assert!(standard().specs().iter().all(|s| s.action != Action::Deferred), "nothing waits for a batch command");
+    }
+
+    #[test]
+    fn one_polygon_tool_has_all_the_constructions_as_variants_of_one_group() {
+        let ids: Vec<_> = standard().group("sketch.polygon").iter().map(|s| (s.id, s.action)).collect();
+        assert_eq!(
+            ids,
+            [
+                ("sketch.polygon.inscribed", Action::Polygon(PolygonConstruction::Inscribed)),
+                ("sketch.polygon.circumscribed", Action::Polygon(PolygonConstruction::Circumscribed)),
+                ("sketch.polygon.edge", Action::Polygon(PolygonConstruction::Edge)),
+            ]
+        );
+        assert_eq!(standard().get("shape.polygon").map(|s| s.action), Some(Action::Polygon(PolygonConstruction::Box)));
+        assert_eq!(
+            standard().get("sketch.rectangle.rounded").map(|s| s.action),
+            Some(Action::Tool(ToolKind::RoundedRectangle)),
+            "the rounded rectangle is the basic shape"
+        );
+    }
+
+    #[test]
+    fn the_polygon_button_follows_the_construction_mode() {
+        let active =
+            ActiveTool { tool: Some(ToolKind::Polygon), trim: false, polygon: Some(PolygonConstruction::Edge) };
+        let vm = ToolbarViewModel::build(standard(), OPEN, active, &VariantMemory::new());
+        let selected: Vec<_> = vm.buttons().filter(|b| b.selected).map(|b| b.id).collect();
+        assert_eq!(selected, ["sketch.polygon.edge"]);
+        assert_eq!(vm.group("sketch.polygon").expect("group").active.id, "sketch.polygon.edge");
+    }
+
+    #[test]
+    fn command_buttons_are_refined_with_the_reason_the_selection_does_not_fit() {
+        let mut vm = ToolbarViewModel::build(standard(), OPEN, NONE, &VariantMemory::new());
+        assert_eq!(vm.button("geometry.join").expect("button").enablement, Enablement::Enabled);
+        vm.refine(standard(), |key| (key == CommandKey::ShapesJoin).then_some(DisabledReason::NeedsSelection));
+        assert_eq!(
+            vm.button("geometry.join").expect("button").enablement,
+            Enablement::Disabled(DisabledReason::NeedsSelection)
+        );
+        assert_eq!(vm.button("geometry.cut").expect("button").enablement, Enablement::Enabled, "others untouched");
+        assert_eq!(vm.button("select").expect("button").enablement, Enablement::Enabled, "tools untouched");
     }
 
     #[test]
@@ -550,7 +690,7 @@ mod tests {
 
     #[test]
     fn the_active_tool_is_selected_and_shown_on_its_group_button() {
-        let active = ActiveTool { tool: Some(ToolKind::Polyline), trim: false };
+        let active = ActiveTool { tool: Some(ToolKind::Polyline), trim: false, polygon: None };
         let vm = ToolbarViewModel::build(standard(), OPEN, active, &VariantMemory::new());
         let selected: Vec<_> = vm.buttons().filter(|b| b.selected).map(|b| b.id).collect();
         assert_eq!(selected, ["sketch.polyline"]);
@@ -561,7 +701,7 @@ mod tests {
 
     #[test]
     fn trim_mode_selects_trim_and_not_the_underlying_tool() {
-        let active = ActiveTool { tool: Some(ToolKind::Select), trim: true };
+        let active = ActiveTool { tool: Some(ToolKind::Select), trim: true, polygon: None };
         let vm = ToolbarViewModel::build(standard(), OPEN, active, &VariantMemory::new());
         let selected: Vec<_> = vm.buttons().filter(|b| b.selected).map(|b| b.id).collect();
         assert_eq!(selected, ["sketch.trim"]);

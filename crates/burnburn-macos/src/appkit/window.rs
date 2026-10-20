@@ -27,6 +27,7 @@ use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
 use super::panels::import::{ImportSheet, import_sheet};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
+use super::panels::shapes::{ShapesSection, shapes_section};
 use super::panels::sketch::{SketchSection, sketch_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
 use super::toolstrip::{STRIP_HEIGHT as TOOL_STRIP_HEIGHT, ToolStrip};
@@ -71,6 +72,8 @@ pub(crate) struct DocWindow {
     pub(crate) cut_settings: CutSettingsSheet,
     pub(crate) camera: CameraSection,
     pub(crate) sketch: SketchSection,
+    /// The shape parameters, tool options and the geometry dialog.
+    pub(crate) shapes: ShapesSection,
     pub(crate) canvas_status: CanvasStatus,
     /// The sheet currently shown for this window (tests drive it like a user would).
     pub(crate) save_panel: Option<Retained<NSSavePanel>>,
@@ -134,6 +137,7 @@ impl DocWindow {
         let (strip, operations, camera) = production_strip(mtm, canvas_width, locale);
         let cut_settings = cut_settings_sheet(mtm, locale);
         let sketch = sketch_section(mtm, locale);
+        let shapes = shapes_section(mtm, app.clone(), document, locale);
 
         // Right: inspector fields, message line, plan preview.
         let inspector = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, INSPECTOR_WIDTH, h));
@@ -360,6 +364,7 @@ impl DocWindow {
             cut_settings,
             camera,
             sketch,
+            shapes,
             canvas_status,
             save_panel: None,
             export_panel: None,
@@ -441,6 +446,7 @@ impl DocWindow {
         self.refresh_cut_settings(vm, document);
         self.refresh_camera(camera);
         self.refresh_sketch(vm, document);
+        self.refresh_shapes(vm, document);
 
         // The view model's toolbar is the active document's: another window keeps what it had.
         if vm.active == Some(document) {
@@ -553,6 +559,8 @@ impl Drop for DocWindow {
         if self.cut_settings.shown.is_some() {
             self.window.endSheet(&self.cut_settings.sheet);
         }
+        self.shapes.clear_targets();
+        self.shapes.hide(&self.window);
         if !self.closing {
             self.controller.allow_close();
             self.window.close();

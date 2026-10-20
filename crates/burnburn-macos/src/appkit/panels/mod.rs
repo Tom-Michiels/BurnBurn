@@ -6,5 +6,8 @@ pub(crate) mod cut_settings;
 pub(crate) mod import;
 pub(crate) mod operations;
 pub(crate) mod production;
+// `define_class!` and `msg_send!` need unsafe (the shape panel has its own small target object).
+#[allow(unsafe_code)]
+pub(crate) mod shapes;
 pub(crate) mod sketch;
 pub(crate) mod widgets;

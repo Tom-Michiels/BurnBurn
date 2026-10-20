@@ -9,7 +9,8 @@
 
 use burnburn_document::process::ProcessLabel;
 use burnburn_document::sketch::SketchLabel;
-use burnburn_document::{EditLabel, UndoLabel};
+use burnburn_document::structure::StructureLabel;
+use burnburn_document::{EditLabel, ShapeLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
     CommandKey, Feature, FieldError, FieldKey, MachineAction, MachineStatusKey, MessageKey, OperationField, Outcome,
@@ -166,6 +167,26 @@ pub enum HostText {
     SketchRoleDriving,
     SketchRoleDriven,
     SketchNoConstraints,
+    MenuShapes,
+    GeometryJoinTitle,
+    GeometryJoinLabel,
+    GeometryRoundTitle,
+    GeometryRoundLabel,
+    GeometryOptimizeTitle,
+    GeometryOptimizeLabel,
+    GeometryOk,
+    GeometryCancel,
+    ShapeSectionTitle,
+    ToolOptionsTitle,
+    ParamSides,
+    ParamPoints,
+    ParamRatio,
+    ParamCornerRadius,
+    ParamColumns,
+    ParamRows,
+    ParamCount,
+    ParamSweep,
+    ParamKeepOriginal,
 }
 
 impl HostText {
@@ -285,6 +306,26 @@ impl HostText {
         HostText::SketchRoleDriving,
         HostText::SketchRoleDriven,
         HostText::SketchNoConstraints,
+        HostText::MenuShapes,
+        HostText::GeometryJoinTitle,
+        HostText::GeometryJoinLabel,
+        HostText::GeometryRoundTitle,
+        HostText::GeometryRoundLabel,
+        HostText::GeometryOptimizeTitle,
+        HostText::GeometryOptimizeLabel,
+        HostText::GeometryOk,
+        HostText::GeometryCancel,
+        HostText::ShapeSectionTitle,
+        HostText::ToolOptionsTitle,
+        HostText::ParamSides,
+        HostText::ParamPoints,
+        HostText::ParamRatio,
+        HostText::ParamCornerRadius,
+        HostText::ParamColumns,
+        HostText::ParamRows,
+        HostText::ParamCount,
+        HostText::ParamSweep,
+        HostText::ParamKeepOriginal,
     ];
 }
 
@@ -441,6 +482,26 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
             "Nog geen relaties of maten: teken, selecteer en kies een relatie.",
             "No constraints yet: draw, select and choose a relation.",
         ),
+        T::MenuShapes => ("Vormen", "Shapes"),
+        T::GeometryJoinTitle => ("Paden verbinden of sluiten", "Join or Close Paths"),
+        T::GeometryJoinLabel => ("Grootste opening (mm)", "Largest gap (mm)"),
+        T::GeometryRoundTitle => ("Hoeken afronden", "Round Corners"),
+        T::GeometryRoundLabel => ("Straal (mm)", "Radius (mm)"),
+        T::GeometryOptimizeTitle => ("Vormen optimaliseren", "Optimize Shapes"),
+        T::GeometryOptimizeLabel => ("Afwijking (mm)", "Error budget (mm)"),
+        T::GeometryOk => ("OK", "OK"),
+        T::GeometryCancel => ("Annuleer", "Cancel"),
+        T::ShapeSectionTitle => ("Vorm", "Shape"),
+        T::ToolOptionsTitle => ("Gereedschapsopties", "Tool options"),
+        T::ParamSides => ("Zijden", "Sides"),
+        T::ParamPoints => ("Punten", "Points"),
+        T::ParamRatio => ("Verhouding", "Ratio"),
+        T::ParamCornerRadius => ("Hoekstraal (mm)", "Corner radius (mm)"),
+        T::ParamColumns => ("Kolommen", "Columns"),
+        T::ParamRows => ("Rijen", "Rows"),
+        T::ParamCount => ("Aantal", "Count"),
+        T::ParamSweep => ("Hoek (°)", "Sweep (°)"),
+        T::ParamKeepOriginal => ("Origineel behouden", "Keep original"),
     }
 }
 
@@ -541,6 +602,24 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::SketchFix => ("Vast", "Fix"),
         C::SketchDimension => ("Maat", "Dimension"),
         C::SketchRemoveConstraint => ("Verwijder relatie", "Remove Constraint"),
+        C::ShapesJoin => ("Verbind of sluit paden…", "Join or Close Paths…"),
+        C::ShapesCut => ("Snij vormen", "Cut Shapes"),
+        C::ShapesRoundCorners => ("Hoeken afronden…", "Round Corners…"),
+        C::ShapesOptimize => ("Vormen optimaliseren…", "Optimize Shapes…"),
+        C::ShapesReverse => ("Richting omkeren", "Reverse Direction"),
+        C::ShapesClockwise => ("Met de klok mee", "Clockwise"),
+        C::ShapesCounterClockwise => ("Tegen de klok in", "Counter-clockwise"),
+        C::ShapesConvertToPath => ("Omzetten naar pad", "Convert to Path"),
+        C::NodeDelete => ("Verwijder knooppunten", "Delete Nodes"),
+        C::NodeBreak => ("Splits bij knooppunten", "Break at Nodes"),
+        C::NodeSmooth => ("Glad", "Smooth"),
+        C::NodeSymmetric => ("Symmetrisch", "Symmetric"),
+        C::NodeCorner => ("Hoekpunt", "Corner"),
+        C::NodeToLine => ("Naar lijn", "To Line"),
+        C::NodeToCurve => ("Naar kromme", "To Curve"),
+        C::NodeClosePath => ("Sluit pad", "Close Path"),
+        C::NodeJoinEnds => ("Verbind uiteinden", "Join Ends"),
+        C::NodeStartPoint => ("Startpunt", "Start Point"),
         _ => return None,
     })
 }
@@ -566,8 +645,22 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             EditLabel::Group => ("Groeperen", "Group"),
             EditLabel::Ungroup => ("Groep opheffen", "Ungroup"),
             EditLabel::Import => ("Importeren", "Import"),
+            EditLabel::CutCorner => ("Hoek afronden of afschuinen", "Fillet or Chamfer"),
+            EditLabel::Break => ("Splitsen", "Break"),
+            EditLabel::RoundCorners => ("Hoeken afronden", "Round Corners"),
+            EditLabel::OptimizeShapes => ("Vormen optimaliseren", "Optimize Shapes"),
+            EditLabel::CutShapes => ("Vormen snijden", "Cut Shapes"),
+            EditLabel::JoinShapes => ("Vormen verbinden", "Join Shapes"),
+            EditLabel::Direction => ("Richting wijzigen", "Change Direction"),
             _ => return None,
         },
+        UndoLabel::Shape(l) => match l {
+            ShapeLabel::Create => ("Vorm tekenen", "Draw Shape"),
+            ShapeLabel::SetParams => ("Vormparameters wijzigen", "Change Shape Parameters"),
+            ShapeLabel::ConvertToPath => ("Omzetten naar pad", "Convert to Path"),
+            _ => return None,
+        },
+        UndoLabel::Structure(StructureLabel::CreateModifier) => ("Patroon maken", "Create Pattern"),
         UndoLabel::Process(p) => match p {
             ProcessLabel::AddOperation => ("Bewerking toevoegen", "Add Operation"),
             ProcessLabel::UpdateOperation => ("Bewerking wijzigen", "Change Operation"),
@@ -870,6 +963,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
                 "Nog niet beschikbaar: alleen lijnen en bogen kunnen worden verlengd.",
                 "Not available yet: only lines and arcs can be extended.",
             ),
+            ToolRejection::SingleObjectOnly => (
+                "Selecteer één object: meerdere tegelijk volgt (het document heeft er nog geen atomair commando voor).",
+                "Select a single object: several at once follows (the document has no atomic command for it yet).",
+            ),
             _ => ("Nog niet beschikbaar.", "Not available yet."),
         },
         M::NoFontAvailable => {
@@ -964,6 +1061,11 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             "Only straight lines and full circles can become a sketch.",
         ),
         M::SketchEditRefused => ("De schetswijziging is geweigerd.", "The sketch change was refused."),
+        M::NothingToChange => (
+            "Er is niets te wijzigen: de bewerking laat deze vormen zoals ze zijn.",
+            "Nothing to change: the operation leaves these shapes as they are.",
+        ),
+        M::ShapeParamInvalid => ("Ongeldige waarde voor deze vorm.", "Invalid value for this shape."),
         M::VisualPlacementOnly => (
             "Camerabeeld is alleen een visuele plaatsingshulp, geen productiegeometrie.",
             "The camera image is only a visual placement aid, not production geometry.",
@@ -1022,9 +1124,18 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             EditLabel::Group,
             EditLabel::Ungroup,
             EditLabel::Import,
+            EditLabel::CutCorner,
+            EditLabel::Break,
+            EditLabel::RoundCorners,
+            EditLabel::OptimizeShapes,
+            EditLabel::CutShapes,
+            EditLabel::JoinShapes,
+            EditLabel::Direction,
         ]
         .map(UndoLabel::Edit),
     );
+    undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
+    undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend(
         [
             ProcessLabel::AddOperation,
@@ -1117,6 +1228,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::SketchShapeUnsupported,
         MessageKey::SketchConversionImpossible,
         MessageKey::SketchEditRefused,
+        MessageKey::NothingToChange,
+        MessageKey::ShapeParamInvalid,
     ]);
     keys.extend(ToolRejection::ALL.map(MessageKey::ToolRejected));
     keys.extend(Feature::ALL.map(MessageKey::MissingCapability));

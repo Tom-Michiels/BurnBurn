@@ -81,6 +81,8 @@ fn every_reason_has_text_in_both_languages_and_they_differ() {
         DisabledReason::NeedsSketch,
         DisabledReason::NoDocument,
         DisabledReason::OperatorRole,
+        DisabledReason::NeedsSelection,
+        DisabledReason::NeedsNodes,
     ] {
         let (nl, en) = (reason_text(reason, Locale::Nl), reason_text(reason, Locale::En));
         assert!(!nl.is_empty() && !en.is_empty());

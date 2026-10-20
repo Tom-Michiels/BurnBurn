@@ -6,6 +6,8 @@
 [panels]
 create      = { nl = "MAKEN",       en = "CREATE" }
 modify      = { nl = "WIJZIGEN",    en = "MODIFY" }
+shapes      = { nl = "VORMEN",      en = "SHAPES" }
+nodes       = { nl = "KNOPEN",      en = "NODES" }
 pattern     = { nl = "PATROON",     en = "PATTERN" }
 constraints = { nl = "BEPERKINGEN", en = "CONSTRAINTS" }
 insert      = { nl = "INVOEGEN",    en = "INSERT" }
@@ -515,3 +517,187 @@ nl = "Plakken"
 en = "Paste"
 tip_nl = "Plakt de gekopieerde selectie."
 tip_en = "Pastes the copied selection."
+
+# W2-L1-tekenen: basisvormen, vormbewerkingen en knoopknoppen
+
+[tools."shape.triangle"]
+panel = "create"
+nl = "Driehoek"
+en = "Triangle"
+tip_nl = "Driehoek: sleep een kader. Shift houdt de zijden gelijk, Alt tekent vanuit het midden."
+tip_en = "Triangle: drag a box. Shift keeps the sides equal, Alt draws from the center."
+
+[tools."shape.polygon"]
+panel = "create"
+nl = "Veelhoek"
+en = "Polygon"
+tip_nl = "Veelhoek: sleep een kader; het aantal zijden staat bij de gereedschapsopties en blijft bewerkbaar."
+tip_en = "Polygon: drag a box; the number of sides is a tool option and stays editable."
+
+[tools."shape.pentagon"]
+panel = "create"
+nl = "Vijfhoek"
+en = "Pentagon"
+tip_nl = "Vijfhoek: sleep een kader. Shift houdt de zijden gelijk."
+tip_en = "Pentagon: drag a box. Shift keeps the sides equal."
+
+[tools."shape.octagon"]
+panel = "create"
+nl = "Achthoek"
+en = "Octagon"
+tip_nl = "Achthoek: sleep een kader. Shift houdt de zijden gelijk."
+tip_en = "Octagon: drag a box. Shift keeps the sides equal."
+
+[tools."shape.star"]
+panel = "create"
+nl = "Ster"
+en = "Star"
+tip_nl = "Ster: sleep een kader; punten en verhouding staan bij de gereedschapsopties en blijven bewerkbaar."
+tip_en = "Star: drag a box; points and ratio are tool options and stay editable."
+
+[tools."shape.double_star"]
+panel = "create"
+nl = "Dubbele ster"
+en = "Double star"
+tip_nl = "Dubbele ster: twee sterren, de tweede een halve stap gedraaid. Punten en verhouding blijven bewerkbaar."
+tip_en = "Double star: two stars, the second turned half a step. Points and ratio stay editable."
+
+[tools."geometry.join"]
+panel = "shapes"
+nl = "Verbinden of sluiten"
+en = "Join or close"
+tip_nl = "Verbind of sluit de geselecteerde paden binnen een tolerantie; vraagt om de grootste opening."
+tip_en = "Join or close the selected paths within a tolerance; asks for the largest gap."
+
+[tools."geometry.cut"]
+panel = "shapes"
+nl = "Vormen snijden"
+en = "Cut shapes"
+tip_nl = "Snijd de eerst geselecteerde vormen langs de laatst geselecteerde (gesloten) vorm."
+tip_en = "Cut the first selected shapes along the last selected (closed) shape."
+
+[tools."geometry.round_corners"]
+panel = "shapes"
+nl = "Hoek afronden"
+en = "Round corner"
+tip_nl = "Hoek afronden: selecteer een pad en klik op een rechte hoek. De straal staat bij de gereedschapsopties."
+tip_en = "Round corner: select a path and click a straight corner. The radius is a tool option."
+
+[tools."geometry.round_corners_all"]
+panel = "shapes"
+nl = "Alle hoeken afronden"
+en = "Round all corners"
+tip_nl = "Rond alle rechte hoeken van de selectie af; vraagt om de straal."
+tip_en = "Round every straight corner of the selection; asks for the radius."
+
+[tools."geometry.start_point"]
+panel = "shapes"
+nl = "Startpunt"
+en = "Start point"
+tip_nl = "Startpunt: selecteer een pad en klik op de knoop waar het snijden moet beginnen."
+tip_en = "Start point: select a path and click the node where cutting should begin."
+
+[tools."geometry.reverse"]
+panel = "shapes"
+nl = "Richting omkeren"
+en = "Reverse direction"
+tip_nl = "Keer de richting van de geselecteerde paden om; de startknoop blijft."
+tip_en = "Reverse the direction of the selected paths; the start node stays."
+
+[tools."geometry.clockwise"]
+panel = "shapes"
+nl = "Met de klok mee"
+en = "Clockwise"
+tip_nl = "Geef de gesloten paden de richting met de klok mee."
+tip_en = "Make the closed paths run clockwise."
+
+[tools."geometry.counter_clockwise"]
+panel = "shapes"
+nl = "Tegen de klok in"
+en = "Counter-clockwise"
+tip_nl = "Geef de gesloten paden de richting tegen de klok in."
+tip_en = "Make the closed paths run counter-clockwise."
+
+[tools."geometry.optimize"]
+panel = "shapes"
+nl = "Optimaliseren"
+en = "Optimize"
+tip_nl = "Haal overbodige knopen weg binnen een afwijking in mm; vraagt om die afwijking."
+tip_en = "Remove redundant nodes within an error budget in mm; asks for that budget."
+
+[tools."geometry.convert_to_path"]
+panel = "shapes"
+nl = "Omzetten naar pad"
+en = "Convert to path"
+tip_nl = "Zet een basisvorm om naar een gewoon pad: de omtrek blijft, de parameters verdwijnen."
+tip_en = "Turn a basic shape into a plain path: the outline stays, the parameters go."
+
+[tools."node.delete"]
+panel = "nodes"
+nl = "Knopen verwijderen"
+en = "Delete nodes"
+tip_nl = "Verwijder de geselecteerde knopen (ook met de Delete-toets in het knoopgereedschap)."
+tip_en = "Delete the selected nodes (also with the Delete key in the node tool)."
+
+[tools."node.break"]
+panel = "nodes"
+nl = "Splitsen bij knopen"
+en = "Break at nodes"
+tip_nl = "Knip het pad bij de geselecteerde knopen: een open pad splitst, een gesloten pad gaat open."
+tip_en = "Cut the path at the selected nodes: an open path splits, a closed one opens."
+
+[tools."node.smooth"]
+panel = "nodes"
+nl = "Glad"
+en = "Smooth"
+tip_nl = "Maak de geselecteerde knopen glad: de handvatten liggen op één lijn."
+tip_en = "Make the selected nodes smooth: the handles are collinear."
+
+[tools."node.symmetric"]
+panel = "nodes"
+nl = "Symmetrisch"
+en = "Symmetric"
+tip_nl = "Maak de geselecteerde knopen symmetrisch: de handvatten zijn even lang."
+tip_en = "Make the selected nodes symmetric: the handles are equally long."
+
+[tools."node.corner"]
+panel = "nodes"
+nl = "Hoekpunt"
+en = "Corner"
+tip_nl = "Maak de geselecteerde knopen een hoekpunt: de handvatten worden ingetrokken."
+tip_en = "Make the selected nodes corners: the handles are retracted."
+
+[tools."node.to_line"]
+panel = "nodes"
+nl = "Naar lijn"
+en = "To line"
+tip_nl = "Maak het segment tussen twee geselecteerde knopen een rechte lijn."
+tip_en = "Make the segment between two selected nodes a straight line."
+
+[tools."node.to_curve"]
+panel = "nodes"
+nl = "Naar kromme"
+en = "To curve"
+tip_nl = "Maak het segment tussen twee geselecteerde knopen een kromme."
+tip_en = "Make the segment between two selected nodes a curve."
+
+[tools."node.close_path"]
+panel = "nodes"
+nl = "Pad sluiten"
+en = "Close path"
+tip_nl = "Sluit de open paden met een geselecteerde knoop (zonder selectie: alle open paden)."
+tip_en = "Close the open paths that have a selected node (without selection: all open paths)."
+
+[tools."node.join_ends"]
+panel = "nodes"
+nl = "Uiteinden verbinden"
+en = "Join ends"
+tip_nl = "Verbind de twee geselecteerde uiteinden van open paden; een gat wordt met een lijn overbrugd."
+tip_en = "Join the two selected ends of open paths; a gap is bridged by a line."
+
+[tools."node.start_point"]
+panel = "nodes"
+nl = "Startknoop"
+en = "Start node"
+tip_nl = "Maak de geselecteerde knoop het begin van het pad."
+tip_en = "Make the selected node the start of the path."

@@ -94,10 +94,11 @@ fn the_chosen_variant_is_remembered_per_group_and_activates_its_tool() {
 }
 
 #[test]
-fn a_variant_that_does_not_belong_to_the_group_or_is_unavailable_is_not_remembered() {
+fn a_variant_that_does_not_belong_to_the_group_or_cannot_act_is_not_remembered() {
     let (mut h, doc) = window();
     select_tool(&mut h, doc, "select");
-    for (group, id) in [("sketch.line", "sketch.circle.center"), ("sketch.pattern", "sketch.pattern.circular")] {
+    // The second is a command that cannot act without a selection: it is refused, not remembered.
+    for (group, id) in [("sketch.line", "sketch.circle.center"), ("geometry.direction", "geometry.clockwise")] {
         h.send(UiIntent::SelectVariant { document: Some(doc), group: group.into(), id: id.into() });
         assert_eq!(tool(&h, doc), ToolKind::Select, "{id}");
         let vm = h.view();

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{Affine, Bounds, Path, Point};
+use burnburn_geometry::{Affine, Bounds, NodeRef, Path, Point};
 use burnburn_types::{DocumentId, GeometryId, RevisionId};
 
 use crate::issues::{GeometryIssue, IssueKind};
@@ -53,10 +53,12 @@ pub enum Overlay {
         at: Point,
         handle: Handle,
     },
-    /// A path node or Bézier handle in node-edit mode.
+    /// A path node or Bézier handle in node-edit mode; `selected` nodes are the ones the node
+    /// buttons act on (never set for a handle).
     Node {
         at: Point,
         target: NodeTarget,
+        selected: bool,
     },
     /// The named snap target under the pointer (label next to the cursor).
     SnapCandidate {
@@ -137,6 +139,8 @@ pub struct SceneRequest<'a> {
     pub extra: &'a [Overlay],
     /// A computed result shown before it is applied (boolean preview, E05).
     pub result_preview: Option<Arc<Path>>,
+    /// The nodes selected in node-edit mode (`Editor::node_selection`); drawn as selected.
+    pub selected_nodes: &'a [NodeRef],
     pub camera: Camera,
     pub viewport: Viewport,
 }
@@ -196,7 +200,10 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
             Some(ToolPreview::Node { path, .. }) => Arc::clone(path),
             _ => Arc::clone(obj.path()),
         };
-        overlays.extend(crate::tool::path_nodes(&path).into_iter().map(|(target, at)| Overlay::Node { at, target }));
+        overlays.extend(crate::tool::path_nodes(&path).into_iter().map(|(target, at)| {
+            let selected = matches!(target, NodeTarget::Node(n) if req.selected_nodes.contains(&n));
+            Overlay::Node { at, target, selected }
+        }));
     }
     match req.preview {
         Some(ToolPreview::Rectangle(p)) => {
@@ -275,6 +282,7 @@ mod tests {
             issues: &[],
             extra: &[],
             result_preview: None,
+            selected_nodes: &[],
             camera: camera(),
             viewport: viewport(),
         }

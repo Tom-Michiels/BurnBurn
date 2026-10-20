@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Join paths</title>
+  <path d="M8 50L8 22L29 22" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M35 22L56 22L56 50" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M29 22L35 22" fill="none" stroke="#236ead" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="0.1 5"/>
+  <circle cx="29" cy="22" r="3.07" fill="#236ead"/>
+  <circle cx="35" cy="22" r="3.07" fill="#236ead"/>
+</svg>

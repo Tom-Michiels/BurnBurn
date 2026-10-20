@@ -10,12 +10,13 @@ use burnburn_editor::{
 use burnburn_editor::{Rejection, Unavailable};
 use burnburn_types::{DocumentId, RequestId};
 
-use crate::commit::{name_kind, payload};
+use crate::commit::{Refusal, name_kind, payload};
 
 use crate::intent::{CameraIntent, CommandKey, ViewPointerEvent};
 use crate::view_model::{MessageKey, SelectionCycle};
 
 use super::geometry::trim_at;
+use super::shapes;
 use super::sketch;
 use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_selection, error};
 
@@ -61,9 +62,15 @@ impl AppController {
         let drawing_points = self.sessions.get(&document).is_some_and(|s| {
             s.editor.is_gesture_active() && matches!(s.editor.tool(), ToolKind::Polyline | ToolKind::Pen)
         });
+        // In node-edit mode with nodes selected, Delete is for the tool: it removes those nodes.
+        let nodes_selected = self
+            .sessions
+            .get(&document)
+            .is_some_and(|s| s.editor.tool() == ToolKind::Node && !s.editor.node_selection().is_empty());
         let key = match key {
             // Delete removes the last placed point while drawing a polyline or pen path.
             CanvasKey::Delete if drawing_points => CanvasKey::Backspace,
+            CanvasKey::Delete if nodes_selected => CanvasKey::Delete,
             CanvasKey::Delete => return self.invoke(Some(document), CommandKey::Delete),
             other => other,
         };
@@ -152,6 +159,17 @@ fn rejection_kind(r: &Rejection) -> ToolRejection {
     }
 }
 
+/// A commit without a document command: the user is told why, the document is unchanged.
+fn refused(s: &mut Session, document: DocumentId, refusal: Refusal) -> AppUpdate {
+    let reason = match refusal {
+        Refusal::SingleObjectOnly => ToolRejection::SingleObjectOnly,
+        Refusal::Unsupported => ToolRejection::Unavailable,
+    };
+    s.messages.clear();
+    s.messages.push(StatusMessage { key: MessageKey::ToolRejected(reason) });
+    AppUpdate::redraw(document)
+}
+
 pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep, request: RequestId) -> AppUpdate {
     match step {
         ToolStep::Nothing => AppUpdate::default(),
@@ -161,8 +179,10 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
             AppUpdate::redraw(document)
         }
         ToolStep::Commit(
-            edit
-            @ (EditCommit::CreateRectangle { .. } | EditCommit::CreateShape { .. } | EditCommit::CreatePath { .. }),
+            edit @ (EditCommit::CreateRectangle { .. }
+            | EditCommit::CreateShape { .. }
+            | EditCommit::CreatePath { .. }
+            | EditCommit::CreateParametric { .. }),
         ) if s.sketch.active.is_some() => sketch::commit_shape(s, document, &edit, request),
         ToolStep::Rejected(reason) => {
             s.messages.clear();
@@ -186,13 +206,23 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
             s.tool_measurement = None;
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
-            let Some(payload) = payload(edit, name) else { return AppUpdate::redraw(document) };
+            let snapshot = s.doc.snapshot();
+            let payload = match payload(edit, name, &snapshot) {
+                Ok(payload) => payload,
+                Err(refusal) => return refused(s, document, refusal),
+            };
             let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
-            let result = apply_command(&s.fonts, &mut s.doc, cmd);
-            if let (Some(k), true) = (kind, result.is_ok()) {
-                *s.created.entry(k).or_insert(0) += 1;
+            match apply_command(&s.fonts, &mut s.doc, cmd) {
+                Ok(outcome) => {
+                    if let Some(k) = kind {
+                        *s.created.entry(k).or_insert(0) += 1;
+                    }
+                    after_change(s, document, Ok(outcome))
+                }
+                // "Nothing to change" is said in words; a real refusal stays a rejected command.
+                Err(e) if shapes::is_nothing_to_do(&e) => shapes::failed_commit(s, document, e),
+                Err(e) => after_change(s, document, Err(e)),
             }
-            after_change(s, document, result)
         }
         _ => AppUpdate::redraw(document),
     }

@@ -15,9 +15,10 @@ use burnburn_document::{
     EvalStatus, GeometrySource,
 };
 use burnburn_editor::{
-    CLICK_TOLERANCE_PT, EditCommit, Overlay, PlanError, PointerEvent, PointerPhase, Selection, SketchGeometry,
-    SketchGlyph, SketchOverlays, SketchView, SuggestionKind, ToolKind, ToolPreview, pick_constraint, pick_entity,
-    plan_commit, sketch_from_paths, sketch_overlays, suggest_preview,
+    CLICK_TOLERANCE_PT, ConstraintKind, EditCommit, Overlay, PlanError, PointerEvent, PointerPhase, Selection,
+    SketchGeometry, SketchGlyph, SketchOverlays, SketchView, SuggestionKind, ToolKind, ToolPreview,
+    constraint_relations, pick_constraint, pick_entity, plan_commit, sketch_from_paths, sketch_overlays,
+    suggest_preview,
 };
 use burnburn_geometry::Point;
 use burnburn_sketch::param::Value;
@@ -441,39 +442,30 @@ fn is_curve(k: Kind) -> bool {
     matches!(k, Kind::Circle | Kind::Arc)
 }
 
+/// The constraint a Schets-menu / panel relation command adds.
+fn constraint_of(command: CommandKey) -> Option<ConstraintKind> {
+    Some(match command {
+        CommandKey::SketchCoincident => ConstraintKind::Coincident,
+        CommandKey::SketchHorizontal => ConstraintKind::Horizontal,
+        CommandKey::SketchVertical => ConstraintKind::Vertical,
+        CommandKey::SketchParallel => ConstraintKind::Parallel,
+        CommandKey::SketchPerpendicular => ConstraintKind::Perpendicular,
+        CommandKey::SketchEqual => ConstraintKind::Equal,
+        CommandKey::SketchTangent => ConstraintKind::Tangent,
+        CommandKey::SketchFix => ConstraintKind::Fix,
+        _ => return None,
+    })
+}
+
 /// The relations `command` adds for the selection, or `None` when the selection does not fit.
+/// The table is the editor's: the constraint tools of the toolbar read the same one.
 pub(super) fn relations_for(
     command: CommandKey,
     sketch: &Sketch,
     selected: &BTreeSet<EntityId>,
 ) -> Option<Vec<Relation>> {
-    let items: Vec<(EntityId, Kind)> =
-        selected.iter().map(|id| Some((*id, kind_of(sketch, *id)?))).collect::<Option<_>>()?;
-    let g = SketchGeometry::new(sketch);
-    Some(match (command, items.as_slice()) {
-        (CommandKey::SketchCoincident, [(a, Kind::Point), (b, Kind::Point)]) => vec![Relation::Coincident(*a, *b)],
-        (CommandKey::SketchHorizontal, [(l, Kind::Line)]) => vec![Relation::Horizontal(*l)],
-        (CommandKey::SketchVertical, [(l, Kind::Line)]) => vec![Relation::Vertical(*l)],
-        (CommandKey::SketchParallel, [(a, Kind::Line), (b, Kind::Line)]) => vec![Relation::Parallel(*a, *b)],
-        (CommandKey::SketchPerpendicular, [(a, Kind::Line), (b, Kind::Line)]) => vec![Relation::Perpendicular(*a, *b)],
-        (CommandKey::SketchEqual, [(a, ka), (b, kb)])
-            if (*ka == Kind::Line && *kb == Kind::Line) || (is_curve(*ka) && is_curve(*kb)) =>
-        {
-            vec![Relation::Equal(*a, *b)]
-        }
-        (CommandKey::SketchTangent, [(a, ka), (b, kb)])
-            if (is_curve(*ka) && (is_curve(*kb) || *kb == Kind::Line)) || (*ka == Kind::Line && is_curve(*kb)) =>
-        {
-            vec![Relation::Tangent(*a, *b)]
-        }
-        (CommandKey::SketchFix, points) if !points.is_empty() && points.iter().all(|(_, k)| *k == Kind::Point) => {
-            points
-                .iter()
-                .map(|(id, _)| Some(Relation::Fix { point: *id, at: g.point(*id)? }))
-                .collect::<Option<Vec<_>>>()?
-        }
-        _ => return None,
-    })
+    let entities: Vec<EntityId> = selected.iter().copied().collect();
+    constraint_relations(constraint_of(command)?, sketch, &entities)
 }
 
 /// Adds the relations of `command` for the selection.
@@ -483,13 +475,38 @@ pub(super) fn apply_relation(
     command: CommandKey,
     request: Option<RequestId>,
 ) -> AppUpdate {
+    match constraint_of(command) {
+        Some(kind) => add_relations(s, document, kind, request),
+        None => AppUpdate::default(),
+    }
+}
+
+/// A constraint tool chosen in the toolbar while entities are already selected in the sketch:
+/// when they fit, the relation is added at once (the same route as the panel buttons) and the
+/// tool is not needed; otherwise the tool starts and the entities are picked on the canvas.
+pub(super) fn constraint_for_selection(
+    s: &mut Session,
+    document: DocumentId,
+    tool: ToolKind,
+    request: Option<RequestId>,
+) -> Option<AppUpdate> {
+    let kind = ConstraintKind::of_tool(tool)?;
+    let id = s.sketch.active?;
+    let snapshot = s.doc.snapshot();
+    let entities: Vec<EntityId> = s.sketch.entities.iter().copied().collect();
+    constraint_relations(kind, snapshot.sketch(id)?, &entities)?;
+    Some(add_relations(s, document, kind, request))
+}
+
+fn add_relations(s: &mut Session, document: DocumentId, kind: ConstraintKind, request: Option<RequestId>) -> AppUpdate {
     let Some(id) = s.sketch.active else { return AppUpdate::default() };
     let snapshot = s.doc.snapshot();
     let Some(sketch) = snapshot.sketch(id) else { return AppUpdate::default() };
     if s.sketch.entities.is_empty() {
         return refuse(s, document, MessageKey::SketchNothingSelected);
     }
-    let Some(relations) = relations_for(command, sketch, &s.sketch.entities) else {
+    let entities: Vec<EntityId> = s.sketch.entities.iter().copied().collect();
+    let Some(relations) = constraint_relations(kind, sketch, &entities) else {
         return refuse(s, document, MessageKey::SketchSelectionDoesNotFit);
     };
     let mut constraints: Vec<SketchConstraint> = relations.into_iter().map(SketchConstraint::Relation).collect();

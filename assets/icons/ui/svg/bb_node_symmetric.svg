@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Symmetric node</title>
+  <path d="M32 32L18 41M32 32L46 23" fill="none" stroke="#6f879c" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="18" cy="41" r="2.6" fill="#6f879c"/>
+  <circle cx="46" cy="23" r="2.6" fill="#6f879c"/>
+  <path d="M7 50C14 50 18 41 32 32C46 23 50 14 57 14" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M23 33.5L26 38.5M38 25.5L41 30.5" fill="none" stroke="#34465b" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="5.8" fill="#ffffff"/><circle cx="32" cy="32" r="3.4" fill="#236ead"/>
+</svg>

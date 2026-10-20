@@ -294,6 +294,10 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::Handle { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt, theme.background, theme.selection, &proj);
             }
+            // A selected node is a larger hollow marker, so it stands out from the filled ones.
+            Overlay::Node { at, selected: true, .. } => {
+                marker(&mut out, *at, theme.handle_size_pt * 1.2, theme.background, theme.selection, &proj);
+            }
             Overlay::Node { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt * 0.8, theme.selection, theme.selection, &proj);
             }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Segment to line</title>
+  <path d="M10 46C18 12 46 12 54 46" fill="none" stroke="#6f879c" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="0.1 5"/>
+  <path d="M10 46L54 46" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="10" cy="46" r="3.07" fill="#236ead"/>
+  <circle cx="54" cy="46" r="3.07" fill="#236ead"/>
+</svg>
