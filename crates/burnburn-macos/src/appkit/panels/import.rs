@@ -1,6 +1,7 @@
 //! The import sheet: a sheet on the document window while presentation shows an import preview.
 
-use crate::appkit::panels::widgets::{Column, button, rect, set_text};
+use crate::appkit::panels::files_ui::{report_view, set_popup, set_report};
+use crate::appkit::panels::widgets::{Column, button, label, rect, set_text};
 use crate::appkit::window::DocWindow;
 
 use burnburn_presentation::{AppViewModel, CommandKey};
@@ -9,8 +10,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSFont, NSLineBreakMode, NSPopUpButton, NSTextField, NSView,
-    NSWindow, NSWindowStyleMask,
+    NSAccessibility, NSBackingStoreType, NSButton, NSFont, NSLineBreakMode, NSPopUpButton, NSTextField, NSTextView,
+    NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
 
@@ -23,7 +24,14 @@ pub(crate) struct ImportSheet {
     pub(crate) sheet: Retained<NSWindow>,
     /// File, unit prompt, size, report.
     pub(crate) labels: [Retained<NSTextField>; 4],
+    /// The unit question (SVG and DXF only) and its caption.
     pub(crate) units: Retained<NSPopUpButton>,
+    pub(crate) units_caption: Retained<NSTextField>,
+    /// PDF/AI: the pages to import, and their caption.
+    pub(crate) pages: Retained<NSPopUpButton>,
+    pub(crate) pages_caption: Retained<NSTextField>,
+    /// The full report: layers, values that were not taken over, warnings.
+    pub(crate) report: Retained<NSTextView>,
     pub(crate) commit: Retained<NSButton>,
     pub(crate) cancel: Retained<NSButton>,
     pub(crate) shown: bool,
@@ -32,7 +40,7 @@ pub(crate) struct ImportSheet {
 /// The import dialog's sheet window and widgets (not shown until presentation has a preview).
 #[allow(unsafe_code)]
 pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Locale) -> ImportSheet {
-    let (w, h) = (440.0, 250.0);
+    let (w, h) = (520.0, 480.0);
     // SAFETY: a freshly allocated window with a valid rect, style and the buffered backing.
     let sheet = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
@@ -51,7 +59,7 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
     let file = col.add_label("", 20.0);
     file.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     let prompt = col.add_label("", 20.0);
-    col.add_label(host_text(HostText::ImportUnitLabel, locale), 18.0);
+    let units_caption = col.add_label(host_text(HostText::ImportUnitLabel, locale), 18.0);
     col.y -= 26.0;
     let units =
         NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(12.0, col.y, 160.0, 26.0), false);
@@ -65,9 +73,29 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
     unsafe { units.setAction(Some(sel!(importUnitChosen:))) };
     content.addSubview(&units);
     col.y -= 8.0;
+    // PDF/AI pages (wired to `FilesTarget` once the window's file panels exist).
+    let pages_caption = label(
+        mtm,
+        crate::l10n_files::files_text(crate::l10n_files::FilesText::ImportPageLabel, locale),
+        rect(12.0, col.y - 20.0, 80.0, 20.0),
+    );
+    content.addSubview(&pages_caption);
+    let pages = NSPopUpButton::initWithFrame_pullsDown(
+        NSPopUpButton::alloc(mtm),
+        rect(96.0, col.y - 24.0, w - 108.0, 26.0),
+        false,
+    );
+    pages.setAccessibilityLabel(Some(&NSString::from_str(crate::l10n_files::files_text(
+        crate::l10n_files::FilesText::ImportPageLabel,
+        locale,
+    ))));
+    content.addSubview(&pages);
+    col.y -= 30.0;
     let size = col.add_label("", 18.0);
-    let report = col.add_label("", 36.0);
-    report.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
+    // The first line of the report stays a label (summary); the full report scrolls below.
+    let report_summary = col.add_label("", 18.0);
+    report_summary.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+    let report = report_view(mtm, &content, rect(12.0, 52.0, w - 24.0, col.y - 52.0));
     let cancel = button(
         mtm,
         host_text(HostText::ImportCancel, locale),
@@ -87,7 +115,18 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
     content.addSubview(&cancel);
     content.addSubview(&commit);
     sheet.setContentView(Some(&content));
-    ImportSheet { sheet, labels: [file, prompt, size, report], units, commit, cancel, shown: false }
+    ImportSheet {
+        sheet,
+        labels: [file, prompt, size, report_summary],
+        units,
+        units_caption,
+        pages,
+        pages_caption,
+        report,
+        commit,
+        cancel,
+        shown: false,
+    }
 }
 
 impl DocWindow {
@@ -103,11 +142,17 @@ impl DocWindow {
             }
             return;
         };
-        for (label, text) in
-            self.import.labels.iter().zip([&panel.file, &panel.unit_prompt, &panel.size, &panel.report])
-        {
+        let summary = panel.report.lines().next().unwrap_or_default();
+        for (label, text) in self.import.labels.iter().zip([&panel.file, &panel.unit_prompt, &panel.size, summary]) {
             set_text(label, text);
         }
+        set_report(&self.import.report, &panel.report);
+        self.import.units.setHidden(!panel.show_units);
+        self.import.units_caption.setHidden(!panel.show_units);
+        let has_pages = !panel.pages.items.is_empty();
+        self.import.pages.setHidden(!has_pages);
+        self.import.pages_caption.setHidden(!has_pages);
+        set_popup(&self.import.pages, &panel.pages, true);
         let selected = panel.selected_unit.map_or(-1, |i| i as isize);
         if self.import.units.indexOfSelectedItem() != selected {
             self.import.units.selectItemAtIndex(selected);

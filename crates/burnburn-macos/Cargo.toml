@@ -179,6 +179,11 @@ path = "../../tests/native/macos/inspector_transform.rs"
 harness = false
 
 [[test]]
+name = "file_panels_native"
+path = "../../tests/native/macos/file_panels.rs"
+harness = false
+
+[[test]]
 name = "clipboard_and_recents"
 path = "../../tests/native/macos/clipboard_and_recents.rs"
 harness = false

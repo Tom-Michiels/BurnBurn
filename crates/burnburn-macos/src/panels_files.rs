@@ -852,6 +852,18 @@ pub fn bundle_kind_intent(document: DocumentId, vm: &AppViewModel, row: isize, o
     Some(UiIntent::Files(FilesIntent::SetBundleKind { document, kind, selected: on }))
 }
 
+/// A click on the check box of kind `row`: everything of the kind goes in, unless all of it is in
+/// already, then none of it does. (A mixed box becomes "all".)
+pub fn bundle_kind_toggle_intent(document: DocumentId, vm: &AppViewModel, row: isize) -> Option<UiIntent> {
+    let panel = bundle_panel(vm, document, Locale::En)?;
+    let row = panel.kinds.get(index(row)?)?;
+    row.enabled.then_some(UiIntent::Files(FilesIntent::SetBundleKind {
+        document,
+        kind: row.kind,
+        selected: row.state != CheckState::On,
+    }))
+}
+
 pub fn bundle_conflict_intent(document: DocumentId, item: isize) -> Option<UiIntent> {
     let choice = *CONFLICTS.get(index(item)?)?;
     Some(UiIntent::Files(FilesIntent::SetBundleConflict { document, choice }))
@@ -1092,4 +1104,26 @@ pub fn template_open_intent(path: PathBuf) -> UiIntent {
 /// What choosing recent template `n` of `recent` does.
 pub fn recent_template_intent(n: usize, recent: &[PathBuf]) -> Option<UiIntent> {
     recent.get(n).cloned().map(template_open_intent)
+}
+
+/// Add the file the library is waiting for a unit for, with the unit chosen now.
+pub fn art_retry_intents(
+    document: DocumentId,
+    vm: &AppViewModel,
+    name: &str,
+    unit_item: isize,
+    locale: Locale,
+) -> Vec<UiIntent> {
+    match art_view(vm, document).and_then(|p| p.needs_scale.clone()) {
+        Some(path) => art_add_file_intents(document, vm, &path, name, unit_item, locale),
+        None => Vec::new(),
+    }
+}
+
+/// File extensions the Art Library takes.
+pub const ART_FILE_TYPES: [&str; 7] = ["svg", "dxf", "plt", "hpgl", "hgl", "pdf", "ai"];
+
+/// Unit titles of the DXF pop-up, matching [`ART_UNITS`].
+pub fn art_unit_titles() -> Vec<String> {
+    vec!["mm".to_owned(), "cm".to_owned(), "inch".to_owned()]
 }

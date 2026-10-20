@@ -2,8 +2,14 @@
 //! `DocWindow` method that copies its view model into the widgets. `window.rs` assembles them.
 
 pub(crate) mod arrange;
+pub(crate) mod art;
+pub(crate) mod bundle;
 pub(crate) mod camera;
 pub(crate) mod cut_settings;
+pub(crate) mod export;
+pub(crate) mod files;
+pub(crate) mod material;
+pub(crate) mod files_ui;
 pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;

@@ -30,6 +30,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
+mod files_host;
 mod laser_host;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
@@ -111,6 +112,8 @@ pub struct HostApp {
     _delegate: Retained<AppDelegate>,
     menu: Retained<NSMenu>,
     recent_menu: Retained<NSMenu>,
+    /// Archief ▸ Recente templates, rebuilt from the controller's list.
+    recent_templates_menu: Retained<NSMenu>,
     pasteboard: Retained<objc2_app_kit::NSPasteboard>,
     open_panel: RefCell<Option<Retained<NSOpenPanel>>>,
     options: HostOptions,
@@ -190,6 +193,7 @@ impl HostApp {
                 _delegate: AppDelegate::new(mtm, me.clone()),
                 menu: bar.main,
                 recent_menu: bar.recent,
+                recent_templates_menu: bar.recent_templates,
                 pasteboard: if private_pasteboard {
                     super::clipboard::private_pasteboard()
                 } else {
@@ -232,6 +236,7 @@ impl HostApp {
             }
             app.rebuild_recent_menu(&app.recent_paths());
         }
+        app.init_files();
         if let Some(interval) = app.options.autosave_interval_s {
             app.start_timer(interval, HostApp::autosave_now);
         }
@@ -345,6 +350,10 @@ impl HostApp {
             if let Reaction::Intent(intent) = recent_open_reaction(*item, &self.recent_paths()) {
                 self.dispatch(intent);
             }
+            return;
+        }
+        if let NativeEvent::Menu(MenuItem::RecentTemplate(n)) = &event {
+            self.open_recent_template(*n);
             return;
         }
         if let NativeEvent::TextCommitted { text, .. } = &event
@@ -753,6 +762,12 @@ impl HostApp {
                 }
                 self.rebuild_recent_menu(paths);
             }
+            HostEffect::ShowTemplateSavePanel { document, suggested_name } => {
+                self.show_template_save_panel(*document, suggested_name)
+            }
+            HostEffect::ShowTemplateOpenPanel => self.show_template_open_panel(),
+            HostEffect::ShowBundleOpenPanel { document } => self.show_bundle_open_panel(*document),
+            HostEffect::RecentTemplatesChanged { paths } => self.recent_templates_changed(paths),
             HostEffect::OfferRecovery { files } => {
                 if let Ok(mut queue) = self.recovery_queue.try_borrow_mut() {
                     // A second check while alerts are up offers each file once.
@@ -917,6 +932,12 @@ impl HostApp {
         panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&[
             NSString::from_str("dxf"),
             NSString::from_str("svg"),
+            NSString::from_str("plt"),
+            NSString::from_str("hpgl"),
+            NSString::from_str("hgl"),
+            NSString::from_str("pdf"),
+            NSString::from_str("ai"),
+            NSString::from_str("lbrn2"),
             NSString::from_str("png"),
             NSString::from_str("jpg"),
             NSString::from_str("jpeg"),
@@ -1120,6 +1141,9 @@ impl HostApp {
             geometry_ok: w.shapes.dialog_widgets().1,
             geometry_cancel: w.shapes.dialog_widgets().2,
             arrange_toolbar: &w.arrange_tools,
+            files: w.files_parts(),
+            import_pages: &w.import.pages,
+            import_report: &w.import.report,
             canvas_view: w.canvas_view.as_view(),
             save_panel: w.save_panel.as_deref(),
             export_panel: w.export_panel.as_deref(),
@@ -1286,6 +1310,11 @@ pub struct WindowParts<'a> {
     pub geometry_cancel: &'a objc2_app_kit::NSButton,
     /// The toolbar's Uitlijnen control.
     pub arrange_toolbar: &'a objc2_app_kit::NSSegmentedControl,
+    /// The Material and Art Library panels, the bundle sheet and the export dialog.
+    pub files: super::panels::files::FilesParts<'a>,
+    /// The import sheet's page pop-up (PDF/AI) and its full report.
+    pub import_pages: &'a objc2_app_kit::NSPopUpButton,
+    pub import_report: &'a objc2_app_kit::NSTextView,
     pub canvas_view: &'a objc2_app_kit::NSView,
     pub save_panel: Option<&'a NSSavePanel>,
     pub export_panel: Option<&'a NSSavePanel>,
@@ -1315,6 +1344,8 @@ struct MenuBar {
     main: Retained<NSMenu>,
     /// Archief ▸ Recente projecten, rebuilt from the controller's list.
     recent: Retained<NSMenu>,
+    /// Archief ▸ Recente templates, rebuilt from the controller's list.
+    recent_templates: Retained<NSMenu>,
 }
 
 /// Modifier masks of the key equivalents.
@@ -1356,6 +1387,26 @@ fn fill_recent_menu(mtm: MainThreadMarker, target: &MenuTarget, menu: &NSMenu, p
         menu.addItem(&NSMenuItem::separatorItem(mtm));
     }
     menu.addItem(&command_item(mtm, target, MenuItem::ClearRecent, host_text(HostText::ClearRecent, locale)));
+}
+
+/// Fill Archief ▸ Recente templates like the recent projects: file names, tooltip with the path.
+fn fill_recent_templates_menu(
+    mtm: MainThreadMarker,
+    target: &MenuTarget,
+    menu: &NSMenu,
+    paths: &[PathBuf],
+    locale: Locale,
+) {
+    menu.removeAllItems();
+    for (index, path) in paths.iter().enumerate() {
+        let item = command_item(mtm, target, MenuItem::RecentTemplate(index), &crate::recent::recent_title(path));
+        item.setToolTip(Some(&NSString::from_str(&path.to_string_lossy())));
+        menu.addItem(&item);
+    }
+    if !paths.is_empty() {
+        menu.addItem(&NSMenuItem::separatorItem(mtm));
+    }
+    menu.addItem(&command_item(mtm, target, MenuItem::ClearRecentTemplates, host_text(HostText::ClearRecent, locale)));
 }
 
 /// App menu, File, Edit, Arrange, Tools, View, Sketch, Production. Every item sends
@@ -1417,17 +1468,36 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
     fill_recent_menu(mtm, target, &recent, &[], locale);
     let recent_holder = raw_item(t(HostText::RecentProjects), None, "");
     recent_holder.setSubmenu(Some(&recent));
+    let files_t = |text: crate::l10n_files::FilesText| crate::l10n_files::files_text(text, locale);
+    let recent_templates = NSMenu::initWithTitle(
+        NSMenu::alloc(mtm),
+        &NSString::from_str(files_t(crate::l10n_files::FilesText::MenuNewFromRecentTemplate)),
+    );
+    fill_recent_templates_menu(mtm, target, &recent_templates, &[], locale);
+    let recent_templates_holder = raw_item(files_t(crate::l10n_files::FilesText::MenuNewFromRecentTemplate), None, "");
+    recent_templates_holder.setSubmenu(Some(&recent_templates));
     main.addItem(&submenu(
         t(HostText::MenuFile),
         vec![
             item(c(CommandKey::New), "n", false),
+            plain(CommandKey::NewFromTemplate),
+            recent_templates_holder,
             item(MenuItem::Open, "o", false),
             recent_holder,
             item(MenuItem::Import, "i", true),
+            submenu(
+                files_t(crate::l10n_files::FilesText::MenuExportSubmenu),
+                vec![plain(CommandKey::ExportSvg), plain(CommandKey::ExportDxf)],
+            ),
+            submenu(
+                files_t(crate::l10n_files::FilesText::MenuBundleSubmenu),
+                vec![plain(CommandKey::ExportBundle), plain(CommandKey::ImportBundle)],
+            ),
             sep(),
             item(c(CommandKey::Close), "w", false),
             item(c(CommandKey::Save), "s", false),
             item(c(CommandKey::SaveAs), "s", true),
+            plain(CommandKey::SaveAsTemplate),
         ],
     ));
     main.addItem(&submenu(
@@ -1601,9 +1671,13 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         vec![item(MenuItem::LaserWindow, "l", true)],
     ));
     main.addItem(&submenu(
+        t(HostText::MenuWindow),
+        vec![plain(CommandKey::ShowMaterialLibrary), plain(CommandKey::ShowArtLibrary)],
+    ));
+    main.addItem(&submenu(
         crate::panels::laser_text(crate::panels::LaserText::HelpMenu, locale),
         vec![item(MenuItem::ExportDiagnostics, "", false)],
     ));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));
-    MenuBar { main, recent }
+    MenuBar { main, recent, recent_templates }
 }

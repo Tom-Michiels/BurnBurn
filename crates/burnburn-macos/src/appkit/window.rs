@@ -85,6 +85,8 @@ pub(crate) struct DocWindow {
     pub(crate) shapes: ShapesSection,
     /// The laser window (floating panel, shown from the Laser menu).
     pub(crate) laser: LaserSection,
+    /// The Material and Art Library panels, the bundle sheet and the export dialog.
+    pub(crate) files: super::panels::files::FilesSection,
     pub(crate) canvas_status: CanvasStatus,
     /// The sheet currently shown for this window (tests drive it like a user would).
     pub(crate) save_panel: Option<Retained<NSSavePanel>>,
@@ -222,6 +224,7 @@ impl DocWindow {
             machine_buttons.push(b);
         }
         let import = import_sheet(mtm, target, locale);
+        let files = super::panels::files::files_section(mtm, &window, app.clone(), document, locale, &import.pages);
         let image = image_sheets(mtm, target, app.clone(), document, locale);
 
         centre.addSubview(&canvas_view);
@@ -398,6 +401,7 @@ impl DocWindow {
             sketch,
             shapes,
             laser,
+            files,
             canvas_status,
             save_panel: None,
             export_panel: None,
@@ -483,6 +487,7 @@ impl DocWindow {
         self.refresh_camera(camera);
         self.refresh_sketch(vm, document);
         self.refresh_shapes(vm, document);
+        self.refresh_files(vm, document);
 
         // The view model's toolbar is the active document's: another window keeps what it had.
         if vm.active == Some(document) {
@@ -605,6 +610,8 @@ impl Drop for DocWindow {
         if self.cut_settings.shown.is_some() {
             self.window.endSheet(&self.cut_settings.sheet);
         }
+        self.files.clear_targets();
+        self.files.end_all(&self.window);
         self.shapes.clear_targets();
         self.shapes.hide(&self.window);
         self.image.end_all(&self.window);

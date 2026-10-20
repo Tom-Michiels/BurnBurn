@@ -365,6 +365,17 @@ fn the_bundle_sheet_gates_export_on_a_choice_and_shows_tri_state_kinds() {
     }));
     assert_eq!(bundle_panel(&h.view(), doc, Locale::En).unwrap().kinds[0].state, CheckState::Mixed);
     assert!(bundle_kind_intent(doc, &h.view(), 7, true).is_none());
+    // A click on the box: a mixed or empty kind becomes "all of it", a full kind becomes "none".
+    let click = |h: &mut HeadlessEditorHarness| {
+        let intent = bundle_kind_toggle_intent(doc, &h.view(), 0).expect("the materials box can be clicked");
+        h.send(intent);
+    };
+    click(&mut h);
+    assert_eq!(bundle_panel(&h.view(), doc, Locale::En).unwrap().kinds[0].state, CheckState::On, "mixed → all");
+    click(&mut h);
+    assert_eq!(bundle_panel(&h.view(), doc, Locale::En).unwrap().kinds[0].state, CheckState::Off, "all → none");
+    assert!(bundle_kind_toggle_intent(doc, &h.view(), 1).is_none(), "an empty kind has nothing to click");
+    dispatch(&mut h, |vm| bundle_kind_intent(doc, vm, 0, true));
     let path = PathBuf::from("/out/a.burnburnbundle");
     h.send(bundle_write_intent(doc, path.clone()));
     h.run_tasks();

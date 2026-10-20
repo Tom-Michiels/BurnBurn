@@ -35,6 +35,10 @@ pub enum MenuItem {
     Recent(usize),
     /// Archief ▸ Recente projecten ▸ Wis menu.
     ClearRecent,
+    /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
+    RecentTemplate(usize),
+    /// Archief ▸ Recente templates ▸ Wis menu.
+    ClearRecentTemplates,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -47,6 +51,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::LaserWindow,
         MenuItem::ExportDiagnostics,
         MenuItem::ClearRecent,
+        MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
     .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
@@ -61,9 +66,12 @@ const TRACE_IMAGE_TAG: isize = 1003;
 const LASER_WINDOW_TAG: isize = 1004;
 const DIAGNOSTICS_TAG: isize = 1005;
 const CLEAR_RECENT_TAG: isize = 1006;
+const CLEAR_RECENT_TEMPLATES_TAG: isize = 1007;
 /// Recent entry `n` has tag `RECENT_TAG_BASE + n`; the menu never shows more than `RECENT_TAG_SLOTS`.
 const RECENT_TAG_BASE: isize = 2000;
 const RECENT_TAG_SLOTS: isize = 64;
+/// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
+const RECENT_TEMPLATE_TAG_BASE: isize = 3000;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
@@ -75,6 +83,10 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::LaserWindow => LASER_WINDOW_TAG,
         MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
         MenuItem::ClearRecent => CLEAR_RECENT_TAG,
+        MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
+        MenuItem::RecentTemplate(n) => {
+            isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
+        }
         MenuItem::Recent(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
         }
@@ -104,6 +116,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == CLEAR_RECENT_TAG {
         return Some(MenuItem::ClearRecent);
+    }
+    if tag == CLEAR_RECENT_TEMPLATES_TAG {
+        return Some(MenuItem::ClearRecentTemplates);
+    }
+    if (RECENT_TEMPLATE_TAG_BASE..RECENT_TEMPLATE_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
+        return usize::try_from(tag - RECENT_TEMPLATE_TAG_BASE).ok().map(MenuItem::RecentTemplate);
     }
     if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
@@ -501,6 +519,11 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
         E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
         E::Menu(MenuItem::ClearRecent) => UiIntent::ClearRecentProjects,
+        E::Menu(MenuItem::ClearRecentTemplates) => {
+            UiIntent::Files(burnburn_presentation::FilesIntent::ClearRecentTemplates)
+        }
+        // A recent template needs the stored list: see `crate::panels_files::recent_template_intent`.
+        E::Menu(MenuItem::RecentTemplate(_)) => return Reaction::Nothing,
         // A recent entry needs the stored list: see `recent_open_reaction`.
         E::Menu(MenuItem::Recent(_)) => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
@@ -838,6 +861,8 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::LaserWindow => vm.active.is_some(),
         MenuItem::ExportDiagnostics => true,
         MenuItem::Recent(_) | MenuItem::ClearRecent => false,
+        // The recent-templates menu is rebuilt with the list, so what it shows can be chosen.
+        MenuItem::RecentTemplate(_) | MenuItem::ClearRecentTemplates => true,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -873,7 +898,9 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::LaserWindow
         | MenuItem::ExportDiagnostics
         | MenuItem::Recent(_)
-        | MenuItem::ClearRecent => false,
+        | MenuItem::ClearRecent
+        | MenuItem::RecentTemplate(_)
+        | MenuItem::ClearRecentTemplates => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -889,9 +916,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::ExportDiagnostics => {
             crate::panels::laser_text(crate::panels::LaserText::DiagnosticsItem, locale).to_owned()
         }
-        MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
+        MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).
-        MenuItem::Recent(_) => String::new(),
+        MenuItem::Recent(_) | MenuItem::RecentTemplate(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),
