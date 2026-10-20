@@ -2,7 +2,7 @@
 //! `TextLayer::from_parts` / `DocumentSnapshot::with_texts`.
 
 use burnburn_document::text::{
-    Align, FontRef, FontSize, FontStyle, TextId, TextLayer, TextLayout, TextMode, TextObject,
+    Align, FontRef, FontSize, FontStyle, TextId, TextLayer, TextLayout, TextMode, TextObject, VAlign, VariableText,
 };
 use burnburn_document::{DerivedOwner, DerivedRecord, DocumentSnapshot, EvalDiagnosis, EvalStatus};
 use burnburn_geometry::Affine;
@@ -12,6 +12,42 @@ use crate::LoadError;
 use crate::dto::v1::Num;
 use crate::map::{asset_key, parse_asset_key};
 use crate::text_dto as d;
+
+/// `None` when every option is at its default (the file then looks as it did before the options).
+fn options_to(l: &TextLayout) -> Option<d::LayoutOptions> {
+    let default = TextLayout::default();
+    (l.uppercase != default.uppercase
+        || l.valign != default.valign
+        || l.v_space_mm != default.v_space_mm
+        || l.welded != default.welded)
+        .then_some(d::LayoutOptions {
+            uppercase: l.uppercase,
+            valign: match l.valign {
+                VAlign::Baseline => d::VAlign::Baseline,
+                VAlign::Top => d::VAlign::Top,
+                VAlign::Middle => d::VAlign::Middle,
+                VAlign::Bottom => d::VAlign::Bottom,
+            },
+            v_space_mm: Num(l.v_space_mm),
+            welded: l.welded,
+        })
+}
+
+fn options_from(o: Option<&d::LayoutOptions>, path: &str) -> Result<TextLayout, LoadError> {
+    let mut layout = TextLayout::default();
+    if let Some(o) = o {
+        layout.uppercase = o.uppercase;
+        layout.valign = match o.valign {
+            d::VAlign::Baseline => VAlign::Baseline,
+            d::VAlign::Top => VAlign::Top,
+            d::VAlign::Middle => VAlign::Middle,
+            d::VAlign::Bottom => VAlign::Bottom,
+        };
+        layout.v_space_mm = finite(path.to_owned(), o.v_space_mm)?;
+        layout.welded = o.welded;
+    }
+    Ok(layout)
+}
 
 fn font_to(r: &FontRef) -> d::Font {
     d::Font {
@@ -64,6 +100,8 @@ pub(crate) fn texts_to_dto(doc: &DocumentSnapshot) -> Vec<d::Text> {
                     TextMode::Outline => d::Mode::Outline,
                     TextMode::SingleLine => d::Mode::SingleLine,
                 },
+                options: options_to(&t.layout),
+                variable_offset: t.variable.map(|v| v.offset),
                 evaluation: layer
                     .record(DerivedOwner::Text(id))
                     .map(|r| d::Evaluation { inputs: r.inputs.map(|h| h.to_hex()), status: status_to(&r.status) }),
@@ -120,11 +158,13 @@ fn text_from(ti: usize, t: &d::Text) -> Result<TextObject, LoadError> {
         letter_spacing_mm: finite(p("letter_spacing_mm"), t.letter_spacing_mm)?,
         kerning: t.kerning,
         ligatures: t.ligatures,
+        ..options_from(t.options.as_ref(), &p("options"))?
     };
     let mut obj = TextObject::new(t.content.clone(), font, size);
     obj.fallback = fallback;
     obj.layout = layout;
     obj.placement = placement;
+    obj.variable = t.variable_offset.map(|offset| VariableText { offset });
     obj.mode = match t.mode {
         d::Mode::Outline => TextMode::Outline,
         d::Mode::SingleLine => TextMode::SingleLine,

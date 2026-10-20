@@ -402,8 +402,10 @@ impl Txn {
                     TextTxn { layer: &mut self.texts, ids: &mut self.ids, changed: &mut self.changes.texts },
                 )
                 .map_err(CommandError::Text)?;
-                if let TextEffect::Deleted(id) = effect {
-                    self.remove_outputs(DerivedOwner::Text(id), &[]);
+                match effect {
+                    TextEffect::None => {}
+                    TextEffect::Deleted(id) => self.remove_outputs(DerivedOwner::Text(id), &[]),
+                    TextEffect::Detached(id) => self.detach_outputs(id)?,
                 }
                 Ok(())
             }
@@ -702,6 +704,31 @@ impl Txn {
             self.upsert_outputs(owner, patch.outputs)?;
         }
         self.sketches.derived.insert(owner, DerivedRecord { inputs: Some(patch.inputs), status: patch.status });
+        Ok(())
+    }
+
+    /// Convert to Path: the derived objects of text `id` become drawn objects (same ids, same
+    /// outlines); nothing is left that could re-evaluate them.
+    fn detach_outputs(&mut self, id: crate::text::TextId) -> Result<(), CommandError> {
+        let owner = DerivedOwner::Text(id);
+        let derived: Vec<GeometryId> = self
+            .objects
+            .iter()
+            .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
+            .map(|(gid, _)| *gid)
+            .collect();
+        if derived.is_empty() {
+            return Err(CommandError::Text(crate::text::TextError::NothingToConvert(id)));
+        }
+        for gid in derived {
+            if let Some(obj) = self.objects.get(&gid).cloned() {
+                if let GeometrySource::Derived(key) = obj.source() {
+                    self.structure.provenance.remove(key);
+                }
+                self.objects.insert(gid, Arc::new(obj.detached()));
+                self.changes.modified.push(gid);
+            }
+        }
         Ok(())
     }
 

@@ -13,7 +13,9 @@ use crate::shape::TextError;
 pub const SINGLE_LINE_CHARS: &str = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.+/:";
 
 /// Grid units per em: cap height 10 units = 0.7 em.
-pub(crate) const UNITS_PER_EM: f64 = 10.0 / 0.7;
+/// Cap height of the stroke set as a fraction of the em.
+pub(crate) const CAP_HEIGHT_EM: f64 = 0.7;
+pub(crate) const UNITS_PER_EM: f64 = 10.0 / CAP_HEIGHT_EM;
 /// Pen advance per character, in grid units.
 pub(crate) const ADVANCE_UNITS: f64 = 8.0;
 

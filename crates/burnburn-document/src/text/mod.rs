@@ -13,5 +13,5 @@ pub use command::{TextCommand, TextError, TextLabel, TextLayer};
 pub(crate) use command::{TextEffect, TextTxn, apply};
 pub use model::{
     Align, FontRef, FontSize, FontSizeError, FontStyle, MM_PER_POINT, MissingGlyph, TextId, TextLayout, TextMode,
-    TextObject,
+    TextObject, VAlign, VariableText,
 };

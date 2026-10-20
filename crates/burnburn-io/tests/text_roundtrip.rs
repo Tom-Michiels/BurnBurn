@@ -7,7 +7,9 @@
 
 use std::path::Path;
 
-use burnburn_document::text::{Align, FontRef, FontSize, FontStyle, TextCommand, TextMode, TextObject};
+use burnburn_document::text::{
+    Align, FontRef, FontSize, FontStyle, TextCommand, TextMode, TextObject, VAlign, VariableText,
+};
 use burnburn_document::{
     CommandPayload, DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DocumentCommand, DocumentPatch,
     DocumentSession, DocumentSnapshot, EvalDiagnosis, EvalStatus, Evaluator, ObjectKind, OwnerSolution,
@@ -74,6 +76,11 @@ fn every_field_text() -> TextObject {
     t.layout.letter_spacing_mm = -0.1;
     t.layout.kerning = false;
     t.layout.ligatures = false;
+    t.layout.uppercase = true;
+    t.layout.valign = VAlign::Bottom;
+    t.layout.v_space_mm = 1.0 / 3.0;
+    t.layout.welded = true;
+    t.variable = Some(VariableText { offset: -3 });
     t.placement = Affine::translate(Vector::new(10.0 / 3.0, -2.5)).unwrap();
     t
 }

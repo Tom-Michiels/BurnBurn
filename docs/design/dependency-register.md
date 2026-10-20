@@ -53,7 +53,8 @@ Regels:
 | `fluent-bundle` | 0.16.0 | Apache-2.0 OR MIT | pure Rust | presentation (NL/EN) | kandidaat IM20 | — |
 | `objc2-av-foundation` | 0.3.x (zelfde familie als `objc2-app-kit` 0.3.2; exacte versie bij IM27) | Zlib OR Apache-2.0 OR MIT | linkt AVFoundation.framework | macos (`CameraPort`) | kandidaat IM27 | 0002 |
 | `nusb` | (te controleren bij IM29) | MIT OR Apache-2.0 | pure Rust USB (geen libusb/C) | runtime (USB-driver) | kandidaat IM29; `rusb`/`libusb1-sys` uitgesloten (C) | 0005 |
-| QR/barcode | — | — | eigen implementatie (Code 128, QR via Reed-Solomon) of pure-Rust `qrcodegen` (MIT) — beslissen bij de eerste IM22-test | generators | kandidaat IM22 | 0007 |
+| QR/barcode (eigen) | — | — | eigen Code 128 (`barcode.rs`) en QR v1–10 (`qr.rs`, Reed-Solomon); geen crate nodig | generators | in gebruik (IM22) | 0007 |
+| `anyd` | 0.2.0, `default-features = false`, features `alloc encode aztec code39 code93 code128 codabar datamatrix ean microqr msi pdf417 rmqr twoof5` | MIT | geen afhankelijkheden; geen build.rs; `no_std` + `alloc`; `forbid(unsafe_code)`; de default-features (`std`, `scan`, `decode`, beeldverwerking) staan uit | generators (alleen `symbology::engine`: 2 of 5 Industrial/IATA, Code 128 GS1, Code 93, Codabar, EAN/ISBN/UPC, Plessey, VIN (Code 39), Aztec, DataMatrix, PDF417 (+Compact, Micro), QR Micro, rMQR). Elk gebruikt symbool is met een onafhankelijke decoder of tweede encoder gecontroleerd (`docs/dev-notes/IM22.md`, W2-L5d) | in gebruik (W2-L5d) | 0007 |
 
 Terugvalkandidaten (niet toevoegen zonder ADR-amendement): `rustybuzz` 0.20.1 (MIT), `ttf-parser` 0.25.1
 (MIT OR Apache-2.0), `vello` 0.11.0 (Apache-2.0 OR MIT; trekt `skrifa` 0.44 → dubbele versie), `tokio` 1.53.3 (MIT).
@@ -69,6 +70,10 @@ Terugvalkandidaten (niet toevoegen zonder ADR-amendement): `rustybuzz` 0.20.1 (M
 | `vtracer` | 1.0.0-alpha.4 | MIT OR Apache-2.0 (transitief Apache-2.0 `flo_curves`, BSD-2 `roots`) | alleen trace-benchmark/vergelijking als dev-dependency, **niet** runtime | kandidaat (ADR 0007) |
 | `toml` | 1.1.8 | MIT OR Apache-2.0 | xtask | in gebruik |
 | `cargo-fuzz` / `libfuzzer-sys` | — | — | `fuzz/` (aparte toolchain, buiten de workspace-lock) | gepland (Testing) |
+| `rxing` | 0.9.3, `default-features = false`, features `decoders encoding_rs aztec datamatrix oned pdf417 qrcode` | Apache-2.0 | **dev**-dependency van generators: onafhankelijke beelddecoder (ZXing/zxing-cpp-port, pure Rust) voor de barcodetests: EAN/UPC, Code 128/93, Codabar, Code 39, DataMatrix, Aztec, PDF417, QR, Micro QR, rMQR. Transitief alleen dev: `chrono` (+`iana-time-zone`, `core-foundation-sys`), `regex`, `csv`, `num*`, `encoding_rs` (build.rs, geen C), `once_cell`; nooit in de normale/build-closure, `forbid_transitive` blijft schoon | in gebruik (W2-L5d) |
+| `qrcode-generator` | 6.1.2, `default-features = false`, features `micro-qr rmqr` | MIT | **dev**-dependency van generators: tweede, onafhankelijke Micro QR/rMQR-encoder voor module-voor-module vergelijking; geen afhankelijkheden, geen build.rs | in gebruik (W2-L5d) |
+| `bwipp-rs` | 0.1.1 | MIT OR Apache-2.0 | alleen het losstaande referentieproject `research/barcode-reference` (eigen `[workspace]`, niet in de root-lock); pure Rust-port van BWIPP, levert de bevroren fixtures `tests/fixtures/barcode-bwipp.txt`. Past niet in de workspace: pint `image` < 0.25.10 en trekt `datamatrix`/`qrcode` mee | referentietool (W2-L5d) |
+| `calib-targets-aruco` 0.15.5, `locus-core` 0.10.0, `apriltag-sys` 0.4.0 | — | MIT OR Apache-2.0, MIT OR Apache-2.0, BSD-2-Clause | geen dependencies: `research/barcode-reference` leest alleen hun databestanden als tekst (OpenCV-codetabellen, officiële AprilTag-C-bronnen; `apriltag-sys` wordt niet gebouwd, dus geen C-compilatie) en genereert `generators/src/symbology/fiducial_tables.rs` en `tests/fixtures/fiducial-reference.txt` | databron (W2-L5d) |
 
 ## Expliciet uitgesloten
 

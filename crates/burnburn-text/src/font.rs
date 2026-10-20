@@ -95,6 +95,17 @@ impl FontData {
         }
     }
 
+    /// Typographic ascent and descent (positive, hhea) in font units.
+    pub fn ascent_descent_units(&self) -> (f64, f64) {
+        match skrifa::FontRef::new(&self.bytes) {
+            Ok(font) => {
+                let m = font.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
+                (f64::from(m.ascent), f64::from(-m.descent))
+            }
+            Err(_) => (0.0, 0.0),
+        }
+    }
+
     pub(crate) fn shaping(&self) -> &harfrust::Font {
         &self.shaping
     }
@@ -108,6 +119,19 @@ impl FontData {
 /// they must never substitute an unrelated font silently.
 pub trait FontSource {
     fn load(&self, font: &FontRef) -> Result<Arc<FontData>, FontError>;
+
+    /// Styles this source can provide for `family` (empty when the source does not list them).
+    /// The toolbar enables Bold/Italic from this; shaping never substitutes a missing style.
+    fn available_styles(&self, _family: &str) -> Vec<FontStyle> {
+        Vec::new()
+    }
+}
+
+/// The reference for the same family with Bold/Italic switched. It names another face, so an
+/// embedded asset of the old face is not carried over: the face is looked up by family and
+/// style (and reported missing, never replaced, when the source lacks it).
+pub fn switch_style(font: &FontRef, bold: bool, italic: bool) -> FontRef {
+    FontRef::new(font.family.clone(), FontStyle::from_flags(bold, italic))
 }
 
 /// An in-memory catalog: faces registered by asset hash and by family/style.
@@ -141,5 +165,9 @@ impl FontSource for MemoryFontSource {
             None => self.by_name.get(&(font.family.clone(), font.style)),
         };
         found.cloned().ok_or_else(|| FontError::NotFound(font.clone()))
+    }
+
+    fn available_styles(&self, family: &str) -> Vec<FontStyle> {
+        self.by_name.keys().filter(|(f, _)| f == family).map(|(_, style)| *style).collect()
     }
 }

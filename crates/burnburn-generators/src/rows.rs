@@ -34,9 +34,25 @@ pub enum CsvError {
         column: usize,
     },
     TooLarge,
+    /// The bytes are not UTF-8; `valid_up_to` is the length of the valid prefix.
+    NotUtf8 {
+        valid_up_to: usize,
+    },
 }
 
 impl DataTable {
+    /// As [`DataTable::parse_csv`] for file bytes: UTF-8 only, a leading byte-order mark is dropped.
+    pub fn from_utf8(bytes: &[u8], delimiter: char) -> Result<DataTable, CsvError> {
+        const BOM: &[u8] = b"\xEF\xBB\xBF";
+        let (body, skipped) = match bytes.strip_prefix(BOM) {
+            Some(rest) => (rest, BOM.len()),
+            None => (bytes, 0),
+        };
+        let text =
+            std::str::from_utf8(body).map_err(|e| CsvError::NotUtf8 { valid_up_to: skipped + e.valid_up_to() })?;
+        DataTable::parse_csv(text, delimiter)
+    }
+
     /// RFC 4180-style: `delimiter`-separated, `"` quoting with `""` escapes, LF or CRLF lines,
     /// first row = header. Bounded (rows, columns, field size).
     pub fn parse_csv(text: &str, delimiter: char) -> Result<DataTable, CsvError> {

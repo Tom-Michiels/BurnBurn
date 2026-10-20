@@ -19,6 +19,9 @@ pub enum TextCommand {
     Set { text: TextId, source: Box<TextObject> },
     /// Removes the text object and its derived outlines.
     Delete { text: TextId },
+    /// "Convert to Path": the current outlines become ordinary drawn objects and the text object
+    /// goes (holes stay holes: the outlines are taken over unchanged). Undo restores the text.
+    ConvertToPath { text: TextId },
 }
 
 /// Undo label for text commands.
@@ -28,6 +31,7 @@ pub enum TextLabel {
     Create,
     Edit,
     Delete,
+    ConvertToPath,
 }
 
 impl TextCommand {
@@ -36,6 +40,7 @@ impl TextCommand {
             TextCommand::Create { .. } => TextLabel::Create,
             TextCommand::Set { .. } => TextLabel::Edit,
             TextCommand::Delete { .. } => TextLabel::Delete,
+            TextCommand::ConvertToPath { .. } => TextLabel::ConvertToPath,
         }
     }
 }
@@ -50,6 +55,8 @@ pub enum TextError {
     /// A stored record belongs to another owner or to a text that is not in the layer.
     InvalidRecord,
     IdsExhausted,
+    /// Convert to Path on a text that has no outlines (empty text, or never evaluated).
+    NothingToConvert(TextId),
 }
 
 impl fmt::Display for TextError {
@@ -59,6 +66,7 @@ impl fmt::Display for TextError {
             TextError::InvalidLayout => f.write_str("text layout values are out of range"),
             TextError::InvalidRecord => f.write_str("text evaluation record does not match a text object"),
             TextError::IdsExhausted => f.write_str("text ids exhausted"),
+            TextError::NothingToConvert(t) => write!(f, "text {t} has no outlines to convert"),
         }
     }
 }
@@ -76,7 +84,8 @@ pub struct TextLayer {
 
 fn check(obj: &TextObject) -> Result<(), TextError> {
     let l = &obj.layout;
-    if l.line_spacing.is_finite() && l.line_spacing > 0.0 && l.letter_spacing_mm.is_finite() {
+    if l.line_spacing.is_finite() && l.line_spacing > 0.0 && l.letter_spacing_mm.is_finite() && l.v_space_mm.is_finite()
+    {
         Ok(())
     } else {
         Err(TextError::InvalidLayout)
@@ -149,6 +158,8 @@ pub(crate) enum TextEffect {
     None,
     /// The text is gone: remove its derived outputs.
     Deleted(TextId),
+    /// The text is gone but its outlines stay as drawn objects.
+    Detached(TextId),
 }
 
 pub(crate) fn apply(cmd: TextCommand, txn: TextTxn<'_>) -> Result<TextEffect, TextError> {
@@ -176,6 +187,13 @@ pub(crate) fn apply(cmd: TextCommand, txn: TextTxn<'_>) -> Result<TextEffect, Te
             layer.missing.remove(&text);
             changed.push(text);
             Ok(TextEffect::Deleted(text))
+        }
+        TextCommand::ConvertToPath { text } => {
+            layer.texts.remove(&text).ok_or(TextError::UnknownText(text))?;
+            layer.derived.remove(&DerivedOwner::Text(text));
+            layer.missing.remove(&text);
+            changed.push(text);
+            Ok(TextEffect::Detached(text))
         }
     }
 }

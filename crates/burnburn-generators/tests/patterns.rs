@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use burnburn_generators::{GenError, LivingHinge, PathTextParams, living_hinge, stencil_bridges, text_on_path};
+use burnburn_generators::{
+    Distort, GenError, LivingHinge, PathTextParams, living_hinge, stencil_bridges, text_on_path,
+};
 use burnburn_geometry::{Path, Point, ProductionTolerance, Rect, Subpath, Vector};
 use burnburn_test_support::fixtures::read_fixture;
 use burnburn_text::{FontData, FontSize, FontStyle, MemoryFontSource, TextObject};
@@ -170,7 +172,7 @@ fn text_on_circle_sits_at_radius_minus_offset_and_follows_the_tangent() {
     let shaped = burnburn_text::shape(&obj, &src).unwrap();
     let advances: Vec<f64> = shaped.glyphs.iter().map(|g| g.advance_mm).collect();
     for (offset, reverse, radius) in [(2.0, false, r - 2.0), (2.0, true, r + 2.0), (0.0, false, r)] {
-        let p = PathTextParams { start: 10.0, offset, reverse, tolerance: tol(0.00001) };
+        let p = PathTextParams { distort: Distort::Rigid, start: 10.0, offset, reverse, tolerance: tol(0.00001) };
         let t = text_on_path(&obj, &src, &circle, &p).unwrap();
         assert_eq!(t.frames.len(), 3);
         for f in &t.frames {
@@ -193,7 +195,7 @@ fn text_on_circle_sits_at_radius_minus_offset_and_follows_the_tangent() {
 fn text_on_path_reports_overflow_and_multiline() {
     let (src, mut obj) = liberation();
     let short = Path::line(Point::ORIGIN, Point::new(5.0, 0.0)).unwrap();
-    let p = PathTextParams { start: 0.0, offset: 0.0, reverse: false, tolerance: tol(0.01) };
+    let p = PathTextParams { distort: Distort::Rigid, start: 0.0, offset: 0.0, reverse: false, tolerance: tol(0.01) };
     assert!(matches!(text_on_path(&obj, &src, &short, &p).unwrap_err(), GenError::TextLongerThanPath { .. }));
     obj.content = "a\nb".into();
     let long = Path::line(Point::ORIGIN, Point::new(500.0, 0.0)).unwrap();
@@ -205,7 +207,7 @@ fn text_on_a_straight_line_equals_plain_text_translated() {
     let (src, mut obj) = liberation();
     obj.content = "H".into();
     let line = Path::line(Point::new(0.0, 0.0), Point::new(200.0, 0.0)).unwrap();
-    let p = PathTextParams { start: 0.0, offset: 0.0, reverse: false, tolerance: tol(0.01) };
+    let p = PathTextParams { distort: Distort::Rigid, start: 0.0, offset: 0.0, reverse: false, tolerance: tol(0.01) };
     let t = text_on_path(&obj, &src, &line, &p).unwrap();
     let plain = burnburn_text::shape(&obj, &src).unwrap().outlines.bounds().unwrap();
     let on = t.path.bounds().unwrap();

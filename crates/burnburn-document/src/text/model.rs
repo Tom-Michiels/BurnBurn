@@ -37,6 +37,24 @@ pub enum FontStyle {
 }
 
 impl FontStyle {
+    /// The style that has exactly these two properties.
+    pub fn from_flags(bold: bool, italic: bool) -> FontStyle {
+        match (bold, italic) {
+            (false, false) => FontStyle::Regular,
+            (true, false) => FontStyle::Bold,
+            (false, true) => FontStyle::Italic,
+            (true, true) => FontStyle::BoldItalic,
+        }
+    }
+
+    pub fn is_bold(self) -> bool {
+        matches!(self, FontStyle::Bold | FontStyle::BoldItalic)
+    }
+
+    pub fn is_italic(self) -> bool {
+        matches!(self, FontStyle::Italic | FontStyle::BoldItalic)
+    }
+
     pub fn tag(self) -> &'static str {
         match self {
             FontStyle::Regular => "regular",
@@ -117,6 +135,20 @@ pub enum Align {
     Right,
 }
 
+/// Where the text block hangs on the origin of text space (y = 0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum VAlign {
+    /// The first baseline sits on y = 0 (the layout before vertical alignment existed).
+    #[default]
+    Baseline,
+    /// The top of the block (ascent of the first line) sits on y = 0.
+    Top,
+    /// The middle of the block (first ascent to last descent) sits on y = 0.
+    Middle,
+    /// The bottom of the block (descent of the last line) sits on y = 0.
+    Bottom,
+}
+
 /// Outline text (closed glyph contours) or single-line stroke text (open engraving paths).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextMode {
@@ -136,12 +168,40 @@ pub struct TextLayout {
     pub kerning: bool,
     /// Standard ligatures (OpenType `liga`/`clig`).
     pub ligatures: bool,
+    /// Draw lower-case letters as their upper-case form (Unicode mapping; `ß` becomes `SS`).
+    pub uppercase: bool,
+    pub valign: VAlign,
+    /// Extra distance between baselines in mm, added to `line_spacing · em` ("VSpace"; the
+    /// letter spacing is the "HSpace"). May be negative.
+    pub v_space_mm: f64,
+    /// Union of the overlapping glyph outlines of every line into one outline (script fonts).
+    /// Outline mode only.
+    pub welded: bool,
 }
 
 impl Default for TextLayout {
     fn default() -> Self {
-        TextLayout { align: Align::Left, line_spacing: 1.2, letter_spacing_mm: 0.0, kerning: true, ligatures: true }
+        TextLayout {
+            align: Align::Left,
+            line_spacing: 1.2,
+            letter_spacing_mm: 0.0,
+            kerning: true,
+            ligatures: true,
+            uppercase: false,
+            valign: VAlign::Baseline,
+            v_space_mm: 0.0,
+            welded: false,
+        }
     }
+}
+
+/// Marks a text object as *variable text*: its content is a template (`{serial}`, `{date:..}`,
+/// `{csv:..}`, `{cut:..}`) that is resolved against a production record before preview and
+/// compile. Without it the content is literal, braces included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct VariableText {
+    /// The object's own serial offset, in counter steps (arrays give copies 0, 1, 2, ...).
+    pub offset: i64,
 }
 
 /// A text object as document data. `placement` maps text space (mm, y-up, first baseline at
@@ -156,6 +216,8 @@ pub struct TextObject {
     pub layout: TextLayout,
     pub placement: Affine,
     pub mode: TextMode,
+    /// `Some`: variable text (see [`VariableText`]).
+    pub variable: Option<VariableText>,
 }
 
 impl TextObject {
@@ -168,6 +230,7 @@ impl TextObject {
             layout: TextLayout::default(),
             placement: Affine::IDENTITY,
             mode: TextMode::Outline,
+            variable: None,
         }
     }
 }

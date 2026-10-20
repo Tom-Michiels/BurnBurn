@@ -181,3 +181,73 @@ fn inputs_hash_covers_source_layout_and_font_bytes() {
     assert!(r.asset.is_some());
     assert_eq!(inputs_hash(&obj, &MemoryFontSource::new()), None);
 }
+
+#[test]
+fn convert_to_path_turns_the_outlines_into_plain_objects_and_keeps_counters_open() {
+    let mut src = MemoryFontSource::new();
+    let r = src.insert("Liberation Sans", FontStyle::Regular, font("LiberationSans-Regular.ttf"));
+    // 'O' has a counter; a space-separated second line has no outline at all.
+    let obj = TextObject::new("O\n \nI", r, FontSize::from_mm(Length::from_mm(20.48).unwrap()).unwrap());
+    let ev = TextEvaluator::new(src);
+    let mut s = DocumentSession::new(DocumentId::from_raw(1));
+    let id = create(&mut s, &ev, &obj);
+    let before = outputs(&s, id);
+    assert_eq!(before.len(), 2);
+    assert_eq!(before[0].2.subpaths().len(), 2, "outer contour and counter");
+
+    let rev = s.revision();
+    s.apply_with(cmd(&s, TextCommand::ConvertToPath { text: id }), &[&ev]).unwrap();
+    assert_eq!(s.revision(), rev.next().unwrap(), "one undo step");
+    assert!(s.snapshot().text(id).is_none(), "the text object is gone");
+    assert!(s.snapshot().derived_record(DerivedOwner::Text(id)).is_none());
+    let snap = s.snapshot();
+    for (_, gid, path) in &before {
+        let o = snap.object(*gid).expect("the object keeps its id");
+        assert_eq!(o.source(), &GeometrySource::Drawn, "no longer derived");
+        assert_eq!(**o.path(), *path, "outline unchanged, so the counter is still a counter");
+        assert!(!snap.production_blocked(*gid));
+    }
+    let ring = before[0].2.subpaths();
+    let windings: Vec<_> = ring.iter().map(|sp| sp.winding()).collect();
+    assert_ne!(windings[0], windings[1], "the counter winds opposite to the outer contour");
+
+    // Changing the font afterwards cannot change the converted outlines: there is nothing to re-evaluate.
+    s.undo(s.revision()).unwrap();
+    assert_eq!(s.snapshot().text(id), Some(&obj));
+    assert_eq!(outputs(&s, id), before, "undo restores the text and its derived outlines");
+}
+
+#[test]
+fn convert_to_path_refuses_text_without_outlines_and_unknown_text() {
+    let (src, _, obj) = setup();
+    let ev = TextEvaluator::new(src);
+    let mut s = DocumentSession::new(DocumentId::from_raw(1));
+    let mut empty = obj.clone();
+    empty.content = " \n ".into();
+    let id = create(&mut s, &ev, &empty);
+    let rev = s.revision();
+    assert!(s.apply_with(cmd(&s, TextCommand::ConvertToPath { text: id }), &[&ev]).is_err(), "nothing to convert");
+    assert!(s.apply_with(cmd(&s, TextCommand::ConvertToPath { text: TextId::from_raw(999) }), &[&ev]).is_err());
+    assert_eq!(s.revision(), rev, "a refused command leaves the document alone");
+    assert!(s.snapshot().text(id).is_some());
+}
+
+#[test]
+fn every_layout_option_is_part_of_the_inputs_hash() {
+    let (src, _, obj) = setup();
+    let base = inputs_hash(&obj, &src).unwrap();
+    let variants: [fn(&mut TextObject); 4] = [
+        |t| t.layout.uppercase = true,
+        |t| t.layout.valign = burnburn_text::VAlign::Middle,
+        |t| t.layout.v_space_mm = 0.5,
+        |t| t.layout.welded = true,
+    ];
+    let mut seen = vec![base];
+    for v in variants {
+        let mut t = obj.clone();
+        v(&mut t);
+        let h = inputs_hash(&t, &src).unwrap();
+        assert!(!seen.contains(&h), "each option changes what is evaluated");
+        seen.push(h);
+    }
+}
