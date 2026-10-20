@@ -9,7 +9,7 @@
 
 use burnburn_document::process::ProcessLabel;
 use burnburn_document::sketch::SketchLabel;
-use burnburn_document::{EditLabel, UndoLabel};
+use burnburn_document::{ArrangeLabel, EditLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
     CommandKey, Feature, FieldError, FieldKey, MachineAction, MachineStatusKey, MessageKey, OperationField, Outcome,
@@ -164,6 +164,23 @@ pub enum HostText {
     SketchRoleDriving,
     SketchRoleDriven,
     SketchNoConstraints,
+    MenuView,
+    RecentProjects,
+    ClearRecent,
+    MenuAlign,
+    MenuDistribute,
+    UnitPercent,
+    AspectLock,
+    ReferencePoint,
+    RefPointTopLeft,
+    RefPointTop,
+    RefPointTopRight,
+    RefPointLeft,
+    RefPointCenter,
+    RefPointRight,
+    RefPointBottomLeft,
+    RefPointBottom,
+    RefPointBottomRight,
 }
 
 impl HostText {
@@ -281,6 +298,23 @@ impl HostText {
         HostText::SketchRoleDriving,
         HostText::SketchRoleDriven,
         HostText::SketchNoConstraints,
+        HostText::MenuView,
+        HostText::RecentProjects,
+        HostText::ClearRecent,
+        HostText::MenuAlign,
+        HostText::MenuDistribute,
+        HostText::UnitPercent,
+        HostText::AspectLock,
+        HostText::ReferencePoint,
+        HostText::RefPointTopLeft,
+        HostText::RefPointTop,
+        HostText::RefPointTopRight,
+        HostText::RefPointLeft,
+        HostText::RefPointCenter,
+        HostText::RefPointRight,
+        HostText::RefPointBottomLeft,
+        HostText::RefPointBottom,
+        HostText::RefPointBottomRight,
     ];
 }
 
@@ -435,6 +469,23 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
             "Nog geen relaties of maten: teken, selecteer en kies een relatie.",
             "No constraints yet: draw, select and choose a relation.",
         ),
+        T::MenuView => ("Beeld", "View"),
+        T::RecentProjects => ("Recente projecten", "Open Recent"),
+        T::ClearRecent => ("Wis menu", "Clear Menu"),
+        T::MenuAlign => ("Uitlijnen", "Align"),
+        T::MenuDistribute => ("Verdelen", "Distribute"),
+        T::UnitPercent => ("%", "%"),
+        T::AspectLock => ("Verhouding vergrendelen", "Lock Aspect Ratio"),
+        T::ReferencePoint => ("Referentiepunt", "Reference Point"),
+        T::RefPointTopLeft => ("Linksboven", "Top left"),
+        T::RefPointTop => ("Midden boven", "Top center"),
+        T::RefPointTopRight => ("Rechtsboven", "Top right"),
+        T::RefPointLeft => ("Midden links", "Middle left"),
+        T::RefPointCenter => ("Midden", "Center"),
+        T::RefPointRight => ("Midden rechts", "Middle right"),
+        T::RefPointBottomLeft => ("Linksonder", "Bottom left"),
+        T::RefPointBottom => ("Midden onder", "Bottom center"),
+        T::RefPointBottomRight => ("Rechtsonder", "Bottom right"),
     }
 }
 
@@ -535,6 +586,40 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::SketchFix => ("Vast", "Fix"),
         C::SketchDimension => ("Maat", "Dimension"),
         C::SketchRemoveConstraint => ("Verwijder relatie", "Remove Constraint"),
+        C::Cut => ("Knip", "Cut"),
+        C::Copy => ("Kopieer", "Copy"),
+        C::Paste => ("Plak", "Paste"),
+        C::PasteInPlace => ("Plak op plaats", "Paste in Place"),
+        C::Duplicate => ("Dupliceer", "Duplicate"),
+        C::DeleteDuplicates => ("Verwijder dubbelen", "Delete Duplicates"),
+        C::PushForward => ("Een stap naar voren", "Push Forward"),
+        C::PushBackward => ("Een stap naar achteren", "Push Backward"),
+        C::PushToFront => ("Voorop", "Push to Front"),
+        C::PushToBack => ("Achteraan", "Push to Back"),
+        C::Group => ("Groepeer", "Group"),
+        C::Ungroup => ("Hef groep op", "Ungroup"),
+        C::AutoGroup => ("Groepeer automatisch", "Auto-Group"),
+        C::BreakApart => ("Haal uit elkaar", "Break Apart"),
+        C::FlipHorizontal => ("Spiegel horizontaal", "Flip Horizontally"),
+        C::FlipVertical => ("Spiegel verticaal", "Flip Vertically"),
+        C::Rotate90Cw => ("Draai 90° rechtsom", "Rotate 90° Clockwise"),
+        C::Rotate90Ccw => ("Draai 90° linksom", "Rotate 90° Counterclockwise"),
+        C::LockSelected => ("Vergrendel selectie", "Lock Selected"),
+        C::UnlockSelected => ("Ontgrendel selectie", "Unlock Selected"),
+        C::UnlockAll => ("Ontgrendel alles", "Unlock All"),
+        C::HideSelected => ("Verberg selectie", "Hide Selected"),
+        C::ShowAll => ("Toon alles", "Show All"),
+        C::InvertSelection => ("Keer selectie om", "Invert Selection"),
+        C::SelectOpenShapes => ("Selecteer open vormen", "Select Open Shapes"),
+        C::SelectInLayer => ("Selecteer vormen in laag", "Select Shapes in Layer"),
+        C::SelectContained => ("Selecteer omsloten vormen", "Select Contained Shapes"),
+        C::SelectSmaller => ("Selecteer kleinere vormen", "Select Smaller Shapes"),
+        C::SelectCircles => ("Selecteer cirkels", "Select Circles"),
+        C::ZoomPage => ("Zoom naar werkblad", "Zoom to Page"),
+        C::ZoomSelection => ("Zoom naar selectie", "Zoom to Selection"),
+        C::ZoomIn => ("Zoom in", "Zoom In"),
+        C::ZoomOut => ("Zoom uit", "Zoom Out"),
+        C::ViewWireframe => ("Draadmodel", "Wireframe"),
         _ => return None,
     })
 }
@@ -546,6 +631,18 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
         UndoLabel::Transform => ("Verplaatsen", "Move"),
         UndoLabel::Delete => ("Verwijderen", "Delete"),
         UndoLabel::Rename => ("Naam wijzigen", "Rename"),
+        UndoLabel::Arrange(a) => match a {
+            ArrangeLabel::DrawOrder => ("Tekenvolgorde wijzigen", "Change Draw Order"),
+            ArrangeLabel::Lock => ("Vergrendelen", "Lock"),
+            ArrangeLabel::Unlock => ("Ontgrendelen", "Unlock"),
+            ArrangeLabel::Hide => ("Verbergen", "Hide"),
+            ArrangeLabel::Show => ("Tonen", "Show"),
+            ArrangeLabel::Paste => ("Plakken", "Paste"),
+            ArrangeLabel::BreakApart => ("Uit elkaar halen", "Break Apart"),
+            ArrangeLabel::AutoGroup => ("Automatisch groeperen", "Auto-Group"),
+            ArrangeLabel::Ungroup => ("Groep opheffen", "Ungroup"),
+            _ => return None,
+        },
         UndoLabel::Edit(e) => match e {
             EditLabel::CreateShape => ("Vorm tekenen", "Draw Shape"),
             EditLabel::CreatePath => ("Pad tekenen", "Draw Path"),
@@ -600,6 +697,10 @@ fn field_pair(key: FieldKey) -> Option<(&'static str, &'static str)> {
         FieldKey::Width => ("Breedte", "Width"),
         FieldKey::Height => ("Hoogte", "Height"),
         FieldKey::Rotation => ("Rotatie", "Rotation"),
+        FieldKey::ScaleX => ("Schaal X", "Scale X"),
+        FieldKey::ScaleY => ("Schaal Y", "Scale Y"),
+        FieldKey::ShearX => ("Scheef X", "Shear X"),
+        FieldKey::ShearY => ("Scheef Y", "Shear Y"),
         _ => return None,
     })
 }
@@ -857,6 +958,15 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             "Only straight lines and full circles can become a sketch.",
         ),
         M::SketchEditRefused => ("De schetswijziging is geweigerd.", "The sketch change was refused."),
+        M::ClipboardUnreadable => (
+            "Het klembord bevat geen leesbare BurnBurn-objecten.",
+            "The clipboard does not hold readable BurnBurn objects.",
+        ),
+        M::NoDuplicatesFound => ("Geen dubbele vormen gevonden.", "No duplicate shapes found."),
+        M::NothingFound => ("Niets gevonden om te selecteren.", "Nothing found to select."),
+        M::ObjectsLocked => {
+            ("Vergrendelde objecten kunnen niet gewijzigd worden.", "Locked objects cannot be changed.")
+        }
         M::VisualPlacementOnly => (
             "Camerabeeld is alleen een visuele plaatsingshulp, geen productiegeometrie.",
             "The camera image is only a visual placement aid, not production geometry.",
@@ -920,6 +1030,20 @@ pub fn known_message_keys() -> Vec<MessageKey> {
     );
     undo.extend(
         [
+            ArrangeLabel::DrawOrder,
+            ArrangeLabel::Lock,
+            ArrangeLabel::Unlock,
+            ArrangeLabel::Hide,
+            ArrangeLabel::Show,
+            ArrangeLabel::Paste,
+            ArrangeLabel::BreakApart,
+            ArrangeLabel::AutoGroup,
+            ArrangeLabel::Ungroup,
+        ]
+        .map(UndoLabel::Arrange),
+    );
+    undo.extend(
+        [
             ProcessLabel::AddOperation,
             ProcessLabel::UpdateOperation,
             ProcessLabel::RemoveOperation,
@@ -954,7 +1078,18 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         keys.push(MessageKey::RedoAction(l));
     }
     keys.extend(
-        [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation].map(MessageKey::Field),
+        [
+            FieldKey::X,
+            FieldKey::Y,
+            FieldKey::Width,
+            FieldKey::Height,
+            FieldKey::Rotation,
+            FieldKey::ScaleX,
+            FieldKey::ScaleY,
+            FieldKey::ShearX,
+            FieldKey::ShearY,
+        ]
+        .map(MessageKey::Field),
     );
     keys.extend([MessageKey::NoFontAvailable, MessageKey::CameraNotAuthorized, MessageKey::VisualPlacementOnly]);
     keys.extend(
@@ -1062,6 +1197,10 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::TrimImpossible,
         MessageKey::NothingToRepair,
         MessageKey::NotAllowedForRole,
+        MessageKey::ClipboardUnreadable,
+        MessageKey::NoDuplicatesFound,
+        MessageKey::NothingFound,
+        MessageKey::ObjectsLocked,
     ]);
     keys.extend(
         [
