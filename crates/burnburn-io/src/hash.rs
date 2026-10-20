@@ -22,7 +22,7 @@ pub fn asset_hash(bytes: &[u8]) -> ContentHash {
 /// only when the document has traces: `tag("traces")`, `seq` of (`u64` id, trace definition);
 /// only when the document has generators: `tag("generators")`, `seq` of (`u64` id, generator definition);
 /// only when the document has a draw order or locks (W2-L1-bewerken): `tag("arrange")`, `seq` of the
-/// ordered ids, `seq` of the locked ids (ascending).
+/// ordered ids, `seq` of the locked ids and `seq` of the hidden ids (both ascending).
 pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
     let mut w = CanonicalWriter::new();
     w.tag("objects");
@@ -74,6 +74,7 @@ pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
         w.tag("arrange");
         w.seq(arrange.order().iter().map(|id| IdOnly(id.raw())));
         w.seq(arrange.locked().map(|id| IdOnly(id.raw())));
+        w.seq(arrange.hidden().map(|id| IdOnly(id.raw())));
     }
     // Frozen profiles and revisions (IM28) only when present.
     if !project.profiles.is_empty() {

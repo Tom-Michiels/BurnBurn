@@ -22,22 +22,27 @@ pub enum ArrangeLayerError {
 pub struct ArrangeLayer {
     order: Vec<GeometryId>,
     locked: BTreeSet<GeometryId>,
+    hidden: BTreeSet<GeometryId>,
 }
 
 impl ArrangeLayer {
     /// A layer from stored parts (open/recovery). The snapshot checks that the objects exist.
-    pub fn from_parts(order: Vec<GeometryId>, locked: Vec<GeometryId>) -> Result<Self, ArrangeLayerError> {
+    pub fn from_parts(
+        order: Vec<GeometryId>,
+        locked: Vec<GeometryId>,
+        hidden: Vec<GeometryId>,
+    ) -> Result<Self, ArrangeLayerError> {
         let mut seen = BTreeSet::new();
         for id in &order {
             if !seen.insert(*id) {
                 return Err(ArrangeLayerError::DuplicateOrder(*id));
             }
         }
-        Ok(ArrangeLayer { order, locked: locked.into_iter().collect() })
+        Ok(ArrangeLayer { order, locked: locked.into_iter().collect(), hidden: hidden.into_iter().collect() })
     }
 
     pub fn is_empty(&self) -> bool {
-        self.order.is_empty() && self.locked.is_empty()
+        self.order.is_empty() && self.locked.is_empty() && self.hidden.is_empty()
     }
 
     /// The explicitly ordered objects, back to front (empty: creation order).
@@ -51,6 +56,14 @@ impl ArrangeLayer {
 
     pub fn is_locked(&self, id: GeometryId) -> bool {
         self.locked.contains(&id)
+    }
+
+    pub fn hidden(&self) -> impl ExactSizeIterator<Item = GeometryId> + '_ {
+        self.hidden.iter().copied()
+    }
+
+    pub fn is_hidden(&self, id: GeometryId) -> bool {
+        self.hidden.contains(&id)
     }
 
     /// Back-to-front drawing sequence of `existing` (ascending ids): the explicitly ordered
@@ -76,10 +89,16 @@ impl ArrangeLayer {
         if locked { self.locked.insert(id) } else { self.locked.remove(&id) }
     }
 
+    /// Hides or shows `id`; true when that changed something.
+    pub(crate) fn set_hidden(&mut self, id: GeometryId, hidden: bool) -> bool {
+        if hidden { self.hidden.insert(id) } else { self.hidden.remove(&id) }
+    }
+
     /// Forgets objects that no longer exist.
     pub(crate) fn retain_existing(&mut self, exists: impl Fn(GeometryId) -> bool) {
         self.order.retain(|id| exists(*id));
         self.locked.retain(|id| exists(*id));
+        self.hidden.retain(|id| exists(*id));
     }
 }
 

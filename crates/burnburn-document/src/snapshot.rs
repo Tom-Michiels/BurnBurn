@@ -286,7 +286,7 @@ impl DocumentSnapshot {
     /// The same snapshot with a stored arrangement layer (open/recovery). Every object it names
     /// must exist.
     pub fn with_arrange(self, arrange: ArrangeLayer) -> Result<Self, SnapshotError> {
-        for id in arrange.order().iter().copied().chain(arrange.locked()) {
+        for id in arrange.order().iter().copied().chain(arrange.locked()).chain(arrange.hidden()) {
             if !self.objects.contains_key(&id) {
                 return Err(SnapshotError::Arrange(id));
             }
@@ -307,6 +307,16 @@ impl DocumentSnapshot {
     /// Locked objects are not picked on the canvas and are not moved by it.
     pub fn is_locked(&self, id: GeometryId) -> bool {
         self.arrange.is_locked(id)
+    }
+
+    /// Hidden objects are not drawn or picked on the canvas; they stay part of the job.
+    pub fn is_hidden(&self, id: GeometryId) -> bool {
+        self.arrange.is_hidden(id)
+    }
+
+    /// Visible and unlocked: what a canvas click, a rubber band or Select All may pick.
+    pub fn is_selectable(&self, id: GeometryId) -> bool {
+        !self.is_locked(id) && !self.is_hidden(id)
     }
 
     /// Trace and generator definitions with their evaluation records (C-9, IM22).

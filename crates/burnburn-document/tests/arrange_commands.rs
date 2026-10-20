@@ -159,6 +159,36 @@ fn lock_marks_objects_and_is_one_undoable_step() {
 }
 
 #[test]
+fn hide_is_a_display_flag_in_the_document_with_its_own_undo_step() {
+    let mut s = session();
+    let (a, b) = (rect(&mut s, 0.0, 0.0, 5.0, 5.0), rect(&mut s, 10.0, 0.0, 5.0, 5.0));
+    let out = arrange(&mut s, ArrangeCommand::SetHidden { targets: vec![a, b], hidden: true }).unwrap();
+    assert_eq!(out.undo_label, UndoLabel::Arrange(ArrangeLabel::Hide));
+    assert!(s.snapshot().is_hidden(a) && s.snapshot().is_hidden(b));
+    assert_eq!(s.snapshot().len(), 2, "hidden objects stay in the document");
+    assert_eq!(
+        arrange(&mut s, ArrangeCommand::SetHidden { targets: vec![a], hidden: true }).unwrap_err(),
+        CommandError::Arrange(ArrangeError::NothingChanged)
+    );
+    let out = arrange(&mut s, ArrangeCommand::SetHidden { targets: vec![a], hidden: false }).unwrap();
+    assert_eq!(out.undo_label, UndoLabel::Arrange(ArrangeLabel::Show));
+    assert!(!s.snapshot().is_hidden(a) && s.snapshot().is_hidden(b));
+    s.undo(s.revision()).unwrap();
+    assert!(s.snapshot().is_hidden(a));
+}
+
+#[test]
+fn only_visible_unlocked_objects_are_selectable() {
+    let mut s = session();
+    let (a, b, c) =
+        (rect(&mut s, 0.0, 0.0, 5.0, 5.0), rect(&mut s, 10.0, 0.0, 5.0, 5.0), rect(&mut s, 20.0, 0.0, 5.0, 5.0));
+    arrange(&mut s, ArrangeCommand::SetLocked { targets: vec![a], locked: true }).unwrap();
+    arrange(&mut s, ArrangeCommand::SetHidden { targets: vec![b], hidden: true }).unwrap();
+    let snap = s.snapshot();
+    assert!(!snap.is_selectable(a) && !snap.is_selectable(b) && snap.is_selectable(c));
+}
+
+#[test]
 fn deleting_a_locked_object_forgets_the_lock() {
     let mut s = session();
     let a = rect(&mut s, 0.0, 0.0, 5.0, 5.0);
@@ -166,6 +196,10 @@ fn deleting_a_locked_object_forgets_the_lock() {
     run(&mut s, CommandPayload::Delete { targets: vec![a] }).unwrap();
     assert!(!s.snapshot().is_locked(a));
     assert!(s.snapshot().arrange().is_empty());
+    let b = rect(&mut s, 0.0, 0.0, 5.0, 5.0);
+    arrange(&mut s, ArrangeCommand::SetHidden { targets: vec![b], hidden: true }).unwrap();
+    run(&mut s, CommandPayload::Delete { targets: vec![b] }).unwrap();
+    assert!(s.snapshot().arrange().is_empty(), "hide flags of deleted objects are forgotten too");
 }
 
 #[test]

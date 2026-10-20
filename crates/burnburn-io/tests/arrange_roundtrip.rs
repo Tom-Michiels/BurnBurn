@@ -18,7 +18,7 @@ use common::rewrite_json;
 
 fn arranged_session() -> (DocumentSession, Vec<GeometryId>) {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
-    let mut run = |s: &mut DocumentSession, payload| {
+    let run = |s: &mut DocumentSession, payload| {
         let cmd =
             DocumentCommand { document: s.id(), expected: s.revision(), request: RequestId::from_raw(1), payload };
         s.apply(cmd).unwrap()
@@ -36,6 +36,7 @@ fn arranged_session() -> (DocumentSession, Vec<GeometryId>) {
         .collect();
     run(&mut s, CommandPayload::Arrange(ArrangeCommand::Order { targets: vec![ids[0]], change: OrderChange::ToFront }));
     run(&mut s, CommandPayload::Arrange(ArrangeCommand::SetLocked { targets: vec![ids[1]], locked: true }));
+    run(&mut s, CommandPayload::Arrange(ArrangeCommand::SetHidden { targets: vec![ids[2]], hidden: true }));
     (s, ids)
 }
 
@@ -52,6 +53,7 @@ fn draw_order_and_locks_roundtrip_through_save_and_load() {
     let back = load_project(&fs, Path::new("/p/a.burnburn")).unwrap();
     assert_eq!(back.document.draw_order(), vec![ids[1], ids[2], ids[0]]);
     assert!(back.document.is_locked(ids[1]) && !back.document.is_locked(ids[0]));
+    assert!(back.document.is_hidden(ids[2]) && !back.document.is_hidden(ids[1]));
 }
 
 #[test]
@@ -64,7 +66,9 @@ fn the_project_hash_covers_draw_order_and_locks_only_when_present() {
     assert_ne!(project_hash(&project(&s)).unwrap(), project_hash(&plain).unwrap());
     let reordered = (*s.snapshot())
         .clone()
-        .with_arrange(burnburn_document::ArrangeLayer::from_parts(vec![ids[2], ids[1], ids[0]], vec![ids[1]]).unwrap())
+        .with_arrange(
+            burnburn_document::ArrangeLayer::from_parts(vec![ids[2], ids[1], ids[0]], vec![ids[1]], vec![]).unwrap(),
+        )
         .unwrap();
     assert_ne!(
         project_hash(&project(&s)).unwrap(),
@@ -90,6 +94,7 @@ fn a_stored_arrangement_that_names_unknown_objects_or_repeats_one_is_refused_wit
         ("unknown order", serde_json::json!({ "order": [ids[0].raw(), 999], "locked": [] })),
         ("duplicate order", serde_json::json!({ "order": [ids[0].raw(), ids[0].raw()], "locked": [] })),
         ("unknown lock", serde_json::json!({ "order": [], "locked": [999] })),
+        ("unknown hidden", serde_json::json!({ "hidden": [999] })),
     ] {
         let broken = rewrite_json(&bytes, "document.json", |v| v["arrange"] = edit.clone());
         let err = decode_container(&broken).unwrap_err();

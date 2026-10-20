@@ -46,6 +46,11 @@ pub enum ArrangeCommand {
         targets: Vec<GeometryId>,
         locked: bool,
     },
+    /// Display flag: a hidden object is not drawn or picked, but it is still part of the job.
+    SetHidden {
+        targets: Vec<GeometryId>,
+        hidden: bool,
+    },
     /// New objects (shifted by `offset`) on top of the draw order; one history entry.
     Paste {
         items: Vec<PasteItem>,
@@ -67,6 +72,8 @@ pub enum ArrangeLabel {
     DrawOrder,
     Lock,
     Unlock,
+    Hide,
+    Show,
     Paste,
     BreakApart,
     AutoGroup,
@@ -78,6 +85,8 @@ impl ArrangeCommand {
             ArrangeCommand::Order { .. } => ArrangeLabel::DrawOrder,
             ArrangeCommand::SetLocked { locked: true, .. } => ArrangeLabel::Lock,
             ArrangeCommand::SetLocked { locked: false, .. } => ArrangeLabel::Unlock,
+            ArrangeCommand::SetHidden { hidden: true, .. } => ArrangeLabel::Hide,
+            ArrangeCommand::SetHidden { hidden: false, .. } => ArrangeLabel::Show,
             ArrangeCommand::Paste { .. } => ArrangeLabel::Paste,
             ArrangeCommand::BreakApart { .. } => ArrangeLabel::BreakApart,
             ArrangeCommand::AutoGroup { .. } => ArrangeLabel::AutoGroup,
@@ -172,6 +181,15 @@ pub(crate) fn apply(cmd: ArrangeCommand, mut txn: ArrangeTxn<'_>) -> Result<(), 
             let targets = txn.existing(&targets)?;
             for t in targets {
                 if txn.arrange.set_locked(t, locked) {
+                    txn.changes.modified.push(t);
+                }
+            }
+            if txn.changes.modified.is_empty() { Err(ArrangeError::NothingChanged) } else { Ok(()) }
+        }
+        ArrangeCommand::SetHidden { targets, hidden } => {
+            let targets = txn.existing(&targets)?;
+            for t in targets {
+                if txn.arrange.set_hidden(t, hidden) {
                     txn.changes.modified.push(t);
                 }
             }
