@@ -1,0 +1,14 @@
+# Reference-fixture generator for W2-L5d (barcodes). NOT part of the BurnBurn workspace and NOT an
+# application dependency: it exists to freeze the output of an independent encoder (a Rust port of
+# the BWIPP reference, `bwipp-rs`) next to the tests. It cannot join the workspace because
+# bwipp-rs pins `image < 0.25.10` while the workspace needs 0.25.10.
+[package]
+name = "barcode-reference"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+bwipp-rs = { version = "0.1.1", default-features = false }
