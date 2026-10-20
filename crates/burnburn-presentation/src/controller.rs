@@ -29,6 +29,7 @@ use crate::view_model::{
     BooleanPreview, ExportViewModel, MeasureViewModel, MessageKey, ProblemViewModel, SelectionCycle, StatusMessage,
 };
 
+mod app_panels;
 mod arrange;
 mod barcode;
 mod camera;
@@ -42,6 +43,7 @@ mod device;
 mod document;
 mod fields;
 mod geometry;
+mod history_panel;
 mod image;
 mod import;
 mod laser;
@@ -49,13 +51,17 @@ mod layers;
 mod library;
 mod machine;
 mod nest;
+mod prefs;
+mod preview;
 mod process;
 mod recent;
 mod recovery;
 mod registration;
 mod reshape;
 mod shapes;
+mod shortcuts;
 mod sketch;
+mod support;
 mod tasks;
 mod tests_gen;
 mod text;
@@ -63,7 +69,19 @@ mod trace;
 mod variable;
 mod view;
 
+pub use app_panels::{AppIntent, NudgeDirection, NudgeStep};
 pub use camera::CameraSpawner;
+pub use history_panel::{HistoryRow, HistoryViewModel};
+pub use prefs::{
+    DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
+    Preferences, PrefsViewModel,
+};
+pub use preview::{
+    PartialMove, PlaybackSpeed, PreviewIntent, PreviewSelection, PreviewViewModel, RdInspectViewModel, RdRecordRow,
+};
+pub use shortcuts::{KeyBinding, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel};
+pub use support::{DEBUG_LOG_LINES, DebugLogViewModel, HelpInfo};
+
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
 use machine::{Machine, Order, Prepared};
@@ -396,6 +414,8 @@ pub struct AppController {
     opening_paths: BTreeMap<TaskId, PathBuf>,
     /// Device Settings: the draft of the machine profile dialog (app-wide, like the profile).
     device: device::DeviceState,
+    /// Preferences, shortcuts, history, preview and support panels (W3-UI-app).
+    app: app_panels::AppPanels,
 }
 
 impl AppController {
@@ -431,10 +451,12 @@ impl AppController {
             bundle_serial: 0,
             opening_paths: BTreeMap::new(),
             device: device::DeviceState::default(),
+            app: app_panels::AppPanels::default(),
         }
     }
 
     pub fn handle(&mut self, intent: UiIntent) -> AppUpdate {
+        self.app.debug_log.record(&intent);
         if self.role == Role::Operator && !operator_may(&intent) {
             return error(intent_document(&intent), MessageKey::NotAllowedForRole);
         }
@@ -638,6 +660,7 @@ impl AppController {
             UiIntent::SetAspectLock { document, locked } => {
                 self.with_session(document, |s| arrange::set_aspect_lock(s, locked))
             }
+            UiIntent::App(intent) => self.app_intent(intent),
             UiIntent::SketchSelect { document, entities, constraints, mode } => {
                 self.sketch_select(document, entities, constraints, mode)
             }

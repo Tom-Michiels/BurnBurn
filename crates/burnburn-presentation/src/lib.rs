@@ -37,6 +37,8 @@ pub use barcode_panel::{
 pub use burnburn_generators::JobClock;
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
+/// What the preview window draws and picks (hosts need no job dependency of their own).
+pub use burnburn_job::{MachinePoint, MoveKind, PlanPreview, PreviewMove, SourceRef};
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
 pub use burnburn_machine::{
     ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
@@ -60,6 +62,13 @@ pub use catalog::{
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
 pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
+// App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
+pub use controller::{
+    AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
+    LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
+    PrefRow, PrefUnit, PrefValue, Preferences, PrefsViewModel, PreviewIntent, PreviewSelection, PreviewViewModel,
+    RdInspectViewModel, RdRecordRow, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel,
+};
 pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
 };

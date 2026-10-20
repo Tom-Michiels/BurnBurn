@@ -93,3 +93,42 @@ fn scan_preview_shows_overscan_as_firmware_dependent_laser_off_motion() {
     assert_eq!((pv.scan_length_mm, pv.overscan_length_mm), (20.0, 2.0));
     assert!(pv.moves[1].source.is_none(), "overscan burns nothing");
 }
+
+#[test]
+fn move_durations_add_up_to_the_estimate_and_follow_each_moves_own_speed() {
+    let mut b = builder();
+    let p = PowerRatio::new(0.5).unwrap();
+    let cut = b
+        .add_settings(OperationSettings {
+            mode: PlanMode::Line,
+            speed_mm_s: 100.0,
+            min_power: p,
+            max_power: p,
+            air_assist: false,
+        })
+        .unwrap();
+    let dots = b
+        .add_settings(OperationSettings {
+            mode: PlanMode::Dots { dwell_ms: 250.0 },
+            speed_mm_s: 100.0,
+            min_power: p,
+            max_power: p,
+            air_assist: false,
+        })
+        .unwrap();
+    b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(2), settings: cut, pass: 0 }).unwrap();
+    b.push(PlanEvent::Travel { to: pt(40.0, 0.0) }).unwrap(); // 40 mm at the 400 mm/s travel speed
+    b.push(PlanEvent::Cut { to: pt(40.0, 50.0), origin: Some(src()) }).unwrap(); // 50 mm at 100 mm/s
+    b.push(PlanEvent::OperationBoundary { operation: OperationId::from_raw(2), settings: dots, pass: 0 }).unwrap();
+    b.push(PlanEvent::Dot { origin: Some(src()) }).unwrap(); // one 250 ms pulse
+    let plan = b.finish().unwrap();
+    let pv = preview(&plan, &profile());
+
+    let seconds: Vec<f64> = pv.moves.iter().map(|m| m.seconds).collect();
+    let expected = [0.1, 0.5, 0.25];
+    assert_eq!(seconds.len(), 3, "{:?}", pv.moves.iter().map(|m| m.kind).collect::<Vec<_>>());
+    for (got, want) in seconds.iter().zip(expected) {
+        assert!((got - want).abs() < 1e-12, "{seconds:?} vs {expected:?}");
+    }
+    assert!((seconds.iter().sum::<f64>() - pv.estimated_seconds).abs() < 1e-12, "the clock has one source");
+}

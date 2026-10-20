@@ -44,6 +44,8 @@ pub enum MenuItem {
     RecentTemplate(usize),
     /// Archief ▸ Recente templates ▸ Wis menu.
     ClearRecentTemplates,
+    /// An app-level panel or dialog (preferences, shortcuts, history, preview, help).
+    App(crate::app_menu::AppAction),
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -62,6 +64,7 @@ pub fn menu_items() -> Vec<MenuItem> {
     .into_iter()
     .chain(burnburn_presentation::CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
     .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
+    .chain(crate::app_menu::AppAction::ALL.into_iter().map(MenuItem::App))
     .collect()
 }
 
@@ -98,6 +101,7 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::RecentTemplate(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
         }
+        MenuItem::App(action) => action.tag(),
         MenuItem::Recent(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
         }
@@ -147,6 +151,9 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if (RECENT_TEMPLATE_TAG_BASE..RECENT_TEMPLATE_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TEMPLATE_TAG_BASE).ok().map(MenuItem::RecentTemplate);
+    }
+    if let Some(action) = crate::app_menu::AppAction::from_tag(tag) {
+        return Some(MenuItem::App(action));
     }
     if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
@@ -465,6 +472,8 @@ pub enum NativeEvent {
         options: burnburn_presentation::DiagnosticOptions,
         path: Option<PathBuf>,
     },
+    /// An event of an app-level panel (preferences, shortcuts, history, preview, support).
+    App(crate::app_menu::AppEvent),
 }
 
 /// What the AppKit layer must do with one event.
@@ -492,6 +501,8 @@ pub enum Reaction {
     /// Ask which private data may go into the diagnostic report, then show a save panel; the answer
     /// comes back as [`NativeEvent::DiagnosticsPanelFinished`].
     ShowDiagnosticsPanel,
+    /// Open or perform an app-level panel or dialog (see [`crate::app_menu::AppAction`]).
+    App(crate::app_menu::AppAction),
 }
 
 /// `NSEventModifierFlags` bits (stable AppKit ABI values).
@@ -558,6 +569,8 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::LaserWindow) => return Reaction::ToggleLaserPanel,
         E::Menu(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
+        E::Menu(MenuItem::App(action)) => return Reaction::App(action),
+        E::App(event) => return crate::app_menu::translate_app(event, vm),
         E::DiagnosticsPanelFinished { options, path: Some(path) } => UiIntent::ExportDiagnostics { options, path },
         E::DiagnosticsPanelFinished { path: None, .. } => return Reaction::Nothing,
         E::Menu(MenuItem::ClearRecent) => UiIntent::ClearRecentProjects,
@@ -922,6 +935,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::Recent(_) | MenuItem::ClearRecent => false,
         // The recent-templates menu is rebuilt with the list, so what it shows can be chosen.
         MenuItem::RecentTemplate(_) | MenuItem::ClearRecentTemplates => true,
+        MenuItem::App(action) => action.enabled(vm),
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -961,7 +975,8 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::Recent(_)
         | MenuItem::ClearRecent
         | MenuItem::RecentTemplate(_)
-        | MenuItem::ClearRecentTemplates => false,
+        | MenuItem::ClearRecentTemplates
+        | MenuItem::App(_) => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -980,6 +995,7 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
         MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
+        MenuItem::App(action) => action.title(locale).to_owned(),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).
         MenuItem::Recent(_) | MenuItem::RecentTemplate(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {

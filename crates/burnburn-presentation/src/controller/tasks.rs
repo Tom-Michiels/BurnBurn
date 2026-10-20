@@ -43,6 +43,9 @@ impl AppController {
             _ => None,
         };
         let recent = saved_path.map(|p| self.note_recent(&p)).unwrap_or_default();
+        if let Some(update) = self.app_panel_task_finished(&outcome) {
+            return update;
+        }
         if self.app_tasks.remove(&outcome.id).is_some() {
             return self.app_task_finished(outcome);
         }

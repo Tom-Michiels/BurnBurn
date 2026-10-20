@@ -300,3 +300,37 @@ fn the_wireframe_theme_draws_no_fills_but_the_same_strokes() {
     assert_eq!(count(&wire, true), 0, "no fill in wireframe");
     assert_eq!(count(&wire, false), count(&filled, false), "every outline is still drawn");
 }
+
+/// Display quality (X02): a larger tolerance draws a curve with fewer chords, and the polyline
+/// still stays within that tolerance of the exact circle.
+#[test]
+fn a_coarser_display_tolerance_draws_fewer_chords_within_its_own_bound() {
+    let viewport = Viewport::new(400.0, 400.0, 1.0).unwrap();
+    let camera = Camera::new(Point::new(0.0, 0.0), 4.0).unwrap();
+    let circle = Arc::new(Path::circle(Point::new(0.0, 0.0), 40.0).unwrap());
+    let s = scene(camera, viewport, vec![(circle, StyleRole::Design)], vec![]);
+    let chords = |theme: &Theme| -> Vec<[f32; 2]> {
+        strokes(&build_packet(&s, theme).primitives).into_iter().next().expect("an outline").0
+    };
+    let fine = chords(&theme());
+    let coarse = chords(&theme().with_tolerance_px(2.0));
+    assert!(coarse.len() < fine.len() / 2, "{} vs {}", coarse.len(), fine.len());
+    // The exact circle has radius 160 px about (200, 200); chords of a polygon inscribed in it sag
+    // at most `tolerance` below the circle, and every vertex lies on it.
+    for [x, y] in &coarse {
+        let r = (f64::from(*x) - 200.0).hypot(f64::from(*y) - 200.0);
+        assert!((r - 160.0).abs() < 0.01, "vertex off the circle: {r}");
+    }
+    let sag = |points: &[[f32; 2]]| {
+        points
+            .windows(2)
+            .map(|w| {
+                let mid =
+                    [(f64::from(w[0][0]) + f64::from(w[1][0])) / 2.0, (f64::from(w[0][1]) + f64::from(w[1][1])) / 2.0];
+                160.0 - (mid[0] - 200.0).hypot(mid[1] - 200.0)
+            })
+            .fold(0.0, f64::max)
+    };
+    assert!(sag(&coarse) <= 2.0 + 0.01, "coarse sag {}", sag(&coarse));
+    assert!(sag(&fine) <= 0.25 + 0.01, "fine sag {}", sag(&fine));
+}

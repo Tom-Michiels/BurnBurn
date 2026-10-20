@@ -71,7 +71,9 @@ fn scenario() -> Result<(), String> {
     expect(|| "the commit is one document change".into(), s.doc(doc).is_some_and(|d| d.revision != revision))?;
     let revision = s.doc(doc).ok_or("no document")?.revision;
 
-    // A real key press takes the same route (interpretKeyEvents → insertText:).
+    // A real key press takes the same route (interpretKeyEvents → insertText:). Plain letters are
+    // tool shortcuts (W3-UI-app) except while the Text tool is active, so choose that tool first.
+    s.app.dispatch(UiIntent::SelectTool { document: Some(doc), id: "sketch.text".into() });
     s.key(doc, "a", 0)?;
     let commits = s.app.take_text_commits();
     expect(|| format!("typed 'a' once, got {commits:?}"), commits == ["a"])?;

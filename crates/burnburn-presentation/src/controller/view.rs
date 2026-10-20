@@ -6,7 +6,6 @@ use std::sync::Arc;
 use burnburn_editor::{SceneRequest, SceneSnapshot, boolean_operands, build_scene};
 use burnburn_types::{DocumentId, Unit};
 
-use crate::field::format_mm;
 use crate::intent::{CommandKey, FieldKey};
 use crate::production::Role;
 use crate::view_model::{
@@ -32,7 +31,7 @@ impl AppController {
             .sessions
             .iter()
             .map(|(id, s)| {
-                let mut vm = document_view(*id, s, self.machine.as_ref());
+                let mut vm = document_view(*id, s, self.machine.as_ref(), self.app.prefs.units);
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
                 vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
@@ -115,7 +114,12 @@ impl AppController {
     }
 }
 
-pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machine>) -> DocumentViewModel {
+pub(super) fn document_view(
+    id: DocumentId,
+    s: &Session,
+    machine: Option<&Machine>,
+    display: super::prefs::LengthUnit,
+) -> DocumentViewModel {
     let snapshot = s.doc.snapshot();
     let objects = snapshot
         .objects()
@@ -132,11 +136,15 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
     let inspector = s.selection.reference().and_then(|gid| {
         let b = s.selection.bounds(&snapshot)?;
         let at = super::arrange::reference_in(&b, s.arrange.reference);
+        // Lengths are shown in the display unit; the document stays in millimetres.
         let field = |key: FieldKey, mm: f64| FieldViewModel {
             key,
             label: MessageKey::Field(key),
-            text: format_mm(mm),
-            unit: Unit::Millimeter,
+            text: super::prefs::format_length(mm, display),
+            unit: match display {
+                super::prefs::LengthUnit::Millimeters => Unit::Millimeter,
+                super::prefs::LengthUnit::Inches => Unit::Inch,
+            },
             editable: true,
             error: s.field_errors.get(&key).copied(),
         };

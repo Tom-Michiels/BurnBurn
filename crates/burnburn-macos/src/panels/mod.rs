@@ -122,6 +122,18 @@ pub const INSPECTOR_ROWS: [(FieldKey, Option<FieldKey>); 5] = [
     (FieldKey::Rotation, None),
 ];
 
+/// The unit after an inspector caption when a length field is shown in `shown` (X03): lengths
+/// follow the display-unit preference, angles and percentages never do.
+pub fn field_unit_for(key: FieldKey, shown: burnburn_types::Unit, locale: Locale) -> &'static str {
+    match key {
+        FieldKey::X | FieldKey::Y | FieldKey::Width | FieldKey::Height => match shown {
+            burnburn_types::Unit::Millimeter => crate::app_text::app_text(crate::app_text::AppText::SuffixMm, locale),
+            burnburn_types::Unit::Inch => crate::app_text::app_text(crate::app_text::AppText::SuffixInch, locale),
+        },
+        other => field_unit(other, locale),
+    }
+}
+
 /// Unit shown after an inspector field's caption.
 pub fn field_unit(key: FieldKey, locale: Locale) -> &'static str {
     match key {

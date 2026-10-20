@@ -460,6 +460,17 @@ impl DocWindow {
             if let Some(error) = model.and_then(|f| f.error) {
                 message = message_text(error, locale);
             }
+            // The caption names the unit the field is shown in (display-unit preference).
+            if let (Some(unit), Some(caption)) = (model.map(|f| f.unit), caption_of(field)) {
+                let text = format!(
+                    "{} ({})",
+                    message_text(burnburn_presentation::MessageKey::Field(*key), locale),
+                    crate::panels::field_unit_for(*key, unit, locale)
+                );
+                if caption.stringValue().to_string() != text {
+                    caption.setStringValue(&NSString::from_str(&text));
+                }
+            }
         }
         if message.is_empty()
             && let Some(m) = doc.messages.last()
@@ -652,4 +663,15 @@ impl Drop for DocWindow {
             self.window.close();
         }
     }
+}
+
+/// The caption label above an inspector field (same container, tag `CAPTION_TAG_BASE + field tag`).
+#[allow(unsafe_code)]
+fn caption_of(field: &NSTextField) -> Option<Retained<NSTextField>> {
+    // SAFETY: reading the superview of our own live field; nothing is mutated or retained beyond
+    // the returned label.
+    let container = unsafe { field.superview() }?;
+    container
+        .viewWithTag(super::panels::inspector::CAPTION_TAG_BASE + field.tag())
+        .and_then(|v| v.downcast::<NSTextField>().ok())
 }

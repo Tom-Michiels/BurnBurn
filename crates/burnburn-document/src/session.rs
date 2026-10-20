@@ -252,6 +252,16 @@ impl DocumentSession {
         self.redo.last().map(|e| e.label)
     }
 
+    /// Labels of the undo stack, oldest step first (the last one is what `undo` reverts).
+    pub fn undo_labels(&self) -> Vec<UndoLabel> {
+        self.undo.iter().map(|e| e.label).collect()
+    }
+
+    /// Labels of the redo stack, the step `redo` applies next first.
+    pub fn redo_labels(&self) -> Vec<UndoLabel> {
+        self.redo.iter().rev().map(|e| e.label).collect()
+    }
+
     /// True when the current content differs from the last content marked as saved.
     pub fn is_dirty(&self) -> bool {
         self.saved.as_ref().is_none_or(|(objects, process, sketches, structure, texts, engines, arrange)| {

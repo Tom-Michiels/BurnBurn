@@ -16,6 +16,9 @@ use super::widgets::{Column, field, label, push_button, rect};
 use crate::adapter::{MenuItem, menu_tag, message_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
+/// Tag of the caption label of inspector field `n` is `CAPTION_TAG_BASE + n` (field `n` has tag `n`).
+pub(crate) const CAPTION_TAG_BASE: isize = 5000;
+
 use crate::panels::{INSPECTOR_FLIP_BUTTONS, INSPECTOR_ROWS, field_unit, inspector_controls, reference_point_label};
 
 /// Side of one reference-point button.
@@ -55,8 +58,11 @@ pub(crate) fn transform_block(
             let caption = format!("{} ({})", message_or_key(MessageKey::Field(key), locale), field_unit(key, locale));
             let l = label(mtm, &caption, rect(x, caption_y, half, CAPTION_HEIGHT));
             l.setFont(Some(&small));
+            // The caption is found again by tag when the display unit changes (see `DocWindow::refresh`).
+            l.setTag(CAPTION_TAG_BASE + fields.len() as isize);
             col.view.addSubview(&l);
             let f = field(mtm, rect(x, field_y, half, FIELD_HEIGHT));
+            f.setTag(fields.len() as isize);
             f.setAccessibilityLabel(Some(&NSString::from_str(&caption)));
             col.view.addSubview(&f);
             fields.push((key, f));

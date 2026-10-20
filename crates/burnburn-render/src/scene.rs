@@ -89,6 +89,9 @@ pub struct Theme {
     pub sketch: Rgba,
     /// Sketch mode: dimension lines and their numbers.
     pub sketch_dimension: Rgba,
+    /// How far (device pixels) the drawn polyline of a curve may lie from the curve: display
+    /// quality, never the tolerance of a compiled job.
+    pub tolerance_px: f64,
 }
 
 impl Theme {
@@ -114,7 +117,13 @@ impl Theme {
             issue: Rgba::new(0.9, 0.1, 0.1, 1.0),
             sketch: Rgba::new(0.0, 0.4, 0.45, 1.0),
             sketch_dimension: Rgba::new(0.1, 0.45, 0.15, 1.0),
+            tolerance_px: DISPLAY_TOLERANCE_PX,
         }
+    }
+
+    /// The same look with curves flattened to within `px` device pixels (coarser is faster).
+    pub fn with_tolerance_px(self, px: f64) -> Self {
+        Theme { tolerance_px: px, ..self }
     }
 
     /// The same look without any fill: outlines only (Beeld ▸ Draadmodel).
@@ -154,6 +163,7 @@ struct Projection {
     camera: burnburn_editor::Camera,
     viewport: Viewport,
     scale: f64,
+    tolerance_px: f64,
 }
 
 impl Projection {
@@ -174,7 +184,7 @@ impl Projection {
 
 /// Flattened subpaths in device pixels: (points, closed).
 fn flatten(path: &Path, transform: &Affine, proj: &Projection) -> Vec<(Vec<[f32; 2]>, bool)> {
-    let Ok(tolerance) = Length::from_mm(DISPLAY_TOLERANCE_PX * proj.mm_per_px())
+    let Ok(tolerance) = Length::from_mm(proj.tolerance_px * proj.mm_per_px())
         .map_err(|_| ())
         .and_then(|l| DisplayTolerance::new(l).map_err(|_| ()))
     else {
@@ -292,7 +302,12 @@ fn bed_image(
 /// Painting order: grid, items back to front (fill, then outline), then the other overlays.
 pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
     let size = size_px(&scene.viewport);
-    let proj = Projection { camera: scene.camera, viewport: scene.viewport, scale: scene.viewport.backing_scale() };
+    let proj = Projection {
+        camera: scene.camera,
+        viewport: scene.viewport,
+        scale: scene.viewport.backing_scale(),
+        tolerance_px: theme.tolerance_px,
+    };
     let mut out = Vec::new();
     // Camera pictures lie beneath everything, the grid included.
     for overlay in &scene.overlays {

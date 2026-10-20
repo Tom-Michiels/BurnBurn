@@ -30,9 +30,11 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
+mod app_host;
 mod cam_host;
 mod camera_host;
 mod files_host;
+pub use app_host::{MenuKeyReport, app_user_dir};
 mod laser_host;
 pub use cam_host::CamPanelParts;
 mod schikken_host;
@@ -143,6 +145,15 @@ pub struct HostApp {
     cam_panels: RefCell<cam_host::CamPanels>,
     /// The camera window (W3-UI-camera), created on first use.
     camera_window: RefCell<Option<super::panels::camera_window::CameraWindow>>,
+    /// The app-level panels (preferences, shortcuts, history, preview, RD) and their small state.
+    app_panels: RefCell<super::app_panels::AppPanels>,
+    /// The preferences the host last put into effect, the autosave tick that follows them, the
+    /// canvas curve tolerance and what the menu's keys said about the shortcut register.
+    applied_prefs: Cell<Option<burnburn_presentation::Preferences>>,
+    autosave_timer: RefCell<Option<Retained<NSTimer>>>,
+    display_tolerance_px: Cell<f64>,
+    applied_shortcut_revision: Cell<u64>,
+    menu_key_report: RefCell<app_host::MenuKeyReport>,
 }
 
 /// Ask the running host (on the main queue, after the current callback) to autosave: used when a
@@ -223,6 +234,12 @@ impl HostApp {
                 timers: RefCell::new(Vec::new()),
                 cam_panels: RefCell::new(cam_host::CamPanels::new()),
                 camera_window: RefCell::new(None),
+                app_panels: RefCell::new(super::app_panels::AppPanels::new(mtm, me.clone())),
+                applied_prefs: Cell::new(None),
+                autosave_timer: RefCell::new(None),
+                display_tolerance_px: Cell::new(burnburn_presentation::DisplayQuality::Smooth.tolerance_px()),
+                applied_shortcut_revision: Cell::new(0),
+                menu_key_report: RefCell::new(app_host::MenuKeyReport::default()),
             }
         });
         if let Ok(mut controller) = app.controller.try_borrow_mut() {
@@ -254,7 +271,7 @@ impl HostApp {
         }
         app.init_files();
         if let Some(interval) = app.options.autosave_interval_s {
-            app.start_timer(interval, HostApp::autosave_now);
+            app.set_autosave_interval(Some(interval));
         }
         CURRENT.with(|c| {
             if let Ok(mut c) = c.try_borrow_mut() {
@@ -264,7 +281,19 @@ impl HostApp {
         let ns_app = NSApplication::sharedApplication(mtm);
         ns_app.setMainMenu(Some(&app.menu));
         ns_app.setDelegate(Some(app_delegate(&app._delegate)));
+        // The register's bindings (and any the user changed) go into the menu; what the menu had
+        // that the register does not know is kept for the test that guards it.
+        let report = app.apply_menu_shortcuts();
+        if let Ok(mut slot) = app.menu_key_report.try_borrow_mut() {
+            *slot = report;
+        }
         app
+    }
+
+    /// What applying the shortcut register to the menu found that the register does not cover
+    /// (tests assert it is empty).
+    pub fn menu_key_report(&self) -> MenuKeyReport {
+        self.menu_key_report.try_borrow().map(|r| r.clone()).unwrap_or_default()
     }
 
     pub fn view(&self) -> Arc<AppViewModel> {
@@ -395,6 +424,7 @@ impl HostApp {
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
             Reaction::ToggleSchikkenPanel => self.toggle_schikken_panel(),
             Reaction::ShowDiagnosticsPanel => self.show_diagnostics_panel(),
+            Reaction::App(action) => self.perform_app_action(action),
         }
     }
 
@@ -692,6 +722,12 @@ impl HostApp {
 
     /// Esc/Delete/Return on the canvas; false lets AppKit pass the key on.
     pub(crate) fn canvas_key(&self, document: DocumentId, code: u16, flags: usize) -> bool {
+        // Arrow keys nudge the selection by the preference distances (not while composing text:
+        // `keyDown:` does not ask the host then).
+        if let Some(arrow) = self.arrow_for(code) {
+            self.canvas_arrow(document, arrow, flags);
+            return true;
+        }
         // Return finishes pen/polyline paths; during a composition the input method owns it
         // (`keyDown:` does not ask the host then).
         if ![key_code::ESCAPE, key_code::DELETE, key_code::FORWARD_DELETE, key_code::RETURN].contains(&code) {
@@ -846,8 +882,10 @@ impl HostApp {
             }
             Err(_) => (None, None, BTreeMap::new()),
         };
+        let tool_shortcuts = self.tool_shortcuts();
         if let Ok(mut windows) = self.windows.try_borrow_mut() {
             for (document, w) in windows.iter_mut() {
+                w.strip.set_shortcuts(tool_shortcuts.clone());
                 w.refresh(&vm, *document, machine.as_ref(), camera.as_ref());
                 if w.laser.shown {
                     w.refresh_laser(laser.get(document).and_then(Option::as_ref));
@@ -856,13 +894,14 @@ impl HostApp {
         }
         self.refresh_cam_panels();
         self.refresh_camera_window();
+        self.refresh_app_panels();
     }
 
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
     pub(crate) fn redraw(&self, document: DocumentId) {
         let Some(scene) = self.controller.try_borrow().ok().and_then(|c| c.scene(document)) else { return };
         let wireframe = self.view().document(document).is_some_and(|d| d.wireframe);
-        let packet = super::canvas::canvas_packet(&scene, wireframe);
+        let packet = super::canvas::canvas_packet_with(&scene, wireframe, self.display_tolerance_px.get());
         let Ok(windows) = self.windows.try_borrow() else { return };
         let Some(w) = windows.get(&document) else { return };
         if let Some(Err(e)) = w.controller.with_canvas(|canvas| canvas.draw(&packet)) {
@@ -1493,7 +1532,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
     let c = MenuItem::Command;
     let plain = |key: CommandKey| item(c(key), "", false);
     let main = NSMenu::new(mtm);
-    main.addItem(&submenu(t(HostText::AppMenu), vec![raw_item(t(HostText::Quit), Some(sel!(terminate:)), "q")]));
+    main.addItem(&app_host::application_menu(mtm, target, locale));
 
     let recent = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(t(HostText::RecentProjects)));
     fill_recent_menu(mtm, target, &recent, &[], locale);
@@ -1743,10 +1782,8 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         t(HostText::MenuWindow),
         vec![plain(CommandKey::ShowMaterialLibrary), plain(CommandKey::ShowArtLibrary)],
     ));
-    main.addItem(&submenu(
-        crate::panels::laser_text(crate::panels::LaserText::HelpMenu, locale),
-        vec![item(MenuItem::ExportDiagnostics, "", false)],
-    ));
+    main.addItem(&app_host::window_menu(mtm, target, locale));
+    main.addItem(&app_host::help_menu(mtm, target, locale));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));
     MenuBar { main, recent, recent_templates }
 }

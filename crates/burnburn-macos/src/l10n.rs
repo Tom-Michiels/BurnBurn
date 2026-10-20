@@ -933,6 +933,16 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
     })
 }
 
+/// The name of an undoable step alone ("Rechthoek tekenen"), as the history panel lists it;
+/// `None` for a label the catalogue does not know yet.
+pub fn undo_label_text(label: UndoLabel, locale: Locale) -> Option<&'static str> {
+    let (nl, en) = undo_pair(label)?;
+    Some(match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    })
+}
+
 fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
     Some(match label {
         UndoLabel::CreateRectangle => ("Rechthoek tekenen", "Draw Rectangle"),
