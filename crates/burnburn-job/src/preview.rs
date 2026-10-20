@@ -31,6 +31,9 @@ pub struct PreviewMove {
     pub operation: Option<OperationId>,
     /// Source geometry + operation for burning moves (click → select source, C07).
     pub source: Option<SourceRef>,
+    /// This segment's share of [`PlanPreview::estimated_seconds`] (same constant-velocity
+    /// estimate: a scrub position in the preview is a position on this clock, not a measurement).
+    pub seconds: f64,
 }
 
 /// Everything a preview shows, for exactly one plan.
@@ -66,6 +69,7 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
     let mut speed = travel_speed;
     let mut dwell_ms = 0.0;
     for (event, e) in plan.events().iter().enumerate() {
+        // `v` is the speed of a moving segment; a dot has no length and lasts its dwell instead.
         let mut push = |kind, from: MachinePoint, to: MachinePoint, source, v: f64| {
             let len = from.distance(to);
             match kind {
@@ -75,8 +79,9 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
                 MoveKind::Overscan => pv.overscan_length_mm += len,
                 MoveKind::Dot => {}
             }
-            pv.estimated_seconds += len / v;
-            pv.moves.push(PreviewMove { kind, from, to, event, operation, source });
+            let seconds = if kind == MoveKind::Dot { dwell_ms / 1000.0 } else { len / v };
+            pv.estimated_seconds += seconds;
+            pv.moves.push(PreviewMove { kind, from, to, event, operation, source, seconds });
         };
         match *e {
             PlanEvent::OperationBoundary { operation: op, settings, .. } => {
@@ -100,7 +105,6 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
             PlanEvent::Dot { origin } => {
                 // Zero length, so only the pulse time counts.
                 push(MoveKind::Dot, at, at, origin, 1.0);
-                pv.estimated_seconds += dwell_ms / 1000.0;
             }
             PlanEvent::ScanRun { line, origin }
             | PlanEvent::PowerRun { line, origin, .. }

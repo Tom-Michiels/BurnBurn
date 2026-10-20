@@ -11,6 +11,7 @@ use burnburn_types::{CancellationSource, DocumentId, RequestId, RevisionId, Task
 use crate::task::{TaskInput, TaskOutcome, TaskRequest, revision_key};
 
 use super::prefs::{PrefError, PrefKey, Preferences, PrefsViewModel, UserSettings};
+use super::preview::PreviewIntent;
 use super::shortcuts::KeyBinding;
 use crate::view_model::MessageKey;
 
@@ -60,6 +61,8 @@ pub enum AppIntent {
         id: String,
     },
     ResetAllShortcuts,
+    /// The preview window (play, scrub, pick) and the RD inspector.
+    Preview(PreviewIntent),
 }
 
 /// Which way an arrow key points on screen (world y is up).
@@ -95,6 +98,9 @@ pub(super) struct AppPanels {
     /// serialized so an older text can never land after a newer one.
     write_in_flight: Option<TaskId>,
     write_again: bool,
+    /// Preview window state and RD listings per window (W3-UI-app).
+    pub(super) previews: std::collections::BTreeMap<DocumentId, super::preview::PreviewState>,
+    pub(super) rd_listings: std::collections::BTreeMap<DocumentId, super::preview::RdListing>,
 }
 
 impl AppController {
@@ -162,6 +168,7 @@ impl AppController {
             AppIntent::ClearShortcut { id } => self.clear_shortcut(&id),
             AppIntent::ResetShortcut { id } => self.reset_shortcut(&id),
             AppIntent::ResetAllShortcuts => self.reset_all_shortcuts(),
+            AppIntent::Preview(intent) => self.preview_intent(intent),
         }
     }
 

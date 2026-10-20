@@ -46,6 +46,7 @@ mod laser;
 mod layers;
 mod machine;
 mod prefs;
+mod preview;
 mod process;
 mod recent;
 mod recovery;
@@ -62,6 +63,9 @@ pub use history_panel::{HistoryRow, HistoryViewModel};
 pub use prefs::{
     DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
     Preferences, PrefsViewModel,
+};
+pub use preview::{
+    PartialMove, PlaybackSpeed, PreviewIntent, PreviewSelection, PreviewViewModel, RdInspectViewModel, RdRecordRow,
 };
 pub use shortcuts::{KeyBinding, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel};
 
