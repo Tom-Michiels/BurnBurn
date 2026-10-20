@@ -302,7 +302,7 @@ impl Preferences {
     }
 
     /// The text a preference has in the user file (and in the window, for choices and flags).
-    fn stored(&self, key: PrefKey) -> String {
+    pub(super) fn stored(&self, key: PrefKey) -> String {
         match key {
             PrefKey::Units => self.units.id().to_owned(),
             PrefKey::Language => self.language.id().to_owned(),

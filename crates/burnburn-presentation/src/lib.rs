@@ -36,10 +36,10 @@ pub use catalog::{
 pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
 pub use controller::{
-    AppIntent, DisplayQuality, HistoryRow, HistoryViewModel, KeyBinding, LanguageChoice, LengthUnit, NudgeDirection,
-    NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue, Preferences,
-    PrefsViewModel, PreviewIntent, PreviewSelection, PreviewViewModel, RdInspectViewModel, RdRecordRow, ShortcutError,
-    ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel,
+    AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
+    LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
+    PrefRow, PrefUnit, PrefValue, Preferences, PrefsViewModel, PreviewIntent, PreviewSelection, PreviewViewModel,
+    RdInspectViewModel, RdRecordRow, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel,
 };
 pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,

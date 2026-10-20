@@ -11,6 +11,8 @@ use burnburn_types::{CancellationSource, DocumentId, RequestId, RevisionId, Task
 use crate::task::{TaskInput, TaskOutcome, TaskRequest, revision_key};
 
 use super::prefs::{PrefError, PrefKey, Preferences, PrefsViewModel, UserSettings};
+use crate::production::DiagnosticOptions;
+
 use super::preview::PreviewIntent;
 use super::shortcuts::KeyBinding;
 use crate::view_model::MessageKey;
@@ -63,6 +65,16 @@ pub enum AppIntent {
     ResetAllShortcuts,
     /// The preview window (play, scrub, pick) and the RD inspector.
     Preview(PreviewIntent),
+    /// Help ▸ Support data: write the report the dialog showed to `path` (a save panel's choice).
+    ExportSupportBundle {
+        options: DiagnosticOptions,
+        path: std::path::PathBuf,
+    },
+    /// Help ▸ Enable debug log.
+    SetDebugLog {
+        enabled: bool,
+    },
+    ClearDebugLog,
 }
 
 /// Which way an arrow key points on screen (world y is up).
@@ -98,6 +110,7 @@ pub(super) struct AppPanels {
     /// serialized so an older text can never land after a newer one.
     write_in_flight: Option<TaskId>,
     write_again: bool,
+    pub(super) debug_log: super::support::DebugLog,
     /// Preview window state and RD listings per window (W3-UI-app).
     pub(super) previews: std::collections::BTreeMap<DocumentId, super::preview::PreviewState>,
     pub(super) rd_listings: std::collections::BTreeMap<DocumentId, super::preview::RdListing>,
@@ -169,6 +182,9 @@ impl AppController {
             AppIntent::ResetShortcut { id } => self.reset_shortcut(&id),
             AppIntent::ResetAllShortcuts => self.reset_all_shortcuts(),
             AppIntent::Preview(intent) => self.preview_intent(intent),
+            AppIntent::ExportSupportBundle { options, path } => self.export_support_bundle(options, path),
+            AppIntent::SetDebugLog { enabled } => self.set_debug_log(enabled),
+            AppIntent::ClearDebugLog => self.clear_debug_log(),
         }
     }
 

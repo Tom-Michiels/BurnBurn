@@ -53,6 +53,7 @@ mod recovery;
 mod shapes;
 mod shortcuts;
 mod sketch;
+mod support;
 mod tasks;
 mod text;
 mod trace;
@@ -68,6 +69,7 @@ pub use preview::{
     PartialMove, PlaybackSpeed, PreviewIntent, PreviewSelection, PreviewViewModel, RdInspectViewModel, RdRecordRow,
 };
 pub use shortcuts::{KeyBinding, ShortcutError, ShortcutProblem, ShortcutRow, ShortcutTarget, ShortcutsViewModel};
+pub use support::{DEBUG_LOG_LINES, DebugLogViewModel, HelpInfo};
 
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
@@ -382,6 +384,7 @@ impl AppController {
     }
 
     pub fn handle(&mut self, intent: UiIntent) -> AppUpdate {
+        self.app.debug_log.record(&intent);
         if self.role == Role::Operator && !operator_may(&intent) {
             return error(intent_document(&intent), MessageKey::NotAllowedForRole);
         }
