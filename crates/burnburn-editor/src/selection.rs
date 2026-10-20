@@ -89,24 +89,31 @@ impl Selection {
 
 /// Objects under a world point, best first: outline hits by distance, then interiors from the
 /// smallest up (domain `burnburn_geometry::hit_test`, outline-accurate); equal candidates are
-/// ordered topmost (highest id, drawn last) first. `tolerance_mm` comes from screen points.
+/// ordered topmost (drawn last, see `DocumentSnapshot::draw_order`) first. Locked and hidden
+/// objects are not picked. `tolerance_mm` comes from screen points.
 pub fn hit_test(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: f64) -> Vec<GeometryId> {
     let Some(tol) = Length::from_mm(tolerance_mm).ok().and_then(|l| HitTestTolerance::new(l).ok()) else {
         return Vec::new();
     };
-    // `Reverse` makes the domain's key tie-break pick the topmost object.
-    let index = SpatialIndex::build(snapshot.objects().filter_map(|(id, obj)| obj.bounds().map(|b| (Reverse(id), b))));
-    burnburn_geometry::hit_test(&index, |Reverse(id)| snapshot.object(id).map(|o| o.path().as_ref()), at, &tol)
+    // The key's first part makes the domain's tie-break pick the topmost object.
+    let order = snapshot.draw_order();
+    let index = SpatialIndex::build(order.iter().enumerate().filter(|(_, id)| snapshot.is_selectable(**id)).filter_map(
+        |(rank, id)| snapshot.object(*id)?.bounds().map(|b| ((Reverse(rank), *id), b)),
+    ));
+    burnburn_geometry::hit_test(&index, |(_, id)| snapshot.object(id).map(|o| o.path().as_ref()), at, &tol)
         .into_iter()
-        .map(|c| c.key.0)
+        .map(|c| c.key.1)
         .collect()
 }
 
 /// Objects whose bounds lie entirely inside `area` (rubber-band selection), in drawing order.
+/// Locked and hidden objects are left out.
 pub fn objects_inside(snapshot: &DocumentSnapshot, area: Bounds) -> Vec<GeometryId> {
     snapshot
-        .objects()
-        .filter_map(|(id, obj)| obj.bounds().map(|b| (id, b)))
+        .draw_order()
+        .into_iter()
+        .filter(|id| snapshot.is_selectable(*id))
+        .filter_map(|id| snapshot.object(id)?.bounds().map(|b| (id, b)))
         .filter(|(_, b)| area.contains(b.min()) && area.contains(b.max()))
         .map(|(id, _)| id)
         .collect()
