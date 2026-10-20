@@ -376,6 +376,16 @@ impl HostApp {
         self.controller.try_borrow().map(|c| *c.preferences()).unwrap_or_default()
     }
 
+    /// The interval of the running autosave tick, `None` while it is off (tests).
+    pub fn autosave_interval_s(&self) -> Option<f64> {
+        self.autosave_timer.try_borrow().ok()?.as_ref().map(|t| t.timeInterval())
+    }
+
+    /// The curve tolerance the canvas is drawn with now (tests): the display-quality preference.
+    pub fn display_tolerance_px(&self) -> f64 {
+        self.display_tolerance_px.get()
+    }
+
     /// The preview model of `document` (tests).
     pub fn preview_view(&self, document: DocumentId) -> Option<burnburn_presentation::PreviewViewModel> {
         self.controller.try_borrow().ok()?.preview_view(document)

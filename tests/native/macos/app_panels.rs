@@ -336,7 +336,8 @@ fn preferences() -> Result<(), String> {
     use burnburn_presentation::LengthUnit;
     use common::expect;
 
-    let s = common::start()?;
+    // The app's autosave tick is on in the app's own options; the tests' options leave it off.
+    let s = common::start_with(|o| o.autosave_interval_s = Some(3600.0))?;
     s.app.use_user_dir(user_dir(&s));
     s.menu(MenuItem::App(AppAction::Preferences))?;
     let window = s.app.prefs_window().ok_or("no preferences window")?;
@@ -374,6 +375,20 @@ fn preferences() -> Result<(), String> {
     fire(&snap)?;
     expect(|| "grid snapping on".into(), s.app.preferences().snap_to_grid)?;
 
+    // Display quality reaches the canvas; autosave follows its interval (the app's host options
+    // switch the tick on, the tests' do not: this scenario switches it on like the app does).
+    expect(
+        || format!("tolerance {}", s.app.display_tolerance_px()),
+        (s.app.display_tolerance_px() - 1.0).abs() < 1e-9,
+    )?;
+    let autosave = field(&*prefs_window(&s)?, "Automatisch bewaren (s, 0 = uit)")?;
+    autosave.setStringValue(&NSString::from_str("45"));
+    fire(&autosave)?;
+    expect(|| format!("autosave tick {:?}", s.app.autosave_interval_s()), s.app.autosave_interval_s() == Some(45.0))?;
+    autosave.setStringValue(&NSString::from_str("0"));
+    fire(&autosave)?;
+    expect(|| "autosave off".into(), s.app.autosave_interval_s().is_none())?;
+
     // The settings file is written in the background, in the user's folder only.
     let file = user_dir(&s).join("preferences.conf");
     s.wait(3.0, "the settings file", || {
@@ -389,6 +404,11 @@ fn preferences() -> Result<(), String> {
     click(&*button_titled(&window, "Standaardwaarden herstellen")?);
     expect(|| "defaults restored".into(), s.app.preferences() == burnburn_presentation::Preferences::default())?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn prefs_window(s: &common::Session) -> Result<Retained<objc2_app_kit::NSWindow>, String> {
+    s.app.prefs_window().ok_or_else(|| "no preferences window".to_owned())
 }
 
 // ---- shortcut editor ------------------------------------------------------------------------------
