@@ -28,7 +28,9 @@ pub struct CalibrationRef {
 pub enum CalibrationKind {
     Lens,
     /// An alignment at one material height, in whole micrometres (the store's key).
-    Alignment { height_um: i64 },
+    Alignment {
+        height_um: i64,
+    },
 }
 
 /// What the camera panels ask for (`UiIntent::CameraWorkspace`). Numbers arrive as typed (DR-05).
@@ -171,6 +173,8 @@ pub enum CameraWhy {
     // --- the job that burns the marks ---
     NoMachine,
     NoMachineProfile,
+    /// The marks job could not be built or lowered to RD.
+    MarksJobFailed,
     /// Marks (or their arms) would leave the bed.
     MarksOutsideBed,
     SpeedTooHigh,

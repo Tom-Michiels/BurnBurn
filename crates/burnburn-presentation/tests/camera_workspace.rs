@@ -200,7 +200,10 @@ fn calibration_is_invalid_after_camera_resolution_changes() {
     use_camera(&mut r, A, mode(1280, 720));
     let v = go(&mut r, I::UpdateOverlay);
     assert_eq!(v.calibrations[0].validity, CalibrationValidity::Invalid(Invalidity::ResolutionChanged));
-    assert_eq!(v.overlay.layers[0].not_placed, Some(CameraWhy::NotCalibrated(StoreMiss::Invalid(Invalidity::ResolutionChanged))));
+    assert_eq!(
+        v.overlay.layers[0].not_placed,
+        Some(CameraWhy::NotCalibrated(StoreMiss::Invalid(Invalidity::ResolutionChanged)))
+    );
     assert!(bed_images(&r).is_empty());
 
     use_camera(&mut r, A, mode(640, 360));
@@ -291,7 +294,10 @@ fn the_camera_started_in_the_strip_is_a_camera_of_the_bed_system_too() {
     let mut r = rig_a();
     r.h.controller().attach_calibrations(store_with(vec![aligned(A, mode(640, 360), 0.0, MAP)]));
     r.cam.show(A, mode(640, 360), grey(640, 360, 90));
-    r.h.send(UiIntent::BedCamera(burnburn_presentation::BedCameraIntent::Start { device: dev(A), mode: mode(640, 360) }));
+    r.h.send(UiIntent::BedCamera(burnburn_presentation::BedCameraIntent::Start {
+        device: dev(A),
+        mode: mode(640, 360),
+    }));
 
     let v = go(&mut r, I::UpdateOverlay);
 
@@ -325,6 +331,26 @@ fn dropping_a_camera_stops_it_and_removes_its_picture() {
     assert!(v.overlay.layers.is_empty());
     assert!(bed_images(&r).is_empty());
     assert_eq!(*r.cam.stopped.lock().unwrap(), vec![dev(A)]);
+}
+
+/// Cells whose centre lies within the edge margin of their picture are not trusted: with a margin of
+/// 15 px the outer ring of 20 px cells (centres 10 px from the edge) goes, 30 × 16 of 32 × 18 stay.
+#[test]
+fn an_edge_margin_drops_the_unreliable_rim_of_a_picture() {
+    let mut r = rig_a();
+    r.h.controller().attach_calibrations(store_with(vec![aligned(A, mode(640, 360), 0.0, MAP)]));
+    use_camera(&mut r, A, mode(640, 360));
+    go(&mut r, I::UpdateOverlay);
+    assert_eq!(bed_images(&r)[0].1.len(), 32 * 18);
+
+    let v = go(&mut r, I::SetEdgeMargin { px: "15".into() });
+
+    assert_eq!(v.overlay.edge_margin_px, 15.0);
+    assert_eq!(v.overlay.layers[0].cells, 30 * 16);
+    assert_eq!(bed_images(&r)[0].1.len(), 30 * 16);
+    let v = go(&mut r, I::SetEdgeMargin { px: "-2".into() });
+    assert_eq!(v.last_refusal, Some(CameraWhy::InvalidNumber));
+    assert_eq!(v.overlay.edge_margin_px, 15.0);
 }
 
 // --- material height ------------------------------------------------------------------------------
@@ -416,10 +442,37 @@ fn recalibrating_starts_the_wizard_for_the_row_only_when_the_camera_runs_in_that
     assert_eq!(alignment.device, dev(A));
 }
 
+#[test]
+fn recalibrating_a_lens_row_opens_the_lens_wizard() {
+    let mut r = rig_a();
+    use_camera(&mut r, A, mode(640, 360));
+    start_lens(&mut r);
+    for pose in 0..2 {
+        photograph(&mut r, pose, -0.12);
+        go(&mut r, I::AddPatternView);
+    }
+    go(&mut r, I::FitLens { two_coefficients: false });
+    go(&mut r, I::AcceptLensCalibration);
+    let row = view(&mut r).calibrations[0].reference.clone();
+    assert_eq!(row.kind, CalibrationKind::Lens);
+
+    let v = go(&mut r, I::Recalibrate { calibration: row });
+
+    assert!(v.lens.is_some_and(|w| w.views.is_empty()), "a fresh wizard for the same camera");
+}
+
 // --- lens calibration wizard --------------------------------------------------------------------------
 
 fn start_lens(r: &mut Rig) -> CameraWorkspaceView {
-    go(r, I::StartLensCalibration { device: dev(A), cols: BOARD_COLS as u32, rows: BOARD_ROWS as u32, pitch_mm: "30".into() })
+    go(
+        r,
+        I::StartLensCalibration {
+            device: dev(A),
+            cols: BOARD_COLS as u32,
+            rows: BOARD_ROWS as u32,
+            pitch_mm: "30".into(),
+        },
+    )
 }
 
 fn photograph(r: &mut Rig, pose: usize, k1: f64) {
@@ -459,7 +512,11 @@ fn the_lens_wizard_detects_corners_fits_the_lens_and_stores_it_for_this_configur
     let cfg = config_key(&dev(A), &mode(640, 360), "standard");
     let stored = r.h.controller().calibrations().lens_for(&cfg).expect("stored for this configuration");
     assert!((stored.intrinsics.k1 + 0.12).abs() < 0.03);
-    assert!(v.calibrations.iter().any(|c| c.reference.kind == CalibrationKind::Lens && c.validity == CalibrationValidity::Valid));
+    assert!(
+        v.calibrations
+            .iter()
+            .any(|c| c.reference.kind == CalibrationKind::Lens && c.validity == CalibrationValidity::Valid)
+    );
     let other = config_key(&dev(A), &mode(1280, 720), "standard");
     assert!(r.h.controller().calibrations().lens_for(&other).is_err());
 }
@@ -525,26 +582,27 @@ fn cancelling_the_lens_wizard_discards_running_work_and_a_late_result_changes_no
     assert!(!v.busy);
 }
 
-/// A result from the wizard that was cancelled and started again must not land in the new one.
+/// The detection of the first wizard finishes (successfully) but is not yet delivered; the wizard is
+/// cancelled and started again. When the result is delivered it belongs to a request that is no
+/// longer current, so the new wizard must not receive the old photo.
 #[test]
 fn a_result_for_a_restarted_wizard_is_rejected_by_its_request_identity() {
     let mut r = rig_a();
-    let queue: Arc<Mutex<Vec<Box<dyn FnOnce() + Send>>>> = Arc::default();
-    let q = Arc::clone(&queue);
-    r.h.controller().set_camera_spawner(Arc::new(move |job| q.lock().unwrap().push(job)));
     use_camera(&mut r, A, mode(640, 360));
     start_lens(&mut r);
     photograph(&mut r, 0, -0.12);
-    go(&mut r, I::AddPatternView);
-    go(&mut r, I::CancelLensCalibration);
-    start_lens(&mut r);
+    let send = |r: &mut Rig, i: I| {
+        r.h.send(UiIntent::CameraWorkspace(i));
+    };
+    send(&mut r, I::AddPatternView); // inline spawner: the corners are found and wait for delivery
+    send(&mut r, I::CancelLensCalibration);
+    send(&mut r, I::StartLensCalibration { device: dev(A), cols: 9, rows: 6, pitch_mm: "30".into() });
 
-    for job in std::mem::take(&mut *queue.lock().unwrap()) {
-        job();
-    }
-    let v = go(&mut r, I::FitLens { two_coefficients: false });
+    r.h.controller().poll_camera_work(); // the first wizard's result arrives now
+    let v = view(&mut r);
 
     assert!(v.lens.unwrap().views.is_empty(), "the first wizard's photo is not in the second");
+    let v = go(&mut r, I::FitLens { two_coefficients: false });
     assert_eq!(v.last_refusal, Some(CameraWhy::NoPatternViews));
 }
 
@@ -553,9 +611,10 @@ fn a_view_can_be_removed_again() {
     let mut r = rig_a();
     use_camera(&mut r, A, mode(640, 360));
     start_lens(&mut r);
-    photograph(&mut r, 0, 0.0);
+    // Through the lens that pulls the whole board into the picture (see the lens wizard test).
+    photograph(&mut r, 0, -0.12);
     go(&mut r, I::AddPatternView);
-    photograph(&mut r, 1, 0.0);
+    photograph(&mut r, 1, -0.12);
     go(&mut r, I::AddPatternView);
     assert_eq!(view(&mut r).lens.unwrap().views.len(), 2);
     let v = go(&mut r, I::RemovePatternView { index: 0 });
@@ -608,7 +667,10 @@ fn the_alignment_wizard_proposes_a_layout_of_fit_and_check_marks_inside_the_bed(
     let check = wizard.marks.iter().filter(|m| m.role == burnburn_image::calib::MarkRole::Check).count();
     assert!(fit >= 4 && check >= 1, "{fit} fit marks and {check} check marks");
     for m in &wizard.marks {
-        assert!((0.0..=1500.0).contains(&m.bed_mm[0]) && (0.0..=900.0).contains(&m.bed_mm[1]), "{m:?} on the 1500 × 900 bed");
+        assert!(
+            (0.0..=1500.0).contains(&m.bed_mm[0]) && (0.0..=900.0).contains(&m.bed_mm[1]),
+            "{m:?} on the 1500 × 900 bed"
+        );
         assert_eq!(m.pixel, None);
     }
     assert!(wizard.proposal.is_none() && wizard.photo.is_none() && wizard.result.is_none());
@@ -631,10 +693,17 @@ fn marks_are_proposed_without_sending_and_sent_only_after_the_user_confirms_that
     assert!(lab.history.inner.executions.lock().unwrap().is_empty());
     let confirm = proposal.confirm.clone().expect("the machine is idle: confirmation offered");
 
-    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob { plan: proposal.plan, action: confirm.action, seen: confirm.seen }));
+    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob {
+        plan: proposal.plan,
+        action: confirm.action,
+        seen: confirm.seen,
+    }));
 
     let sent = lab.peer.sent();
-    assert!(matches!(sent.first(), Some(Request::QueryIdentity)), "the upload starts with the identity check: {sent:?}");
+    assert!(
+        matches!(sent.first(), Some(Request::QueryIdentity)),
+        "the upload starts with the identity check: {sent:?}"
+    );
     let executions = lab.history.inner.executions.lock().unwrap();
     assert_eq!(executions.len(), 1, "exactly one job was handed to the machine service");
     assert_eq!(executions[0].job.plan, proposal.plan, "the job that was shown is the job that was sent");
@@ -656,13 +725,16 @@ fn the_marks_job_burns_a_cross_on_every_mark_and_nothing_else() {
     let lab = lab();
     attach_machine(&mut r, &lab);
     use_camera(&mut r, A, mode(640, 360));
-    let marks: Vec<[f64; 2]> =
-        start_alignment(&mut r, "0").alignment.unwrap().marks.iter().map(|m| m.bed_mm).collect();
+    let marks: Vec<[f64; 2]> = start_alignment(&mut r, "0").alignment.unwrap().marks.iter().map(|m| m.bed_mm).collect();
     let v = go(&mut r, I::ProposeMarksJob { power_percent: "10".into(), speed_mm_s: "100".into() });
     let proposal = v.alignment.unwrap().proposal.unwrap();
     assert_eq!(proposal.marks_mm, marks);
     let confirm = proposal.confirm.clone().unwrap();
-    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob { plan: proposal.plan, action: confirm.action, seen: confirm.seen }));
+    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob {
+        plan: proposal.plan,
+        action: confirm.action,
+        seen: confirm.seen,
+    }));
 
     let executions = lab.history.inner.executions.lock().unwrap();
     let plan = &executions[0].job.inputs.as_ref().expect("frozen inputs").plan;
@@ -794,7 +866,11 @@ fn an_operator_cannot_send_the_marks_job() {
     r.h.controller().set_role(Role::Operator);
 
     // Operators cannot reach the camera workspace at all.
-    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob { plan: proposal.plan, action: confirm.action, seen: confirm.seen }));
+    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob {
+        plan: proposal.plan,
+        action: confirm.action,
+        seen: confirm.seen,
+    }));
     assert!(lab.peer.sent().is_empty());
     assert!(lab.history.inner.executions.lock().unwrap().is_empty());
 }
@@ -809,7 +885,11 @@ fn a_job_in_progress_withholds_the_confirmation_with_the_reason() {
     let v = go(&mut r, I::ProposeMarksJob { power_percent: "10".into(), speed_mm_s: "100".into() });
     let proposal = v.alignment.unwrap().proposal.unwrap();
     let confirm = proposal.confirm.unwrap();
-    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob { plan: proposal.plan, action: confirm.action, seen: confirm.seen }));
+    r.h.send(UiIntent::CameraWorkspace(I::ConfirmMarksJob {
+        plan: proposal.plan,
+        action: confirm.action,
+        seen: confirm.seen,
+    }));
 
     // The marks job is still being checked and stored: another one cannot be sent now.
     let again = go(&mut r, I::ProposeMarksJob { power_percent: "10".into(), speed_mm_s: "100".into() });
@@ -831,7 +911,8 @@ fn clicked_marks_fit_an_alignment_whose_check_residuals_are_independent_and_savi
 
     // The marks lie where the default layout puts them; the camera sees bed = (100 + 0.5·px, 300 − 0.5·py)
     // only for part of the bed, so move the marks onto the part it sees.
-    let places: [[f64; 2]; 6] = [[130.0, 280.0], [390.0, 280.0], [390.0, 140.0], [130.0, 140.0], [260.0, 210.0], [200.0, 170.0]];
+    let places: [[f64; 2]; 6] =
+        [[130.0, 280.0], [390.0, 280.0], [390.0, 140.0], [130.0, 140.0], [260.0, 210.0], [200.0, 170.0]];
     for (i, p) in places.iter().enumerate() {
         go(&mut r, I::SetAlignmentMark { index: i, x_mm: p[0].to_string(), y_mm: p[1].to_string() });
     }
@@ -853,7 +934,11 @@ fn clicked_marks_fit_an_alignment_whose_check_residuals_are_independent_and_savi
     assert!(result.fit_rms_mm < 1e-6, "exact marks: {}", result.fit_rms_mm);
     assert_eq!(result.check_errors_mm.len(), 2);
     assert!(result.check_errors_mm[0] < 1e-6, "{:?}", result.check_errors_mm);
-    assert!((result.check_errors_mm[1] - 2.0).abs() < 1e-6, "the 2 mm click error shows up: {:?}", result.check_errors_mm);
+    assert!(
+        (result.check_errors_mm[1] - 2.0).abs() < 1e-6,
+        "the 2 mm click error shows up: {:?}",
+        result.check_errors_mm
+    );
     assert!((result.check_max_mm - 2.0).abs() < 1e-6);
 
     let v = go(&mut r, I::SaveAlignment);

@@ -13,12 +13,7 @@ use burnburn_types::{RequestId, StableId};
 fn config(device: &str, width: u32) -> CameraConfigKey {
     CameraConfigKey {
         device: CameraDeviceId(device.into()),
-        mode: CameraMode {
-            width,
-            height: width / 2,
-            pixel_format: CameraPixelFormat::Bgra8,
-            frame_rate_mhz: 30_000,
-        },
+        mode: CameraMode { width, height: width / 2, pixel_format: CameraPixelFormat::Bgra8, frame_rate_mhz: 30_000 },
         lens: "standard".into(),
     }
 }

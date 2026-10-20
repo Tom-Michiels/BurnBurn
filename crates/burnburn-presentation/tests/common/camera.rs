@@ -8,9 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use burnburn_image::SourceImage;
-use burnburn_image::calib::{
-    AlignmentLens, LensModel, MarkObservation, MarkRole, WorkspaceAlignment,
-};
+use burnburn_image::calib::{AlignmentLens, LensModel, MarkObservation, MarkRole, WorkspaceAlignment};
 use burnburn_presentation::{
     CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraMode, CameraPixelFormat,
     CameraPort, config_key,
@@ -84,7 +82,7 @@ impl CameraPort for FakeCam {
 
 pub fn grey(width: u32, height: u32, value: u8) -> SourceImage {
     let mut rgba = vec![value; (width * height * 4) as usize];
-    for px in rgba.chunks_exact_mut(4) {
+    for px in rgba.as_chunks_mut::<4>().0 {
         px[3] = 255;
     }
     SourceImage::from_rgba8(width, height, rgba).unwrap()

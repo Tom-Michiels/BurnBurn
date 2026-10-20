@@ -31,6 +31,8 @@ use crate::view_model::{
 
 mod arrange;
 mod camera;
+mod camera_marks;
+mod camera_wizards;
 mod canvas;
 mod clipboard;
 mod commands;
