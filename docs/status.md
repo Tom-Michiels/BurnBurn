@@ -28,14 +28,14 @@ het betekent niet dat alle acceptatiecriteria van de stories gehaald zijn. De we
 | IM17 jobs/historie | gebouwd | jobgoedkeuring niet duurzaam |
 | IM18 tekst/raster | gebouwd | bidi/RTL; geen grayscale |
 | IM19 lokale tracecorrectie | gebouwd | — |
-| IM20 native afwerking | gebouwd, hosts aangesloten | camerabeeld niet getekend; Windows zonder operations/camera |
+| IM20 native afwerking | gebouwd, hosts aangesloten | Windows zonder operations/camera (macOS tekent het camerabeeld sinds W3-UI-camera) |
 | IM21 modifiers/componenten | gebouwd | — |
 | IM22 generators | gebouwd | barcode-leesproef handmatig |
 | IM23 centerline | gebouwd | — |
 | IM24 traceerrecepten | gebouwd | — |
 | IM25 laserprocessen | gebouwd | Unverified-features op hardware |
 | IM26 nesting | gebouwd | spiegelen, onderdelen in gaten |
-| IM27 camera | kalibratie + camerasectie gebouwd | AVFoundation-adapter nooit automatisch gestart (handmatig) |
+| IM27 camera | kalibratie, camerasectie en cameravenster (overlay, lens- en uitlijnwizard, beheer, meerdere camera's) gebouwd | AVFoundation-adapter nooit automatisch gestart (handmatig); kalibraties niet persistent (io-DTO, L6) |
 | IM28 migratie | LBRN2 gebouwd | PDF wacht op beslissing (lopdf) |
 | IM29 calibratie/beheer | software gebouwd | USB, hardware |
 | IM30 CLI | gebouwd | plugins alleen manifestschema |
