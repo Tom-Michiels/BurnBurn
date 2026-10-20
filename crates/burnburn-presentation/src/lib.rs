@@ -7,6 +7,7 @@
 mod barcode_panel;
 mod cam_dialogs;
 mod camera;
+mod camera_workspace;
 mod catalog;
 mod commit;
 mod controller;
@@ -49,11 +50,16 @@ pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
     CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
 };
+pub use camera_workspace::{
+    AlignmentResultView, AlignmentView, CalibrationKind, CalibrationRef, CalibrationRow, CalibrationSummary,
+    CalibrationValidity, CameraInUse, CameraWhy, CameraWorkspaceIntent, CameraWorkspaceView, LensResultView,
+    LensWizardView, MachineWhy, MarkView, MarksConfirm, MarksProposalView, OverlayLayerView, OverlayView, config_key,
+};
 pub use catalog::{
     Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
-pub use controller::{AppController, AppPorts, AppUpdate, HostEffect};
+pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
 pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
 };

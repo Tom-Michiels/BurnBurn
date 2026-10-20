@@ -110,6 +110,7 @@ impl AppController {
             viewport: s.viewport,
         });
         layers::style_scene(s, &snapshot, &mut scene);
+        scene.overlays.extend(self.camera_overlays());
         Some(Arc::new(scene))
     }
 }

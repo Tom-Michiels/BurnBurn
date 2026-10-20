@@ -10,7 +10,7 @@ use objc2_app_kit::{NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSFont
 use objc2_foundation::NSString;
 
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels::{CameraControl, camera_panel};
+use crate::panels::{CameraControl, CameraText, camera_panel, camera_text};
 
 use crate::appkit::panels::production::CAMERA_WIDTH;
 
@@ -21,11 +21,15 @@ pub(crate) struct CameraSection {
     pub(crate) devices: Retained<NSPopUpButton>,
     /// Request access, start, stop (tags = [`CameraControl`] order).
     pub(crate) buttons: [Retained<NSButton>; 3],
+    /// Opens the camera window (tag 3); always enabled.
+    pub(crate) window_button: Retained<NSButton>,
 }
 
 /// Tag of a camera button.
 pub(crate) fn camera_control(tag: isize) -> Option<CameraControl> {
-    [CameraControl::RequestAccess, CameraControl::Start, CameraControl::Stop].get(usize::try_from(tag).ok()?).copied()
+    [CameraControl::RequestAccess, CameraControl::Start, CameraControl::Stop, CameraControl::Window]
+        .get(usize::try_from(tag).ok()?)
+        .copied()
 }
 
 /// The bed-camera part of the production strip.
@@ -33,8 +37,14 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, width: f64, locale: L
     let t = |text: HostText| host_text(text, locale);
     let x = width - CAMERA_WIDTH;
     let cw = CAMERA_WIDTH - 12.0;
-    let camera_title = strip_label(mtm, strip, t(HostText::CameraTitle), rect(x, 186.0, cw, 18.0), false);
+    let camera_title = strip_label(mtm, strip, t(HostText::CameraTitle), rect(x, 186.0, cw - 120.0, 18.0), false);
     camera_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
+    let window_button = push_button(mtm, camera_text(CameraText::OpenButton, locale));
+    window_button.setFrame(rect(x + cw - 116.0, 182.0, 116.0, 24.0));
+    window_button.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
+    window_button.setTag(3);
+    window_button.setAccessibilityLabel(Some(&NSString::from_str(camera_text(CameraText::Accessibility, locale))));
+    strip.addSubview(&window_button);
     let status = strip_label(mtm, strip, "", rect(x, 150.0, cw, 32.0), true);
     let devices = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(x, 120.0, cw, 26.0), false);
     devices.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::CameraTitle))));
@@ -58,7 +68,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, width: f64, locale: L
     let frame = strip_label(mtm, strip, "", rect(x, 62.0, cw, 18.0), false);
     let note = strip_label(mtm, strip, "", rect(x, 8.0, cw, 50.0), true);
     note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
-    CameraSection { labels: [status, frame, note], devices, buttons }
+    CameraSection { labels: [status, frame, note], devices, buttons, window_button }
 }
 
 impl DocWindow {

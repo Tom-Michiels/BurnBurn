@@ -165,6 +165,26 @@ impl CalibrationStore {
         self.alignments.insert((alignment.config().clone(), key), alignment)
     }
 
+    /// Removes the lens calibration of exactly this configuration; returns it.
+    pub fn remove_lens(&mut self, cfg: &CameraConfigKey) -> Option<LensCalibration> {
+        self.lenses.remove(cfg)
+    }
+
+    /// Removes the alignment of exactly this configuration at exactly this material height.
+    pub fn remove_alignment(&mut self, cfg: &CameraConfigKey, height_mm: f64) -> Option<WorkspaceAlignment> {
+        self.alignments.remove(&(cfg.clone(), height_key(height_mm)?))
+    }
+
+    /// Every lens calibration, in canonical (configuration) order.
+    pub fn lenses(&self) -> impl Iterator<Item = &LensCalibration> {
+        self.lenses.values()
+    }
+
+    /// Every alignment, in canonical order (configuration, then material height).
+    pub fn alignments(&self) -> impl Iterator<Item = &WorkspaceAlignment> {
+        self.alignments.values()
+    }
+
     pub fn lens_count(&self) -> usize {
         self.lenses.len()
     }

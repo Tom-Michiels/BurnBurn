@@ -14,6 +14,7 @@ use crate::l10n::{HostText, Locale, host_text};
 
 mod cam;
 mod camera;
+mod camera_workspace;
 mod cut_settings;
 mod import;
 mod inspector;
@@ -28,6 +29,7 @@ mod text;
 
 pub use cam::*;
 pub use camera::*;
+pub use camera_workspace::*;
 pub use cut_settings::*;
 pub use import::*;
 pub use inspector::*;

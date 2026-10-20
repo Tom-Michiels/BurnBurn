@@ -33,6 +33,8 @@ pub fn tessellate(packet: &RenderPacket) -> Vec<Vertex> {
     let mut stroke = StrokeTessellator::new();
     for primitive in &packet.primitives {
         match primitive {
+            // Images are textured in their own pass, not tessellated.
+            Primitive::Image { .. } => {}
             Primitive::Fill { contours_px, color } => {
                 let contours: Vec<Vec<[f32; 2]>> =
                     contours_px.iter().map(|c| dedup(c)).filter(|c| c.len() >= 3).collect();

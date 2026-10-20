@@ -31,6 +31,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
 mod cam_host;
+mod camera_host;
 mod files_host;
 mod laser_host;
 pub use cam_host::CamPanelParts;
@@ -140,6 +141,8 @@ pub struct HostApp {
     timers: RefCell<Vec<Retained<NSTimer>>>,
     /// The panels of the open CAM dialogs (Optimization, tests, Device Settings).
     cam_panels: RefCell<cam_host::CamPanels>,
+    /// The camera window (W3-UI-camera), created on first use.
+    camera_window: RefCell<Option<super::panels::camera_window::CameraWindow>>,
 }
 
 /// Ask the running host (on the main queue, after the current callback) to autosave: used when a
@@ -219,6 +222,7 @@ impl HostApp {
                 recovery_count: Cell::new((0, 0)),
                 timers: RefCell::new(Vec::new()),
                 cam_panels: RefCell::new(cam_host::CamPanels::new()),
+                camera_window: RefCell::new(None),
             }
         });
         if let Ok(mut controller) = app.controller.try_borrow_mut() {
@@ -531,6 +535,10 @@ impl HostApp {
 
     /// A camera button with device pop-up item `device_index` chosen.
     pub(crate) fn camera_button_pressed(&self, control: CameraControl, device_index: isize) {
+        if control == CameraControl::Window {
+            self.toggle_camera_window();
+            return;
+        }
         let camera = self.controller.try_borrow().ok().and_then(|c| c.camera_view());
         if let Some(intent) = crate::panels::camera_intent(camera.as_ref(), control, device_index) {
             self.dispatch(intent);
@@ -541,6 +549,11 @@ impl HostApp {
     /// Copy the camera view model into every window's camera section (frames and permission
     /// answers arrive without an intent).
     fn refresh_camera(&self) {
+        // Finished corner detections and lens fits arrive without an intent.
+        let delivered = self.controller.try_borrow_mut().ok().map(|mut c| c.poll_camera_work());
+        if delivered.is_some_and(|u| u.view_changed) {
+            self.refresh_camera_window();
+        }
         let camera = self.controller.try_borrow().ok().and_then(|c| c.camera_view());
         if let Ok(windows) = self.windows.try_borrow() {
             for w in windows.values() {
@@ -842,6 +855,7 @@ impl HostApp {
             }
         }
         self.refresh_cam_panels();
+        self.refresh_camera_window();
     }
 
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
@@ -1137,6 +1151,7 @@ impl HostApp {
             camera_labels: [&w.camera.labels[0], &w.camera.labels[1], &w.camera.labels[2]],
             camera_devices: &w.camera.devices,
             camera_buttons: [&w.camera.buttons[0], &w.camera.buttons[1], &w.camera.buttons[2]],
+            camera_window_button: &w.camera.window_button,
             sketch_panel: &w.sketch.panel,
             sketch_panel_shown: w.sketch.shown,
             sketch_table: &w.sketch.table,
@@ -1300,6 +1315,8 @@ pub struct WindowParts<'a> {
     pub camera_labels: [&'a objc2_app_kit::NSTextField; 3],
     pub camera_devices: &'a objc2_app_kit::NSPopUpButton,
     pub camera_buttons: [&'a objc2_app_kit::NSButton; 3],
+    /// Opens the camera window (W3-UI-camera).
+    pub camera_window_button: &'a objc2_app_kit::NSButton,
     /// Sketch panel (shown while the window is in sketch mode): panel, constraint table, freedom
     /// label, conflict button, Meten/Sturen, parameter table and fields, command buttons.
     pub sketch_panel: &'a objc2_app_kit::NSPanel,

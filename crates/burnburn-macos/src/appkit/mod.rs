@@ -29,6 +29,7 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{CamPanelParts, HostApp, HostOptions, QuitOutcome, WindowParts};
 pub use canvas::canvas_packet;
+pub use panels::camera_window::CameraParts;
 pub use panels::laser::LaserParts;
 pub use toolstrip::{ToolStrip, image_pixels};
 pub use window::CanvasStatus;

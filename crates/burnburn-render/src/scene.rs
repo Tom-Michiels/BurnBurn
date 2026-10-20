@@ -12,7 +12,7 @@ use burnburn_types::Length;
 mod sketch;
 
 use crate::input::Rgba;
-use crate::packet::{Primitive, RenderPacket};
+use crate::packet::{ImageCell, Primitive, RenderPacket};
 
 /// Maximum chord deviation on screen, in device pixels.
 pub const DISPLAY_TOLERANCE_PX: f64 = 0.25;
@@ -263,6 +263,30 @@ fn grid(out: &mut Vec<Primitive>, spacing_mm: f64, color: Rgba, proj: &Projectio
     }
 }
 
+/// A camera picture as one image primitive: cells with a corner that does not project to a finite
+/// pixel are dropped, and a picture without cells or with an opacity of 0 (or not a number) is
+/// not drawn at all.
+fn bed_image(
+    out: &mut Vec<Primitive>,
+    picture: &std::sync::Arc<burnburn_editor::BedPicture>,
+    quads: &[burnburn_editor::BedQuad],
+    opacity: f32,
+    proj: &Projection,
+) {
+    if !(opacity.is_finite() && opacity > 0.0) {
+        return;
+    }
+    let cells: Vec<ImageCell> = quads
+        .iter()
+        .filter(|q| q.bed_mm.iter().all(|p| p.x.is_finite() && p.y.is_finite()))
+        .map(|q| ImageCell { corners_px: q.bed_mm.map(|p| proj.px32(p)), uv: q.uv })
+        .filter(|c| c.corners_px.iter().flatten().all(|v| v.is_finite()))
+        .collect();
+    if !cells.is_empty() {
+        out.push(Primitive::Image { picture: std::sync::Arc::clone(picture), cells, opacity: opacity.min(1.0) });
+    }
+}
+
 /// Translate one scene into device pixels. Pure, no GPU.
 ///
 /// Painting order: grid, items back to front (fill, then outline), then the other overlays.
@@ -270,6 +294,12 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
     let size = size_px(&scene.viewport);
     let proj = Projection { camera: scene.camera, viewport: scene.viewport, scale: scene.viewport.backing_scale() };
     let mut out = Vec::new();
+    // Camera pictures lie beneath everything, the grid included.
+    for overlay in &scene.overlays {
+        if let Overlay::BedImage { picture, quads, opacity } = overlay {
+            bed_image(&mut out, picture, quads, *opacity, &proj);
+        }
+    }
     for overlay in &scene.overlays {
         if let (Overlay::Grid { spacing_mm }, Some(color)) = (overlay, theme.grid) {
             grid(&mut out, *spacing_mm, color, &proj, size);

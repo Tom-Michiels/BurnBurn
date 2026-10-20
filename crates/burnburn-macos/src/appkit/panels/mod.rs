@@ -8,6 +8,7 @@ pub(crate) mod bundle;
 #[allow(unsafe_code)]
 pub(crate) mod cam_dialog;
 pub(crate) mod camera;
+pub(crate) mod camera_window;
 pub(crate) mod cut_settings;
 pub(crate) mod export;
 pub(crate) mod files;

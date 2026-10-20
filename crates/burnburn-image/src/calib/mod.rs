@@ -14,10 +14,12 @@
 //! Interim home: contracts-phase-c §IM27 places this in `burnburn-image::calib` (owner Trace); it
 //! has no native dependency so it can move there unchanged with its tests.
 
+pub mod corners;
 pub mod coverage;
 pub mod lens;
 pub mod store;
 
+pub use corners::{CheckerGrid, CornerError, detect_checkerboard};
 pub use coverage::{BedPointCoverage, CameraView, Sighting, cameras_seeing};
 pub use lens::{
     LensCalibError, LensCalibration, LensCalibrationRequest, LensFitParams, LensFitReport, LensOrder, PatternPoint,
