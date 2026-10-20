@@ -7,6 +7,7 @@
 //! builds one `GeometryCommand::Import`, so the document only changes through its command route.
 
 mod dxf;
+mod hpgl;
 mod lbrn2;
 mod raster;
 mod svg;
@@ -19,6 +20,7 @@ use burnburn_geometry::Path;
 use burnburn_types::ContentHash;
 
 pub use dxf::{DxfDocument, DxfScale, parse_dxf, parse_dxf_with};
+pub use hpgl::{parse_hpgl, parse_hpgl_with};
 pub use lbrn2::{
     AssetNote, Assumption, CutKind, CutSettingProposal, FontUse, ImportNote, Lbrn2Draft, Lbrn2Item, Lbrn2Report,
     NoteKind, SUPPORTED, parse_lbrn2, parse_lbrn2_with, supported_attributes,
@@ -108,6 +110,8 @@ pub enum ImportFormat {
     Lbrn2,
     Png,
     Jpeg,
+    /// HP-GL / PLT plotter files.
+    Hpgl,
     /// Recognised only: vector import from PDF waits for the parser decision (lopdf or own
     /// reader, Design/owner). Until then `NotSupportedYet`, never a partial import.
     Pdf,
@@ -122,6 +126,7 @@ impl ImportFormat {
             "lbrn2" => ImportFormat::Lbrn2,
             "png" => ImportFormat::Png,
             "jpg" | "jpeg" => ImportFormat::Jpeg,
+            "plt" | "hpgl" | "hgl" => ImportFormat::Hpgl,
             "pdf" => ImportFormat::Pdf,
             _ => return None,
         })
@@ -165,6 +170,7 @@ pub fn analyze(format: ImportFormat, bytes: &[u8]) -> Result<Analysis, AnalyzeEr
         ImportFormat::Png | ImportFormat::Jpeg => {
             inspect_raster(bytes, &RasterLimits::default()).map(Analysis::Raster).map_err(AnalyzeError::Raster)
         }
+        ImportFormat::Hpgl => parse_hpgl(bytes).map(Analysis::Vector).map_err(AnalyzeError::Parse),
         ImportFormat::Pdf => Err(AnalyzeError::Import(ImportError::NotSupportedYet(format))),
     }
 }
@@ -210,6 +216,20 @@ pub enum UnitDecision {
     DxfExplicit {
         mm_per_unit: f64,
     },
+    /// HP-GL plotter units (0.025 mm) or user units scaled by `IP`/`SC`.
+    Hpgl {
+        mm_per_unit: f64,
+        basis: HpglUnitBasis,
+    },
+}
+
+/// How HP-GL coordinates were turned into millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HpglUnitBasis {
+    /// Plotter units: 1016 per inch, 0.025 mm each.
+    PlotterUnits,
+    /// `SC` user units mapped onto the `IP` reference points (result still in plotter units).
+    ScaledByIpSc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

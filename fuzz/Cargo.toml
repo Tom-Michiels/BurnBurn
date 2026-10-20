@@ -78,3 +78,10 @@ path = "fuzz_targets/image_decode.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "io_parse_hpgl"
+path = "fuzz_targets/io_parse_hpgl.rs"
+test = false
+doc = false
+bench = false
