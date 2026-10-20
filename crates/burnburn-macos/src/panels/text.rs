@@ -11,8 +11,8 @@
 use burnburn_presentation::{
     AdvancePolicy, Align, AppViewModel, BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue,
     BarcodeProblem, CommandKey, Distort, SerialField, SymbolInputMode, TextEdit, TextField, TextIssue,
-    TextOnPathViewModel, TextPathEdit, TextToggle, TextToolbarViewModel, UiIntent, VAlign, VariableEdit,
-    VariableIssue, VariablePanelViewModel, VariableProblem, format_mm,
+    TextOnPathViewModel, TextPathEdit, TextToggle, TextToolbarViewModel, UiIntent, VAlign, VariableEdit, VariableIssue,
+    VariablePanelViewModel, VariableProblem, format_mm,
 };
 use burnburn_types::DocumentId;
 
@@ -121,6 +121,23 @@ impl Slot {
         Slot::BcCancel,
     ];
 
+    /// How the control reports itself.
+    pub fn kind(self) -> SlotKind {
+        use Slot::*;
+        match self {
+            Height | HSpace | VSpace | PathStart | PathOffset | VarOffset | SerialCurrent | SerialStart | SerialEnd
+            | SerialBy | SerialDigits | VarRow | BcPayload | BcModule | BcMinModule | BcQuiet | BcHeight
+            | BcColumns | BcWidth => SlotKind::Text,
+            Bold | Italic | Uppercase | Welded | SingleLine | PathReverse | SerialWrap => SlotKind::Toggle,
+            Family | Align | VAlign | PathDistort | VarKind | VarPolicy | BcType | BcEcc | BcInputMode => {
+                SlotKind::Choice
+            }
+            VarCsv => SlotKind::Csv,
+            Convert | PathApply | PathCancel | VarPrevious | VarNext | VarReset | VarClearCsv | VarTest | VarBake
+            | BcCreate | BcCancel => SlotKind::Press,
+        }
+    }
+
     /// The widget tag of this slot (never 0: AppKit's default tag).
     pub fn tag(self) -> isize {
         Slot::ALL.iter().position(|s| *s == self).map_or(0, |i| i as isize + 1)
@@ -129,6 +146,21 @@ impl Slot {
     pub fn from_tag(tag: isize) -> Option<Slot> {
         usize::try_from(tag.checked_sub(1)?).ok().and_then(|i| Slot::ALL.get(i).copied())
     }
+}
+
+/// What a slot's control reports to the host's one action method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotKind {
+    /// A text field: its string.
+    Text,
+    /// A checkbox: its state.
+    Toggle,
+    /// A pop-up or segmented control: the chosen index.
+    Choice,
+    /// A push button.
+    Press,
+    /// The CSV button: the host opens a file panel and reports the file.
+    Csv,
 }
 
 /// What a control reports: the text of a field, a checkbox, a pop-up/segment index, a button press,
@@ -448,7 +480,9 @@ pub fn text_issue_text(issue: TextIssue, locale: Locale) -> String {
         TextIssue::PathNeedsTextAndGuide => {
             tr("Selecteer één tekst en één pad", "Select one text and one path", locale)
         }
-        TextIssue::PathMultiline => tr("Tekst op pad werkt met één regel", "Text on a path needs a single line", locale),
+        TextIssue::PathMultiline => {
+            tr("Tekst op pad werkt met één regel", "Text on a path needs a single line", locale)
+        }
         TextIssue::PathTextTooLong => tr("De tekst is langer dan het pad", "The text is longer than the path", locale),
         TextIssue::PathEmptyGuide => tr("Het pad heeft geen lengte", "The path has no length", locale),
         TextIssue::PathFailed => tr("Tekst op pad is mislukt", "Text on a path failed", locale),
@@ -460,7 +494,9 @@ pub fn text_issue_text(issue: TextIssue, locale: Locale) -> String {
 fn check(t: &TextToggle, missing: TextIssue, tip_for: Option<&str>, locale: Locale) -> Check {
     let tip = match (t.enabled, t.why_off) {
         (true, _) => String::new(),
-        (false, Some(TextIssue::StyleMissing)) => tip_for.map_or_else(|| text_issue_text(missing, locale), str::to_owned),
+        (false, Some(TextIssue::StyleMissing)) => {
+            tip_for.map_or_else(|| text_issue_text(missing, locale), str::to_owned)
+        }
         (false, Some(why)) => text_issue_text(why, locale),
         (false, None) => String::new(),
     };
@@ -471,7 +507,11 @@ fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
     let note = if let Some(issue) = t.issue {
         text_issue_text(issue, locale)
     } else if t.font_missing {
-        tr("Lettertype niet beschikbaar: de laatste omtrekken blijven", "Font not available: the last outlines stay", locale)
+        tr(
+            "Lettertype niet beschikbaar: de laatste omtrekken blijven",
+            "Font not available: the last outlines stay",
+            locale,
+        )
     } else if t.missing_glyphs > 0 {
         match locale {
             Locale::Nl => format!("{} teken(s) ontbreken in het lettertype", t.missing_glyphs),
@@ -563,9 +603,7 @@ pub fn variable_problem_text(problem: &VariableProblem, locale: Locale) -> Strin
             Locale::Nl => format!("Waarde ontbreekt in kolom (rij): {d}"),
             Locale::En => format!("Value missing in column (row): {d}"),
         },
-        VariableIssue::NoData => {
-            tr("Geen CSV-gegevens gekozen: kies een CSV", "No data chosen: choose a CSV", locale)
-        }
+        VariableIssue::NoData => tr("Geen CSV-gegevens gekozen: kies een CSV", "No data chosen: choose a CSV", locale),
         VariableIssue::NoSerial => tr("Geen serienummer ingesteld", "No serial number set up", locale),
         VariableIssue::BadTemplate => match locale {
             Locale::Nl => format!("De tekst bevat een onbekend of onvolledig veld ({d})"),
@@ -679,8 +717,12 @@ pub fn barcode_problem_text(problem: &BarcodeProblem, locale: Locale) -> String 
             Locale::En => format!("Check digit is wrong: {found} should be {expected}"),
         },
         BarcodeIssue::InvalidPayload { rule } => rule.to_owned(),
-        BarcodeIssue::UnknownAi => tr("Onbekende GS1-toepassingsidentificatie", "Unknown GS1 application identifier", locale),
-        BarcodeIssue::DataTooLong => tr("De inhoud past niet in het grootste symbool", "The content does not fit the largest symbol", locale),
+        BarcodeIssue::UnknownAi => {
+            tr("Onbekende GS1-toepassingsidentificatie", "Unknown GS1 application identifier", locale)
+        }
+        BarcodeIssue::DataTooLong => {
+            tr("De inhoud past niet in het grootste symbool", "The content does not fit the largest symbol", locale)
+        }
         BarcodeIssue::QuietZoneTooSmall { min_modules, got_modules } => match locale {
             Locale::Nl => format!("Stille zone van {got_modules} modules is te klein; minimaal {min_modules}"),
             Locale::En => format!("A quiet zone of {got_modules} modules is too small; at least {min_modules}"),
@@ -689,9 +731,15 @@ pub fn barcode_problem_text(problem: &BarcodeProblem, locale: Locale) -> String 
             Locale::Nl => format!("Module {value_mm} mm is kleiner dan het minimum {min_mm} mm"),
             Locale::En => format!("Module {value_mm} mm is smaller than the minimum {min_mm} mm"),
         },
-        BarcodeIssue::EccStepUnavailable => tr("Die foutcorrectiestap bestaat niet", "That error-correction step does not exist", locale),
-        BarcodeIssue::InputModeUnavailable => tr("Dit type kent die invoermodus niet", "This type has no such input mode", locale),
-        BarcodeIssue::ParamNotApplicable => tr("Deze instelling hoort niet bij dit type", "This setting does not apply to this type", locale),
+        BarcodeIssue::EccStepUnavailable => {
+            tr("Die foutcorrectiestap bestaat niet", "That error-correction step does not exist", locale)
+        }
+        BarcodeIssue::InputModeUnavailable => {
+            tr("Dit type kent die invoermodus niet", "This type has no such input mode", locale)
+        }
+        BarcodeIssue::ParamNotApplicable => {
+            tr("Deze instelling hoort niet bij dit type", "This setting does not apply to this type", locale)
+        }
         BarcodeIssue::MarkerId { id, count } => match locale {
             Locale::Nl => format!("Marker {id} bestaat niet; kies 0 tot {}", count.saturating_sub(1)),
             Locale::En => format!("Marker {id} does not exist; choose 0 to {}", count.saturating_sub(1)),
@@ -714,7 +762,8 @@ fn barcode_panel(b: &BarcodeDialogViewModel, locale: Locale) -> BarcodePanel {
         .types
         .iter()
         .map(|t| {
-            let suffix = if t.supported { "" } else { tr(" — niet ondersteund", " — not supported", locale).leak() };
+            let suffix =
+                if t.supported { "" } else { tr(" — niet ondersteund", " — not supported", locale).leak() };
             let tip = match (t.supported, t.reason, t.source) {
                 (false, Some(reason), _) => reason.to_owned(),
                 (true, _, Some(source)) => match locale {
@@ -823,7 +872,9 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
             let name = bar.families.get(i)?;
             (*name != bar.family).then(|| text(TextEdit::Family(name.clone())))
         }
-        (Slot::Bold, SlotValue::Toggle(on)) => (on != doc.text_toolbar.as_ref()?.bold.on).then(|| text(TextEdit::Bold(on))),
+        (Slot::Bold, SlotValue::Toggle(on)) => {
+            (on != doc.text_toolbar.as_ref()?.bold.on).then(|| text(TextEdit::Bold(on)))
+        }
         (Slot::Italic, SlotValue::Toggle(on)) => {
             (on != doc.text_toolbar.as_ref()?.italic.on).then(|| text(TextEdit::Italic(on)))
         }
@@ -887,7 +938,10 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
             let p = doc.variable_panel.as_ref()?;
             changed(&p.offset, &t, p.problem.is_some()).then(|| var(VariableEdit::Offset(t)))
         }
-        (Slot::SerialCurrent | Slot::SerialStart | Slot::SerialEnd | Slot::SerialBy | Slot::SerialDigits, SlotValue::Text(t)) => {
+        (
+            Slot::SerialCurrent | Slot::SerialStart | Slot::SerialEnd | Slot::SerialBy | Slot::SerialDigits,
+            SlotValue::Text(t),
+        ) => {
             let p = doc.variable_panel.as_ref()?;
             let (field, shown) = match slot {
                 Slot::SerialCurrent => (SerialField::Current, &p.serial.current),

@@ -339,7 +339,7 @@ pub struct AppController {
     /// The last Copy or Cut: all windows paste from it; the host mirrors it to the OS pasteboard.
     clipboard: Option<burnburn_io::clipboard::Clipboard>,
     /// The job clock for `{date}` in variable text (injected; none: dates cannot be resolved).
-    clock: Option<Arc<dyn Fn() -> burnburn_generators::JobClock + Send + Sync>>,
+    clock: Option<Arc<dyn Fn() -> Option<burnburn_generators::JobClock> + Send + Sync>>,
     /// Archief ▸ Recente projecten, most recent first; the host persists it.
     recent: Vec<PathBuf>,
     /// The path each pending open task was asked for (to forget it when it fails).
@@ -607,7 +607,7 @@ impl AppController {
             UiIntent::Variable { document, edit } => {
                 let request = self.next_id::<RequestId>();
                 let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
-                let clock = self.clock.as_ref().map(|c| c());
+                let clock = self.clock.as_ref().and_then(|c| c());
                 self.with_session(document, |s| variable::edit(s, document, fonts.as_ref(), clock, edit, request))
             }
             UiIntent::Barcode { document, edit } => {

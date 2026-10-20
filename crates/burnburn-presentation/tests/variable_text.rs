@@ -46,7 +46,7 @@ const CSV: &str = "naam;nummer\nJansen;7\nPietersen;\nÅsa;9\n";
 fn prepare_harness(h: &mut HeadlessEditorHarness) {
     let (src, font) = fonts();
     h.controller().attach_fonts(src, font);
-    h.controller().attach_clock(Arc::new(clock));
+    h.controller().attach_clock(Arc::new(|| Some(clock())));
 }
 
 /// A window with a variable text `content` (selected), serial 10..95 by 5, four digits.

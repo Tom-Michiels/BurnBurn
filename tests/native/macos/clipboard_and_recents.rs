@@ -244,6 +244,7 @@ fn arrange_and_view() -> Result<(), String> {
                 "Gereedschap",
                 "Weergave",
                 "Vormen",
+                "Tekst",
                 "Schets",
                 "Beeld",
                 "Productie",

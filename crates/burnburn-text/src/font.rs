@@ -133,6 +133,21 @@ pub trait FontSource {
     }
 }
 
+/// Family name and style a font file declares (name table, `head.macStyle`), read without
+/// shaping setup: the font catalogue lists thousands of faces. `None` when the bytes are not a
+/// font or declare no family.
+pub fn font_names(bytes: &[u8]) -> Option<(String, FontStyle)> {
+    use skrifa::raw::tables::head::MacStyle;
+    use skrifa::string::StringId;
+    let font = skrifa::FontRef::new(bytes).ok()?;
+    let family = font.localized_strings(StringId::FAMILY_NAME).english_or_first()?.to_string();
+    if family.trim().is_empty() {
+        return None;
+    }
+    let mac = font.head().ok()?.mac_style();
+    Some((family, FontStyle::from_flags(mac.contains(MacStyle::BOLD), mac.contains(MacStyle::ITALIC))))
+}
+
 /// The reference for the same family with Bold/Italic switched. It names another face, so an
 /// embedded asset of the old face is not carried over: the face is looked up by family and
 /// style (and reported missing, never replaced, when the source lacks it).

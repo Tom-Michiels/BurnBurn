@@ -108,3 +108,71 @@ waarden); compilatiefouten tellen niet.
 - Tekst-op-pad als document-object (`BindTextToPath`) bestaat nog niet; `text_on_path` blijft een pure functie.
 - RTL/bidi, SHX en variabele fonts zijn niet gebouwd. Echte bold/italic-fonts als fixture ontbreken (licentie/herkomst kiezen).
 - Windows: onbevestigd.
+
+---
+
+# W3-UI-tekst (golf 3) — teksttoolbar, Convert to Path, tekst op pad, variabele-tekstpaneel
+
+Status: groen op macOS arm64 (headless + native, zie Verificatie). Windows: **onbevestigd** (de presentation-laag is
+gedeeld; er is geen Windows-host voor deze panelen). Wachtrijregels W2-L5b/c/d staan op `klaar` met testnamen.
+Commando's met `export PATH="$HOME/.cargo/bin:$PATH"`. Rode fase = waargenomen gedragsmatige fout tegen een
+compileerbare stub; compilatiefouten tellen niet.
+
+## Opgeleverd
+- **Presentation** (`text_panel.rs`, `variable_panel.rs`, `controller/text.rs`, `controller/variable.rs`): `UiIntent::{Text, TextPath,
+  Variable}` + `CommandKey::TextOnPath`; `DocumentViewModel::{text_toolbar, text_on_path, variable_panel}`.
+  - Toolbar volgt de ene geselecteerde tekst (alle selecties zijn uitvoer van dezelfde `TextId`); elke geaccepteerde edit is
+    één `TextCommand::Set` (één undo-stap), een herhaling stuurt niets, een slecht getal wordt hier geparseerd (DR-05) en laat
+    het document ongemoeid. Bold/Italic alleen aan als `FontSource::available_styles(familie)` de stijl heeft (anders
+    `StyleMissing` als reden, nooit een stille vervanging); een familiewissel behoudt de stijl, anders de gewone face.
+    Welded alleen bij Outline (`WeldedNeedsOutline`); `SingleLine(bool)` is de enkele-lijn-schakelaar.
+  - Convert to Path = bestaand `ShapesConvertToPath` (menu Vormen en Tekst) voor één geselecteerde tekst
+    (`TextCommand::ConvertToPath`).
+  - Tekst op pad: dialoog (Distort Rigid/Warp, start, afstand, omgekeerd); Apply roept `generators::text_on_path` en maakt
+    **één `CreatePath`** (geen live binding: `BindTextToPath` bestaat niet). Fouten (`PathMultiline`, `PathTextTooLong`, …) houden
+    de dialoog open.
+  - Variabele tekst: Normal⇄Variable en offset zijn `TextCommand::Set`; reeks (Current/Start/End/Advance by/Digits/Wrap),
+    Auto-Advance (`AdvancePolicy`), Previous/Next/Reset, gekozen CSV-rij en CSV (de host leest het bestand, presentation
+    detecteert `,`/`;`/tab, parseert en bevriest) zijn **venster-staat** (nog niet in het projectbestand). Test lost alle
+    variabele teksten op; Bake = één `TextCommand::Set` (`bake_command`).
+  - **ProductionRecord-binding**: `submit_compile` lost elke variabele tekst op tegen één record (tellers, rij, klok, cut-waarden
+    `{cut:C01.speed|power|min_power|passes|name}`) in een wegwerp-`DocumentSession`, en compileert dat snapshot met de revisie
+    van het document (`DocumentSnapshot::restamped`, kleine Kern-haak). Preview, RD-export en upload delen daardoor één plan.
+    Een onoplosbare sjabloon (ontbrekende cel/kolom, geen CSV, geen klok bij `{date}`, lettertype weg) weigert de compile met een
+    benoemd probleem — nooit een leeg label. Het record zit in `Compiled` en in `Prepared`: een bevroren job behoudt zijn rij.
+  - **Tellercommit** (`AppController::sync_production`): per uitvoering van een voorbereide job met record geeft de machinestatus
+    de gebeurtenissen die hij impliceert (Stored ⇒ UploadConfirmed; Running/Completed ⇒ ook JobStarted; Failed(UploadRejected |
+    NotStored) / Unknown(UploadChunkUnconfirmed) ⇒ UploadFailed; Cancelled ⇒ JobCancelled); `ProductionCounters::commit` verhoogt
+    één keer en alleen op de gekozen `AdvancePolicy`; `Unknown` impliceert niets. Een handmatige verplaatsing van de tellers na
+    het klaarzetten maakt het record `StaleRecord` (de job commit niet meer).
+  - `AppController::attach_clock` (JobClock, ingespoten) en `text_sources` (tests/toegankelijkheid).
+- **Generators**: `ProductionCounters::{step_back_manually, reset, set_row, set_serial, set_policy}` (elke handmatige wijziging
+  telt als beweging: `generation` + 1).
+- **Text/runtime**: `FontSource::families()` (default leeg), `font_names(bytes)` (familie/stijl uit name-tabel en `head.macStyle`),
+  `runtime::fonts::SystemFontCatalog` (lijst per familie/stijl, lazy laden, `.`-families verborgen, een ontbrekende face is
+  `NotFound`, nooit een vervanger); de macOS-host gebruikt hem in plaats van één face.
+
+## Cycli (W3-UI-tekst)
+
+| Test | Verwachte fout (red) | Red-commando en waargenomen resultaat | Green-resultaat | Opmerking |
+|---|---|---|---|---|
+| `presentation/tests/text_toolbar.rs` toolbar/convert (13) | stub: `edit` deed niets, geen toolbar, Convert uit | `cargo test -p burnburn-presentation --test text_toolbar` → `1 passed; 12 failed` | `13 passed` | Oracles: bounds-relaties (hoogte × 1,25; HSpace + 2 × 2 mm; hoofdletters = tekst "HIT"; uitlijning t.o.v. anker) |
+| ↳ tekst op pad (4) | — | **implementatie vóór test**; rood via mutatie (`distort: Distort::Rigid` in `apply_path`): `2 failed` | `17 passed` | Oracle: dialoog = generator (zelfde bounds), warp ligt aan één kant van de cirkel, rigid snijdt hem |
+| `presentation/tests/variable_text.rs` (16) | stub: panel `None`, bind = origineel snapshot, `sync_production` leeg | `cargo test -p burnburn-presentation --test variable_text` → `0 passed; 16 failed` | `16 passed` | Testfouten onderweg: standaardreeks heeft breedte 0 (`SN-1`, niet `SN-0001`); tekst op de oorsprong is `OutsideBed` (Text-gereedschap-klik plaatst hem op het bed); het failed-upload-scenario (identiteitsmismatch) raakte `UploadFailed` niet — mutatie `UploadFailed→UploadConfirmed` bleef groen, dus uitgebreid met een geweigerde chunk (`Nak`); daarna mutatie rood (`1 failed`) |
+| ↳ `compile_binds_the_record_…` oracle | | mutatie (bind levert het origineel): `4 failed` (binding, datum, frozen, onoplosbaar) | groen | `rd_hash` van de variabele job = `rd_hash` van een document met de opgeloste tekst |
+| `generators/tests/variable_text.rs::manual_changes_move_serial_and_row_together_and_stale_the_open_record` | stubs: tellers bleven staan | `cargo test -p burnburn-generators --test variable_text` → `1 failed` | `18 passed` | |
+| `text/tests/options.rs::a_font_source_lists_its_families_sorted_and_once_…` | — | mutatie (`dedup` weg): `1 failed` | `9 passed` | implementatie vóór test |
+| `text/tests/names.rs` (2) | stub gaf `None` | `cargo test -p burnburn-text --test names` → `1 passed; 1 failed` | `2 passed` | Referentie: manifest/`reference_metrics.py` (struct-only) |
+| `runtime/tests/system_fonts.rs` catalogus (3) | — | **implementatie vóór test**; mutatie (stijl genegeerd bij laden): `1 failed` | `5 passed` | tempdir met fixture-fonts; echte systeemfonts: 195 families in ~225 ms (debug) |
+
+## Open / onbevestigd
+- Tellerstand, `AdvancePolicy`, reeks en gekozen CSV-rij staan niet in het projectbestand; CSV-data ook niet (een heropend
+  project begint met lege tellers en zonder CSV). Dat is de io-regel van W2-L5c.
+- Auto-Advance-gebeurtenis van LightBurn en Wrap-versus-Stop bij End blijven **onbevestigd** (standaard `Manual`, Wrap).
+- `sync_production` draait aan het begin van elke intent; een host met machinestatus-timer kan het direct aanroepen. De
+  macOS-host heeft nog geen machine-timer, dus zonder verdere intent verhoogt een teller pas bij de volgende.
+- Meerdere geselecteerde teksten tegelijk: geen toolbar (één `TextCommand::Set` per tekst zou meerdere undo-stappen geven).
+- Een object-naam in de lijst volgt een gewijzigde tekst niet (`DerivedOutput.name` wordt bij bestaande sleutels niet bijgewerkt;
+  voorheen al zo bij typen) — buiten dit pakket, gemeld.
+- Echte bold/italic-fixtures ontbreken (de bold-face in de tests hergebruikt de reguliere bytes).
+- Windows: onbevestigd.

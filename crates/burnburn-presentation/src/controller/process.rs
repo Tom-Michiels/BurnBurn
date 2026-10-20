@@ -54,7 +54,7 @@ impl AppController {
         };
         let tasks = Arc::clone(&self.ports.tasks);
         let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
-        let clock = self.clock.as_ref().map(|c| c());
+        let clock = self.clock.as_ref().and_then(|c| c());
         self.with_session(document, |s| {
             // Variable text is resolved against one production record before it is compiled, so
             // preview, RD export and upload print the same text (E11).

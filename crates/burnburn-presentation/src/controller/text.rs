@@ -411,9 +411,10 @@ impl AppController {
         })
     }
 
-    /// The job clock `{date}` in variable text resolves against (injected, like every clock).
-    /// Without one, variable text with dates is refused when a job is compiled.
-    pub fn attach_clock(&mut self, clock: Arc<dyn Fn() -> burnburn_generators::JobClock + Send + Sync>) {
+    /// The job clock `{date}` in variable text resolves against (injected, like every clock; `None`
+    /// from the closure means the host has no usable time). Without one, variable text with dates
+    /// is refused when a job is compiled.
+    pub fn attach_clock(&mut self, clock: Arc<dyn Fn() -> Option<burnburn_generators::JobClock> + Send + Sync>) {
         self.clock = Some(clock);
     }
 

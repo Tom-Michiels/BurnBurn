@@ -14,5 +14,11 @@ pub(crate) mod production;
 #[allow(unsafe_code)]
 pub(crate) mod shapes;
 pub(crate) mod sketch;
+// The text panels (W3-UI-tekst): `textform` has the shared target object (`define_class!`).
+pub(crate) mod barcode;
+pub(crate) mod text;
+#[allow(unsafe_code)]
+pub(crate) mod textform;
 pub(crate) mod tracer;
+pub(crate) mod variable;
 pub(crate) mod widgets;

@@ -744,12 +744,10 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                 None => return Reaction::Nothing,
             }
         }
-        E::TextPanel { document, slot, value } => {
-            match crate::panels::text_panel_intent(vm, document, slot, value) {
-                Some(intent) => intent,
-                None => return Reaction::Nothing,
-            }
-        }
+        E::TextPanel { document, slot, value } => match crate::panels::text_panel_intent(vm, document, slot, value) {
+            Some(intent) => intent,
+            None => return Reaction::Nothing,
+        },
         E::GeometryDialogConfirmed { document, text } => {
             match crate::panels::geometry_dialog_confirm_intent(vm, document, &text) {
                 Some(i) => i,

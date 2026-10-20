@@ -33,7 +33,7 @@ impl AppController {
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref());
-                vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().map(|c| c()));
+                vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
                     plan_revision: p.job.plan_revision,

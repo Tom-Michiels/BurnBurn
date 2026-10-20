@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use burnburn_macos::adapter::{NativeEvent, Reaction, translate};
 use burnburn_macos::l10n::Locale;
-use burnburn_macos::panels::{Slot, SlotValue, TextPanels, text_panel_intent, text_panels};
+use burnburn_macos::panels::{Slot, SlotValue, TextPanels, text_panels};
 use burnburn_presentation::{
     AdvancePolicy, Align, BarcodeEdit, CommandKey, Distort, HeadlessEditorHarness, SelectMode, SerialField,
     SymbolInputMode, Symbology, TextEdit, TextPathEdit, UiIntent, VAlign, VariableEdit,
@@ -33,7 +33,7 @@ fn text_window(content: &str) -> (HeadlessEditorHarness, DocumentId) {
     let doc = h.new_document().unwrap();
     let (src, font) = fonts();
     h.controller().attach_fonts(src, font);
-    h.controller().attach_clock(Arc::new(|| burnburn_presentation::JobClock::new(1_781_751_845, -300).unwrap()));
+    h.controller().attach_clock(Arc::new(|| burnburn_presentation::JobClock::new(1_781_751_845, -300).ok()));
     h.send(UiIntent::InsertText { document: doc, text: content.into() });
     (h, doc)
 }
@@ -63,6 +63,17 @@ fn slots_have_unique_tags_that_round_trip_and_zero_is_nobody() {
         assert_eq!(Slot::from_tag(slot.tag()), Some(slot));
     }
     assert_eq!((Slot::from_tag(0), Slot::from_tag(-3), Slot::from_tag(10_000)), (None, None, None));
+}
+
+#[test]
+fn every_slot_reports_itself_in_one_way() {
+    use burnburn_macos::panels::SlotKind;
+    let count = |kind| Slot::ALL.iter().filter(|s| s.kind() == kind).count();
+    assert_eq!(count(SlotKind::Csv), 1, "only the CSV button opens a file panel");
+    assert_eq!(
+        (count(SlotKind::Text), count(SlotKind::Toggle), count(SlotKind::Choice), count(SlotKind::Press)),
+        (19, 7, 9, 11)
+    );
 }
 
 #[test]
@@ -143,7 +154,10 @@ fn the_text_on_path_sheet_follows_the_dialog_and_forwards_its_choices() {
     assert!(panels(&h, doc, Locale::Nl).path.is_none(), "closed until the command");
     h.invoke(doc, CommandKey::TextOnPath);
     let p = panels(&h, doc, Locale::Nl).path.expect("open");
-    assert_eq!((p.distort, p.start.as_str(), p.offset.as_str(), p.reverse, p.apply_enabled), (0, "0", "0", false, true));
+    assert_eq!(
+        (p.distort, p.start.as_str(), p.offset.as_str(), p.reverse, p.apply_enabled),
+        (0, "0", "0", false, true)
+    );
     assert!(p.note.is_empty());
 
     let path = |e: TextPathEdit| Some(UiIntent::TextPath { document: doc, edit: e });
@@ -226,7 +240,10 @@ fn variable_controls_become_variable_edits() {
     assert_eq!(send(Slot::SerialCurrent, text("7")), var(VariableEdit::Serial(SerialField::Current, "7".into())));
     assert_eq!(send(Slot::SerialStart, text("1")), None, "the value it shows");
     assert_eq!(send(Slot::SerialWrap, SlotValue::Toggle(false)), var(VariableEdit::Wrap(false)));
-    assert_eq!(send(Slot::VarPolicy, SlotValue::Choice(1)), var(VariableEdit::Policy(AdvancePolicy::OnUploadConfirmed)));
+    assert_eq!(
+        send(Slot::VarPolicy, SlotValue::Choice(1)),
+        var(VariableEdit::Policy(AdvancePolicy::OnUploadConfirmed))
+    );
     assert_eq!(send(Slot::VarPolicy, SlotValue::Choice(2)), var(VariableEdit::Policy(AdvancePolicy::OnJobStarted)));
     assert_eq!(send(Slot::VarPolicy, SlotValue::Choice(0)), None, "manual is the default it shows");
     assert_eq!(send(Slot::VarPrevious, SlotValue::Press), var(VariableEdit::Previous));
@@ -274,7 +291,10 @@ fn barcode_controls_become_barcode_edits_and_a_greyed_type_does_nothing() {
     let send = |slot, value| intent(&h, doc, slot, value);
     let bc = |e: BarcodeEdit| Some(UiIntent::Barcode { document: doc, edit: e });
     let index_of = |s: Symbology| Symbology::ALL.iter().position(|x| *x == s).unwrap();
-    assert_eq!(send(Slot::BcType, SlotValue::Choice(index_of(Symbology::Code128))), bc(BarcodeEdit::Symbology(Symbology::Code128)));
+    assert_eq!(
+        send(Slot::BcType, SlotValue::Choice(index_of(Symbology::Code128))),
+        bc(BarcodeEdit::Symbology(Symbology::Code128))
+    );
     assert_eq!(send(Slot::BcType, SlotValue::Choice(index_of(Symbology::GridMatrix))), None, "greyed out");
     assert_eq!(send(Slot::BcType, SlotValue::Choice(b.symbology)), None, "QR is the chosen one already");
     assert_eq!(send(Slot::BcPayload, text("HELLO")), bc(BarcodeEdit::Payload("HELLO".into())));
@@ -323,7 +343,11 @@ fn barcode_errors_and_the_readability_warning_say_what_and_where_in_the_window_l
     assert!(b.problems.contains('A') && b.problems.contains('6'), "character and position (from 1): {:?}", b.problems);
     send(&mut h, BarcodeEdit::Payload("4006381333932".into()));
     let b = panels(&h, doc, Locale::Nl).barcode.unwrap();
-    assert!(b.problems.contains('1') && b.problems.contains('2') && b.problems.to_lowercase().contains("controlecijfer"), "{:?}", b.problems);
+    assert!(
+        b.problems.contains('1') && b.problems.contains('2') && b.problems.to_lowercase().contains("controlecijfer"),
+        "{:?}",
+        b.problems
+    );
     send(&mut h, BarcodeEdit::Payload("400638133393".into()));
     let b = panels(&h, doc, Locale::Nl).barcode.unwrap();
     assert!(b.canonical_line.contains("4006381333931"), "{:?}", b.canonical_line);

@@ -31,6 +31,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
 mod laser_host;
+mod text_host;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
@@ -211,12 +212,17 @@ impl HostApp {
             }
         });
         if let Ok(mut controller) = app.controller.try_borrow_mut() {
-            // Canvas text needs a face: the first readable system font (none: presentation says so).
-            if let Some(font) =
+            // Text needs faces: the installed system fonts, listed by the family they declare
+            // (the text toolbar's choice); none at all falls back to the first readable default.
+            let catalog = burnburn_runtime::fonts::SystemFontCatalog::system();
+            if let Some(font) = catalog.default_font() {
+                controller.attach_fonts(catalog, font);
+            } else if let Some(font) =
                 burnburn_runtime::fonts::first_readable_font(&burnburn_runtime::fonts::default_font_candidates())
             {
                 controller.attach_fonts(font.source, font.font);
             }
+            controller.attach_clock(Arc::new(text_host::host_clock));
             if let Some(dir) = &app.options.recovery_dir {
                 if let Err(e) = std::fs::create_dir_all(dir) {
                     eprintln!("burnburn: recovery folder {}: {e}", dir.display());

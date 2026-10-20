@@ -26,6 +26,8 @@ pub use barcode_panel::{
     BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
     BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
 };
+/// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).
+pub use burnburn_generators::JobClock;
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
@@ -74,8 +76,6 @@ pub use text_panel::{
     Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
-/// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).
-pub use burnburn_generators::JobClock;
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
     VariablePanelViewModel, VariableProblem,
