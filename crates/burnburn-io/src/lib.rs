@@ -22,6 +22,7 @@ pub mod memory;
 mod process_map;
 mod profile;
 mod project;
+pub mod recent;
 pub mod search;
 pub mod shape_dto;
 mod shape_map;
@@ -31,6 +32,7 @@ pub mod std_fs;
 mod store;
 pub mod structure_dto;
 mod structure_map;
+pub mod template;
 pub mod text_dto;
 mod text_map;
 

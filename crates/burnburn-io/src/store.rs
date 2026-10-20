@@ -16,10 +16,17 @@ pub fn save_project(fs: &dyn FileSystem, path: &Path, project: &Project) -> Resu
     let bytes = encode_container(project)?;
     // Never write what we could not read back: the same validation as opening.
     decode_container(&bytes).map_err(|e| SaveError::Invalid(e.to_string()))?;
+    write_atomic(fs, path, &bytes)
+}
+
+/// The atomic write route shared by projects and small user files: temp file in the target
+/// directory → write → sync → replace → sync the directory. A failure removes the temp file and
+/// leaves the previous file at `path` untouched.
+pub(crate) fn write_atomic(fs: &dyn FileSystem, path: &Path, bytes: &[u8]) -> Result<(), SaveError> {
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("project");
     let tmp = fs.create_temp_in(dir, stem).map_err(SaveError::Fs)?;
-    let staged = fs.write_all(&tmp, &bytes).and_then(|()| fs.sync_file(&tmp)).and_then(|()| fs.replace(&tmp, path));
+    let staged = fs.write_all(&tmp, bytes).and_then(|()| fs.sync_file(&tmp)).and_then(|()| fs.replace(&tmp, path));
     if let Err(e) = staged {
         // The original error matters; a failing cleanup leaves only a hidden temp file.
         let _ = fs.remove_file(&tmp);
