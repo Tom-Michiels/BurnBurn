@@ -4,6 +4,7 @@
 //! Native hosts (AppKit, Windows), the CLI and the [`HeadlessEditorHarness`] all drive the same
 //! controller. No AppKit, Windows or GPU type appears here.
 
+mod barcode_panel;
 mod camera;
 mod catalog;
 mod commit;
@@ -21,6 +22,10 @@ mod text_panel;
 mod variable_panel;
 mod view_model;
 
+pub use barcode_panel::{
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
+    BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
+};
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.

@@ -9,6 +9,7 @@ use burnburn_ruida::RuidaProfile;
 use burnburn_trace::TraceRecipe;
 use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
 
+use crate::barcode_panel::BarcodeEdit;
 use crate::camera::BedCameraIntent;
 use crate::cut_options::CutExtras;
 use crate::image_panel::{ImageAdjustInput, TraceFormInput, TracePreset};
@@ -413,6 +414,11 @@ pub enum UiIntent {
     Variable {
         document: DocumentId,
         edit: VariableEdit,
+    },
+    /// The barcode dialog: type, payload, parameters, width; Create makes the symbol.
+    Barcode {
+        document: DocumentId,
+        edit: BarcodeEdit,
     },
 }
 
@@ -833,6 +839,8 @@ pub enum CommandKey {
     ViewWireframe,
     /// Bewerken ▸ Tekst op pad…: the selected text follows the selected guide (dialog with Distort).
     TextOnPath,
+    /// Tekenen ▸ Streepjescode…: the barcode dialog (type, payload, size, readability).
+    BarcodeNew,
 }
 
 impl CommandKey {
@@ -951,6 +959,7 @@ impl CommandKey {
         CommandKey::ZoomOut,
         CommandKey::ViewWireframe,
         CommandKey::TextOnPath,
+        CommandKey::BarcodeNew,
     ];
 }
 

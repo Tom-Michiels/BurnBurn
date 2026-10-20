@@ -30,6 +30,7 @@ use crate::view_model::{
 };
 
 mod arrange;
+mod barcode;
 mod camera;
 mod canvas;
 mod clipboard;
@@ -216,6 +217,8 @@ struct Session {
     text: text::TextState,
     /// Serial counters, data rows and the record the last compile was bound to (window state).
     variable: variable::VariableState,
+    /// The barcode dialog and the barcodes this window created (window state).
+    barcode: barcode::BarcodeState,
 }
 
 impl Session {
@@ -271,6 +274,7 @@ impl Session {
             arrange: arrange::ArrangeState::default(),
             text: text::TextState::default(),
             variable: variable::VariableState::default(),
+            barcode: barcode::BarcodeState::default(),
         })
     }
 
@@ -606,6 +610,10 @@ impl AppController {
                 let clock = self.clock.as_ref().map(|c| c());
                 self.with_session(document, |s| variable::edit(s, document, fonts.as_ref(), clock, edit, request))
             }
+            UiIntent::Barcode { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| barcode::edit(s, document, edit, request))
+            }
             UiIntent::TextPath { document, edit } => {
                 let request = self.next_id::<RequestId>();
                 let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
@@ -767,6 +775,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Text { document, .. }
         | UiIntent::TextPath { document, .. }
         | UiIntent::Variable { document, .. }
+        | UiIntent::Barcode { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {

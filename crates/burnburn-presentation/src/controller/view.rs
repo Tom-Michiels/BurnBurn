@@ -201,6 +201,8 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         text_toolbar: super::text::toolbar_view(s),
         text_on_path: super::text::path_view(s),
         variable_panel: None,
+        barcode_dialog: super::barcode::dialog_view(s),
+        barcode_scale_warning: super::barcode::scale_warning(s),
     }
 }
 
@@ -281,6 +283,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             Some(s),
         ) => (shapes::command_enabled(key, s).unwrap_or(false), false),
         (CommandKey::TextOnPath, Some(s)) => (super::text::path_ready(s), false),
+        (CommandKey::BarcodeNew, Some(_)) => (true, false),
         (CommandKey::CommitImport, Some(s)) => {
             (s.import.as_ref().is_some_and(|i| i.draft().is_ok()) || super::image::commit_enabled(s), false)
         }

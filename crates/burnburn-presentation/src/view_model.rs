@@ -121,6 +121,10 @@ pub struct DocumentViewModel {
     pub text_on_path: Option<crate::text_panel::TextOnPathViewModel>,
     /// The variable-text panel while exactly one text object is selected.
     pub variable_panel: Option<crate::variable_panel::VariablePanelViewModel>,
+    /// The barcode dialog while it is open.
+    pub barcode_dialog: Option<crate::barcode_panel::BarcodeDialogViewModel>,
+    /// The selected barcode's module would drop below its minimum at the current size.
+    pub barcode_scale_warning: Option<crate::barcode_panel::BarcodeScaleWarning>,
 }
 
 /// What the geometry dialog asks for.
