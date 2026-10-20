@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use burnburn_types::DocumentId;
+use burnburn_types::{DocumentId, OperationId};
+
+use crate::intent::OperationKind;
+use crate::view_model::MessageKey;
 
 /// A user action of the file features, kept apart from `UiIntent` so the file panels grow
 /// without touching the shared intent list.
@@ -31,6 +34,57 @@ pub enum FilesIntent {
         paths: Vec<PathBuf>,
     },
     ClearRecentTemplates,
+    /// Window ▸ Materiaalbibliotheek: opens the panel (the library is read on a worker).
+    OpenMaterialLibrary {
+        document: DocumentId,
+    },
+    CloseMaterialLibrary {
+        document: DocumentId,
+    },
+    /// The panel's search: material, thickness as typed (empty = any thickness) and machine.
+    SetMaterialFilter {
+        document: DocumentId,
+        material: Option<String>,
+        thickness: String,
+        machine: Option<String>,
+    },
+    SelectMaterialEntry {
+        document: DocumentId,
+        entry: Option<u64>,
+    },
+    /// "Toepassen": copy the entry's mode and settings into these layers. The project gets a
+    /// recipe that remembers which library entry and revision it came from.
+    ApplyMaterial {
+        document: DocumentId,
+        entry: u64,
+        operations: Vec<OperationId>,
+    },
+    /// "Bijwerken": bring the entry's current content into the project recipe, and, when
+    /// `reapply` is set, into the layers that were set from that recipe. Never happens by itself.
+    UpdateLinkedRecipe {
+        document: DocumentId,
+        recipe: u64,
+        reapply: bool,
+    },
+    /// Store a layer's mode and settings as a new library entry for this material and thickness.
+    SaveMaterial {
+        document: DocumentId,
+        operation: OperationId,
+        name: String,
+        material: String,
+        thickness: String,
+        notes: String,
+    },
+    /// Replace an entry's content by a layer's mode and settings (the entry gets a new revision).
+    UpdateMaterialFromOperation {
+        document: DocumentId,
+        entry: u64,
+        operation: OperationId,
+    },
+    RemoveMaterial {
+        document: DocumentId,
+        entry: u64,
+    },
 }
 
 /// What a template keeps of the design.
@@ -155,4 +209,103 @@ pub enum FilesMessage {
     TemplateSaveFailed,
     /// The template could not be read or is not a template; no window was opened.
     TemplateOpenFailed,
+    /// The library file could not be read (damaged or from a newer version): the library is
+    /// empty in memory and the file is never overwritten.
+    LibraryUnreadable,
+    /// The library could not be written; the change exists only in memory.
+    LibrarySaveFailed,
+    /// Name, material or thickness of a new library entry is missing or not a number.
+    MaterialInvalid,
+    /// An image layer cannot be stored in or set from a library.
+    MaterialImageLayer,
+    /// The layer or entry no longer exists.
+    MaterialUnknown,
+}
+
+/// Everything the file panels of one window show.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct FilesViewModel {
+    pub material: Option<MaterialPanelViewModel>,
+}
+
+/// The Material Library panel (M217): search, the entries found and what each layer's settings came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaterialPanelViewModel {
+    /// The library is being read on a worker.
+    pub loading: bool,
+    /// Changes are written to a library file (false: no folder, or the file was unreadable).
+    pub persisted: bool,
+    /// Why the last input did nothing, or why the library file was not used.
+    pub issue: Option<MessageKey>,
+    /// Every material name in the library, sorted.
+    pub materials: Vec<String>,
+    /// The thicknesses (mm) the library holds for the chosen material, ascending.
+    pub thicknesses_mm: Vec<f64>,
+    pub machines: Vec<String>,
+    pub filter: MaterialFilter,
+    pub entries: Vec<MaterialRow>,
+    pub selected: Option<u64>,
+    /// The layers of the project and where their settings came from.
+    pub operations: Vec<MaterialOperationRow>,
+    /// The machine profile new entries are stored for.
+    pub active_machine: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MaterialFilter {
+    pub material: Option<String>,
+    /// As typed; empty = any thickness.
+    pub thickness_text: String,
+    pub machine: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaterialRow {
+    pub id: u64,
+    pub name: String,
+    pub material: String,
+    pub thickness_mm: f64,
+    pub machine: String,
+    pub revision: u32,
+    pub mode: OperationKind,
+    pub speed: String,
+    pub power: String,
+    pub passes: String,
+    pub notes: String,
+}
+
+/// One layer of the project in the Material Library panel.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaterialOperationRow {
+    pub id: OperationId,
+    pub name: String,
+    /// A library entry can be applied to it (image layers keep their image settings).
+    pub applicable: bool,
+    pub origin: MaterialOrigin,
+}
+
+/// Where a layer's settings came from. Copied settings never follow the source: a library or
+/// recipe update is offered, not applied.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MaterialOrigin {
+    /// Typed in by hand.
+    Manual,
+    /// Copied from a recipe of this project that has no library behind it.
+    Copied { recipe: u64, recipe_name: String, revision: u32 },
+    /// Copied from a recipe that was copied from a library entry.
+    Linked { recipe: u64, recipe_name: String, revision: u32, entry: u64, status: MaterialLinkStatus },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialLinkStatus {
+    /// The library entry is the revision that was copied.
+    UpToDate,
+    /// The library holds a newer revision of the entry.
+    UpdateAvailable { applied: u32, latest: u32 },
+    /// The library holds an older revision than the one copied (restored from a backup?).
+    LibraryOlder { applied: u32, latest: u32 },
+    /// The entry is no longer in the library.
+    EntryMissing,
+    /// The link was made against another library (or the library is not loaded yet).
+    OtherLibrary,
 }

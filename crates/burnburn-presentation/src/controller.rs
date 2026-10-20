@@ -226,6 +226,8 @@ struct Session {
     arrange: arrange::ArrangeState,
     /// Which library entry each recipe was copied from (provenance, saved with the project).
     library_links: Vec<burnburn_io::LibraryLink>,
+    /// Window state of the file panels (Material Library, Art Library, bundles, export).
+    files: library::FilesUi,
 }
 
 impl Session {
@@ -280,6 +282,7 @@ impl Session {
             image: image::ImageState::default(),
             arrange: arrange::ArrangeState::default(),
             library_links: Vec::new(),
+            files: library::FilesUi::default(),
         })
     }
 
@@ -349,6 +352,8 @@ pub struct AppController {
     recent_templates: Vec<PathBuf>,
     /// Worker jobs of the file features that wait for their result.
     files_jobs: BTreeMap<TaskId, library::FilesJob>,
+    /// Material and art libraries (shared by all windows).
+    libs: library::Libraries,
     /// The path each pending open task was asked for (to forget it when it fails).
     opening_paths: BTreeMap<TaskId, PathBuf>,
 }
@@ -380,6 +385,7 @@ impl AppController {
             recent: Vec::new(),
             recent_templates: Vec::new(),
             files_jobs: BTreeMap::new(),
+            libs: library::Libraries::default(),
             opening_paths: BTreeMap::new(),
         }
     }

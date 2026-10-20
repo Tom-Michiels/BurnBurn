@@ -451,7 +451,7 @@ pub(super) fn pages_failed(s: &mut Session, task: TaskId) {
 }
 
 /// `apply_edit` that also hands back the outcome (the ids a following command targets).
-fn apply_with_outcome(
+pub(in crate::controller) fn apply_with_outcome(
     s: &mut Session,
     document: DocumentId,
     payload: CommandPayload,
@@ -464,7 +464,7 @@ fn apply_with_outcome(
     (after_change(s, document, result), outcome)
 }
 
-fn merge(into: &mut AppUpdate, other: AppUpdate) {
+pub(in crate::controller) fn merge(into: &mut AppUpdate, other: AppUpdate) {
     into.effects.extend(other.effects);
     into.view_changed |= other.view_changed;
     for d in other.scenes_changed {

@@ -33,6 +33,7 @@ impl AppController {
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref());
+                vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
                     plan_revision: p.job.plan_revision,
@@ -197,6 +198,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         tool_options: shapes::option_rows(s),
         node_selection: s.editor.node_selection().to_vec(),
         image: super::image::image_view(s),
+        files: crate::files::FilesViewModel::default(),
     }
 }
 

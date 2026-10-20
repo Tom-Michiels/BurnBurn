@@ -76,7 +76,7 @@ pub(super) fn sync(s: &mut Session) {
     }
 }
 
-fn kind_of(mode: OperationMode) -> OperationKind {
+pub(in crate::controller) fn kind_of(mode: OperationMode) -> OperationKind {
     match mode {
         OperationMode::Line { .. } => OperationKind::Line,
         OperationMode::Fill(_) => OperationKind::Fill,

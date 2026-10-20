@@ -115,6 +115,8 @@ pub struct DocumentViewModel {
     pub tool_options: Vec<ParamRow>,
     /// The selected nodes in node-edit mode; empty for every other tool.
     pub node_selection: Vec<NodeRef>,
+    /// The file panels: Material Library, Art Library, bundles and the export dialog.
+    pub files: crate::files::FilesViewModel,
 }
 
 /// What the geometry dialog asks for.
