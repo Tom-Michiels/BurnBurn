@@ -65,7 +65,8 @@ fn opening_shows_the_documents_current_settings() {
         vec![(OrderKey::Layer, true), (OrderKey::Group, false), (OrderKey::Priority, false)],
         "the stored default is Layer only; the other levels are listed switched off"
     );
-    for field in [DialogField::InnerFirst, DialogField::ReduceTravel, DialogField::BestStart, DialogField::BestDirection]
+    for field in
+        [DialogField::InnerFirst, DialogField::ReduceTravel, DialogField::BestStart, DialogField::BestDirection]
     {
         assert!(vm.flag(field), "{field:?} is on in the default planner");
     }

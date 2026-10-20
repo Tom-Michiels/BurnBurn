@@ -71,9 +71,7 @@ fn with_row<R>(
     field: burnburn_presentation::DialogField,
     f: impl FnOnce(&objc2_app_kit::NSControl, &objc2_app_kit::NSTextField) -> R,
 ) -> Option<R> {
-    s.app
-        .with_cam_panel(doc, dialog, |p| p.rows.iter().find(|r| r.0 == field).map(|r| f(r.1, r.2)))
-        .flatten()
+    s.app.with_cam_panel(doc, dialog, |p| p.rows.iter().find(|r| r.0 == field).map(|r| f(r.1, r.2))).flatten()
 }
 
 /// Runs `f` on the retained control of a field after the panel borrow ended (an action re-enters
@@ -125,11 +123,7 @@ fn device() -> Result<(), String> {
     let doc = s.new_document()?;
     s.draw_rectangle(doc, (10.0, 10.0), (50.0, 30.0))?;
     let id = s.doc(doc).ok_or("no document")?.objects[0].id;
-    s.app.dispatch(UiIntent::Select {
-        document: doc,
-        ids: vec![id],
-        mode: burnburn_presentation::SelectMode::Replace,
-    });
+    s.app.dispatch(UiIntent::Select { document: doc, ids: vec![id], mode: burnburn_presentation::SelectMode::Replace });
     s.app.dispatch(UiIntent::AssignLayer { document: doc, slot: 1, add: false });
     const DEV: CamDialog = CamDialog::Device;
     expect(|| "Device Settings is a menu item".into(), s.menu_item_state(MenuItem::CamDialog(DEV)).is_some())?;
@@ -181,10 +175,7 @@ fn device() -> Result<(), String> {
     expect(|| "the panel closed".into(), !panel_exists(&s, doc, DEV))?;
     s.app.dispatch(UiIntent::Invoke { document: Some(doc), command: burnburn_presentation::CommandKey::Compile });
     s.wait(5.0, "the plan for the new profile", || s.doc(doc).is_some_and(|d| d.plan.is_some()))?;
-    expect(
-        || "the plan is current".into(),
-        s.doc(doc).and_then(|d| d.plan).is_some_and(|p| !p.stale),
-    )?;
+    expect(|| "the plan is current".into(), s.doc(doc).and_then(|d| d.plan).is_some_and(|p| !p.stale))?;
 
     // Reopen: the profile is there; a rotary is a tick and three numbers; the profile change makes the plan stale.
     s.menu(MenuItem::CamDialog(DEV))?;
@@ -339,7 +330,9 @@ fn tests() -> Result<(), String> {
     s.menu(MenuItem::CamDialog(MAT))?;
     s.pump(0.3);
     expect(|| "the material test panel is up".into(), panel_exists(&s, doc, MAT))?;
-    let save_enabled = s.app.with_cam_panel(doc, MAT, |p| p.buttons.iter().any(|b| b.0 == DialogActionKind::ExportRd && b.1.isEnabled()));
+    let save_enabled = s
+        .app
+        .with_cam_panel(doc, MAT, |p| p.buttons.iter().any(|b| b.0 == DialogActionKind::ExportRd && b.1.isEnabled()));
     expect(|| "nothing to save before a test exists".into(), save_enabled == Some(false))?;
     press(&s, doc, MAT, DialogActionKind::Generate)?;
     s.wait(5.0, "the test job", || {
@@ -355,7 +348,9 @@ fn tests() -> Result<(), String> {
         || "the document is untouched".into(),
         after.revision == before.revision && !after.dirty && after.plan.is_none() && after.operations.is_empty(),
     )?;
-    let save_enabled = s.app.with_cam_panel(doc, MAT, |p| p.buttons.iter().any(|b| b.0 == DialogActionKind::ExportRd && b.1.isEnabled()));
+    let save_enabled = s
+        .app
+        .with_cam_panel(doc, MAT, |p| p.buttons.iter().any(|b| b.0 == DialogActionKind::ExportRd && b.1.isEnabled()));
     expect(|| "Save as RD is open once a test exists".into(), save_enabled == Some(true))?;
     // A changed field drops the result.
     act(&s, doc, MAT, DialogField::BaseSpeed, |c| type_text(c, "30")).ok_or("no field")?;
@@ -368,7 +363,9 @@ fn tests() -> Result<(), String> {
     const FOC: CamDialog = CamDialog::FocusTest;
     s.menu(MenuItem::CamDialog(FOC))?;
     s.pump(0.3);
-    let generate = s.app.with_cam_panel(doc, FOC, |p| p.buttons.iter().find(|b| b.0 == DialogActionKind::Generate).map(|b| b.1.isEnabled()));
+    let generate = s.app.with_cam_panel(doc, FOC, |p| {
+        p.buttons.iter().find(|b| b.0 == DialogActionKind::Generate).map(|b| b.1.isEnabled())
+    });
     expect(|| format!("Generate is greyed: {generate:?}"), generate == Some(Some(false)))?;
     let (enabled, note) =
         with_row(&s, doc, FOC, DialogField::FocusStart, |c, n| (c.isEnabled(), n.stringValue().to_string()))

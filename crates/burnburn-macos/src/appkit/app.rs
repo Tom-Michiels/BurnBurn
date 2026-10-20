@@ -18,8 +18,7 @@ use burnburn_io::ProjectUuid;
 use burnburn_io::fs::FileSystem;
 use burnburn_presentation::{
     AppController, AppPorts, AppUpdate, AppViewModel, CamDialog, CameraPort, CloseChoice, CommandKey, HostEffect,
-    MessageKey,
-    UiIntent,
+    MessageKey, UiIntent,
 };
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;

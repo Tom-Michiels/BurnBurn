@@ -286,7 +286,8 @@ fn base(d: &TestDraft, errors: &mut Errors) -> Option<ProcessSettings> {
     let speed = number(d, DialogField::BaseSpeed, &["mm/s"], errors).and_then(|v| match Speed::mm_per_s(v) {
         Ok(s) => Some(s),
         Err(_) => {
-            errors.insert(DialogField::BaseSpeed, if v <= 0.0 { DialogError::Invalid } else { DialogError::OutOfRange });
+            errors
+                .insert(DialogField::BaseSpeed, if v <= 0.0 { DialogError::Invalid } else { DialogError::OutOfRange });
             None
         }
     });
@@ -711,7 +712,9 @@ impl AppController {
         let id = self.next_id::<TaskId>();
         let (tasks, fs) = (Arc::clone(&self.ports.tasks), Arc::clone(&self.ports.fs));
         self.with_session(document, |s| {
-            let (Some(machine), Some(id)) = (machine, id) else { return error(Some(document), MessageKey::ExportFailed) };
+            let (Some(machine), Some(id)) = (machine, id) else {
+                return error(Some(document), MessageKey::ExportFailed);
+            };
             let Some(result) = s.cam.tests.results.get(&dialog) else { return AppUpdate::default() };
             if *machine.profile.revision() != result.plan.source().machine_profile {
                 return AppUpdate::default();
@@ -746,12 +749,7 @@ fn collect(errors: &mut Errors, dialog: CamDialog, e: &TestError, draft: &TestDr
 
 /// Delivers the outcome of a test job. Only the job the dialog still waits for counts (a
 /// cancelled or replaced one is ignored, even if its worker finished anyway).
-pub(super) fn finished(
-    s: &mut Session,
-    id: TaskId,
-    result: Result<TaskOutput, TaskError>,
-    update: &mut AppUpdate,
-) {
+pub(super) fn finished(s: &mut Session, id: TaskId, result: Result<TaskOutput, TaskError>, update: &mut AppUpdate) {
     let Some((dialog, job)) =
         s.cam.tests.inflight.iter().find(|(_, j)| j.id == id).map(|(d, j)| (*d, InFlight { id: j.id, cells: j.cells }))
     else {

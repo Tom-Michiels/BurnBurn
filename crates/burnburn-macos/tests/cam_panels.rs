@@ -6,7 +6,9 @@
 
 use burnburn_document::process::OrderKey;
 use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
-use burnburn_macos::adapter::{MenuItem, NativeEvent, Reaction, menu_enabled, menu_item, menu_items, menu_tag, menu_title, translate};
+use burnburn_macos::adapter::{
+    MenuItem, NativeEvent, Reaction, menu_enabled, menu_item, menu_items, menu_tag, menu_title, translate,
+};
 use burnburn_macos::l10n::{Locale, known_message_keys, message};
 use burnburn_macos::panels::{
     cam_action_intent, cam_action_title, cam_caption, cam_choice_label, cam_error, cam_field_intent, cam_menu_title,
@@ -56,7 +58,10 @@ fn every_dialog_has_a_menu_item_that_opens_it_for_the_window_in_front() {
         assert!(menu_items().contains(&item), "{dialog:?} is a menu item");
         assert_eq!(menu_item(menu_tag(item)), Some(item), "{dialog:?} tag round-trips");
         assert!(menu_tag(item) >= 1);
-        assert_eq!(translate(NativeEvent::Menu(item), &h.view()), Reaction::Intent(UiIntent::OpenCamDialog { document: doc, dialog }));
+        assert_eq!(
+            translate(NativeEvent::Menu(item), &h.view()),
+            Reaction::Intent(UiIntent::OpenCamDialog { document: doc, dialog })
+        );
         assert!(menu_enabled(item, &h.view()));
         for locale in LOCALES {
             assert_eq!(menu_title(item, &h.view(), locale), cam_menu_title(dialog, locale));
@@ -190,13 +195,13 @@ fn the_priority_field_and_the_new_undo_labels_have_words() {
         assert!(message(MessageKey::Field(FieldKey::Priority), locale).is_some_and(|t| !t.is_empty()));
     }
     assert!(known_message_keys().contains(&MessageKey::Field(FieldKey::Priority)));
-    let label = |l| {
-        message(MessageKey::UndoAction(burnburn_document::UndoLabel::Process(l)), Locale::En).unwrap()
-    };
+    let label = |l| message(MessageKey::UndoAction(burnburn_document::UndoLabel::Process(l)), Locale::En).unwrap();
     assert!(label(burnburn_document::process::ProcessLabel::SetOptimization).contains("Optimization"));
     assert!(label(burnburn_document::process::ProcessLabel::SetPriority).contains("Priority"));
     let nl = message(
-        MessageKey::UndoAction(burnburn_document::UndoLabel::Process(burnburn_document::process::ProcessLabel::SetPriority)),
+        MessageKey::UndoAction(burnburn_document::UndoLabel::Process(
+            burnburn_document::process::ProcessLabel::SetPriority,
+        )),
         Locale::Nl,
     )
     .unwrap();
@@ -207,7 +212,9 @@ fn the_priority_field_and_the_new_undo_labels_have_words() {
 fn the_capability_list_says_why_a_feature_is_not_available() {
     for locale in LOCALES {
         for feature in Feature::ALL {
-            for support in [SupportView::Supported, SupportView::Unsupported, SupportView::Unverified("a reason".into())] {
+            for support in
+                [SupportView::Supported, SupportView::Unsupported, SupportView::Unverified("a reason".into())]
+            {
                 let line = cam_support_line(&CapabilityRow { feature, support }, locale);
                 assert!(line.contains(':'), "{feature:?}: {line}");
                 assert!(!line.starts_with(':'), "the feature has a name: {line}");
@@ -237,9 +244,17 @@ fn a_changed_widget_becomes_one_intent_and_a_repeat_becomes_none() {
     let other = DialogValue::Text("900".into());
     assert_eq!(
         cam_field_intent(Some(&vm), doc, CamDialog::Device, DialogField::BedWidth, other.clone()),
-        Some(UiIntent::SetCamField { document: doc, dialog: CamDialog::Device, field: DialogField::BedWidth, value: other })
+        Some(UiIntent::SetCamField {
+            document: doc,
+            dialog: CamDialog::Device,
+            field: DialogField::BedWidth,
+            value: other
+        })
     );
-    assert_eq!(cam_field_intent(None, doc, CamDialog::Device, DialogField::BedWidth, DialogValue::Text("1".into())), None);
+    assert_eq!(
+        cam_field_intent(None, doc, CamDialog::Device, DialogField::BedWidth, DialogValue::Text("1".into())),
+        None
+    );
 
     // A field with an error sends its text again, so a retry of the same text goes through.
     h.send(UiIntent::SetCamField {
@@ -251,7 +266,10 @@ fn a_changed_widget_becomes_one_intent_and_a_repeat_becomes_none() {
     h.send(UiIntent::CamDialogAction { document: doc, dialog: CamDialog::Device, action: DialogAction::Apply });
     let vm = h.controller().cam_dialog(doc, CamDialog::Device).unwrap();
     assert!(vm.row(DialogField::BedWidth).unwrap().error.is_some());
-    assert!(cam_field_intent(Some(&vm), doc, CamDialog::Device, DialogField::BedWidth, DialogValue::Text("abc".into())).is_some());
+    assert!(
+        cam_field_intent(Some(&vm), doc, CamDialog::Device, DialogField::BedWidth, DialogValue::Text("abc".into()))
+            .is_some()
+    );
 }
 
 #[test]
@@ -267,7 +285,11 @@ fn buttons_send_their_action_only_when_enabled_and_save_waits_for_a_path() {
         None,
         "there is no rotary to leave"
     );
-    assert_eq!(cam_action_intent(&vm, doc, CamDialog::Device, DialogActionKind::Generate, None), None, "not a Device button");
+    assert_eq!(
+        cam_action_intent(&vm, doc, CamDialog::Device, DialogActionKind::Generate, None),
+        None,
+        "not a Device button"
+    );
 
     let vm = open(&mut h, doc, CamDialog::FocusTest);
     assert_eq!(
@@ -277,8 +299,16 @@ fn buttons_send_their_action_only_when_enabled_and_save_waits_for_a_path() {
     );
 
     let vm = open(&mut h, doc, CamDialog::MaterialTest);
-    assert_eq!(cam_action_intent(&vm, doc, CamDialog::MaterialTest, DialogActionKind::ExportRd, Some("/x.rd".into())), None, "nothing to save yet");
-    h.send(UiIntent::CamDialogAction { document: doc, dialog: CamDialog::MaterialTest, action: DialogAction::Generate });
+    assert_eq!(
+        cam_action_intent(&vm, doc, CamDialog::MaterialTest, DialogActionKind::ExportRd, Some("/x.rd".into())),
+        None,
+        "nothing to save yet"
+    );
+    h.send(UiIntent::CamDialogAction {
+        document: doc,
+        dialog: CamDialog::MaterialTest,
+        action: DialogAction::Generate,
+    });
     h.run_tasks();
     let vm = h.controller().cam_dialog(doc, CamDialog::MaterialTest).unwrap();
     assert_eq!(cam_action_intent(&vm, doc, CamDialog::MaterialTest, DialogActionKind::ExportRd, None), None);
@@ -307,7 +337,11 @@ fn the_order_buttons_follow_the_row_and_move_the_level() {
     let down = cam_move_intent(&vm, doc, OrderKey::Layer, false).expect("down");
     assert_eq!(
         down,
-        UiIntent::CamDialogAction { document: doc, dialog: CamDialog::Optimization, action: DialogAction::MoveDown(OrderKey::Layer) }
+        UiIntent::CamDialogAction {
+            document: doc,
+            dialog: CamDialog::Optimization,
+            action: DialogAction::MoveDown(OrderKey::Layer)
+        }
     );
     h.send(down);
     let vm = h.controller().cam_dialog(doc, CamDialog::Optimization).unwrap();

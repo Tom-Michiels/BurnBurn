@@ -18,9 +18,9 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSControl, NSControlStateValueOff,
-    NSControlStateValueOn, NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField, NSView,
-    NSWindowStyleMask,
+    NSAccessibility, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSControl,
+    NSControlStateValueOff, NSControlStateValueOn, NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView,
+    NSTextField, NSView, NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSPoint, NSString};
 
@@ -256,7 +256,16 @@ impl CamPanelUi {
                     Control::Popup(p)
                 }
             };
-            let note = label(mtm, "", rect(MARGIN + CAPTION_W + CONTROL_W + 16.0, 0.0, WIDTH - 3.0 * MARGIN - CAPTION_W - CONTROL_W - 8.0, 28.0));
+            let note = label(
+                mtm,
+                "",
+                rect(
+                    MARGIN + CAPTION_W + CONTROL_W + 16.0,
+                    0.0,
+                    WIDTH - 3.0 * MARGIN - CAPTION_W - CONTROL_W - 8.0,
+                    28.0,
+                ),
+            );
             note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
             note.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
             let (up, down) = if matches!(row.field, DialogField::OrderEnabled(_)) {
@@ -409,7 +418,8 @@ impl CamPanelUi {
                 _ => String::new(),
             };
             set_text(&ui.note, &note);
-            let colour = if row_vm.error.is_some() { NSColor::systemRedColor() } else { NSColor::secondaryLabelColor() };
+            let colour =
+                if row_vm.error.is_some() { NSColor::systemRedColor() } else { NSColor::secondaryLabelColor() };
             ui.note.setTextColor(Some(&colour));
             ui.note.setHidden(hidden);
             if let (Some((can_up, can_down)), DialogField::OrderEnabled(key)) = (row_vm.reorder, row_vm.field) {

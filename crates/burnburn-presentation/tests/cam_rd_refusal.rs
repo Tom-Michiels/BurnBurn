@@ -26,7 +26,10 @@ fn layer(h: &mut HeadlessEditorHarness) -> (DocumentId, OperationId) {
     let caps = [Feature::DotMode, Feature::RampLength]
         .into_iter()
         .fold(MachineCapabilities::conservative(), |c, f| c.with(f, Support::Supported));
-    h.send(UiIntent::SetMachineProfile { profile: Box::new(profile(1).with_capabilities(caps).unwrap()), ruida: RUIDA });
+    h.send(UiIntent::SetMachineProfile {
+        profile: Box::new(profile(1).with_capabilities(caps).unwrap()),
+        ruida: RUIDA,
+    });
     (doc, h.document(doc).unwrap().operations[0].id)
 }
 

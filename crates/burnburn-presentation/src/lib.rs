@@ -26,14 +26,14 @@ pub use burnburn_job::Feature;
 pub use burnburn_machine::{
     ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
 };
-pub use camera::{
-    BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
-    CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
-};
 pub use cam_dialogs::{
     CamDialog, CapabilityRow, DialogAction, DialogActionKind, DialogActionState, DialogChoice, DialogControl,
     DialogError, DialogField, DialogNote, DialogRow, DialogValue, DialogViewModel, RdRefusal, SupportView,
     TestResultView,
+};
+pub use camera::{
+    BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
+    CameraMode, CameraPixelFormat, CameraPort, CameraViewModel,
 };
 pub use catalog::{
     Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,

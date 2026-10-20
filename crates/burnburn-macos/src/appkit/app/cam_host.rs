@@ -141,7 +141,8 @@ impl HostApp {
                 let Some(app) = me.upgrade() else { return };
                 let model = app.controller.try_borrow().ok().and_then(|c| c.cam_dialog(document, dialog));
                 if let (Some(model), Some(path)) = (model, path)
-                    && let Some(intent) = cam_action_intent(&model, document, dialog, DialogActionKind::ExportRd, Some(path))
+                    && let Some(intent) =
+                        cam_action_intent(&model, document, dialog, DialogActionKind::ExportRd, Some(path))
                 {
                     app.dispatch(intent);
                 }

@@ -197,7 +197,9 @@ impl DeviceDraft {
         if !errors.is_empty() {
             return Err(errors);
         }
-        let origin = if self.untouched(DialogField::BedOrigin) && let Some(f) = flat {
+        let origin = if self.untouched(DialogField::BedOrigin)
+            && let Some(f) = flat
+        {
             f.origin()
         } else {
             origin_of(self.values.get(&DialogField::BedOrigin).and_then(|v| v.choice(DialogField::BedOrigin)))
@@ -249,11 +251,7 @@ impl DeviceDraft {
         };
         if let Some(d) = diameter {
             check(DialogField::RotaryDiameter, d > 0.0, DialogError::Invalid);
-            check(
-                DialogField::RotaryDiameter,
-                d <= 0.0 || d <= RotaryConfig::MAX_DIAMETER_MM,
-                DialogError::OutOfRange,
-            );
+            check(DialogField::RotaryDiameter, d <= 0.0 || d <= RotaryConfig::MAX_DIAMETER_MM, DialogError::OutOfRange);
         }
         if let Some(n) = steps {
             check(DialogField::StepsPerRotation, n.fract() == 0.0, DialogError::NotWhole);

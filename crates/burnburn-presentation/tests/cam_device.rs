@@ -10,8 +10,8 @@ mod common;
 use burnburn_job::{Feature, MachineCapabilities, MachineProfile, OriginCorner, RotaryKind, Support};
 use burnburn_presentation::{
     CamDialog, CommandKey, CutField, DialogAction, DialogActionKind, DialogChoice, DialogError, DialogField,
-    DialogNote, DialogValue, DialogViewModel, FieldState, HeadlessEditorHarness, HostEffect, MessageKey,
-    OperationKind, SelectMode, SupportView, UiIntent,
+    DialogNote, DialogValue, DialogViewModel, FieldState, HeadlessEditorHarness, HostEffect, MessageKey, OperationKind,
+    SelectMode, SupportView, UiIntent,
 };
 use burnburn_types::{DocumentId, GeometryId};
 
@@ -85,10 +85,7 @@ fn opening_shows_the_active_profile_and_its_capability_matrix() {
     assert_eq!((vm.text(DialogField::MinPower), vm.text(DialogField::MaxPower)), ("0", "100"));
     assert!(!vm.flag(DialogField::RotaryEnabled));
     assert!(vm.action(DialogActionKind::Apply).is_some_and(|a| a.enabled));
-    assert!(
-        vm.action(DialogActionKind::ReturnToFlatbed).is_some_and(|a| !a.enabled),
-        "there is no rotary to leave"
-    );
+    assert!(vm.action(DialogActionKind::ReturnToFlatbed).is_some_and(|a| !a.enabled), "there is no rotary to leave");
     let features: Vec<Feature> = vm.capabilities.iter().map(|c| c.feature).collect();
     assert_eq!(features, Feature::ALL, "every feature is listed, in the canonical order");
     assert!(vm.notes.contains(&DialogNote::ProfileChangeMakesPlansStale));
@@ -156,7 +153,10 @@ fn bed_origin_and_power_reach_the_profile() {
     text(&mut h, doc, DialogField::MaxPower, "80 %");
     press(&mut h, doc, DialogAction::Apply);
     let p = active(&mut h);
-    assert_eq!((p.frame().width_mm(), p.frame().height_mm(), p.frame().origin()), (600.0, 400.5, OriginCorner::TopRight));
+    assert_eq!(
+        (p.frame().width_mm(), p.frame().height_mm(), p.frame().origin()),
+        (600.0, 400.5, OriginCorner::TopRight)
+    );
     assert_eq!(p.travel_speed_mm_s(), 300.0);
     let (min, max) = p.power_range();
     assert_eq!((min.get(), max.get()), (0.05, 0.8));
@@ -387,9 +387,11 @@ fn the_dialog_is_closed_by_close_and_an_operator_cannot_open_it() {
 
     h.controller().set_role(burnburn_presentation::Role::Operator);
     let update = h.send(UiIntent::OpenCamDialog { document: doc, dialog: DEV });
-    assert!(update.effects.iter().any(|e| matches!(
-        e,
-        HostEffect::ShowError { message: MessageKey::NotAllowedForRole, .. }
-    )));
+    assert!(
+        update
+            .effects
+            .iter()
+            .any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::NotAllowedForRole, .. }))
+    );
     assert!(dialog(&mut h, doc).is_none());
 }

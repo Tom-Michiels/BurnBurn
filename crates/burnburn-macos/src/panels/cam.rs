@@ -10,8 +10,8 @@ use burnburn_presentation::{
 };
 use burnburn_types::DocumentId;
 
-use crate::l10n::{Locale, feature_name};
 use super::estimate_text;
+use crate::l10n::{Locale, feature_name};
 
 fn pick(pair: (&'static str, &'static str), locale: Locale) -> &'static str {
     match locale {
@@ -200,16 +200,17 @@ pub fn rd_refusal_text(reason: RdRefusal, locale: Locale) -> &'static str {
 pub fn cam_error(error: DialogError, locale: Locale) -> String {
     match error {
         DialogError::Invalid => pick(("Geen geldige waarde.", "Not a valid value."), locale).to_owned(),
-        DialogError::OutOfRange => pick(("Buiten het toegestane bereik.", "Outside the allowed range."), locale).to_owned(),
+        DialogError::OutOfRange => {
+            pick(("Buiten het toegestane bereik.", "Outside the allowed range."), locale).to_owned()
+        }
         DialogError::NotWhole => pick(("Moet een geheel getal zijn.", "Must be a whole number."), locale).to_owned(),
         DialogError::Count => pick(("Aantal moet 1 tot 25 zijn.", "The count must be 1 to 25."), locale).to_owned(),
-        DialogError::ParameterNotForMode => pick(
-            ("Lijnafstand past alleen bij vulvakken.", "Interval only applies to fill cells."),
-            locale,
-        )
-        .to_owned(),
+        DialogError::ParameterNotForMode => {
+            pick(("Lijnafstand past alleen bij vulvakken.", "Interval only applies to fill cells."), locale).to_owned()
+        }
         DialogError::SameParameter => {
-            pick(("Kolommen en rijen variëren hetzelfde.", "Columns and rows vary the same setting."), locale).to_owned()
+            pick(("Kolommen en rijen variëren hetzelfde.", "Columns and rows vary the same setting."), locale)
+                .to_owned()
         }
         DialogError::Size => pick(("Moet groter zijn dan nul.", "Must be greater than zero."), locale).to_owned(),
         DialogError::TooManyCells => {
@@ -265,10 +266,7 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
             "Toepassen maakt een nieuwe profielversie: eerder gecompileerde plannen worden verouderd getoond tot je opnieuw compileert.",
             "Applying makes a new profile revision: plans compiled earlier show as out of date until you compile again.",
         ),
-        DialogNote::TestCompileFailed => (
-            "De test kon niet worden gecompileerd.",
-            "The test could not be compiled.",
-        ),
+        DialogNote::TestCompileFailed => ("De test kon niet worden gecompileerd.", "The test could not be compiled."),
         DialogNote::TestSaved => ("De test is als RD-bestand opgeslagen.", "The test was saved as an RD file."),
         DialogNote::ExportFailed => ("Het RD-bestand kon niet worden geschreven.", "The RD file could not be written."),
         DialogNote::RdRefused(reason) => return rd_refusal_text(reason, locale).to_owned(),
@@ -297,7 +295,11 @@ pub fn cam_support_line(row: &CapabilityRow, locale: Locale) -> String {
     let state = match &row.support {
         SupportView::Supported => pick(("ondersteund", "supported"), locale).to_owned(),
         SupportView::Unsupported => {
-            format!("{} — {}", pick(("niet ondersteund", "not supported"), locale), unsupported_reason(row.feature, locale))
+            format!(
+                "{} — {}",
+                pick(("niet ondersteund", "not supported"), locale),
+                unsupported_reason(row.feature, locale)
+            )
         }
         SupportView::Unverified(reason) => format!(
             "{} — {}",
@@ -321,27 +323,25 @@ fn unsupported_reason(feature: Feature, locale: Locale) -> String {
 
 fn unverified_reason(feature: Feature, domain_reason: &str, locale: Locale) -> String {
     match feature {
-        Feature::ScanAngle => pick(
-            ("schuine scanlijnen zijn niet als RD bevestigd", "diagonal scan runs are not RD-confirmed"),
-            locale,
-        )
-        .to_owned(),
+        Feature::ScanAngle => {
+            pick(("schuine scanlijnen zijn niet als RD bevestigd", "diagonal scan runs are not RD-confirmed"), locale)
+                .to_owned()
+        }
         Feature::GrayscaleModulation => pick(
             ("de RD-records voor grijswaarden zijn niet ontcijferd", "the RD records for grayscale are not decoded"),
             locale,
         )
         .to_owned(),
         Feature::CommonLine => {
-            pick(("gemeenschappelijk snijden is niet gevalideerd", "common-line cutting is not validated"), locale).to_owned()
+            pick(("gemeenschappelijk snijden is niet gevalideerd", "common-line cutting is not validated"), locale)
+                .to_owned()
         }
         Feature::DotMode => {
             pick(("puntpulsen hebben nog geen RD-vorm", "dot pulses have no RD form yet"), locale).to_owned()
         }
-        Feature::RampLength => pick(
-            ("vermogensverloop heeft nog geen RD-vorm", "power ramps have no RD form yet"),
-            locale,
-        )
-        .to_owned(),
+        Feature::RampLength => {
+            pick(("vermogensverloop heeft nog geen RD-vorm", "power ramps have no RD form yet"), locale).to_owned()
+        }
         // A reason a profile gave itself stays as it was written.
         _ => domain_reason.to_owned(),
     }
@@ -370,11 +370,15 @@ pub fn cam_result_text(result: &TestResultView, locale: Locale) -> String {
             if result.warnings == 1 { "warning" } else { "warnings" }
         ),
     };
-    let mut text = format!("{cells}\n{}\n{}\n{findings}", result.plan, estimate_text(result.preview.estimated_seconds, locale));
+    let mut text =
+        format!("{cells}\n{}\n{}\n{findings}", result.plan, estimate_text(result.preview.estimated_seconds, locale));
     if result.stale {
         text.push('\n');
         text.push_str(pick(
-            ("Verouderd: het machineprofiel is gewijzigd; maak de test opnieuw.", "Out of date: the machine profile changed; generate the test again."),
+            (
+                "Verouderd: het machineprofiel is gewijzigd; maak de test opnieuw.",
+                "Out of date: the machine profile changed; generate the test again.",
+            ),
             locale,
         ));
     }
@@ -428,12 +432,7 @@ pub fn cam_action_intent(
 }
 
 /// The intent for moving an `Order by` level up or down (a button beside its row).
-pub fn cam_move_intent(
-    vm: &DialogViewModel,
-    document: DocumentId,
-    key: OrderKey,
-    up: bool,
-) -> Option<UiIntent> {
+pub fn cam_move_intent(vm: &DialogViewModel, document: DocumentId, key: OrderKey, up: bool) -> Option<UiIntent> {
     let (can_up, can_down) = vm.row(DialogField::OrderEnabled(key))?.reorder?;
     if (up && !can_up) || (!up && !can_down) {
         return None;
@@ -457,7 +456,10 @@ pub fn cam_priority_hint(locale: Locale) -> &'static str {
 /// The short line under the priority field (the tooltip has [`cam_priority_hint`]).
 pub fn cam_priority_hint_short(locale: Locale) -> &'static str {
     pick(
-        ("Lager = eerder · alleen met Prioriteit in Optimalisatie", "Lower = first · only with Priority in Optimization"),
+        (
+            "Lager = eerder · alleen met Prioriteit in Optimalisatie",
+            "Lower = first · only with Priority in Optimization",
+        ),
         locale,
     )
 }

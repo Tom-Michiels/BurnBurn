@@ -24,7 +24,10 @@ fn rig(z: Support) -> (HeadlessEditorHarness, DocumentId) {
     let mut h = HeadlessEditorHarness::new();
     let doc = h.new_document().expect("window");
     let caps = MachineCapabilities::conservative().with(Feature::ZStep, z);
-    h.send(UiIntent::SetMachineProfile { profile: Box::new(profile(1).with_capabilities(caps).unwrap()), ruida: RUIDA });
+    h.send(UiIntent::SetMachineProfile {
+        profile: Box::new(profile(1).with_capabilities(caps).unwrap()),
+        ruida: RUIDA,
+    });
     (h, doc)
 }
 

@@ -332,7 +332,12 @@ pub(super) fn priority_field(s: &Session) -> Option<crate::view_model::FieldView
 /// A commit of the priority field: one `SetPriority` per selected shape whose priority changes
 /// (a single shape is one undo step). A value that is not a whole number in ±10 000 is refused
 /// next to the field and sends nothing.
-pub(super) fn commit_priority(s: &mut Session, document: DocumentId, text: &str, ids: &mut dyn FnMut() -> Option<RequestId>) -> AppUpdate {
+pub(super) fn commit_priority(
+    s: &mut Session,
+    document: DocumentId,
+    text: &str,
+    ids: &mut dyn FnMut() -> Option<RequestId>,
+) -> AppUpdate {
     use crate::field::FieldError;
     let refuse = |s: &mut Session, why: FieldError| {
         s.field_errors.insert(FieldKey::Priority, MessageKey::InvalidLength(why));
@@ -352,7 +357,8 @@ pub(super) fn commit_priority(s: &mut Session, document: DocumentId, text: &str,
     };
     s.field_errors.remove(&FieldKey::Priority);
     let snapshot = s.doc.snapshot();
-    let targets: Vec<_> = s.selection.ids().iter().copied().filter(|g| snapshot.process().priority(*g) != priority).collect();
+    let targets: Vec<_> =
+        s.selection.ids().iter().copied().filter(|g| snapshot.process().priority(*g) != priority).collect();
     let mut update = AppUpdate { view_changed: true, ..AppUpdate::default() };
     for geometry in targets {
         let edit = ProcessCommand::SetPriority { geometry, priority };
@@ -415,7 +421,8 @@ impl OptimizationDraft {
     fn settings(&self) -> Result<OptimizationSettings, (DialogField, DialogError)> {
         let order: Vec<OrderKey> = self.order.iter().filter(|(_, on)| *on).map(|(k, _)| *k).collect();
         let tolerance = if self.remove_overlapping {
-            let len = parse_length(&self.tolerance).map_err(|_| (DialogField::OverlapTolerance, DialogError::Invalid))?;
+            let len =
+                parse_length(&self.tolerance).map_err(|_| (DialogField::OverlapTolerance, DialogError::Invalid))?;
             Some(len)
         } else {
             None
@@ -631,10 +638,12 @@ fn optimization_action(
 /// What the host is told when writing RD failed: the feature the Ruida backend has no proven form
 /// for, or the general failure.
 pub(super) fn export_failure(error: &crate::task::TaskError) -> MessageKey {
-    use burnburn_ruida::LowerError;
     use crate::cam_dialogs::RdRefusal;
+    use burnburn_ruida::LowerError;
     match error {
-        crate::task::TaskError::Lower(LowerError::Unsupported { what, .. }) => MessageKey::RdRefused(RdRefusal::of(what)),
+        crate::task::TaskError::Lower(LowerError::Unsupported { what, .. }) => {
+            MessageKey::RdRefused(RdRefusal::of(what))
+        }
         crate::task::TaskError::Lower(LowerError::TooManyParts) => MessageKey::RdRefused(RdRefusal::TooManyParts),
         crate::task::TaskError::Lower(LowerError::NegativeCoordinate { .. }) => {
             MessageKey::RdRefused(RdRefusal::NegativeCoordinate)
