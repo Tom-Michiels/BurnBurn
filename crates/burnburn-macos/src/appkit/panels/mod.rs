@@ -8,12 +8,12 @@ pub(crate) mod camera;
 pub(crate) mod cut_settings;
 pub(crate) mod export;
 pub(crate) mod files;
-pub(crate) mod material;
 pub(crate) mod files_ui;
 pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;
 pub(crate) mod laser;
+pub(crate) mod material;
 pub(crate) mod operations;
 pub(crate) mod production;
 // `define_class!` and `msg_send!` need unsafe (the shape panel has its own small target object).
