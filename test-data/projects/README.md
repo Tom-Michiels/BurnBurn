@@ -10,3 +10,10 @@ uitgeschreven verwachtingen (geometrie, ID's, operations).
 
 Een nieuwe fixture: schrijf hem met een `#[ignore]`-test, controleer `manifest.json`/`document.json` inhoudelijk
 (bijv. `unzip -p bestand document.json`), noteer de SHA-256 en schrijf de verwachtingen met de hand in de test.
+
+## Herkomst (audit W3-robuust, 2026-10-20)
+- `v1/rectangle-120x80.burnburn` en `v2/plate-operations.burnburn` zijn **door BurnBurn zelf geschreven** (ignored schrijftests, zie
+  `manifest.json`) en daarna met de hand nagelezen. Het zijn bevroren *migratie-invoer*, geen onafhankelijk orakel van de
+  schrijfroute: ze bewijzen dat oude bestanden blijven laden. De verwachtingen (geometrie, ID's, operations) staan met de hand
+  uitgeschreven in `migration_fixtures.rs` en `crates/burnburn-scenarios/tests/project_fixtures.rs`.
+- Hash-goldens van projecten: zie `docs/dev-notes/IM01-testing.md` (W3-robuust) voor welke met de hand berekend zijn en welke opgenomen.

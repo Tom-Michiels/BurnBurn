@@ -16,8 +16,11 @@ cargo-fuzz = true
 members = ["."]
 
 [dependencies]
+burnburn-document = { path = "../crates/burnburn-document" }
+burnburn-geometry = { path = "../crates/burnburn-geometry" }
 burnburn-image = { path = "../crates/burnburn-image" }
 burnburn-io = { path = "../crates/burnburn-io" }
+burnburn-job = { path = "../crates/burnburn-job" }
 burnburn-ruida = { path = "../crates/burnburn-ruida" }
 burnburn-types = { path = "../crates/burnburn-types" }
 libfuzzer-sys = "0.4"
@@ -117,6 +120,21 @@ bench = false
 [[bin]]
 name = "io_clipboard"
 path = "fuzz_targets/io_clipboard.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "io_parse_lbrn2"
+path = "fuzz_targets/io_parse_lbrn2.rs"
+test = false
+doc = false
+bench = false
+
+# Not a fuzz target: writes seed files for the corpora of the container-shaped targets.
+[[bin]]
+name = "make_seeds"
+path = "make_seeds.rs"
 test = false
 doc = false
 bench = false

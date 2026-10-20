@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-anyd = { workspace = true, features = ["alloc", "encode", "aztec", "code39", "code93", "code128", "codabar", "datamatrix", "ean", "microqr", "msi", "pdf417", "rmqr", "twoof5"] }
+anyd = { workspace = true, features = ["alloc", "encode", "aztec", "code39", "code93", "code128", "codabar", "datamatrix", "ean", "hanxin", "microqr", "msi", "pdf417", "rmqr", "twoof5"] }
 burnburn-document = { workspace = true }
 burnburn-geometry = { workspace = true }
 burnburn-text = { workspace = true }

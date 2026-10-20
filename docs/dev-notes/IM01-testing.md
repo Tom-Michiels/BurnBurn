@@ -190,3 +190,44 @@ toetst de RD-geometrie zelf (bounds, gaten op hun plaats) zonder presentatielaag
 - Fuzz-targets niet gecompileerd en niet gedraaid (geen nightly/cargo-fuzz, geen `libfuzzer-sys` in de cache).
 - Benchmarks en holdout-evaluatie alleen macOS arm64, release, scratch-kopie.
 - De mutaties zijn per scenario één of twee; ze tonen dat de keten bij die breuk faalt, niet dat elke breuk gevangen wordt.
+
+## W3-robuust: herkomst van de goldens (2026-10-20)
+
+Opdracht: elk golden-bestand en elke vastgelegde verwachting van golf 1–2 nalopen op *herkomst* (onafhankelijk berekend of uit
+de implementatie overgenomen). Er is niets gewijzigd aan een golden; per fixturemap staat de herkomst nu in een README ernaast
+(`test-data/{fonts,trace,geometry,import,projects,ruida}/README.md`, `crates/burnburn-generators/tests/fixtures/README.md`,
+`crates/burnburn-icons/tests/data/README.md`). Dit is een leesaudit plus herberekeningen waar een script bestond; het is
+geen nieuwe test en geen red/green-cyclus.
+
+### Wat opnieuw is nagerekend
+| Golden | Herberekend met | Resultaat |
+|---|---|---|
+| Image-mode-patronen (Floyd–Steinberg, Jarvis, Stucki, Atkinson, Bayer 4, halftone ×4 hoeken/grijswaarden, sketch ×3) | `python3 -I docs/dev-notes/IM18-image-modes-reference.py` (eigen transcriptie van de kernels uit de gepubliceerde definitie; halftone via numerieke oppervlakte-integratie) | Alle 12 uitvoerregels van het script staan woordelijk als literal in `burnburn-image/tests/modes.rs` of `burnburn-cam/tests/image_modes.rs` (scriptcontrole op de bronbestanden). De overige patroonliteralen (`#####`, `##.##`, `##..`, de maskerrij `###....###`) zijn in commentaar met de hand afgeleid (bv. unsharp van `[0,0,90,0,0]` geeft centrum 150) |
+| RD-oracle-JSON (`test-data/ruida/oracle/*`) | `python3 -I research/lightburn/tools/rd_inspect.py --json` op de drie `.rd`-bestanden | Alle drie reproduceren de JSON (zonder padvelden) |
+| RD-fixtures | `cmp` tegen `research/lightburn/fixtures/*.rd` | Byte-identiek aan de onderzoekskopie (LightBurn Core 2.1.04-export) |
+| Barcode-vectoren | n.v.t. (extern) | `zint-vectors.txt` nieuw, zie IM22.md; de andere bestanden zijn externe uitvoer (CoreImage, BWIPP-port, AprilTag-C) |
+
+### Overzicht per categorie
+| Categorie | Fixture / golden | Herkomst | Onafhankelijk? |
+|---|---|---|---|
+| Image modes | literals in `burnburn-image/tests/modes.rs`, `burnburn-cam/tests/image_modes.rs` | Python-referentie + handafleiding (zie boven) | **Ja** |
+| Image modes | `burnburn-image/tests/raster.rs`, `pipeline.rs` | Handberekend (commentaar) of analytische grenzen | Ja |
+| Render | geen golden-PNG's; `burnburn-render/tests/offscreen.rs` (Metal, per pixel), `scene_projection.rs`, `sketch_overlays.rs`, `burnburn-icons/tests/render.rs` | Analytische pixelposities en uitgeschreven kleurconstanten; ADR 0003 sluit golden-PNG als enig orakel uit | Ja. **Onbevestigd:** de GPU-test slaat zonder adapter over (`SKIPPED` is geen pass); Windows/DX12 niet gedraaid |
+| RD | `test-data/ruida/*.rd` + `oracle/` + `sources/` | Echte LightBurn-export en Python-decoder | **Ja** |
+| RD | `burnburn-ruida/tests/lower*.rs`, `fixtures.rs`, scenario-tests `*_rd.rs` | Verwachtingen uit `04-exportanalyse.md`, de oracle-JSON of uit de tekening afgeleid; byte-gelijkheid alleen voor records die de exportcondities exact herhalen | Ja |
+| Import | `test-data/import/*` | Met de hand geschreven; verwachtingen uit de bestandstekst | Ja |
+| Geometrie | `test-data/geometry/boolean-cases.txt` | Oppervlakten met de hand afgeleid | Ja |
+| Trace | `test-data/trace/*` | Gegenereerd uit vectorreferenties; topologie vooraf geschreven | Ja voor de vorm, niet voor de rasterisatie |
+| Hash | `burnburn-io/tests/canonical_hash.rs::project_hash_matches_hand_encoded_bytes`, `test-support` SHA-256 van "abc" | Met de hand gecodeerde bytes, gepubliceerde testvector | Ja |
+| Fonts | `test-data/fonts/*` + `reference_metrics.py` | Derde-partij fonts en een `struct`-only parser | Ja |
+| **Vastgelegd (niet onafhankelijk)** | `burnburn-job/tests/modes.rs` (twee `MachineProfile`-hashes, "Values computed with the matrix of IM25 … before the new entries existed") | Uitvoer van de implementatie vóór een wijziging; beschermt hash-stabiliteit | **Nee:** regressiebewaker, bewijst geen juistheid |
+| **Vastgelegd (niet onafhankelijk)** | `burnburn-geometry/tests/determinism.rs::GOLDEN` (bits van `arc_to_cubic`) | `libm`-uitvoer op macOS arm64 (IM09, DR-13) | **Nee:** bewijst platformstabiliteit; Windows niet gedraaid |
+| **Vastgelegd (niet onafhankelijk)** | `test-data/projects/v1`, `v2` | Door BurnBurn geschreven, met de hand nagelezen, daarna bevroren | **Nee** voor de schrijfroute; wel een echte invoer voor migratietests (verwachtingen met de hand in de tests) |
+
+Conclusie: geen golden gevonden waarvan de verwachting uit de te toetsen implementatie is gekopieerd *zonder* dat dit zo is
+gedocumenteerd; de drie vastgelegde categorieën staan hierboven als regressie- of stabiliteitsbewaker en horen zo gelezen te worden.
+Niet nagelopen omdat ze geen golden zijn maar rekenkundige tests: proptest-regressiebestanden (`*.proptest-regressions`).
+
+## W3-robuust: fuzzen
+Zie `docs/dev-notes/IM10.md` (§ W3-robuust: fuzzdoelen) voor looptijden, aantallen en bevindingen. De regel
+"Fuzz-targets niet gecompileerd en niet gedraaid" in § Onbevestigd hierboven is daarmee voor de genoemde doelen achterhaald.

@@ -12,6 +12,7 @@ use anyd::codes::code93::Code93Encoder;
 use anyd::codes::code128::{Code128Encoder, Code128Input};
 use anyd::codes::datamatrix::DataMatrixEncoder;
 use anyd::codes::ean::EanEncoder;
+use anyd::codes::hanxin::{EcLevel as HanXinLevel, HanXinEncoder};
 use anyd::codes::microqr::{MicroEcLevel, MicroQrEncoder};
 use anyd::codes::msi::MsiEncoder;
 use anyd::codes::pdf417::{EcLevel as Pdf417Level, MicroPdf417Encoder, Pdf417Encoder};
@@ -38,24 +39,18 @@ pub(super) fn status(symbology: Symbology) -> SymbolStatus {
     use Symbology::*;
     match symbology {
         Code128 | QrCode | AprilTag16h5 | AprilTag25h9 | AprilTag36h10 | AprilTag36h11 | ArucoOpenCv7x7 => OWN,
-        TwoOfFiveIata | TwoOfFiveIndustrial | Aztec | DataMatrix | Codabar | Code128Gs1 | Code93 | Ean | Isbn
-        | Plessey | UpcA | UpcE | Vin | Pdf417 | Pdf417Compact | Pdf417Micro | QrMicro | QrMicroRect => ANYD,
-        TwoOfFive => SymbolStatus::Unsupported {
-            reason: "The meaning of LightBurn's plain 2 of 5 is not established (Standard/Matrix or Interleaved), and the two \
-                     reference encoders disagree on the start pattern of Matrix 2 of 5, so no verified pattern exists. \
-                     2 of 5 Industrial and 2 of 5 IATA are available.",
-        },
+        TwoOfFive | TwoOfFiveIata | TwoOfFiveIndustrial | HanXin | Aztec | DataMatrix | Codabar | Code128Gs1
+        | Code93 | Ean | Isbn | Plessey | UpcA | UpcE | Vin | Pdf417 | Pdf417Compact | Pdf417Micro | QrMicro
+        | QrMicroRect => ANYD,
         ArucoMip36h11 => SymbolStatus::Unsupported {
             reason: "No ArUco MIP 36h11 family is published; the MIP family is 36h12 (OpenCV DICT_ARUCO_MIP_36h12). \
                      The LightBurn name could not be mapped to a verified code table.",
         },
-        HanXin => SymbolStatus::Unsupported {
-            reason: "Two independent encoders disagree on the function-information modules of Han Xin versions 1-3 and \
-                     no decoder is available to arbitrate; larger versions are not implemented in either.",
-        },
         GridMatrix => SymbolStatus::Unsupported {
-            reason: "Only one encoder exists (mirroring the zint source) and neither a second implementation nor a \
-                     decoder is available to verify its modules; it is not shipped unverified.",
+            reason: "Grid Matrix modules can only be checked against one plain-data vector of the zint test-suite \
+                     (version 1, numeric); the other two published vectors use the Mixed mode, which the only Rust \
+                     encoder (anyd) does not produce, and no decoder exists to verify the larger versions and the \
+                     five Reed-Solomon levels. It is not shipped unverified.",
         },
     }
 }
@@ -74,6 +69,12 @@ const MICRO_STEPS: &[EccStep] = &[
 ];
 const RMQR_STEPS: &[EccStep] =
     &[EccStep { label: "M", recovery_percent: Some(15) }, EccStep { label: "H", recovery_percent: Some(30) }];
+const HANXIN_STEPS: &[EccStep] = &[
+    EccStep { label: "L1", recovery_percent: Some(8) },
+    EccStep { label: "L2", recovery_percent: Some(15) },
+    EccStep { label: "L3", recovery_percent: Some(23) },
+    EccStep { label: "L4", recovery_percent: Some(30) },
+];
 const PDF417_STEPS: &[EccStep] = &[
     EccStep { label: "Level 0", recovery_percent: None },
     EccStep { label: "Level 1", recovery_percent: None },
@@ -145,7 +146,15 @@ pub(super) fn capabilities(symbology: Symbology) -> SymbolCapabilities {
             marker_count: None,
             payload_hint: "text (ISO 8859-1) or bytes; error correction is fixed (about 23 % + 11 bits)",
         },
-        HanXin | GridMatrix => grid(3, "not available", &[], None, false, DATA_ONLY),
+        HanXin => grid(
+            3,
+            "text or bytes, Han Xin versions 1-3 only (23, 25 or 27 modules; about 10 to 40 characters)",
+            HANXIN_STEPS,
+            Some(0),
+            false,
+            DATA_ONLY,
+        ),
+        GridMatrix => grid(3, "not available", &[], None, false, DATA_ONLY),
         DataMatrix => {
             grid(1, "text (ISO 8859-1) or bytes; ECC 200, error correction is fixed", &[], None, false, DATA_ONLY)
         }
@@ -213,6 +222,7 @@ fn capacity_text(symbology: Symbology) -> &'static str {
         Symbology::QrCode => "the own encoder stops at QR version 10",
         Symbology::QrMicro => "Micro QR M4 holds at most 35 digits, 21 alphanumeric characters or 15 bytes",
         Symbology::QrMicroRect => "the largest rMQR size is 17 x 139 modules",
+        Symbology::HanXin => "only Han Xin versions 1-3 (27 x 27 modules at most) are implemented",
         Symbology::Pdf417Micro => "the largest MicroPDF417 size has four data columns and 44 rows",
         Symbology::Pdf417 | Symbology::Pdf417Compact => "at most 928 codewords, 30 columns and 90 rows",
         Symbology::DataMatrix => "the largest DataMatrix ECC 200 symbol is 144 x 144 modules",
@@ -330,9 +340,13 @@ fn raw(
     use Symbology::*;
     let ecc = ecc_index(ecc_step, caps);
     match symbology {
-        TwoOfFiveIata | TwoOfFiveIndustrial => {
+        TwoOfFive | TwoOfFiveIata | TwoOfFiveIndustrial => {
             let digits = payload::digit_string(symbology, payload)?;
-            let lib = if symbology == TwoOfFiveIata { Lib::Iata2of5 } else { Lib::Std2of5 };
+            let lib = match symbology {
+                TwoOfFive => Lib::Matrix2of5,
+                TwoOfFiveIata => Lib::Iata2of5,
+                _ => Lib::Std2of5,
+            };
             let enc = TwoOf5Encoder::new();
             from_lib(symbology, enc.build(lib, digits.as_bytes()), &enc, digits)
         }
@@ -485,6 +499,16 @@ fn raw(
             };
             from_lib(symbology, built, &enc, payload.to_string())
         }
+        HanXin => {
+            let bytes = payload::payload_bytes(symbology, payload, mode)?;
+            let level = [HanXinLevel::L1, HanXinLevel::L2, HanXinLevel::L3, HanXinLevel::L4][ecc.min(3)];
+            let enc = HanXinEncoder::new();
+            let built = match std::str::from_utf8(&bytes) {
+                Ok(text) => enc.build_text(text, level),
+                Err(_) => enc.build(vec![Segment::byte(bytes.clone())], level),
+            };
+            from_lib(symbology, built, &enc, payload.to_string())
+        }
         AprilTag16h5 | AprilTag25h9 | AprilTag36h10 | AprilTag36h11 | ArucoOpenCv7x7 => {
             let id = payload::marker_id(symbology, payload)?;
             let (size, modules) = fiducial::marker(symbology, id)?;
@@ -494,7 +518,7 @@ fn raw(
                 canonical: id.to_string(),
             })
         }
-        TwoOfFive | ArucoMip36h11 | HanXin | GridMatrix => match status(symbology) {
+        ArucoMip36h11 | GridMatrix => match status(symbology) {
             SymbolStatus::Unsupported { reason } => Err(SymbolError::Unsupported { symbology, reason }),
             SymbolStatus::Implemented { .. } => {
                 Err(SymbolError::Engine { symbology, message: "no encoder".to_string() })
