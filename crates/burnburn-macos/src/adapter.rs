@@ -40,6 +40,10 @@ pub enum MenuItem {
     CamDialog(burnburn_presentation::CamDialog),
     /// Schikken ▸ Schikkenpaneel: shows or hides the options panel of the active window.
     SchikkenPanel,
+    /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
+    RecentTemplate(usize),
+    /// Archief ▸ Recente templates ▸ Wis menu.
+    ClearRecentTemplates,
 }
 
 /// Every menu item the host offers: Open and every presentation command.
@@ -53,6 +57,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::ExportDiagnostics,
         MenuItem::ClearRecent,
         MenuItem::SchikkenPanel,
+        MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
     .chain(burnburn_presentation::CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
@@ -73,7 +78,10 @@ const SCHIKKEN_PANEL_TAG: isize = 1007;
 const RECENT_TAG_BASE: isize = 2000;
 const RECENT_TAG_SLOTS: isize = 64;
 /// CAM dialog `n` (`CamDialog::ALL` order) has tag `CAM_TAG_BASE + n`.
-const CAM_TAG_BASE: isize = 3000;
+const CAM_TAG_BASE: isize = 5000;
+const CLEAR_RECENT_TEMPLATES_TAG: isize = 1008;
+/// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
+const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
 
 /// The `NSMenuItem.tag` of `item`.
 pub fn menu_tag(item: MenuItem) -> isize {
@@ -86,6 +94,10 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
         MenuItem::ClearRecent => CLEAR_RECENT_TAG,
         MenuItem::SchikkenPanel => SCHIKKEN_PANEL_TAG,
+        MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
+        MenuItem::RecentTemplate(n) => {
+            isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
+        }
         MenuItem::Recent(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TAG_BASE + n)
         }
@@ -129,6 +141,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == SCHIKKEN_PANEL_TAG {
         return Some(MenuItem::SchikkenPanel);
+    }
+    if tag == CLEAR_RECENT_TEMPLATES_TAG {
+        return Some(MenuItem::ClearRecentTemplates);
+    }
+    if (RECENT_TEMPLATE_TAG_BASE..RECENT_TEMPLATE_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
+        return usize::try_from(tag - RECENT_TEMPLATE_TAG_BASE).ok().map(MenuItem::RecentTemplate);
     }
     if (RECENT_TAG_BASE..RECENT_TAG_BASE + RECENT_TAG_SLOTS).contains(&tag) {
         return usize::try_from(tag - RECENT_TAG_BASE).ok().map(MenuItem::Recent);
@@ -548,6 +566,11 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             let Some(document) = vm.active else { return Reaction::Nothing };
             UiIntent::OpenCamDialog { document, dialog }
         }
+        E::Menu(MenuItem::ClearRecentTemplates) => {
+            UiIntent::Files(burnburn_presentation::FilesIntent::ClearRecentTemplates)
+        }
+        // A recent template needs the stored list: see `crate::panels_files::recent_template_intent`.
+        E::Menu(MenuItem::RecentTemplate(_)) => return Reaction::Nothing,
         // A recent entry needs the stored list: see `recent_open_reaction`.
         E::Menu(MenuItem::Recent(_)) => return Reaction::Nothing,
         E::Menu(MenuItem::Command(command)) => UiIntent::Invoke { document: None, command },
@@ -897,6 +920,8 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
         MenuItem::CamDialog(_) => vm.active.is_some(),
         MenuItem::Recent(_) | MenuItem::ClearRecent => false,
+        // The recent-templates menu is rebuilt with the list, so what it shows can be chosen.
+        MenuItem::RecentTemplate(_) | MenuItem::ClearRecentTemplates => true,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -934,7 +959,9 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
-        | MenuItem::ClearRecent => false,
+        | MenuItem::ClearRecent
+        | MenuItem::RecentTemplate(_)
+        | MenuItem::ClearRecentTemplates => false,
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
     }
 }
@@ -950,11 +977,11 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::ExportDiagnostics => {
             crate::panels::laser_text(crate::panels::LaserText::DiagnosticsItem, locale).to_owned()
         }
-        MenuItem::ClearRecent => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
+        MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).
-        MenuItem::Recent(_) => String::new(),
+        MenuItem::Recent(_) | MenuItem::RecentTemplate(_) => String::new(),
         MenuItem::Command(key) => match vm.commands.get(&key).map(|c| c.label) {
             Some(label) => message_text(label, locale),
             None => message_text(MessageKey::Command(key), locale),

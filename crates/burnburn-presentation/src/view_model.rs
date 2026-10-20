@@ -127,6 +127,8 @@ pub struct DocumentViewModel {
     pub barcode_dialog: Option<crate::barcode_panel::BarcodeDialogViewModel>,
     /// The selected barcode's module would drop below its minimum at the current size.
     pub barcode_scale_warning: Option<crate::barcode_panel::BarcodeScaleWarning>,
+    /// The file panels: Material Library, Art Library, bundles and the export dialog.
+    pub files: crate::files::FilesViewModel,
 }
 
 /// What the geometry dialog asks for.
@@ -253,6 +255,18 @@ pub struct ImportViewModel {
     pub items: usize,
     pub skipped: Vec<burnburn_io::import::Skipped>,
     pub open_contours: usize,
+    /// The format of the file (decides which sections the preview shows).
+    pub kind: crate::files::ImportKind,
+    /// PDF/AI: the pages of the file; empty for every other format.
+    pub pages: Vec<crate::files::ImportPage>,
+    /// PDF/AI: the pages the preview and the commit use.
+    pub page_choice: Option<crate::files::ImportPages>,
+    /// PDF/AI: the objects of the chosen pages are still being read.
+    pub busy: bool,
+    /// Layers the import proposes (stroke/fill colours of a PDF, pens of a plotter file).
+    pub layers: Vec<crate::files::ImportLayerRow>,
+    /// LightBurn project: what was and was not taken over, per layer.
+    pub lbrn2: Option<crate::files::Lbrn2ReportViewModel>,
 }
 
 /// A refused edit, located: the host zooms to `at` and highlights `object`.
@@ -739,6 +753,8 @@ pub enum MessageKey {
     IntentNotRecorded,
     /// The file could not be read or parsed; nothing was imported.
     ImportFailed,
+    /// A file feature (import, template, library, bundle, export) was refused for this reason.
+    Files(crate::files::FilesMessage),
     /// An offset would remove a whole object (or needs closed contours); nothing changed.
     OffsetImpossible,
     /// The trim found no crossing on the picked line, or the pick is not on a line.

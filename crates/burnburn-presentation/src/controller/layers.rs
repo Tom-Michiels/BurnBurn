@@ -46,7 +46,7 @@ pub(super) struct LayerState {
 
 /// Colour of every current operation: the stored one, else the lowest colour no other current
 /// operation has, in list order.
-fn slots(state: &LayerState, snapshot: &DocumentSnapshot) -> BTreeMap<OperationId, u8> {
+pub(in crate::controller) fn slots(state: &LayerState, snapshot: &DocumentSnapshot) -> BTreeMap<OperationId, u8> {
     let ops: Vec<OperationId> = snapshot.process().operations().map(|o| o.id()).collect();
     let mut used: BTreeSet<u8> = ops.iter().filter_map(|id| state.slots.get(id).copied()).collect();
     let mut out = BTreeMap::new();
@@ -76,7 +76,7 @@ pub(super) fn sync(s: &mut Session) {
     }
 }
 
-fn kind_of(mode: OperationMode) -> OperationKind {
+pub(in crate::controller) fn kind_of(mode: OperationMode) -> OperationKind {
     match mode {
         OperationMode::Line { .. } => OperationKind::Line,
         OperationMode::Fill(_) => OperationKind::Fill,

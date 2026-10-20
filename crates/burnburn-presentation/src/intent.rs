@@ -216,6 +216,8 @@ pub enum UiIntent {
         document: DocumentId,
         unit: ImportUnit,
     },
+    /// The file features: import pages, templates, libraries, bundles and the export dialog.
+    Files(crate::files::FilesIntent),
     /// Offset panel (E05): signed distance as typed (`2 mm` outward, `-1,5 mm` inward) for the
     /// selected objects; sources are kept.
     Offset {
@@ -892,6 +894,25 @@ pub enum CommandKey {
     TextOnPath,
     /// Tekenen ▸ Streepjescode…: the barcode dialog (type, payload, size, readability).
     BarcodeNew,
+    /// Archief ▸ Bewaar als template…: the host asks for a file and what the template holds, then
+    /// sends `FilesIntent::SaveAsTemplate`.
+    SaveAsTemplate,
+    /// Archief ▸ Nieuw van template…: the host asks for a template, then sends
+    /// `FilesIntent::NewFromTemplate`.
+    NewFromTemplate,
+    /// Archief ▸ Exporteren ▸ SVG: opens the export dialog.
+    ExportSvg,
+    /// Archief ▸ Exporteren ▸ DXF: opens the export dialog.
+    ExportDxf,
+    /// Archief ▸ Bundels ▸ Exporteren: opens the bundle dialog.
+    ExportBundle,
+    /// Archief ▸ Bundels ▸ Importeren: the host asks for a bundle file, then sends
+    /// `FilesIntent::OpenBundleImport`.
+    ImportBundle,
+    /// Venster ▸ Materiaalbibliotheek: shows or hides the panel.
+    ShowMaterialLibrary,
+    /// Venster ▸ Kunstbibliotheek: shows or hides the panel.
+    ShowArtLibrary,
 }
 
 impl CommandKey {
@@ -1026,6 +1047,14 @@ impl CommandKey {
         CommandKey::CenterFinder,
         CommandKey::TextOnPath,
         CommandKey::BarcodeNew,
+        CommandKey::SaveAsTemplate,
+        CommandKey::NewFromTemplate,
+        CommandKey::ExportSvg,
+        CommandKey::ExportDxf,
+        CommandKey::ExportBundle,
+        CommandKey::ImportBundle,
+        CommandKey::ShowMaterialLibrary,
+        CommandKey::ShowArtLibrary,
     ];
 }
 

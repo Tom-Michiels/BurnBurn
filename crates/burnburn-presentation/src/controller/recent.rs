@@ -47,3 +47,44 @@ impl AppController {
         vec![HostEffect::RecentProjectsChanged { paths: Vec::new() }]
     }
 }
+
+impl AppController {
+    /// Recent templates, most recent first (the host shows them under Archief ▸ Nieuw van template).
+    pub fn recent_templates(&self) -> Vec<PathBuf> {
+        self.recent_templates.clone()
+    }
+
+    /// `path` was used or written: it is now the most recent template.
+    pub(super) fn note_recent_template(&mut self, path: &Path) -> Vec<HostEffect> {
+        self.recent_templates.retain(|p| p != path);
+        self.recent_templates.insert(0, path.to_path_buf());
+        self.recent_templates.truncate(MAX_RECENT_PROJECTS);
+        vec![HostEffect::RecentTemplatesChanged { paths: self.recent_templates.clone() }]
+    }
+
+    /// `path` cannot be read any more: the menu stops offering it.
+    pub(super) fn forget_recent_template(&mut self, path: &Path) -> Vec<HostEffect> {
+        if !self.recent_templates.iter().any(|p| p == path) {
+            return Vec::new();
+        }
+        self.recent_templates.retain(|p| p != path);
+        vec![HostEffect::RecentTemplatesChanged { paths: self.recent_templates.clone() }]
+    }
+
+    /// The list the host stored: order kept, duplicates dropped, at most [`MAX_RECENT_PROJECTS`].
+    pub(super) fn restore_recent_templates(&mut self, paths: Vec<PathBuf>) {
+        let mut list: Vec<PathBuf> = Vec::new();
+        for p in paths {
+            if !list.contains(&p) {
+                list.push(p);
+            }
+        }
+        list.truncate(MAX_RECENT_PROJECTS);
+        self.recent_templates = list;
+    }
+
+    pub(super) fn clear_recent_templates(&mut self) -> Vec<HostEffect> {
+        self.recent_templates.clear();
+        vec![HostEffect::RecentTemplatesChanged { paths: Vec::new() }]
+    }
+}

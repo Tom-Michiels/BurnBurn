@@ -34,6 +34,7 @@ impl AppController {
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref());
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
+                vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
                     plan_revision: p.job.plan_revision,
@@ -193,7 +194,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         operations: snapshot.process().operations().map(|op| layers::operation_row(s, op)).collect(),
         operation_error: s.operation_error,
         cut_settings: layers::cut_settings_view(s, machine.map(|m| m.profile.capabilities())),
-        import: s.import.as_ref().map(import_view),
+        import: s.import.as_ref().map(|i| import_view(i, machine.map(|m| m.profile.revision().id.as_str()))),
         sketch_mode: sketch::mode_view(s, &snapshot),
         geometry_dialog: shapes::dialog_view(s),
         shape_panel: shapes::shape_panel(s),
@@ -214,6 +215,7 @@ pub(super) fn document_view(id: DocumentId, s: &Session, machine: Option<&Machin
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
         barcode_scale_warning: super::barcode::scale_warning(s),
+        files: crate::files::FilesViewModel::default(),
     }
 }
 
@@ -225,13 +227,15 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         _ => MessageKey::Command(key),
     };
     let (enabled, checked) = match (key, s) {
-        (CommandKey::New, _) => (true, false),
+        (CommandKey::New | CommandKey::NewFromTemplate, _) => (true, false),
         (_, None) => (false, false),
         (CommandKey::Undo, Some(s)) => (s.doc.can_undo(), false),
         (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),
         (CommandKey::Delete, Some(s)) => (!s.selection.is_empty(), false),
         (CommandKey::SelectAll, Some(s)) => (!s.doc.snapshot().is_empty(), false),
         (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
+        (CommandKey::ShowMaterialLibrary, Some(s)) => (true, s.files.material.is_some()),
+        (CommandKey::ShowArtLibrary, Some(s)) => (true, s.files.art.is_some()),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (
@@ -295,9 +299,10 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         ) => (shapes::command_enabled(key, s).unwrap_or(false), false),
         (CommandKey::TextOnPath, Some(s)) => (super::text::path_ready(s), false),
         (CommandKey::BarcodeNew, Some(_)) => (true, false),
-        (CommandKey::CommitImport, Some(s)) => {
-            (s.import.as_ref().is_some_and(|i| i.draft().is_ok()) || super::image::commit_enabled(s), false)
-        }
+        (CommandKey::CommitImport, Some(s)) => (
+            s.import.as_ref().is_some_and(super::import::PendingImport::ready) || super::image::commit_enabled(s),
+            false,
+        ),
         (CommandKey::CancelImport, Some(s)) => (s.import.is_some() || s.image.pending.is_some(), false),
         (
             CommandKey::AdjustImage

@@ -12,6 +12,8 @@ mod commit;
 mod controller;
 mod cut_options;
 mod field;
+mod files;
+mod files_task;
 mod harness;
 mod image_panel;
 mod image_task;
@@ -22,6 +24,7 @@ mod production;
 mod schikken;
 mod task;
 mod text_panel;
+mod thumbnail;
 mod variable_panel;
 mod view_model;
 
@@ -55,6 +58,15 @@ pub use cut_options::{
     CutChoice, CutControl, CutExtras, CutField, CutGates, CutSection, CutValue, FieldState, IMAGE_MODES,
 };
 pub use field::{FieldError, format_mm, parse_length, parse_position};
+pub use files::{
+    ArtGroupRow, ArtItemRow, ArtPanelViewModel, ArtThumbnail, BundleChange, BundleChoice, BundleConflict,
+    BundleDialogViewModel, BundleExportView, BundleImportView, BundleItem, BundleKind, BundleMode, BundleProfileChange,
+    BundleProfileRow, BundleReport, BundleRow, ExportCurves, ExportDialogViewModel, ExportField, ExportFormat,
+    ExportLayers, ExportLossRow, ExportOptionsInput, ExportUnit, FilesIntent, FilesMessage, FilesViewModel, ImportKind,
+    ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState, Lbrn2LayerRow, Lbrn2ReportViewModel,
+    Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
+    MaterialRow, TemplateScope,
+};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,

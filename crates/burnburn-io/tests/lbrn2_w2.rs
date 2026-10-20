@@ -106,6 +106,19 @@ fn embedded_bitmap_is_decoded_and_framed_by_its_transform() {
     assert_eq!(asset.adjustments, [("Gamma".to_owned(), "1.5".to_owned()), ("Contrast".to_owned(), "10".to_owned())]);
 }
 
+/// The bitmap names the image cut setting it was drawn with, so the UI can pair frame and operation.
+#[test]
+fn a_bitmap_remembers_the_cut_setting_it_was_drawn_with() {
+    let xml = format!(
+        r#"<LightBurnProject><Shape Type="Bitmap" CutIndex="3" W="5" H="2" Data="{0}"><XForm>1 0 0 1 0 0</XForm></Shape>
+        <Shape Type="Bitmap" W="5" H="2" Data="{0}"><XForm>1 0 0 1 0 0</XForm></Shape></LightBurnProject>"#,
+        base64(&png_2x2())
+    );
+    let draft = parse_lbrn2(xml.as_bytes()).unwrap();
+    let cuts: Vec<_> = draft.report.assets.iter().map(|a| a.cut_index).collect();
+    assert_eq!(cuts, [Some(3), None], "a bitmap without CutIndex has none");
+}
+
 #[test]
 fn undecodable_or_unknown_bitmap_data_is_reported_and_never_imported() {
     let text = base64(b"this is not an image");
