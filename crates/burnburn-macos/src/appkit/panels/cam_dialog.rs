@@ -85,6 +85,14 @@ impl RowUi {
     pub(crate) fn control_ref(&self) -> &NSControl {
         self.control.control()
     }
+
+    /// The arrows beside an `Order by` level.
+    pub(crate) fn arrows(&self) -> Option<(OrderKey, &NSButton, &NSButton)> {
+        match (self.field, &self.up, &self.down) {
+            (DialogField::OrderEnabled(key), Some(up), Some(down)) => Some((key, up, down)),
+            _ => None,
+        }
+    }
 }
 
 /// Everything one field consists of.

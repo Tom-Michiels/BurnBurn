@@ -453,3 +453,11 @@ pub fn cam_priority_hint(locale: Locale) -> &'static str {
         locale,
     )
 }
+
+/// The short line under the priority field (the tooltip has [`cam_priority_hint`]).
+pub fn cam_priority_hint_short(locale: Locale) -> &'static str {
+    pick(
+        ("Lager = eerder · alleen met Prioriteit in Optimalisatie", "Lower = first · only with Priority in Optimization"),
+        locale,
+    )
+}

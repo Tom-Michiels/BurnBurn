@@ -39,7 +39,7 @@ use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_r
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{machine_panel, plan_panel};
 
-const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 760.0 };
+const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 800.0 };
 /// Machine controls offered at most at once (ConfirmStored, Start, QueryStatus, Cancel, Reconnect).
 const MACHINE_SLOTS: usize = 6;
 const SIDEBAR_WIDTH: f64 = 200.0;

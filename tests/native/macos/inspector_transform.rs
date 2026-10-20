@@ -61,8 +61,8 @@ fn inspector() -> Result<(), String> {
         })
         .unwrap_or_default();
     expect(
-        || format!("nine labelled fields, got {captions:?}"),
-        captions.len() == 9 && captions.iter().all(|c| !c.is_empty()),
+        || format!("nine transform fields and the cut priority, all labelled, got {captions:?}"),
+        captions.len() == 10 && captions.iter().all(|c| !c.is_empty()),
     )?;
     expect(
         || format!("units in the captions: {captions:?}"),

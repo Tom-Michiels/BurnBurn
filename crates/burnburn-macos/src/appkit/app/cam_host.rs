@@ -32,6 +32,8 @@ pub struct CamPanelParts<'a> {
     pub result: &'a NSTextField,
     pub capabilities: &'a NSTextField,
     pub buttons: Vec<(DialogActionKind, &'a NSButton)>,
+    /// The up and down arrows of each `Order by` level.
+    pub arrows: Vec<(OrderKey, &'a NSButton, &'a NSButton)>,
 }
 
 impl HostApp {
@@ -169,6 +171,7 @@ impl HostApp {
             result: &ui.result,
             capabilities: &ui.capabilities,
             buttons: ui.buttons.iter().map(|(k, b)| (*k, &**b)).collect(),
+            arrows: ui.rows.iter().filter_map(|r| r.arrows()).collect(),
         };
         Some(f(&parts))
     }

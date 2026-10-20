@@ -27,7 +27,7 @@ use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
-pub use app::{HostApp, HostOptions, QuitOutcome, WindowParts};
+pub use app::{CamPanelParts, HostApp, HostOptions, QuitOutcome, WindowParts};
 pub use canvas::canvas_packet;
 pub use panels::laser::LaserParts;
 pub use toolstrip::{ToolStrip, image_pixels};

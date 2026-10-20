@@ -33,6 +33,7 @@ use objc2_foundation::{NSArray, NSString, NSTimer};
 
 mod cam_host;
 mod laser_host;
+pub use cam_host::CamPanelParts;
 
 use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
