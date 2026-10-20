@@ -4,7 +4,10 @@
 
 use std::collections::BTreeMap;
 
-use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
+use burnburn_job::{
+    Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, RotaryConfig, RotaryKind,
+    Support,
+};
 use burnburn_types::ContentHash;
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +52,9 @@ pub fn compare_profile(frozen: &MachineProfile, local: &MachineProfile) -> Profi
     if Feature::ALL.iter().any(|f| frozen.capabilities().support(*f) != local.capabilities().support(*f)) {
         fields.push("capabilities");
     }
+    if frozen.rotary() != local.rotary() {
+        fields.push("rotary");
+    }
     ProfileComparison::Differs { fields }
 }
 
@@ -68,6 +74,28 @@ pub(crate) struct ProfileDto {
     pub max_power: Num,
     /// Support per feature tag where it differs from the conservative default.
     pub features: BTreeMap<String, SupportDto>,
+    /// Rotary attachment (W2-L3). `width_mm`/`height_mm` are the effective frame; the flat-bed
+    /// height to return to is stored here. Omitted for a flat bed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotary: Option<RotaryDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RotaryDto {
+    pub kind: RotaryKindDto,
+    pub diameter_mm: Num,
+    pub steps_per_rotation: u32,
+    pub y_steps_per_mm: Num,
+    pub mirror: bool,
+    pub flatbed_height_mm: Num,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RotaryKindDto {
+    Chuck,
+    Roller,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +123,20 @@ pub(crate) fn profile_to_dto(p: &MachineProfile) -> ProfileDto {
         content: p.revision().content.to_hex(),
         width_mm: Num(p.frame().width_mm()),
         height_mm: Num(p.frame().height_mm()),
+        rotary: p.rotary().map(|r| {
+            let (kind, diameter_mm) = match r.kind() {
+                RotaryKind::Chuck { object_diameter_mm } => (RotaryKindDto::Chuck, object_diameter_mm),
+                RotaryKind::Roller { roller_diameter_mm } => (RotaryKindDto::Roller, roller_diameter_mm),
+            };
+            RotaryDto {
+                kind,
+                diameter_mm: Num(diameter_mm),
+                steps_per_rotation: r.steps_per_rotation(),
+                y_steps_per_mm: Num(r.y_steps_per_mm()),
+                mirror: r.mirror(),
+                flatbed_height_mm: Num(p.flatbed_frame().height_mm()),
+            }
+        }),
         origin: match p.frame().origin() {
             OriginCorner::BottomLeft => Origin::BottomLeft,
             OriginCorner::TopLeft => Origin::TopLeft,
@@ -126,9 +168,14 @@ pub(crate) fn profile_from_dto(i: usize, d: &ProfileDto) -> Result<MachineProfil
     let path = move |f: &str| format!("profiles[{i}].{f}");
     let bad = |f: &str, reason: String| LoadError::InvalidValue { path: path(f), reason };
     let n = |f: &'static str, v: Num| num(&|| path(f), v);
+    // With a rotary the stored height is the effective one; the frame to start from is the flat bed.
+    let base_height = match &d.rotary {
+        Some(r) => n("rotary.flatbed_height_mm", r.flatbed_height_mm)?,
+        None => n("height_mm", d.height_mm)?,
+    };
     let frame = MachineFrame::new(
         n("width_mm", d.width_mm)?,
-        n("height_mm", d.height_mm)?,
+        base_height,
         match d.origin {
             Origin::BottomLeft => OriginCorner::BottomLeft,
             Origin::TopLeft => OriginCorner::TopLeft,
@@ -164,6 +211,20 @@ pub(crate) fn profile_from_dto(i: usize, d: &ProfileDto) -> Result<MachineProfil
     )
     .and_then(|p| p.with_capabilities(caps))
     .map_err(|e| bad("profile", format!("{e:?}")))?;
+    let profile = match &d.rotary {
+        None => profile,
+        Some(r) => {
+            let diameter = n("rotary.diameter_mm", r.diameter_mm)?;
+            let kind = match r.kind {
+                RotaryKindDto::Chuck => RotaryKind::Chuck { object_diameter_mm: diameter },
+                RotaryKindDto::Roller => RotaryKind::Roller { roller_diameter_mm: diameter },
+            };
+            let config =
+                RotaryConfig::new(kind, r.steps_per_rotation, n("rotary.y_steps_per_mm", r.y_steps_per_mm)?, r.mirror)
+                    .map_err(|e| bad("rotary", format!("{e:?}")))?;
+            profile.with_rotary(config).map_err(|e| bad("rotary", format!("{e:?}")))?
+        }
+    };
     let stored = ContentHash::from_hex(&d.content).map_err(|e| bad("content", e.to_string()))?;
     if profile.revision().content != stored {
         return Err(bad("content", "stored content hash does not match the stored values".into()));

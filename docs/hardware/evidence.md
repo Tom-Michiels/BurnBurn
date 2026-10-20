@@ -38,3 +38,9 @@ ontvangen bytes, wat de kop deed (foto/video of meting) en datum. Een ACK alleen
 
 Opmerking over `START_PROCESS` (D8 00): niet bereikbaar via de live-vocabulaire. Een job starten blijft `Request::Start` op een
 `Stored` execution, en heeft eveneens een eigen rij nodig (zie bovenaan: start).
+
+## CAM-extra's zonder RD-vorm (W2-L3, 20-10-2026)
+
+Cross-hatch, dot mode, ramp length, Y-as/hoekscan, Z-offset en de rotary-Y-schaal hebben geen fixture en geen
+hardwarewaarneming; de lowering weigert ze getypeerd (rotary: eigen ontwerp, onbevestigd). Het benodigde bewijs per feature
+staat in [`evidence-cam.md`](evidence-cam.md).

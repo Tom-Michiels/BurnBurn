@@ -128,6 +128,9 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
                         return Err(LowerError::Unsupported { event, what: "grayscale modulation" });
                     }
                     PlanMode::AngledScan { .. } => return Err(LowerError::Unsupported { event, what: "scan angle" }),
+                    // No fixture holds a pulse record (`docs/hardware/evidence-cam.md`): never
+                    // written as a tiny cut or a delay instead.
+                    PlanMode::Dots { .. } => return Err(LowerError::Unsupported { event, what: "dot mode" }),
                     _ => return Err(LowerError::Unsupported { event, what: "mode" }),
                 };
                 let speed = Speed::from_um_per_s(quantise_positive(s.speed_mm_s * 1000.0, event)?).map_err(field)?;
@@ -198,6 +201,11 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
                 at = Some(p);
             }
             PlanEvent::FocusOffset { .. } => return Err(LowerError::Unsupported { event, what: "focus offset" }),
+            // A ramp has no established power record; a plain scan run would silently change the
+            // burn, so the plan is refused.
+            PlanEvent::RampRun { .. } => return Err(LowerError::Unsupported { event, what: "ramp length" }),
+            PlanEvent::Dot { .. } => return Err(LowerError::Unsupported { event, what: "dot mode" }),
+            PlanEvent::PowerRun { .. } => return Err(LowerError::Unsupported { event, what: "grayscale modulation" }),
             _ => return Err(LowerError::Unsupported { event, what: "event" }),
         }
     }

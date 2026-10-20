@@ -181,7 +181,7 @@ fn extras_without_a_proven_rd_form_are_typed_lowering_errors() {
         &[],
     );
     let plan = compile_for(&t, &supported(&[Feature::RampLength]));
-    assert!(matches!(unsupported(&plan), LowerError::Unsupported { what: "event", .. }));
+    assert!(matches!(unsupported(&plan), LowerError::Unsupported { what: "ramp length", .. }));
 
     // Neither has a dot pulse.
     let mut u = new_session();
@@ -190,5 +190,5 @@ fn extras_without_a_proven_rd_form_are_typed_lowering_errors() {
     let dot = burnburn_document::process::DotMode::new(mm(5.0), 2.0).unwrap();
     set_line(&mut u, op, LineOptions { dot: Some(dot), ..Default::default() });
     let plan = compile_for(&u, &supported(&[Feature::DotMode]));
-    assert!(matches!(unsupported(&plan), LowerError::Unsupported { what: "mode", .. }));
+    assert!(matches!(unsupported(&plan), LowerError::Unsupported { what: "dot mode", .. }));
 }

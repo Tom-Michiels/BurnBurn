@@ -135,6 +135,11 @@ impl MachineProfile {
         self
     }
 
+    /// The flat-bed frame: the profile's frame, or the one it returns to without the rotary.
+    pub fn flatbed_frame(&self) -> &MachineFrame {
+        self.rotary.as_ref().map_or(&self.frame, |r| &r.flatbed)
+    }
+
     pub fn rotary(&self) -> Option<&RotaryConfig> {
         self.rotary.as_ref().map(|r| &r.config)
     }
