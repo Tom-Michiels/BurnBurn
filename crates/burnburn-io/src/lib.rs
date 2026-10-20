@@ -10,6 +10,7 @@
 
 pub mod arrange_dto;
 mod container;
+pub mod clipboard;
 pub mod dto;
 pub mod engine_dto;
 mod engine_map;

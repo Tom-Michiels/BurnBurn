@@ -14,6 +14,7 @@ eigen `[workspace]` en een eigen lockfile die bij de eerste run ontstaat. Nightl
 | `ruida_udp_frame` | `burnburn_ruida::udp::parse_frame` | payload = datagram zonder 2 checksumbytes |
 | `io_container` | `burnburn_io::decode_container` | `Ok` of `LoadError`; limieten op entries/grootte |
 | `io_dto_json` | `serde_json` → `dto::v1::{Document, Manifest}` | `Ok` of `serde_json::Error` |
+| `io_clipboard` | `burnburn_io::clipboard::decode_clipboard` (pasteboard-payload van een andere app) | `Ok` of `ClipboardError`, begrensd door `MAX_CLIPBOARD_BYTES` |
 | `io_parse_svg` | `burnburn_io::import::parse_svg` | `Ok` met eindige geometrie of `ParseError` |
 | `io_parse_dxf` | `parse_dxf` + `to_draft(None)` en `to_draft(Some(inch))` | `Ok` of `ParseError`/`ImportError` |
 | `image_decode` | `burnburn_image::decode` + `io::import::inspect_raster` (standaardlimieten) | `Ok` of getypeerde fout, begrensd |
