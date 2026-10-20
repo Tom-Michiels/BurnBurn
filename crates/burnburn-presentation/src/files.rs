@@ -6,7 +6,9 @@ use std::path::PathBuf;
 
 use burnburn_types::{DocumentId, OperationId};
 
-use crate::intent::OperationKind;
+use std::sync::Arc;
+
+use crate::intent::{ImportUnit, OperationKind};
 use crate::view_model::MessageKey;
 
 /// A user action of the file features, kept apart from `UiIntent` so the file panels grow
@@ -84,6 +86,77 @@ pub enum FilesIntent {
     RemoveMaterial {
         document: DocumentId,
         entry: u64,
+    },
+    /// Window ▸ Kunstbibliotheek: opens the panel (the library is read on a worker).
+    OpenArtLibrary {
+        document: DocumentId,
+    },
+    CloseArtLibrary {
+        document: DocumentId,
+    },
+    /// Show one group (`None`: all groups).
+    SelectArtGroup {
+        document: DocumentId,
+        group: Option<String>,
+    },
+    /// Search names, tags and groups.
+    SetArtSearch {
+        document: DocumentId,
+        text: String,
+    },
+    SelectArtItem {
+        document: DocumentId,
+        item: Option<u64>,
+    },
+    AddArtGroup {
+        document: DocumentId,
+        name: String,
+    },
+    RenameArtGroup {
+        document: DocumentId,
+        old: String,
+        new: String,
+    },
+    /// A group that still holds items is refused; move or remove them first.
+    RemoveArtGroup {
+        document: DocumentId,
+        name: String,
+    },
+    /// Add a drawing file (SVG, DXF, HP-GL or PDF/AI) to a group; the name defaults to the file's.
+    /// A DXF without a unit waits for `dxf_unit` (the panel shows `needs_scale`).
+    AddArtFromFile {
+        document: DocumentId,
+        path: PathBuf,
+        group: String,
+        name: String,
+        dxf_unit: Option<ImportUnit>,
+    },
+    /// Add the selected objects of the window, as the SVG they export to.
+    AddArtFromSelection {
+        document: DocumentId,
+        name: String,
+        group: String,
+    },
+    RenameArtItem {
+        document: DocumentId,
+        item: u64,
+        name: String,
+    },
+    MoveArtItem {
+        document: DocumentId,
+        item: u64,
+        group: String,
+    },
+    RemoveArtItem {
+        document: DocumentId,
+        item: u64,
+    },
+    /// Insert the drawing into the document (one history entry), centred on `at` (canvas points,
+    /// where it was dropped) or on the centre of the view.
+    PlaceArt {
+        document: DocumentId,
+        item: u64,
+        at: Option<(f64, f64)>,
     },
 }
 
@@ -220,12 +293,30 @@ pub enum FilesMessage {
     MaterialImageLayer,
     /// The layer or entry no longer exists.
     MaterialUnknown,
+    /// A group or item name is empty, too long or holds control characters.
+    ArtNameInvalid,
+    ArtGroupExists,
+    ArtGroupUnknown,
+    /// The group still holds items.
+    ArtGroupNotEmpty,
+    ArtItemUnknown,
+    /// The drawing file does not import (damaged, unsupported or empty).
+    ArtFileUnreadable,
+    /// The file is not a drawing the library keeps (SVG, DXF, HP-GL, PDF or AI).
+    ArtFileFormat,
+    /// A DXF without a unit: choose one first.
+    ArtScaleRequired,
+    /// There is nothing selected to add.
+    ArtNothingSelected,
+    /// The library holds as many items as it may.
+    ArtLibraryFull,
 }
 
 /// Everything the file panels of one window show.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FilesViewModel {
     pub material: Option<MaterialPanelViewModel>,
+    pub art: Option<ArtPanelViewModel>,
 }
 
 /// The Material Library panel (M217): search, the entries found and what each layer's settings came from.
@@ -308,4 +399,46 @@ pub enum MaterialLinkStatus {
     EntryMissing,
     /// The link was made against another library (or the library is not loaded yet).
     OtherLibrary,
+}
+
+/// The Art Library panel (M210): groups, thumbnails, search and the item to insert.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArtPanelViewModel {
+    pub loading: bool,
+    pub persisted: bool,
+    /// A file or the selection is being added or inserted on a worker.
+    pub busy: bool,
+    pub issue: Option<MessageKey>,
+    pub groups: Vec<ArtGroupRow>,
+    pub group: Option<String>,
+    pub search: String,
+    pub items: Vec<ArtItemRow>,
+    pub selected: Option<u64>,
+    /// A DXF without a unit is waiting for one: the file, to be sent again with `dxf_unit`.
+    pub needs_scale: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtGroupRow {
+    pub name: String,
+    pub items: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArtItemRow {
+    pub id: u64,
+    pub name: String,
+    pub group: String,
+    pub tags: Vec<String>,
+    pub format: burnburn_io::art_library::ArtFormat,
+    /// The drawing's outline, 64 × 64 coverage; `None` while it is being made.
+    pub thumbnail: Option<Arc<ArtThumbnail>>,
+}
+
+/// A small picture of a drawing: `coverage[y * width + x]` is 0 (paper) … 255 (line), top row first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtThumbnail {
+    pub width: u32,
+    pub height: u32,
+    pub coverage: Vec<u8>,
 }

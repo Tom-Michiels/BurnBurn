@@ -19,6 +19,7 @@ mod intent;
 mod laser;
 mod production;
 mod task;
+mod thumbnail;
 mod view_model;
 
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
@@ -41,9 +42,10 @@ pub use cut_options::{
 };
 pub use field::{FieldError, format_mm, parse_length, parse_position};
 pub use files::{
-    FilesIntent, FilesMessage, FilesViewModel, ImportKind, ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow,
-    Lbrn2ImageState, Lbrn2LayerRow, Lbrn2ReportViewModel, Lbrn2Warning, MaterialFilter, MaterialLinkStatus,
-    MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel, MaterialRow, TemplateScope,
+    ArtGroupRow, ArtItemRow, ArtPanelViewModel, ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel, ImportKind,
+    ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState, Lbrn2LayerRow, Lbrn2ReportViewModel,
+    Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
+    MaterialRow, TemplateScope,
 };
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{

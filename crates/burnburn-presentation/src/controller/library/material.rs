@@ -410,7 +410,7 @@ pub(super) fn panel_view(s: &Session, machine: Option<&Machine>, libs: &Librarie
     };
     Some(MaterialPanelViewModel {
         loading,
-        persisted: libs.persisted(),
+        persisted: libs.material_persisted(),
         issue: ui.issue.or(library_issue),
         materials: library.map(MaterialLibrary::materials).unwrap_or_default(),
         thicknesses_mm,

@@ -5,34 +5,54 @@
 //! on the UI thread and written back on a worker, one write at a time. A library file that cannot
 //! be read is never overwritten.
 
+mod art;
 mod material;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use burnburn_geometry::Point;
+use burnburn_io::art_library::ArtLibrary;
 use burnburn_io::material_library::MaterialLibrary;
 use burnburn_types::{CancellationSource, DocumentId, RevisionId, TaskId};
 
 use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
-use crate::files::{FilesIntent, FilesMessage, FilesViewModel};
-use crate::files_task::{FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE};
+use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
+use crate::files_task::{ART_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE};
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
 
 /// A worker job of the file features that is waiting for its result.
 #[derive(Debug, Clone)]
 pub(super) enum FilesJob {
-    SaveTemplate { document: DocumentId },
-    OpenTemplate { document: DocumentId, path: PathBuf },
+    SaveTemplate {
+        document: DocumentId,
+    },
+    OpenTemplate {
+        document: DocumentId,
+        path: PathBuf,
+    },
     LoadLibraries,
     SaveMaterials,
+    SaveArt,
+    /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
+    AddArt {
+        document: DocumentId,
+        request: Box<art::AddRequest>,
+    },
+    PlaceArt {
+        document: DocumentId,
+        at: Option<Point>,
+    },
 }
 
 /// Window state of the file panels (never document data).
 #[derive(Debug, Default)]
 pub(super) struct FilesUi {
     pub(in crate::controller) material: Option<material::MaterialUi>,
+    pub(in crate::controller) art: Option<art::ArtUi>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -61,11 +81,23 @@ pub(super) struct Libraries {
     /// The material library file could not be read: it is kept as it is and never written.
     materials_unreadable: bool,
     material_writer: Writer,
+    art: Option<ArtLibrary>,
+    art_unreadable: bool,
+    art_writer: Writer,
+    thumbnails: BTreeMap<u64, Arc<ArtThumbnail>>,
+    /// Counts every change of the art library, so a worker result made from an older copy is noticed.
+    art_generation: u64,
+    /// Workers that add or place art (the panel shows it is busy).
+    art_busy: usize,
 }
 
 impl Libraries {
-    fn persisted(&self) -> bool {
+    fn material_persisted(&self) -> bool {
         self.dir.is_some() && !self.materials_unreadable && !self.material_writer.failed
+    }
+
+    fn art_persisted(&self) -> bool {
+        self.dir.is_some() && !self.art_unreadable && !self.art_writer.failed
     }
 }
 
@@ -82,6 +114,20 @@ impl AppController {
             FilesIntent::ClearRecentTemplates => {
                 AppUpdate { effects: self.clear_recent_templates(), view_changed: true, ..AppUpdate::default() }
             }
+            intent @ (FilesIntent::OpenArtLibrary { .. }
+            | FilesIntent::CloseArtLibrary { .. }
+            | FilesIntent::SelectArtGroup { .. }
+            | FilesIntent::SetArtSearch { .. }
+            | FilesIntent::SelectArtItem { .. }
+            | FilesIntent::AddArtGroup { .. }
+            | FilesIntent::RenameArtGroup { .. }
+            | FilesIntent::RemoveArtGroup { .. }
+            | FilesIntent::AddArtFromFile { .. }
+            | FilesIntent::AddArtFromSelection { .. }
+            | FilesIntent::RenameArtItem { .. }
+            | FilesIntent::MoveArtItem { .. }
+            | FilesIntent::RemoveArtItem { .. }
+            | FilesIntent::PlaceArt { .. }) => self.art_intent(intent),
             intent => self.material_intent(intent),
         }
     }
@@ -93,6 +139,9 @@ impl AppController {
             FilesJob::OpenTemplate { document, path } => self.template_opened(document, path, outcome),
             FilesJob::LoadLibraries => self.libraries_loaded(outcome),
             FilesJob::SaveMaterials => self.material_saved(outcome),
+            FilesJob::SaveArt => self.art_saved(outcome),
+            FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
+            FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
         }
     }
 
@@ -114,6 +163,7 @@ impl AppController {
         }
         let Some(dir) = self.libs.dir.clone() else {
             self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id()));
+            self.libs.art = Some(ArtLibrary::new(&self.new_library_id()));
             self.libs.state = LoadState::Ready;
             return;
         };
@@ -139,8 +189,10 @@ impl AppController {
         if self.ports.tasks.submit(request).is_err() {
             return false;
         }
-        if let FilesJob::SaveMaterials = job {
-            self.libs.material_writer.in_flight = Some(id);
+        match job {
+            FilesJob::SaveMaterials => self.libs.material_writer.in_flight = Some(id),
+            FilesJob::SaveArt => self.libs.art_writer.in_flight = Some(id),
+            _ => {}
         }
         self.files_jobs.insert(id, job);
         true
@@ -149,20 +201,26 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { materials })) => {
-                let fresh = |this: &Self| MaterialLibrary::new(&this.new_library_id());
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { materials, art, thumbnails })) => {
                 match materials {
                     Loaded::Ready(library) => self.libs.materials = Some(library),
-                    Loaded::Missing => self.libs.materials = Some(fresh(self)),
+                    Loaded::Missing => self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id())),
                     Loaded::Unreadable(_) => {
-                        self.libs.materials = Some(fresh(self));
+                        self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id()));
                         self.libs.materials_unreadable = true;
-                        effects.push(HostEffect::ShowError {
-                            document: None,
-                            message: MessageKey::Files(FilesMessage::LibraryUnreadable),
-                        });
+                        effects.push(unreadable());
                     }
                 }
+                match art {
+                    Loaded::Ready(library) => self.libs.art = Some(library),
+                    Loaded::Missing => self.libs.art = Some(ArtLibrary::new(&self.new_library_id())),
+                    Loaded::Unreadable(_) => {
+                        self.libs.art = Some(ArtLibrary::new(&self.new_library_id()));
+                        self.libs.art_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
+                self.libs.thumbnails = thumbnails.into_iter().map(|(id, t)| (id, Arc::new(t))).collect();
                 self.libs.state = LoadState::Ready;
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
@@ -173,9 +231,8 @@ impl AppController {
 
     /// Writes the material library when it changed and no write is running.
     pub(super) fn flush_materials(&mut self) -> Vec<HostEffect> {
-        let writer = &mut self.libs.material_writer;
-        writer.dirty = true;
-        if writer.in_flight.is_some() || self.libs.materials_unreadable {
+        self.libs.material_writer.dirty = true;
+        if self.libs.material_writer.in_flight.is_some() || self.libs.materials_unreadable {
             return Vec::new();
         }
         let (Some(dir), Some(library)) = (self.libs.dir.clone(), self.libs.materials.clone()) else {
@@ -192,6 +249,26 @@ impl AppController {
         Vec::new()
     }
 
+    /// Writes the art library when it changed and no write is running.
+    pub(super) fn flush_art(&mut self) -> Vec<HostEffect> {
+        self.libs.art_writer.dirty = true;
+        if self.libs.art_writer.in_flight.is_some() || self.libs.art_unreadable {
+            return Vec::new();
+        }
+        let (Some(dir), Some(library)) = (self.libs.dir.clone(), self.libs.art.clone()) else {
+            return Vec::new();
+        };
+        let task = FilesTask::SaveArtLibrary {
+            library: Box::new(library),
+            path: dir.join(ART_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveArt) {
+            self.libs.art_writer.dirty = false;
+        }
+        Vec::new()
+    }
+
     fn material_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
         self.libs.material_writer.in_flight = None;
         let mut effects = Vec::new();
@@ -200,10 +277,7 @@ impl AppController {
             Err(TaskError::Cancelled) => {}
             Err(_) => {
                 self.libs.material_writer.failed = true;
-                effects.push(HostEffect::ShowError {
-                    document: None,
-                    message: MessageKey::Files(FilesMessage::LibrarySaveFailed),
-                });
+                effects.push(save_failed());
             }
         }
         if self.libs.material_writer.dirty && !self.libs.material_writer.failed {
@@ -211,9 +285,34 @@ impl AppController {
         }
         AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
+
+    fn art_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.art_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.art_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.art_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.art_writer.dirty && !self.libs.art_writer.failed {
+            effects.extend(self.flush_art());
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+    }
+}
+
+fn unreadable() -> HostEffect {
+    HostEffect::ShowError { document: None, message: MessageKey::Files(FilesMessage::LibraryUnreadable) }
+}
+
+fn save_failed() -> HostEffect {
+    HostEffect::ShowError { document: None, message: MessageKey::Files(FilesMessage::LibrarySaveFailed) }
 }
 
 /// What the file panels of one window show.
 pub(super) fn files_view(s: &Session, machine: Option<&Machine>, libs: &Libraries) -> FilesViewModel {
-    FilesViewModel { material: material::panel_view(s, machine, libs) }
+    FilesViewModel { material: material::panel_view(s, machine, libs), art: art::panel_view(s, libs) }
 }
