@@ -309,6 +309,23 @@ impl ArtLibrary {
         Ok(id)
     }
 
+    /// Adds a copy of `item` (from another library, for bundle import) under `name`, creating its
+    /// group when missing. The file is validated again like any added item.
+    pub(crate) fn add_copy(&mut self, item: &ArtItem, name: &str) -> Result<u64, ArtError> {
+        match self.add_group(&item.group) {
+            Ok(()) | Err(ArtError::DuplicateGroup(_)) => {}
+            Err(e) => return Err(e),
+        }
+        self.add_item(NewArt {
+            name,
+            group: &item.group,
+            tags: item.tags.clone(),
+            format: item.format,
+            bytes: &item.bytes,
+            dxf_scale: item.dxf_mm_per_unit.and_then(DxfScale::mm_per_unit),
+        })
+    }
+
     pub fn move_item(&mut self, id: u64, group: &str) -> Result<(), ArtError> {
         self.require_group(group)?;
         self.item_mut(id)?.group = group.to_owned();

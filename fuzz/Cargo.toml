@@ -106,3 +106,10 @@ path = "fuzz_targets/io_art_library.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "io_bundle"
+path = "fuzz_targets/io_bundle.rs"
+test = false
+doc = false
+bench = false

@@ -303,3 +303,40 @@ proptest! {
         }
     }
 }
+
+fn bundle_seed() -> Vec<u8> {
+    use burnburn_io::bundle::{BundleContents, encode_bundle};
+    let mut lib = burnburn_io::art_library::ArtLibrary::new("seed");
+    lib.add_group("G").unwrap();
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10mm" height="10mm"><rect x="1" y="1" width="5" height="5"/></svg>"#;
+    lib.add_item(burnburn_io::art_library::NewArt {
+        name: "A",
+        group: "G",
+        tags: vec![],
+        format: burnburn_io::art_library::ArtFormat::Svg,
+        bytes: svg,
+        dxf_scale: None,
+    })
+    .unwrap();
+    encode_bundle(&BundleContents { art: Some(&lib), ..BundleContents::default() }).unwrap()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    #[test]
+    fn bundle_random_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
+        let _ = burnburn_io::bundle::decode_bundle(&bytes);
+    }
+
+    #[test]
+    fn bundle_mutated_file_never_panics_and_a_valid_one_previews_and_applies(b in mutate(bundle_seed())) {
+        use burnburn_io::bundle::{ImportChoices, ImportTarget, LocalState, apply_import, decode_bundle, preview_import};
+        if let Ok(bundle) = decode_bundle(&b) {
+            let _ = preview_import(&bundle, &LocalState::default());
+            let mut m = burnburn_io::material_library::MaterialLibrary::new("m");
+            let mut a = burnburn_io::art_library::ArtLibrary::new("a");
+            let _ = apply_import(&bundle, ImportTarget { materials: &mut m, art: &mut a, profiles: &[], templates: &[] }, &ImportChoices::default());
+        }
+    }
+}
