@@ -101,9 +101,7 @@ fn switching_the_rotary_twice_keeps_the_flat_bed_and_replaces_the_setting() {
 }
 
 #[test]
-fn flatbed_profiles_keep_their_content_hash() {
-    // A profile that never had a rotary hashes exactly as before this field existed: the only
-    // thing that matters to stored plans is that two identical profiles agree.
+fn the_rotary_setting_is_part_of_the_profile_content() {
     assert_eq!(flatbed().revision().content, flatbed().revision().content);
     assert_ne!(
         flatbed().with_rotary(chuck(8000, 20.0, false)).unwrap().revision().content,
