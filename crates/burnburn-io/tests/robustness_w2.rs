@@ -149,3 +149,33 @@ proptest! {
         }
     }
 }
+
+fn lbrn2_bitmap_seed() -> Vec<u8> {
+    std::fs::read(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../research/lightburn/fixtures/gray-ramp-grayscale.lbrn2"),
+    )
+    .unwrap()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// W2-L6: mutated files with an embedded bitmap (base64 + image decode) and image cut settings.
+    #[test]
+    fn lbrn2_mutated_bitmap_fixture_never_panics(b in mutate(lbrn2_bitmap_seed())) {
+        if let Ok(d) = burnburn_io::import::parse_lbrn2(&b) {
+            let source = burnburn_io::asset_hash(b"x");
+            for p in &d.cut_settings {
+                let _ = d.image_operation(p.index, source);
+            }
+        }
+    }
+
+    #[test]
+    fn lbrn2_arbitrary_bitmap_data_and_dither_names_never_panic(data in "[A-Za-z0-9+/= \n!]{0,200}", mode in "[a-z0-9]{0,12}") {
+        let xml = format!(
+            r#"<LightBurnProject><CutSetting_Img type="Image"><index Value="0"/><maxPower Value="9"/><speed Value="9"/><ditherMode Value="{mode}"/></CutSetting_Img><Shape Type="Bitmap" W="3" H="2" Data="{data}"><XForm>1 0 0 1 0 0</XForm></Shape></LightBurnProject>"#
+        );
+        let _ = burnburn_io::import::parse_lbrn2(xml.as_bytes());
+    }
+}

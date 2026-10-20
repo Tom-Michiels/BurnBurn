@@ -23,8 +23,9 @@ use burnburn_types::ContentHash;
 pub use dxf::{DxfDocument, DxfScale, parse_dxf, parse_dxf_with};
 pub use hpgl::{parse_hpgl, parse_hpgl_with};
 pub use lbrn2::{
-    AssetNote, Assumption, CutKind, CutSettingProposal, FontUse, ImportNote, Lbrn2Draft, Lbrn2Item, Lbrn2Report,
-    NoteKind, SUPPORTED, parse_lbrn2, parse_lbrn2_with, supported_attributes,
+    AssetNote, Assumption, CutKind, CutSettingProposal, EmbeddedBitmap, FontUse, ImageProposal, ImportNote, Lbrn2Draft,
+    Lbrn2Item, Lbrn2Report, NoteKind, ProjectInfo, ProjectNotes, SUPPORTED, UnmappedValue, parse_lbrn2,
+    parse_lbrn2_with, supported_attributes,
 };
 pub use pdf::{PdfDocument, PdfKind, PdfPage, PdfPages, parse_ai_with, parse_pdf, parse_pdf_with};
 pub use raster::{RasterError, RasterFormat, RasterInfo, RasterLimits, inspect_raster};

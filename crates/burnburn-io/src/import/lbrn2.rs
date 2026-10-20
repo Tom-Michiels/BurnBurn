@@ -7,20 +7,24 @@
 //! `XForm`. `Text` and `Bitmap` are recognised and reported (font, embedded/linked asset); text
 //! is imported as outlines only when the file carries a `BackupPath`. Every other element,
 //! attribute and setting is named in the report with its count: nothing is dropped silently.
-//! Cut settings become *proposals* (output disabled) — power scales differ per machine.
+//! Cut settings become *proposals* (output disabled) — power scales differ per machine. W2-L6
+//! adds, without applying any of it: the values of unmapped layer settings
+//! ([`CutSettingProposal::unmapped`]), project information ([`ProjectInfo`]: device, mirroring,
+//! notes, variable-text and optimisation preferences as written), embedded bitmaps decoded and
+//! framed ([`AssetNote`]) and image cut settings ([`ImageProposal`], [`Lbrn2Draft::image_operation`]).
 
 use std::collections::BTreeMap;
 
 use burnburn_document::process::{
-    FillSettings, Kerf, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessCommand,
-    ProcessSettings, ScanAxis, ScanDirection, Speed,
+    DitherMode, FillSettings, ImageRender, ImageSettings, Kerf, OperationDraft, OperationMode, Passes, PowerPercent,
+    PowerRange, ProcessCommand, ProcessSettings, ScanAxis, ScanDirection, Speed,
 };
 use burnburn_document::{GeometryCommand, ImportItem};
 use burnburn_geometry::{Affine, EllipticalArc, Path, PathBuilder, Point, Segment, Shape, Subpath};
 use burnburn_types::{Angle, ContentHash, GeometryId, Length};
 
 use super::xml::{Event, Tokenizer};
-use super::{ImportError, ParseError, ParseLimits, check_size};
+use super::{ImportError, ParseError, ParseLimits, RasterFormat, RasterLimits, check_size, inspect_raster};
 
 /// Supported elements and, per element, the attributes this importer interprets.
 pub const SUPPORTED: &[(&str, &[&str])] = &[
@@ -34,6 +38,7 @@ pub const SUPPORTED: &[(&str, &[&str])] = &[
     ("speed", &["Value"]),
     ("numPasses", &["Value"]),
     ("interval", &["Value"]),
+    ("ditherMode", &["Value"]),
     ("Shape", &["Type", "CutIndex", "W", "H", "Cr", "Rx", "Ry", "VertID", "PrimID", "Font", "Str", "File", "Data"]),
     ("XForm", &[]),
     ("VertList", &[]),
@@ -88,13 +93,58 @@ pub struct FontUse {
     pub with_outlines: u32,
 }
 
-/// A bitmap shape and where its pixels are (not imported; reported for the asset step).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A bitmap shape and where its pixels are (not imported as an object here; handed over for the
+/// image step with its placement).
+#[derive(Debug, Clone, PartialEq)]
 pub struct AssetNote {
     pub entity: String,
     pub linked_file: Option<String>,
     /// Length of the embedded base64 data (0: none).
     pub embedded_chars: usize,
+    /// The embedded PNG/JPEG bytes when the base64 data decodes to a readable image.
+    pub data: Option<EmbeddedBitmap>,
+    /// `W` × `H` of the bitmap shape in mm.
+    pub size_mm: Option<(f64, f64)>,
+    /// The bitmap's frame in world mm (its size placed by the shape and group transforms).
+    pub placement: Option<Path>,
+    /// Image adjustments stored on the shape (`Gamma`, `Contrast`, …) as written: carried, not applied.
+    pub adjustments: Vec<(String, String)>,
+}
+
+/// Decoded pixels of a `Bitmap` shape: the original file bytes, verified by their magic number.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddedBitmap {
+    pub bytes: Vec<u8>,
+    pub format: RasterFormat,
+}
+
+/// A cut-setting child the importer does not map, with the value it had in the file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnmappedValue {
+    pub name: String,
+    pub value: Option<String>,
+}
+
+/// Project-level data of the file, carried as information. None of it is applied to the
+/// document (each item is also named in the report notes): the device, origin mirroring and
+/// optimisation preferences belong to the machine and job review.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ProjectInfo {
+    pub device_name: Option<String>,
+    pub material_height_mm: Option<f64>,
+    pub mirror_x: Option<bool>,
+    pub mirror_y: Option<bool>,
+    pub notes: Option<ProjectNotes>,
+    /// `VariableText` children (`Start`, `End`, `Current`, `Increment`, `AutoAdvance`) as written.
+    pub variable_text: Vec<(String, String)>,
+    /// `UIPrefs` children (`Optimize_*`) as written.
+    pub optimize: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectNotes {
+    pub text: String,
+    pub show_on_load: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +164,26 @@ pub struct CutSettingProposal {
     pub assumptions: Vec<Assumption>,
     /// Indices into [`Lbrn2Draft::items`] that use this setting.
     pub items: Vec<usize>,
+    /// Setting children that were not mapped, with their values (`priority`, `dotTime`, …).
+    pub unmapped: Vec<UnmappedValue>,
+    /// The image-mode part of an image cut setting; see [`Lbrn2Draft::image_operation`].
+    pub image: Option<ImageProposal>,
+}
+
+/// An image cut setting translated as far as the process model goes. Needs the bitmap's asset
+/// hash before it becomes an operation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageProposal {
+    pub name: String,
+    /// `ditherMode` as written in the file.
+    pub dither_name: Option<String>,
+    /// The render mode it maps to (`None`: unknown or unsupported name, listed in the assumptions).
+    pub render: Option<ImageRender>,
+    pub interval_mm: f64,
+    pub speed_mm_s: f64,
+    pub min_power: f64,
+    pub max_power: f64,
+    pub passes: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -122,6 +192,7 @@ pub struct Lbrn2Report {
     pub notes: Vec<ImportNote>,
     pub fonts: Vec<FontUse>,
     pub assets: Vec<AssetNote>,
+    pub project: ProjectInfo,
 }
 
 /// One imported shape in world mm.
@@ -165,9 +236,15 @@ pub fn parse_lbrn2_with(bytes: &[u8], limits: &ParseLimits) -> Result<Lbrn2Draft
         prims: BTreeMap::new(),
         vertices: 0,
         app_version: None,
+        project: ProjectInfo::default(),
     };
     cx.check_attrs(&root);
     cx.app_version = root.attr("AppVersion").map(str::to_owned);
+    cx.project.device_name = root.attr("DeviceName").map(str::to_owned);
+    cx.project.material_height_mm =
+        root.attr("MaterialHeight").and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
+    cx.project.mirror_x = root.attr("MirrorX").and_then(parse_bool);
+    cx.project.mirror_y = root.attr("MirrorY").and_then(parse_bool);
     if let Some(v) = root.attr("FormatVersion")
         && v != "1"
     {
@@ -181,10 +258,70 @@ pub fn parse_lbrn2_with(bytes: &[u8], limits: &ParseLimits) -> Result<Lbrn2Draft
                 shape_no += 1;
                 cx.shape(child, Affine::IDENTITY, &format!("Shape#{shape_no}"))?;
             }
-            _ => cx.unknown(child),
+            other => {
+                // Carried as information; still named in the report because nothing is applied.
+                match other {
+                    "UIPrefs" => cx.project.optimize = value_children(child),
+                    "VariableText" => cx.project.variable_text = value_children(child),
+                    "Notes" => {
+                        cx.project.notes = Some(ProjectNotes {
+                            text: child.attr("Notes").unwrap_or("").to_owned(),
+                            show_on_load: child.attr("ShowOnLoad").and_then(parse_bool).unwrap_or(false),
+                        });
+                    }
+                    _ => {}
+                }
+                cx.unknown(child);
+            }
         }
     }
     Ok(cx.finish())
+}
+
+fn parse_bool(v: &str) -> Option<bool> {
+    match v.trim() {
+        "True" | "true" | "1" | "-1" => Some(true),
+        "False" | "false" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+/// `(child name, Value)` for each child that has a `Value` attribute, in file order.
+fn value_children(node: &Node) -> Vec<(String, String)> {
+    node.children.iter().filter_map(|c| Some((c.name.clone(), c.attr("Value")?.to_owned()))).collect()
+}
+
+/// Standard base64 (RFC 4648), whitespace ignored, padding optional.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    let mut padding = false;
+    for c in text.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => {
+                padding = true;
+                continue;
+            }
+            c if c.is_ascii_whitespace() => continue,
+            _ => return None,
+        };
+        if padding {
+            return None;
+        }
+        acc = (acc << 6) | u32::from(v);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 /// A parsed element: name, attributes, character data, children.
@@ -279,6 +416,8 @@ enum Prim {
 struct SettingAcc {
     kind: Option<CutKind>,
     values: BTreeMap<&'static str, String>,
+    /// Children not mapped, with their `Value`, in file order.
+    others: Vec<UnmappedValue>,
 }
 
 struct Ctx<'l> {
@@ -292,9 +431,11 @@ struct Ctx<'l> {
     prims: BTreeMap<String, Vec<Prim>>,
     vertices: usize,
     app_version: Option<String>,
+    project: ProjectInfo,
 }
 
-const SETTING_VALUES: &[&str] = &["index", "name", "minPower", "maxPower", "speed", "numPasses", "interval"];
+const SETTING_VALUES: &[&str] =
+    &["index", "name", "minPower", "maxPower", "speed", "numPasses", "interval", "ditherMode"];
 
 /// Default fill line interval when a scan setting has none (LightBurn's default, reported).
 const DEFAULT_INTERVAL_MM: f64 = 0.1;
@@ -332,7 +473,7 @@ impl Ctx<'_> {
                 None
             }
         };
-        let mut acc = SettingAcc { kind, values: BTreeMap::new() };
+        let mut acc = SettingAcc { kind, values: BTreeMap::new(), others: Vec::new() };
         for c in &node.children {
             match SETTING_VALUES.iter().find(|v| **v == c.name) {
                 Some(key) => {
@@ -345,6 +486,7 @@ impl Ctx<'_> {
                     }
                 }
                 None => {
+                    acc.others.push(UnmappedValue { name: c.name.clone(), value: c.attr("Value").map(str::to_owned) });
                     self.note(NoteKind::UnmappedSetting, c.name.clone());
                     for g in &c.children {
                         self.unknown(g);
@@ -433,10 +575,47 @@ impl Ctx<'_> {
                 backup
             }
             "Bitmap" => {
+                let data = match node.attr("Data").filter(|d| !d.trim().is_empty()) {
+                    None => None,
+                    Some(text) => {
+                        let decoded = base64_decode(text).and_then(|bytes| {
+                            let info = inspect_raster(&bytes, &RasterLimits::default()).ok()?;
+                            Some(EmbeddedBitmap { bytes, format: info.format })
+                        });
+                        if decoded.is_none() {
+                            self.note(NoteKind::InvalidValue, "Bitmap@Data".to_owned());
+                        }
+                        decoded
+                    }
+                };
+                let size = self.number(node, "W").zip(self.number(node, "H")).filter(|(w, h)| *w > 0.0 && *h > 0.0);
+                let placement = size.and_then(|(w, h)| {
+                    PathBuilder::new()
+                        .move_to(Point::new(-w / 2.0, -h / 2.0))
+                        .line_to(Point::new(w / 2.0, -h / 2.0))
+                        .line_to(Point::new(w / 2.0, h / 2.0))
+                        .line_to(Point::new(-w / 2.0, h / 2.0))
+                        .close()
+                        .build()
+                        .ok()
+                        .map(|p| p.transform(&m))
+                });
+                const ADJUST: [&str; 6] =
+                    ["Gamma", "Contrast", "Brightness", "EnhanceAmount", "EnhanceRadius", "EnhanceDenoise"];
+                let adjustments = node
+                    .attrs
+                    .iter()
+                    .filter(|(k, _)| ADJUST.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
                 self.assets.push(AssetNote {
                     entity: entity.to_owned(),
                     linked_file: node.attr("File").map(str::to_owned),
                     embedded_chars: node.attr("Data").map_or(0, str::len),
+                    data,
+                    size_mm: size,
+                    placement,
+                    adjustments,
                 });
                 self.note(NoteKind::NotConverted, "Bitmap".to_owned());
                 None
@@ -589,7 +768,17 @@ impl Ctx<'_> {
         for (index, acc) in &self.settings {
             let items: Vec<usize> =
                 self.items.iter().enumerate().filter(|(_, it)| it.cut_index == Some(*index)).map(|(i, _)| i).collect();
-            let (draft, assumptions) = proposal(*index, acc);
+            let (draft, mut assumptions) = proposal(*index, acc);
+            let image = if acc.kind == Some(CutKind::Image) {
+                let (image, extra, invalid) = image_proposal(*index, acc);
+                assumptions.extend(extra);
+                if let Some(name) = invalid {
+                    notes.push(ImportNote { kind: NoteKind::InvalidValue, name, count: 1 });
+                }
+                image
+            } else {
+                None
+            };
             if draft.is_none() && acc.kind != Some(CutKind::Image) {
                 notes.push(ImportNote { kind: NoteKind::InvalidValue, name: format!("CutSetting#{index}"), count: 1 });
             }
@@ -606,6 +795,8 @@ impl Ctx<'_> {
                 draft,
                 assumptions,
                 items,
+                unmapped: acc.others.clone(),
+                image,
             });
         }
         for it in &self.items {
@@ -627,7 +818,13 @@ impl Ctx<'_> {
         Lbrn2Draft {
             items: self.items,
             cut_settings,
-            report: Lbrn2Report { app_version: self.app_version, notes, fonts, assets: self.assets },
+            report: Lbrn2Report {
+                app_version: self.app_version,
+                notes,
+                fonts,
+                assets: self.assets,
+                project: self.project,
+            },
         }
     }
 }
@@ -695,6 +892,87 @@ fn proposal(index: u32, acc: &SettingAcc) -> (Option<OperationDraft>, Vec<Assump
         _ => OperationMode::Line { kerf: Kerf::NONE },
     };
     (Some(OperationDraft { name, mode, settings, output_enabled: false }), assumptions)
+}
+
+/// `ditherMode` names of LightBurn's image modes → our render modes. The *names* are LightBurn's
+/// UI vocabulary and only `grayscale` is seen in a research fixture; the parameters of the
+/// thresholded and screened modes are our defaults. Every use is listed as an assumption.
+fn dither_render(name: &str) -> Option<(ImageRender, Option<&'static str>)> {
+    Some(match name {
+        "grayscale" => (ImageRender::Grayscale, None),
+        "threshold" => (ImageRender::Dither(DitherMode::Threshold { level: 128 }), Some("threshold level 128")),
+        "dither" => (ImageRender::Dither(DitherMode::FloydSteinberg), Some("Floyd-Steinberg error diffusion")),
+        "atkinson" => (ImageRender::Dither(DitherMode::Atkinson), Some("Atkinson error diffusion")),
+        "stucki" => (ImageRender::Dither(DitherMode::Stucki), Some("Stucki error diffusion")),
+        "jarvis" => (ImageRender::Dither(DitherMode::Jarvis), Some("Jarvis error diffusion")),
+        "ordered" => (ImageRender::Dither(DitherMode::Ordered { size: 4 }), Some("ordered dithering, 4 x 4 matrix")),
+        "newsprint" => (ImageRender::Dither(DitherMode::Newsprint), Some("45 degree round-dot screen")),
+        "halftone" => (ImageRender::Dither(DitherMode::Halftone), Some("round-dot halftone screen")),
+        "sketch" => (ImageRender::Dither(DitherMode::Sketch { level: 128 }), Some("edge lines, strength 128")),
+        _ => return None,
+    })
+}
+
+/// The image-mode proposal of an image cut setting, the assumptions it needed, and the name of
+/// an invalid value to report (`ditherMode=…` for a mode we cannot map).
+fn image_proposal(index: u32, acc: &SettingAcc) -> (Option<ImageProposal>, Vec<Assumption>, Option<String>) {
+    let context = format!("CutSetting_Img#{index}");
+    let mut assumptions = Vec::new();
+    let mut assume = |field: &'static str, value: String| {
+        assumptions.push(Assumption { field, value, context: context.clone() });
+    };
+    let num = |k: &str| acc.values.get(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
+    let (Some(speed), Some(max)) = (num("speed"), num("maxPower")) else { return (None, assumptions, None) };
+    let min = num("minPower").unwrap_or_else(|| {
+        assume("minPower", format!("{max} (= maxPower)"));
+        max
+    });
+    let passes = match num("numPasses") {
+        Some(v) if v >= 1.0 && v.fract() == 0.0 && v <= f64::from(u32::MAX) => v as u32,
+        _ => {
+            assume("numPasses", "1".to_owned());
+            1
+        }
+    };
+    let interval = num("interval").filter(|v| *v > 0.0).unwrap_or_else(|| {
+        assume("interval", format!("{DEFAULT_INTERVAL_MM} mm"));
+        DEFAULT_INTERVAL_MM
+    });
+    let dither_name = acc.values.get("ditherMode").cloned();
+    let mut invalid = None;
+    let render = match dither_name.as_deref() {
+        Some(name) => match dither_render(name) {
+            Some((render, how)) => {
+                if let Some(how) = how {
+                    assume("ditherMode", format!("{name} = {how} (name table not verified against LightBurn)"));
+                }
+                Some(render)
+            }
+            None => {
+                invalid = Some(format!("ditherMode={name}"));
+                None
+            }
+        },
+        None => {
+            assume("ditherMode", "grayscale (not in the file)".to_owned());
+            Some(ImageRender::Grayscale)
+        }
+    };
+    let name = acc.values.get("name").cloned().unwrap_or_else(|| format!("C{index:02}"));
+    (
+        Some(ImageProposal {
+            name,
+            dither_name,
+            render,
+            interval_mm: interval,
+            speed_mm_s: speed,
+            min_power: min,
+            max_power: max,
+            passes,
+        }),
+        assumptions,
+        invalid,
+    )
 }
 
 fn parse_verts(text: &str) -> Option<Vec<Vertex>> {
@@ -854,6 +1132,29 @@ impl Cursor<'_> {
 }
 
 impl Lbrn2Draft {
+    /// The operation for an image cut setting once its bitmap exists as an asset (`source` is
+    /// the stored image's hash). Output stays disabled; `None` for an unknown layer, an image
+    /// mode we cannot map or values the process model rejects.
+    pub fn image_operation(&self, index: u32, source: ContentHash) -> Option<OperationDraft> {
+        let p = self.cut_settings.iter().find(|p| p.index == index)?;
+        let img = p.image.as_ref()?;
+        let interval = Length::from_mm(img.interval_mm).ok()?;
+        let settings = ImageSettings::new(source, interval, interval, img.render?).ok()?;
+        let process = ProcessSettings {
+            speed: Speed::mm_per_s(img.speed_mm_s).ok()?,
+            power: PowerRange::new(PowerPercent::new(img.min_power).ok()?, PowerPercent::new(img.max_power).ok()?)
+                .ok()?,
+            passes: Passes::new(img.passes).ok()?,
+            air_assist: false,
+        };
+        Some(OperationDraft {
+            name: img.name.clone(),
+            mode: OperationMode::Image(settings),
+            settings: process,
+            output_enabled: false,
+        })
+    }
+
     /// The geometry commit (one undo step), like the SVG/DXF route. `asset` holds the original
     /// file bytes.
     pub fn geometry_command(&self, asset: ContentHash) -> Result<GeometryCommand, ImportError> {
