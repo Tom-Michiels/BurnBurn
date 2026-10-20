@@ -1,0 +1,300 @@
+//! W2-L1 (bewerken), native: Cut / Copy / Paste through the responder chain onto an NSPasteboard
+//! under BurnBurn's own type, and Archief ▸ Recente projecten (menu entries, stored file, Wis menu).
+//!
+//! Safety: the app uses a private, uniquely named pasteboard and no recent-projects file other than
+//! a fresh temp folder; the test checks that the user's general pasteboard was not touched.
+
+use std::process::ExitCode;
+
+#[cfg(target_os = "macos")]
+mod common;
+
+#[cfg(not(target_os = "macos"))]
+fn main() -> ExitCode {
+    println!("clipboard_and_recents: SKIPPED (not macOS; not a pass)");
+    ExitCode::SUCCESS
+}
+
+#[cfg(target_os = "macos")]
+fn main() -> ExitCode {
+    let a = common::report("pasteboard_roundtrip_on_a_private_pasteboard", pasteboard_roundtrip());
+    if a != ExitCode::SUCCESS {
+        return a;
+    }
+    let b = common::report("edit_menu_acts_through_the_responder_chain_on_the_private_pasteboard", edit_chain());
+    if b != ExitCode::SUCCESS {
+        return b;
+    }
+    let c = common::report("recent_projects_menu_follows_the_stored_list", recents());
+    if c != ExitCode::SUCCESS {
+        return c;
+    }
+    common::report("arrange_and_view_menus_act_on_the_selection_and_the_view", arrange_and_view())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+fn pasteboard_roundtrip() -> Result<(), String> {
+    use burnburn_macos::appkit::clipboard::{
+        has_clipboard, private_pasteboard, read_clipboard, read_clipboard_limited, write_clipboard,
+    };
+    use common::expect;
+    use objc2_app_kit::NSPasteboardTypeString;
+
+    let (a, b) = (private_pasteboard(), private_pasteboard());
+    expect(|| "a fresh pasteboard holds nothing of ours".into(), !has_clipboard(&a) && read_clipboard(&a).is_none())?;
+    let payload = vec![0u8, 1, 2, 255, 128, 0];
+    write_clipboard(&a, &payload)?;
+    expect(|| "has our type after a write".into(), has_clipboard(&a))?;
+    expect(|| "the bytes survive, zeros included".into(), read_clipboard(&a).as_deref() == Some(payload.as_slice()))?;
+    expect(|| "another pasteboard is independent".into(), !has_clipboard(&b))?;
+
+    write_clipboard(&a, &[9])?;
+    expect(|| "a second write replaces the first".into(), read_clipboard(&a) == Some(vec![9]))?;
+
+    write_clipboard(&a, &[7u8; 16])?;
+    expect(
+        || "a payload over the limit comes back empty, not truncated".into(),
+        read_clipboard_limited(&a, 8) == Some(Vec::new()),
+    )?;
+    expect(|| "at the limit it is read".into(), read_clipboard_limited(&a, 16).map(|v| v.len()) == Some(16))?;
+
+    // Text from another app is not ours.
+    a.clearContents();
+    // SAFETY: AppKit's constant pasteboard type name.
+    let string_type = unsafe { NSPasteboardTypeString };
+    a.setString_forType(&objc2_foundation::NSString::from_str("hello"), string_type);
+    expect(|| "plain text is not a BurnBurn clipboard".into(), !has_clipboard(&a) && read_clipboard(&a).is_none())?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+fn edit_chain() -> Result<(), String> {
+    use burnburn_macos::appkit::clipboard::{general_pasteboard, has_clipboard, read_clipboard, write_clipboard};
+    use burnburn_presentation::MessageKey;
+    use common::expect;
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2::{Message, msg_send, sel};
+    use objc2_app_kit::{NSMenuItem, NSView};
+
+    let general_before = general_pasteboard().changeCount();
+    let s = common::start()?;
+    let doc = s.new_document()?;
+    s.draw_rectangle(doc, (0.0, 0.0), (120.0, 80.0))?;
+    let count = |s: &common::Session| s.doc(doc).map_or(0, |d| d.objects.len());
+    expect(|| "one rectangle".into(), count(&s) == 1)?;
+    let canvas: Retained<NSView> = s.app.with_window(doc, |w| w.canvas_view.retain()).ok_or("no canvas")?;
+    let window = s.app.window(doc).ok_or("no window")?;
+    window.makeFirstResponder(Some(&canvas));
+
+    // The Edit items have no target of their own: they reach the first responder.
+    let item = |action| -> Result<Retained<NSMenuItem>, String> {
+        let menu = s.app.menu();
+        for i in 0..menu.numberOfItems() {
+            let Some(sub) = menu.itemAtIndex(i).and_then(|i| i.submenu()) else { continue };
+            // SAFETY: a plain search of the menu's items by action selector (no target).
+            let index = unsafe { sub.indexOfItemWithTarget_andAction(None, Some(action)) };
+            if index >= 0 {
+                return sub.itemAtIndex(index).ok_or_else(|| "item vanished".to_owned());
+            }
+        }
+        Err(format!("no Edit item for {action:?}"))
+    };
+    let valid = |action| -> Result<bool, String> {
+        let it = item(action)?;
+        // SAFETY: `validateMenuItem:` takes the item and returns BOOL, as NSMenu calls it.
+        Ok(unsafe { msg_send![&*canvas, validateMenuItem: &*it] })
+    };
+    let perform = |action| -> bool {
+        // SAFETY: `tryToPerform:with:` sends the action to the responder if it responds.
+        unsafe { msg_send![&*canvas, tryToPerform: action, with: None::<&AnyObject>] }
+    };
+    expect(|| "Copy is enabled with a selection".into(), valid(sel!(copy:))? && valid(sel!(cut:))?)?;
+    expect(|| "Paste is enabled".into(), valid(sel!(paste:))? && valid(sel!(pasteInPlace:))?)?;
+
+    // Copy: the bytes land on the (private) pasteboard, the document is unchanged.
+    expect(|| "copy: reaches the canvas".into(), perform(sel!(copy:)))?;
+    let bytes = read_clipboard(s.app.pasteboard()).ok_or("Copy wrote nothing on the pasteboard")?;
+    expect(|| "non-empty payload".into(), !bytes.is_empty())?;
+    expect(|| "Copy does not change the document".into(), count(&s) == 1)?;
+
+    // Paste reads the pasteboard: one more object, one undo step.
+    expect(|| "paste: reaches the canvas".into(), perform(sel!(paste:)))?;
+    s.pump(0.1);
+    expect(|| format!("two objects after Paste, got {}", count(&s)), count(&s) == 2)?;
+    expect(|| "paste in place".into(), perform(sel!(pasteInPlace:)))?;
+    s.pump(0.1);
+    expect(|| format!("three objects after Paste in Place, got {}", count(&s)), count(&s) == 3)?;
+
+    // Another process may have put something else under our type: reported, nothing applied.
+    write_clipboard(s.app.pasteboard(), b"not a burnburn clipboard")?;
+    let before = s.doc(doc).ok_or("no document")?.revision;
+    expect(|| "paste with damaged data".into(), perform(sel!(paste:)))?;
+    s.pump(0.1);
+    let after = s.doc(doc).ok_or("no document")?;
+    expect(|| "a damaged payload changes nothing".into(), after.revision == before && count(&s) == 3)?;
+    let status = s.app.with_window(doc, |w| w.status_label.stringValue().to_string()).unwrap_or_default();
+    expect(
+        || format!("the unreadable clipboard is reported in the window, status {status:?}"),
+        status
+            == burnburn_macos::l10n::message(MessageKey::ClipboardUnreadable, burnburn_macos::l10n::Locale::Nl)
+                .unwrap_or_default(),
+    )?;
+
+    // Cut removes the selection and fills the pasteboard again.
+    expect(|| "cut:".into(), perform(sel!(cut:)))?;
+    s.pump(0.1);
+    expect(|| format!("two objects after Cut, got {}", count(&s)), count(&s) == 2)?;
+    expect(|| "Cut refilled the pasteboard".into(), read_clipboard(s.app.pasteboard()).is_some_and(|b| b.len() > 24))?;
+
+    // Without our type on the pasteboard, Paste uses the last copy the controller holds.
+    s.app.pasteboard().clearContents();
+    expect(|| "pasteboard is empty".into(), !has_clipboard(s.app.pasteboard()))?;
+    expect(|| "paste from the controller's copy".into(), perform(sel!(paste:)))?;
+    s.pump(0.1);
+    expect(|| format!("three objects again, got {}", count(&s)), count(&s) == 3)?;
+
+    expect(
+        || "the user's general pasteboard was never touched".into(),
+        general_pasteboard().changeCount() == general_before,
+    )?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn recents() -> Result<(), String> {
+    use burnburn_macos::adapter::{MenuItem, menu_tag};
+    use burnburn_macos::recent::{read_recent_projects, write_recent_projects};
+    use common::expect;
+    use std::path::PathBuf;
+
+    let dir = std::env::temp_dir().join(format!("burnburn-recents-native-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("BurnBurn").join("recent-projects.json");
+    let stored: Vec<PathBuf> = vec![dir.join("gone-a.burnburn"), dir.join("gone-b.burnburn")];
+    write_recent_projects(&file, &stored).map_err(|e| e.to_string())?;
+
+    let f = file.clone();
+    let s = common::start_with(move |o| o.recent_projects_file = Some(f))?;
+
+    // The list read at start is in the menu, most recent first, with Wis menu below.
+    let titles = |s: &common::Session| -> Vec<(String, bool)> {
+        let menu = s.app.recent_menu();
+        (0..menu.numberOfItems())
+            .filter_map(|i| menu.itemAtIndex(i))
+            .filter(|i| !i.isSeparatorItem())
+            .map(|i| (i.title().to_string(), i.isEnabled()))
+            .collect()
+    };
+    let (_, _) = (menu_tag(MenuItem::ClearRecent), 0);
+    s.pump(0.1);
+    s.app.recent_menu().update();
+    let shown = titles(&s);
+    expect(
+        || format!("menu shows both files and Wis menu, got {shown:?}"),
+        shown == [("gone-a.burnburn".into(), true), ("gone-b.burnburn".into(), true), ("Wis menu".into(), true)],
+    )?;
+
+    // Choosing an entry whose file is gone forgets it: menu and stored file follow.
+    let doc_before = s.app.open_documents().len();
+    s.menu(MenuItem::Recent(0))?;
+    s.wait(3.0, "the missing project to be forgotten", || titles(&s).len() == 2)?;
+    s.app.recent_menu().update();
+    let shown = titles(&s);
+    expect(|| format!("one file left, got {shown:?}"), shown[0].0 == "gone-b.burnburn")?;
+    let on_disk = read_recent_projects(&file);
+    expect(|| format!("stored list follows: {on_disk:?}"), on_disk == [dir.join("gone-b.burnburn")])?;
+    expect(|| "no window opened for a missing file".into(), s.app.open_documents().len() == doc_before)?;
+
+    // Wis menu empties both and disables itself.
+    s.menu(MenuItem::ClearRecent)?;
+    s.pump(0.1);
+    s.app.recent_menu().update();
+    let shown = titles(&s);
+    expect(|| format!("only a disabled Wis menu, got {shown:?}"), shown == [("Wis menu".to_owned(), false)])?;
+    expect(|| "stored list is empty".into(), read_recent_projects(&file).is_empty())?;
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// The menu bar of this round: headings, no shortcut used twice, Arrange acting on the selection
+/// through the real menu, and the checked Beeld ▸ Draadmodel redrawing the canvas.
+#[cfg(target_os = "macos")]
+fn arrange_and_view() -> Result<(), String> {
+    use burnburn_macos::adapter::MenuItem;
+    use burnburn_presentation::CommandKey;
+    use common::expect;
+    use std::collections::HashSet;
+
+    let s = common::start()?;
+    let headings: Vec<String> = (0..s.app.menu().numberOfItems())
+        .filter_map(|i| s.app.menu().itemAtIndex(i))
+        .map(|i| i.title().to_string())
+        .collect();
+    expect(
+        || format!("menu bar {headings:?}"),
+        headings
+            == ["BurnBurn", "Archief", "Wijzig", "Schikken", "Gereedschap", "Beeld", "Schets", "Productie"]
+                .map(String::from),
+    )?;
+
+    // Every key equivalent is used once (a duplicate would silently shadow an item).
+    let mut seen = HashSet::new();
+    let mut stack = vec![s.app.menu().itemArray()];
+    while let Some(items) = stack.pop() {
+        for item in items.iter() {
+            if let Some(sub) = item.submenu() {
+                stack.push(sub.itemArray());
+            }
+            let key = item.keyEquivalent().to_string();
+            if key.is_empty() {
+                continue;
+            }
+            let combo = (key, item.keyEquivalentModifierMask().0);
+            let described = format!("shortcut {combo:?} used twice (second: {:?})", item.title());
+            expect(|| described, seen.insert(combo))?;
+        }
+    }
+
+    let doc = s.new_document()?;
+    s.draw_rectangle(doc, (0.0, 0.0), (40.0, 30.0))?;
+    s.draw_rectangle(doc, (60.0, 0.0), (100.0, 30.0))?;
+    s.menu(MenuItem::Command(CommandKey::ToolSelect))?;
+    let enabled = |key| s.menu_item_state(MenuItem::Command(key)).map(|(e, _)| e);
+    expect(|| "Group needs two selected objects".into(), enabled(CommandKey::Group) == Some(false))?;
+    s.app.dispatch(burnburn_presentation::UiIntent::Invoke { document: Some(doc), command: CommandKey::SelectAll });
+    s.pump(0.1);
+    expect(
+        || "with two selected: Group, Align and Distribute-capable commands are on".into(),
+        enabled(CommandKey::Group) == Some(true) && enabled(CommandKey::AlignLeft) == Some(true),
+    )?;
+    let title = s.menu_item_state(MenuItem::Command(CommandKey::Group)).map(|(_, t)| t);
+    expect(|| format!("Group title {title:?}"), title.as_deref() == Some("Groepeer"))?;
+    s.menu(MenuItem::Command(CommandKey::Group))?;
+    s.pump(0.1);
+    let grouped = s.doc(doc).ok_or("no document")?.objects.iter().all(|o| !o.groups.is_empty());
+    expect(|| "the menu grouped both rectangles".into(), grouped)?;
+    expect(|| "Ungroup is now on".into(), enabled(CommandKey::Ungroup) == Some(true))?;
+
+    // Beeld ▸ Draadmodel: a check mark, a redraw, no document change.
+    let wire = MenuItem::Command(CommandKey::ViewWireframe);
+    expect(|| "wireframe starts off".into(), s.menu_item_checked(wire) == Some(false))?;
+    let (frames, revision) =
+        (s.app.with_window(doc, |w| w.canvas_frames).unwrap_or(0), s.doc(doc).ok_or("no document")?.revision);
+    s.menu(wire)?;
+    s.pump(0.2);
+    expect(|| "wireframe is checked".into(), s.menu_item_checked(wire) == Some(true))?;
+    expect(|| "view model says wireframe".into(), s.doc(doc).is_some_and(|d| d.wireframe))?;
+    let after = s.app.with_window(doc, |w| w.canvas_frames).unwrap_or(0);
+    let attached = s
+        .app
+        .with_window(doc, |w| matches!(w.canvas_status, burnburn_macos::appkit::CanvasStatus::Attached))
+        .unwrap_or(false);
+    expect(|| format!("the canvas drew again ({frames} to {after} frames)"), !attached || after > frames)?;
+    expect(|| "a view setting is no document change".into(), s.doc(doc).is_some_and(|d| d.revision == revision))?;
+    s.menu(wire)?;
+    expect(|| "wireframe off again".into(), s.menu_item_checked(wire) == Some(false))?;
+    Ok(())
+}

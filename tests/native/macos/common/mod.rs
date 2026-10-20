@@ -52,6 +52,9 @@ pub fn start_with(change: impl FnOnce(&mut HostOptions)) -> Result<Session, Stri
         // No autosave tick and no recovery offer unless a test asks (never the user's folder).
         recovery_dir: None,
         autosave_interval_s: None,
+        // Never the user's clipboard or recent-projects list.
+        private_pasteboard: true,
+        recent_projects_file: None,
     };
     change(&mut options);
     let app = HostApp::new(mtm, Arc::new(burnburn_io::std_fs::StdFileSystem), options);
@@ -109,6 +112,13 @@ impl Session {
         menu.update();
         let it: Retained<NSMenuItem> = menu.itemAtIndex(index)?;
         Some((it.isEnabled(), it.title().to_string()))
+    }
+
+    /// Whether the item shows a check mark after menu validation.
+    pub fn menu_item_checked(&self, item: MenuItem) -> Option<bool> {
+        let (menu, index) = find_item(self.app.menu(), menu_tag(item))?;
+        menu.update();
+        Some(menu.itemAtIndex(index)?.state() == objc2_app_kit::NSControlStateValueOn)
     }
 
     /// A mouse event at a canvas position in logical points (top-left origin), sent to the window.
@@ -197,7 +207,7 @@ impl Session {
     }
 }
 
-/// The submenu and index of the item with `tag`.
+/// The submenu and index of the item with `tag`, searching submenus at any depth.
 fn find_item(menu: &NSMenu, tag: isize) -> Option<(Retained<NSMenu>, isize)> {
     for i in 0..menu.numberOfItems() {
         let sub = menu.itemAtIndex(i)?.submenu();
@@ -205,6 +215,9 @@ fn find_item(menu: &NSMenu, tag: isize) -> Option<(Retained<NSMenu>, isize)> {
             let index = sub.indexOfItemWithTag(tag);
             if index >= 0 {
                 return Some((sub, index));
+            }
+            if let Some(found) = find_item(&sub, tag) {
+                return Some(found);
             }
         }
     }

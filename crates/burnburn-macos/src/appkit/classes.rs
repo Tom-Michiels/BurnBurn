@@ -23,18 +23,18 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
-use burnburn_presentation::FieldKey;
+use burnburn_presentation::{CommandKey, FieldKey};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
-use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
+use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAccessibilityElement, NSAccessibilityLayoutAreaRole, NSAccessibilityLayoutItemRole,
-    NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOn,
-    NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation, NSPopUpButton, NSResponder,
-    NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate, NSTextField,
-    NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem, NSTrackingArea,
-    NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
+    NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
+    NSPopUpButton, NSResponder, NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource,
+    NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem,
+    NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -43,7 +43,9 @@ use objc2_foundation::{
 
 use super::app::HostApp;
 use super::canvas::Canvas;
-use crate::adapter::{CommitCause, MouseButton, MousePhase, NativeEvent, menu_enabled, menu_item, menu_title};
+use crate::adapter::{
+    CommitCause, MouseButton, MousePhase, NativeEvent, menu_checked, menu_enabled_with_recent, menu_item, menu_title,
+};
 use crate::l10n::{HostText, host_text};
 use crate::panels::{LayerColumn, OperationLine, SketchColumn, SketchLine};
 use crate::text_input::Composer;
@@ -121,8 +123,13 @@ define_class!(
                     return false;
                 };
                 let vm = app.view();
-                menu_item_obj.setTitle(&NSString::from_str(&menu_title(item, &vm, app.locale())));
-                menu_enabled(item, &vm)
+                // Recent-project entries keep the file name they were built with.
+                let title = menu_title(item, &vm, app.locale());
+                if !title.is_empty() {
+                    menu_item_obj.setTitle(&NSString::from_str(&title));
+                }
+                menu_item_obj.setState(if menu_checked(item, &vm) { NSControlStateValueOn } else { NSControlStateValueOff });
+                menu_enabled_with_recent(item, &vm, app.recent_count())
             })
         }
     }
@@ -1112,6 +1119,29 @@ define_class!(
             });
         }
 
+        /// Edit ▸ Knip, Kopieer, Plak, Plak op plaats go through the responder chain (nil target),
+        /// like Select All: a focused text field keeps normal text editing; on the canvas they
+        /// act on the selection and on the pasteboard.
+        #[unsafe(method(cut:))]
+        fn cut(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("cut:", (), || self.edit_command(CommandKey::Cut));
+        }
+
+        #[unsafe(method(copy:))]
+        fn copy(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("copy:", (), || self.edit_command(CommandKey::Copy));
+        }
+
+        #[unsafe(method(paste:))]
+        fn paste(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("paste:", (), || self.edit_command(CommandKey::Paste));
+        }
+
+        #[unsafe(method(pasteInPlace:))]
+        fn paste_in_place(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("pasteInPlace:", (), || self.edit_command(CommandKey::PasteInPlace));
+        }
+
         // ---- NSAccessibility: the canvas is a layout area, objects are layout items ----
 
         #[unsafe(method(isAccessibilityElement))]
@@ -1140,6 +1170,32 @@ define_class!(
     }
 
     unsafe impl NSObjectProtocol for CanvasView {}
+
+    /// Enablement of the responder-chain Edit items, from the view model (and, for Paste, the
+    /// pasteboard). Anything else that reaches the canvas stays enabled as AppKit would have it.
+    unsafe impl NSMenuItemValidation for CanvasView {
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, menu_item: &NSMenuItem) -> bool {
+            ffi_guard("validateMenuItem:", false, || {
+                let Some(app) = self.ivars().app.upgrade() else { return false };
+                let Some(action) = menu_item.action() else { return true };
+                let command = if action == sel!(cut:) {
+                    CommandKey::Cut
+                } else if action == sel!(copy:) {
+                    CommandKey::Copy
+                } else if action == sel!(paste:) {
+                    CommandKey::Paste
+                } else if action == sel!(pasteInPlace:) {
+                    CommandKey::PasteInPlace
+                } else if action == sel!(selectAll:) {
+                    CommandKey::SelectAll
+                } else {
+                    return true;
+                };
+                app.edit_item_enabled(command)
+            })
+        }
+    }
 
     unsafe impl NSTextInputClient for CanvasView {
         #[unsafe(method(insertText:replacementRange:))]
@@ -1308,6 +1364,17 @@ impl CanvasView {
     fn resized(&self) {
         if let Some(app) = self.ivars().app.upgrade() {
             app.canvas_resized(self.ivars().document);
+        }
+    }
+
+    /// Cut, Copy and the two pastes of the canvas.
+    fn edit_command(&self, command: CommandKey) {
+        let Some(app) = self.ivars().app.upgrade() else { return };
+        let document = self.ivars().document;
+        match command {
+            CommandKey::Paste => app.paste(document, false),
+            CommandKey::PasteInPlace => app.paste(document, true),
+            _ => app.clipboard_command(document, command),
         }
     }
 

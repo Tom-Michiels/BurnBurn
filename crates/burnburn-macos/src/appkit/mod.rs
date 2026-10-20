@@ -11,6 +11,7 @@ mod app;
 #[allow(unsafe_code)]
 pub mod camera;
 mod canvas;
+pub mod clipboard;
 // `define_class!` and `msg_send!` need unsafe; the invariants are in the module's doc comment.
 #[allow(unsafe_code)]
 mod classes;
@@ -27,6 +28,7 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{HostApp, HostOptions, QuitOutcome, WindowParts};
+pub use canvas::canvas_packet;
 pub use toolstrip::{ToolStrip, image_pixels};
 pub use window::CanvasStatus;
 
