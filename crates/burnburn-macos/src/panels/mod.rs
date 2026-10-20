@@ -15,6 +15,7 @@ use crate::l10n::{HostText, Locale, host_text};
 mod camera;
 mod cut_settings;
 mod import;
+mod inspector;
 mod machine;
 mod operations;
 mod plan;
@@ -23,6 +24,7 @@ mod sketch;
 pub use camera::*;
 pub use cut_settings::*;
 pub use import::*;
+pub use inspector::*;
 pub use machine::*;
 pub use operations::*;
 pub use plan::*;
@@ -42,6 +44,28 @@ pub fn sketch_toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
     SKETCH_TOOLBAR.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
 }
 
+/// Segments of the toolbar's Uitlijnen control (momentary), left to right.
+pub const ARRANGE_TOOLBAR: [CommandKey; 8] = [
+    CommandKey::AlignLeft,
+    CommandKey::AlignCenterX,
+    CommandKey::AlignRight,
+    CommandKey::AlignTop,
+    CommandKey::AlignCenterY,
+    CommandKey::AlignBottom,
+    CommandKey::DistributeHorizontal,
+    CommandKey::DistributeVertical,
+];
+
+/// The command for Uitlijnen toolbar segment `index`.
+pub fn arrange_toolbar_command(index: isize) -> Option<CommandKey> {
+    ARRANGE_TOOLBAR.get(usize::try_from(index).ok()?).copied()
+}
+
+/// Enablement per Uitlijnen toolbar segment (same source as `validateMenuItem:`).
+pub fn arrange_toolbar_enabled(vm: &AppViewModel) -> Vec<bool> {
+    ARRANGE_TOOLBAR.iter().map(|k| vm.commands.get(k).is_some_and(|c| c.enabled)).collect()
+}
+
 /// The commands of the sketch panel's button grid, row by row (relations, then Maat and Verwijder).
 pub const SKETCH_BUTTONS: [CommandKey; 10] = [
     CommandKey::SketchHorizontal,
@@ -56,14 +80,25 @@ pub const SKETCH_BUTTONS: [CommandKey; 10] = [
     CommandKey::SketchRemoveConstraint,
 ];
 
-/// Inspector fields, top to bottom.
-pub const INSPECTOR_FIELDS: [FieldKey; 5] =
-    [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height, FieldKey::Rotation];
+/// Inspector fields, top to bottom. Rotation, scale and shear are actions: they show their
+/// neutral value (0, 100, 0) and a commit applies the typed amount.
+pub const INSPECTOR_FIELDS: [FieldKey; 9] = [
+    FieldKey::X,
+    FieldKey::Y,
+    FieldKey::Width,
+    FieldKey::Height,
+    FieldKey::Rotation,
+    FieldKey::ScaleX,
+    FieldKey::ScaleY,
+    FieldKey::ShearX,
+    FieldKey::ShearY,
+];
 
 /// Unit shown after an inspector field's caption.
 pub fn field_unit(key: FieldKey, locale: Locale) -> &'static str {
     match key {
-        FieldKey::Rotation => host_text(HostText::UnitDegrees, locale),
+        FieldKey::Rotation | FieldKey::ShearX | FieldKey::ShearY => host_text(HostText::UnitDegrees, locale),
+        FieldKey::ScaleX | FieldKey::ScaleY => host_text(HostText::UnitPercent, locale),
         _ => host_text(HostText::Unit, locale),
     }
 }
