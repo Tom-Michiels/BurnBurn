@@ -1401,7 +1401,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         M::ObjectsLocked => {
             ("Vergrendelde objecten kunnen niet gewijzigd worden.", "Locked objects cannot be changed.")
         }
-        M::RdRefused(reason) => return Some(crate::panels::rd_refusal_text(reason, locale).to_owned()),
+        M::RdRefused(reason) => return Some(rd_refusal_text(reason, locale).to_owned()),
         M::VisualPlacementOnly => (
             "Camerabeeld is alleen een visuele plaatsingshulp, geen productiegeometrie.",
             "The camera image is only a visual placement aid, not production geometry.",
@@ -1409,6 +1409,53 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         _ => return None,
     };
     Some(pick(pair, locale))
+}
+
+/// The refusal of RD output in words.
+pub fn rd_refusal_text(reason: burnburn_presentation::RdRefusal, locale: Locale) -> &'static str {
+    use burnburn_presentation::RdRefusal;
+    let (nl, en) = match reason {
+        RdRefusal::CrossHatch => (
+            "Kruisarcering heeft nog geen bewezen Ruida-vorm: plan en voorvertoning bestaan, RD-uitvoer wordt geweigerd.",
+            "Cross-hatch has no proven Ruida form yet: the plan and preview exist, RD output is refused.",
+        ),
+        RdRefusal::DotMode => (
+            "Puntmodus (dwell) heeft nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "Dot (dwell) mode has no proven Ruida form yet: RD output is refused.",
+        ),
+        RdRefusal::RampLength => (
+            "Vermogensverloop (ramp) heeft nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "Power ramp has no proven Ruida form yet: RD output is refused.",
+        ),
+        RdRefusal::FocusOffset => (
+            "Focus-/Z-verschuiving heeft nog geen bewezen Ruida-vorm (zie docs/hardware/evidence-cam.md): RD-uitvoer wordt geweigerd.",
+            "Focus/Z offsets have no proven Ruida form yet (see docs/hardware/evidence-cam.md): RD output is refused.",
+        ),
+        RdRefusal::ScanAngle => (
+            "Schuine scanlijnen hebben nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "Angled scan lines have no proven Ruida form yet: RD output is refused.",
+        ),
+        RdRefusal::GrayscaleModulation => (
+            "Grijswaarden (vermogen per run) hebben nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "Grayscale (power per run) has no proven Ruida form yet: RD output is refused.",
+        ),
+        RdRefusal::TooManyParts => (
+            "Meer instellingenblokken dan het RD-formaat toelaat (128): RD-uitvoer wordt geweigerd.",
+            "More settings blocks than the RD format allows (128): RD output is refused.",
+        ),
+        RdRefusal::NegativeCoordinate => (
+            "Een coördinaat onder nul is niet bevestigd voor RD: RD-uitvoer wordt geweigerd.",
+            "A coordinate below zero is not confirmed for RD: RD output is refused.",
+        ),
+        _ => (
+            "Dit onderdeel heeft nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "This part has no proven Ruida form yet: RD output is refused.",
+        ),
+    };
+    match locale {
+        Locale::Nl => nl,
+        Locale::En => en,
+    }
 }
 
 /// The name of a machine-profile feature (capability lists, W3-UI-cam).
