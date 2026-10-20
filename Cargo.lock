@@ -307,6 +307,8 @@ dependencies = [
  "burnburn-render",
  "burnburn-ruida",
  "burnburn-runtime",
+ "burnburn-test-support",
+ "burnburn-text",
  "burnburn-types",
  "dispatch2",
  "objc2",

@@ -387,6 +387,13 @@ pub enum NativeEvent {
         response: isize,
     },
     /// OK in the geometry dialog (join, round corners, optimize): the typed value, unparsed.
+    /// A control of the text toolbar, the text-on-path sheet, the variable-text panel or the
+    /// barcode dialog (W3-UI-tekst): the slot it is and the value it reports.
+    TextPanel {
+        document: DocumentId,
+        slot: crate::panels::Slot,
+        value: crate::panels::SlotValue,
+    },
     GeometryDialogConfirmed {
         document: DocumentId,
         text: String,
@@ -734,6 +741,12 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::SketchParameterCommitted { document, name, text } => {
             match crate::panels::sketch_parameter_intent(vm, document, &name, &text) {
                 Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::TextPanel { document, slot, value } => {
+            match crate::panels::text_panel_intent(vm, document, slot, value) {
+                Some(intent) => intent,
                 None => return Reaction::Nothing,
             }
         }

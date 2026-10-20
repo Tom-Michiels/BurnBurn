@@ -74,6 +74,8 @@ pub use text_panel::{
     Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
+/// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).
+pub use burnburn_generators::JobClock;
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
     VariablePanelViewModel, VariableProblem,

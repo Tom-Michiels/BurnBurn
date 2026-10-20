@@ -1558,6 +1558,15 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         ],
     ));
     main.addItem(&submenu(
+        crate::panels::text_text(crate::panels::TextText::MenuText, locale),
+        vec![
+            plain(CommandKey::TextOnPath),
+            plain(CommandKey::ShapesConvertToPath),
+            sep(),
+            plain(CommandKey::BarcodeNew),
+        ],
+    ));
+    main.addItem(&submenu(
         t(HostText::MenuSketch),
         vec![
             plain(CommandKey::SketchNew),
