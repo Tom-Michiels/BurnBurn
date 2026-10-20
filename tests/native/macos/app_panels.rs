@@ -4,6 +4,8 @@
 //!
 //! Test names (one process, one scenario after the other): see `main`.
 
+#![allow(clippy::unwrap_used)] // fixtures built from constants outside the scenarios' own checks
+
 use std::process::ExitCode;
 
 #[cfg(target_os = "macos")]
