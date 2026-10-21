@@ -17,6 +17,7 @@ pub mod filters;
 pub mod ids;
 pub mod image;
 pub mod laser;
+pub mod menu;
 pub mod spec;
 
 use std::path::PathBuf;
@@ -125,6 +126,20 @@ pub fn on_confirmed(purpose: &ConfirmPurpose, yes: bool) -> PanelReaction {
     match (purpose, yes) {
         (ConfirmPurpose::DeleteControllerFile { intent }, true) => PanelReaction::Intent((**intent).clone()),
         _ => PanelReaction::Nothing,
+    }
+}
+
+/// A file dialog closed: the family that asked turns the answer into intents. Cancel (`None`) and
+/// a window that is gone send nothing.
+pub fn on_file_chosen(vm: &burnburn_presentation::AppViewModel, purpose: &FilePurpose, path: Chosen) -> PanelReaction {
+    match purpose {
+        FilePurpose::Diagnostics { .. } => laser::on_laser_file_chosen(purpose, path),
+        FilePurpose::SupportBundle { .. } => app::on_app_file_chosen(purpose, path),
+        FilePurpose::ImportDrawing { .. }
+        | FilePurpose::ReplaceImage { .. }
+        | FilePurpose::TraceImage { .. }
+        | FilePurpose::SaveProcessedBitmap { .. } => image::on_image_file_chosen(vm, purpose, path),
+        _ => files::on_files_file_chosen(vm, purpose, path),
     }
 }
 
