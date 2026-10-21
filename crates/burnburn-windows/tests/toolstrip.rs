@@ -7,7 +7,9 @@
 
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, PanelId, ToolCatalog, UiIntent};
 use burnburn_types::DocumentId;
-use burnburn_windows::forms::toolstrip::{StripButton, StripPanel, strip, tool_intent, variant_intent};
+use burnburn_windows::forms::toolstrip::{
+    StripAction, StripButton, StripPanel, strip, strip_layout, tool_intent, variant_intent,
+};
 use burnburn_windows::l10n::Locale;
 use burnburn_windows::toolbar::{panel_title, tool_label};
 
@@ -99,4 +101,34 @@ fn choosing_a_tool_through_the_strip_activates_it_in_the_document() {
     let panels = strip(&h.view(), Locale::En);
     let line = all_buttons(&panels).into_iter().find(|b| b.id == "sketch.line").unwrap().selected;
     assert!(line, "the line tool is the selected one now");
+}
+
+#[test]
+fn the_strip_flows_over_rows_without_overlap_and_a_group_gets_a_drop_down() {
+    let (h, _) = window();
+    let panels = strip(&h.view(), Locale::En);
+    for width in [400, 800, 1600] {
+        let l = strip_layout(&panels, width, 1.0);
+        assert!(!l.controls.is_empty() && l.height > 0);
+        for (i, a) in l.controls.iter().enumerate() {
+            assert!(a.rect.x >= 0 && a.rect.right() <= width, "{width}: {:?}", a.rect);
+            assert!(a.rect.bottom() <= l.height);
+            for b in l.controls.iter().skip(i + 1) {
+                assert!(!a.rect.overlaps(&b.rect), "{width}: {:?} {:?}", a.rect, b.rect);
+            }
+        }
+    }
+    let narrow = strip_layout(&panels, 400, 1.0);
+    let wide = strip_layout(&panels, 1600, 1.0);
+    assert!(narrow.height > wide.height, "a narrow window needs more rows");
+    // Every tool of the face is a control; every group with variants has one drop-down control.
+    let tools = narrow.controls.iter().filter(|c| matches!(c.action, StripAction::Tool(_))).count();
+    let faces: usize = panels.iter().map(|p| p.groups.len()).sum();
+    assert_eq!(tools, faces);
+    let drops = narrow.controls.iter().filter(|c| matches!(c.action, StripAction::Dropdown { .. })).count();
+    let with_variants: usize =
+        panels.iter().flat_map(|p| &p.groups).filter(|g| g.variants.len() > 1).count();
+    assert_eq!(drops, with_variants);
+    // The DPI scales the rows.
+    assert!(strip_layout(&panels, 800, 2.0).height > strip_layout(&panels, 800, 1.0).height);
 }
