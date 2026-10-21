@@ -48,3 +48,9 @@ Merge: 23bcd3a (golf 3 op main, barcodetests) is in de branch gemerged.
 | E04 `w4_edit::tab_steps_through_the_snap_candidates_and_the_gesture_uses_the_one_shown` | — | geen eigen rode run: de eerste run faalde op een compilefout (ontbrekend veld), daarna op een fout in mijn testvolgorde; de presentatie-assert is dus alleen groen waargenomen | → ok | Tab in `AppController::key`, `Session.last_pointer` |
 
 Handmatig/onbevestigd E04: of de Tab-toets het canvas bereikt (AppKit key-view loop) is niet in de native test bewezen; de adaptervertaling (`key_code::TAB` → `CanvasKey::Tab`) wel hoofdloos gebouwd.
+| P07 `burnburn-io/tests/profile_library::*` (4 tests: roundtrip, ontbrekend, nieuwer schema/beschadigd/gewijzigde waarde, atomair + dubbele machine) | `profile_library` was een stub (`decode` gaf `NotAProject`, `save` schreef niets) | `cargo test -p burnburn-io --locked --test profile_library` → 3 FAILED (unwrap op `NotAProject`/`Ok`-zonder-bestand), 1 ok | → 4 ok | nieuw io-bestand `profiles.json` (`burnburn-profile-library`, schema 1) |
+| P07 `w4_profiles::profiles_from_a_bundle_are_kept_outside_the_session` (+ `a_damaged_profile_library_is_kept_and_never_overwritten`) | geen `profiles.json` na import | `cargo test -p burnburn-presentation --locked --test w4_profiles` → 1 FAILED (`the profile library file was written`), de beschadigd-test was al groen (wacht) | → 2 ok; `files_bundle` ok | `FilesTask::SaveProfileLibrary`, `Loaded` profielen in `LoadLibraries` |
+
+Beperking P07: alleen profielen die een bundel *toevoegt* gaan naar `profiles.json`. Een bundelprofiel dat het actieve apparaat
+*vervangt* werkt in de sessie (bestaand gedrag) maar wordt niet bewaard: de host bepaalt het actieve profiel (`SetMachineProfile`).
+Het native selecteren van een bewaard profiel als actief apparaat (host) is niet gebouwd.

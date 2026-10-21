@@ -22,7 +22,9 @@ use burnburn_types::{CancellationSource, DocumentId, RevisionId, TaskId};
 use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
-use crate::files_task::{ART_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE};
+use crate::files_task::{
+    ART_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
+};
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
 
@@ -39,6 +41,7 @@ pub(super) enum FilesJob {
     LoadLibraries,
     SaveMaterials,
     SaveArt,
+    SaveProfiles,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -115,6 +118,9 @@ pub(super) struct Libraries {
     art_busy: usize,
     /// Machine profiles a bundle brought in (the active machine is kept by the controller).
     profiles: Vec<Arc<burnburn_job::MachineProfile>>,
+    /// The profile library file could not be read: it is kept as it is and never written (P07).
+    profiles_unreadable: bool,
+    profile_writer: Writer,
     /// Colours of the layer palette, slot by slot (the host owns the palette).
     palette: Vec<[u8; 3]>,
 }
@@ -182,6 +188,7 @@ impl AppController {
             FilesJob::LoadLibraries => self.libraries_loaded(outcome),
             FilesJob::SaveMaterials => self.material_saved(outcome),
             FilesJob::SaveArt => self.art_saved(outcome),
+            FilesJob::SaveProfiles => self.profiles_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -240,6 +247,7 @@ impl AppController {
         match job {
             FilesJob::SaveMaterials => self.libs.material_writer.in_flight = Some(id),
             FilesJob::SaveArt => self.libs.art_writer.in_flight = Some(id),
+            FilesJob::SaveProfiles => self.libs.profile_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -249,7 +257,24 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { materials, art, thumbnails })) => {
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { profiles, materials, art, thumbnails })) => {
+                match profiles {
+                    // Profiles of this session (an import before the first read) stay; the file's win on equal ids.
+                    Loaded::Ready(stored) => {
+                        let session = std::mem::take(&mut self.libs.profiles);
+                        self.libs.profiles = stored.into_iter().map(Arc::new).collect();
+                        for p in session {
+                            if !self.libs.profiles.iter().any(|k| k.revision().id == p.revision().id) {
+                                self.libs.profiles.push(p);
+                            }
+                        }
+                    }
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.profiles_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match materials {
                     Loaded::Ready(library) => self.libs.materials = Some(library),
                     Loaded::Missing => self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id())),
@@ -295,6 +320,41 @@ impl AppController {
             self.libs.material_writer.dirty = false;
         }
         Vec::new()
+    }
+
+    /// Writes the profiles a bundle brought in when they changed and no write is running (P07).
+    pub(super) fn flush_profiles(&mut self) -> Vec<HostEffect> {
+        self.libs.profile_writer.dirty = true;
+        if self.libs.profile_writer.in_flight.is_some() || self.libs.profiles_unreadable {
+            return Vec::new();
+        }
+        let Some(dir) = self.libs.dir.clone() else { return Vec::new() };
+        let task = FilesTask::SaveProfileLibrary {
+            profiles: self.libs.profiles.iter().map(|p| (**p).clone()).collect(),
+            path: dir.join(PROFILE_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveProfiles) {
+            self.libs.profile_writer.dirty = false;
+        }
+        Vec::new()
+    }
+
+    fn profiles_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.profile_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.profile_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.profile_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.profile_writer.dirty && !self.libs.profile_writer.failed {
+            effects.extend(self.flush_profiles());
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
 
     /// Writes the art library when it changed and no write is running.
