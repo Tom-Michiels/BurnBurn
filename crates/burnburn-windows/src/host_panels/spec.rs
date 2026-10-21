@@ -30,6 +30,8 @@ pub mod notify {
     pub const CLOSED: u16 = 0x7006;
     /// The panel window lost the foreground (a held jog key must be released).
     pub const DEACTIVATED: u16 = 0x7007;
+    /// A key press while the panel waits for one (the shortcut editor): see [`super::PanelEvent::key`].
+    pub const KEY: u16 = 0x7008;
 }
 
 /// What a control is.
@@ -367,10 +369,21 @@ pub struct PanelEvent {
     pub click_px: Option<[f64; 2]>,
     /// For [`notify::BITMAP_CLICK`]: the control's client size in pixels.
     pub view_px: Option<[f64; 2]>,
+    /// For [`notify::KEY`]: the key that was pressed.
+    pub key: Option<KeyStroke>,
+}
+
+/// A key press as Windows reports it: the virtual-key code and the modifiers held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyStroke {
+    pub vk: u16,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
 }
 
 impl PanelEvent {
     pub fn click(id: u16, values: PanelValues) -> Self {
-        PanelEvent { id, code: notify::CLICKED, values, click_px: None, view_px: None }
+        PanelEvent { id, code: notify::CLICKED, values, ..PanelEvent::default() }
     }
 }

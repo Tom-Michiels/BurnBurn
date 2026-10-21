@@ -9,6 +9,7 @@
 //!
 //! **Command ids**: this lane owns `6000..=7999` of the `WM_COMMAND` id space ([`ids`]).
 
+pub mod app;
 pub mod camera;
 pub mod camera_port;
 pub mod files;
@@ -21,7 +22,7 @@ pub mod spec;
 use std::path::PathBuf;
 
 pub use spec::{
-    ControlKind, ControlPatch, ControlSpec, Metrics, PanelEvent, PanelSpec, PanelValues, Placement, Row, SpecDiff,
+    ControlKind, ControlPatch, ControlSpec, KeyStroke, Metrics, PanelEvent, PanelSpec, PanelValues, Placement, Row, SpecDiff,
     diff_specs, layout, notify,
 };
 
@@ -84,10 +85,10 @@ pub enum DialogRequest {
 /// What the host does besides sending intents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostRequest {
-    /// Show the family's panel window (creating it first) for the active document.
-    ShowPanel(Family),
-    /// Hide the family's panel window.
-    HidePanel(Family),
+    /// Show the panel window `(family, sheet code)` (creating it first) for the active document.
+    ShowSheet(Family, u8),
+    /// Hide that panel window.
+    HideSheet(Family, u8),
     /// Open the user manual in the default browser.
     OpenUrl(String),
     /// Show a modal message (About).

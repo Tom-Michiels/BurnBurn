@@ -102,12 +102,12 @@ pub fn laser_view(r: &mut Rig) -> LaserViewModel {
 
 /// A click on control `id`, with the values the panel holds.
 pub fn click(id: u16, values: PanelValues) -> PanelEvent {
-    PanelEvent { id, code: notify::CLICKED, values, click_px: None, view_px: None }
+    PanelEvent { id, code: notify::CLICKED, values, ..PanelEvent::default() }
 }
 
 /// A notification other than a click.
 pub fn event(id: u16, code: u16, values: PanelValues) -> PanelEvent {
-    PanelEvent { id, code, values, click_px: None, view_px: None }
+    PanelEvent { id, code, values, ..PanelEvent::default() }
 }
 
 pub fn texts(pairs: &[(u16, &str)]) -> PanelValues {
