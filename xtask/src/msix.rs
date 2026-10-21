@@ -129,10 +129,10 @@ pub fn appx_manifest(spec: &MsixSpec) -> String {
 /// Writes `AppxManifest.xml`, `Assets/*.png` and (optionally) the executable into `out_dir`.
 pub fn write_layout(spec: &MsixSpec, exe: Option<&Path>, out_dir: &Path) -> Result<PathBuf, String> {
     let io = |what: &str, p: &Path, e: std::io::Error| format!("{what} {}: {e}", p.display());
-    if let Some(exe) = exe {
-        if !exe.is_file() {
-            return Err(format!("no executable at {}", exe.display()));
-        }
+    if let Some(exe) = exe
+        && !exe.is_file()
+    {
+        return Err(format!("no executable at {}", exe.display()));
     }
     let assets = out_dir.join("Assets");
     std::fs::create_dir_all(&assets).map_err(|e| io("creating", &assets, e))?;

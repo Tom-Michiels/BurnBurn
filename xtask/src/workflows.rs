@@ -30,10 +30,10 @@ fn check_workflow(text: &str) -> Vec<String> {
         if trimmed.matches('"').count() % 2 != 0 {
             findings.push(format!("line {n}: unbalanced double quote"));
         }
-        if let Some(value) = trimmed.trim_start_matches("- ").strip_prefix("uses:") {
-            if !value.contains('@') {
-                findings.push(format!("line {n}: action is not pinned to a version (@...)"));
-            }
+        if let Some(value) = trimmed.trim_start_matches("- ").strip_prefix("uses:")
+            && !value.contains('@')
+        {
+            findings.push(format!("line {n}: action is not pinned to a version (@...)"));
         }
         if indent == 0 {
             let key = trimmed.split(':').next().unwrap_or("").trim_matches('"');
@@ -41,11 +41,12 @@ fn check_workflow(text: &str) -> Vec<String> {
             in_jobs = key == "jobs";
         } else if in_jobs && indent == 2 {
             jobs.push((trimmed.trim_end_matches(':').to_owned(), false, false));
-        } else if in_jobs && indent == 4 {
-            if let Some(job) = jobs.last_mut() {
-                job.1 |= trimmed.starts_with("runs-on:");
-                job.2 |= trimmed.starts_with("steps:");
-            }
+        } else if in_jobs
+            && indent == 4
+            && let Some(job) = jobs.last_mut()
+        {
+            job.1 |= trimmed.starts_with("runs-on:");
+            job.2 |= trimmed.starts_with("steps:");
         }
     }
     for (key, label) in [("name", "`name`"), ("on", "`on`"), ("jobs", "`jobs`")] {
