@@ -43,4 +43,4 @@ pub use patch::{
 };
 pub use session::DocumentSession;
 pub use shape_edit::{ShapeCommand, ShapeError, ShapeLabel};
-pub use snapshot::{DocumentSnapshot, PlateView, SnapshotError};
+pub use snapshot::{DocumentSnapshot, PickingKey, PlateView, SnapshotError};

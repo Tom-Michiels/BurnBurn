@@ -1,9 +1,8 @@
-use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::hash::Hash;
 
 use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{Bounds, HitTestTolerance, Point, SpatialIndex};
+use burnburn_geometry::{Bounds, HitTestTolerance, Point};
 use burnburn_types::{GeometryId, Length};
 
 /// Insertion-ordered set: the order of a `Vec` and the membership test of a hash set (a 100k
@@ -156,19 +155,18 @@ pub fn hit_test(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: f64) -> Ve
     let Some(tol) = Length::from_mm(tolerance_mm).ok().and_then(|l| HitTestTolerance::new(l).ok()) else {
         return Vec::new();
     };
-    // The key's first part makes the domain's tie-break pick the topmost object.
-    let order = snapshot.draw_order();
-    let index = SpatialIndex::build(
-        order
-            .iter()
-            .enumerate()
-            .filter(|(_, id)| snapshot.is_selectable(**id))
-            .filter_map(|(rank, id)| snapshot.object(*id)?.bounds().map(|b| ((Reverse(rank), *id), b))),
-    );
-    burnburn_geometry::hit_test(&index, |(_, id)| snapshot.object(id).map(|o| o.path().as_ref()), at, &tol)
-        .into_iter()
-        .map(|c| c.key.1)
-        .collect()
+    // The key's first part makes the domain's tie-break pick the topmost object. The index covers
+    // all objects and is reused per document state; locked and hidden ones are skipped here.
+    let index = crate::pick_index::pick_index(snapshot);
+    burnburn_geometry::hit_test(
+        &index.index,
+        |(_, id)| snapshot.is_selectable(id).then(|| snapshot.object(id)).flatten().map(|o| o.path().as_ref()),
+        at,
+        &tol,
+    )
+    .into_iter()
+    .map(|c| c.key.1)
+    .collect()
 }
 
 /// Objects whose bounds lie entirely inside `area` (rubber-band selection), in drawing order.
