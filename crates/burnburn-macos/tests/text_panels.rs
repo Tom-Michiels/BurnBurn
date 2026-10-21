@@ -272,7 +272,13 @@ fn the_barcode_sheet_lists_29_types_with_unsupported_ones_greyed_and_reasoned() 
     let (h, doc) = open_barcode();
     let b = panels(&h, doc, Locale::Nl).barcode.expect("the dialog is open");
     assert_eq!(b.types.len(), 29);
-    assert_eq!(b.types.iter().filter(|t| !t.enabled).count(), 4);
+    // W3-robuust added 2 of 5 (Matrix) and Han Xin; Grid Matrix and ArUco MIP stay unsupported with a reason.
+    let greyed: Vec<&str> = b.types.iter().filter(|t| !t.enabled).map(|t| t.title.as_str()).collect();
+    assert_eq!(greyed.len(), 2, "{greyed:?}");
+    assert!(
+        greyed.iter().any(|t| t.contains("Grid Matrix")) && greyed.iter().any(|t| t.contains("ArUco")),
+        "{greyed:?}"
+    );
     for t in &b.types {
         assert_eq!(t.enabled, t.tip.is_empty() || t.tip.starts_with("Bron"), "{}: {:?}", t.title, t.tip);
     }
