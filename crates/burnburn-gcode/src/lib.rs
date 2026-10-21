@@ -11,6 +11,7 @@
 //! Nothing here contacts a machine. Whether a concrete GRBL controller behaves as modelled is
 //! **unverified** (`docs/hardware/evidence.md`).
 
+pub mod grbl;
 mod lower;
 mod number;
 mod profile;
