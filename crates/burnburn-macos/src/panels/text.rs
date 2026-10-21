@@ -506,6 +506,19 @@ fn check(t: &TextToggle, missing: TextIssue, tip_for: Option<&str>, locale: Loca
 fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
     let note = if let Some(issue) = t.issue {
         text_issue_text(issue, locale)
+    } else if let Some(choice) = t.missing_font.as_ref() {
+        match locale {
+            Locale::Nl => format!(
+                "Lettertype \u{201c}{}\u{201d} is niet geïnstalleerd; de opgeslagen omtrekken blijven. Kies een vervanger in de lijst ({} beschikbaar).",
+                choice.requested,
+                choice.replacements.len()
+            ),
+            Locale::En => format!(
+                "Font \u{201c}{}\u{201d} is not installed; the stored outlines stay. Choose a replacement from the list ({} available).",
+                choice.requested,
+                choice.replacements.len()
+            ),
+        }
     } else if t.font_missing {
         tr(
             "Lettertype niet beschikbaar: de laatste omtrekken blijven",

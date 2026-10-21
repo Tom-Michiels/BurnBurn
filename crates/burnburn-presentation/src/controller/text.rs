@@ -194,15 +194,22 @@ pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
     };
     let (bold, italic) = (t.font.style.is_bold(), t.font.style.is_italic());
     let mut families = s.fonts.as_ref().map(|f| f.families()).unwrap_or_default();
+    // A project opened on a computer without the font still holds the stored outlines as "valid":
+    // the family itself is what is missing (only knowable once a font source is attached).
+    let family_absent = s.fonts.is_some() && !families.contains(&t.font.family);
+    let installed = families.clone();
     if !families.contains(&t.font.family) {
         families.push(t.font.family.clone());
         families.sort();
     }
     let welded_ok = t.mode == TextMode::Outline;
-    let font_missing = matches!(
-        snapshot.derived_record(DerivedOwner::Text(id)).map(|r| r.status.clone()),
-        Some(burnburn_document::EvalStatus::Failed { diagnosis: burnburn_document::EvalDiagnosis::FontMissing { .. } })
-    );
+    let font_missing = family_absent
+        || matches!(
+            snapshot.derived_record(DerivedOwner::Text(id)).map(|r| r.status.clone()),
+            Some(burnburn_document::EvalStatus::Failed {
+                diagnosis: burnburn_document::EvalDiagnosis::FontMissing { .. }
+            })
+        );
     Some(TextToolbarViewModel {
         families: families.into(),
         family: t.font.family.clone(),
@@ -222,6 +229,10 @@ pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
         single_line: t.mode == TextMode::SingleLine,
         missing_glyphs: snapshot.text_layer().missing(id).len(),
         font_missing,
+        missing_font: font_missing.then(|| crate::text_panel::MissingFontChoice {
+            requested: t.font.family.clone(),
+            replacements: installed.into_iter().filter(|f| *f != t.font.family).collect(),
+        }),
         can_convert: !s.selection.is_empty(),
         variable: t.variable.is_some(),
         issue: s.text.issue.filter(|(t, _)| *t == id).map(|(_, i)| i),

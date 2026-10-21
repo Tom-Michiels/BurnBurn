@@ -110,7 +110,7 @@ pub use task::{
 };
 pub use text_panel::{
     Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
-    TextToolbarViewModel, VAlign,
+    TextToolbarViewModel, VAlign, MissingFontChoice,
 };
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
