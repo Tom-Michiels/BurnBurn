@@ -38,12 +38,12 @@ use crate::panels_image::{
     image_import_panel,
 };
 
-/// Picture types the bitmap flow offers in file panels. BMP and TIFF are listed so the decoder's
-/// honest refusal reaches the user, instead of the file silently not being selectable.
+/// Picture types the bitmap flow offers in file panels (W4-UI-gaten: BMP and TIFF decode now; a
+/// damaged file of either type still gets the decoder's honest refusal).
 pub(crate) const BITMAP_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
 
 /// Picture types the tracer reads.
-pub(crate) const TRACE_TYPES: [&str; 3] = ["png", "jpg", "jpeg"];
+pub(crate) const TRACE_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
 
 const IMPORT_SIZE: (f64, f64) = (460.0, 290.0);
 const ADJUST_SIZE: (f64, f64) = (700.0, 490.0);

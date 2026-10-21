@@ -8,7 +8,7 @@ use crate::scale::ScaleError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DecodeError {
-    /// Only PNG and JPEG are accepted.
+    /// Only PNG, JPEG, BMP and TIFF are accepted.
     UnsupportedFormat,
     /// The declared dimensions exceed the configured limit; nothing was allocated for pixels.
     TooLarge { width: u32, height: u32, max_pixels: u64 },
@@ -21,7 +21,7 @@ pub enum DecodeError {
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DecodeError::UnsupportedFormat => f.write_str("only PNG and JPEG images are supported"),
+            DecodeError::UnsupportedFormat => f.write_str("only PNG, JPEG, BMP and TIFF images are supported"),
             DecodeError::TooLarge { width, height, max_pixels } => {
                 write!(f, "image of {width}×{height} pixels exceeds the limit of {max_pixels} pixels")
             }

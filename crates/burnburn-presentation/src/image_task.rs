@@ -99,7 +99,7 @@ fn resolve(source: &BitmapSource, cancel: &CancellationToken) -> Result<Arc<Sour
 }
 
 fn is_decodable(media: &str) -> bool {
-    matches!(media, "image/png" | "image/jpeg")
+    matches!(media, "image/png" | "image/jpeg" | "image/bmp" | "image/tiff")
 }
 
 fn processed(job: &BitmapJob, cancel: &CancellationToken) -> Result<(Engraved, Arc<SourceImage>), TaskError> {

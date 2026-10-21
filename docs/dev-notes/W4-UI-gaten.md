@@ -25,3 +25,10 @@ functie-aanroephaakjes is een decimale komma; binnen `max(…)`/`min(1,5)` blijf
 Aanname S04: "Herstel laatste geldige" = undo van de mislukte stappen tot de schets weer oplost (de stappen blijven redo);
 zonder geldige eerdere stand wordt niets gewijzigd en komt `SketchNothingToRestore`. Ook andere bewerkingen die na de
 eerste mislukte stap zijn gedaan worden meegeundo't (undo is chronologisch).
+| P03 `burnburn-image/tests/decode_bmp_tiff::*` (5 tests: BMP pixels/dpi, TIFF pixels/dpi, afgekapt/liegend) | `decode` weigert BMP/TIFF (`UnsupportedFormat`) | `cargo test -p burnburn-image --locked --test decode_bmp_tiff` → 5 FAILED (unwrap op `UnsupportedFormat`) | zelfde → 5 ok; `cargo test -p burnburn-image --locked` volledig ok | handgemaakte bytes als oracle |
+| P03 `w4_formats::{a_bmp_is_imported_with_its_own_resolution_and_travels_as_image_bmp, a_tiff_without_resolution_waits_for_a_dpi_and_travels_as_image_tiff}` | asset kreeg media `image/png` | `cargo test -p burnburn-presentation --locked --test w4_formats` → 2 FAILED (`left: "image/png" right: "image/bmp"` / tiff) | zelfde → 3 ok | `media_of` op signatuur |
+| P03 `w4_formats::the_tracer_opens_a_bmp_and_proposes_its_resolution` | — | was al groen voor de openstaande delen; de media-assert onderaan is pas na de fix toegevoegd (geen eigen rode run) | ok | |
+
+Dependency: `image`-features `bmp` en `tiff` aan; nieuwe lockregels `tiff`, `fax`, `weezl`, `quick-error 2.0.1` (allen MIT/Apache, offline uit
+de cargo-cache; `cargo xtask layers` en register bijgewerkt). Beperking: TIFF alleen wat de `tiff`-crate in `image` 0.25 decodeert
+(8/16-bit gray/RGB(A), baseline-compressies); BMP/TIFF-resolutie alleen uit de eerste directory/infoheader.
