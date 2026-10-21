@@ -251,7 +251,12 @@ fn dimension_field_with_a_decimal_comma_is_read_as_a_decimal() {
     let (mut h, doc) = in_sketch(s);
     let sketch = sketch_row(&h, doc).id;
     let width = vm(&h, doc).sketch_mode.unwrap().rows.iter().find(|r| r.text.as_deref() == Some("breedte")).unwrap().id;
-    h.send(UiIntent::SetSketchDimension { document: doc, sketch, constraint: width, text: "(breedte + 2,5 mm)".into() });
+    h.send(UiIntent::SetSketchDimension {
+        document: doc,
+        sketch,
+        constraint: width,
+        text: "(breedte + 2,5 mm)".into(),
+    });
     assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
     assert!((outline(&h, doc).0 - 102.5).abs() < 1e-6, "{:?}", outline(&h, doc));
 }
@@ -262,7 +267,12 @@ fn a_comma_inside_a_function_call_stays_an_argument_separator() {
     let (s, _) = rectangle();
     let (mut h, doc) = in_sketch(s);
     let sketch = sketch_row(&h, doc).id;
-    h.send(UiIntent::SetSketchParameter { document: doc, sketch, name: "breedte".into(), text: "max(80 mm, 90 mm)".into() });
+    h.send(UiIntent::SetSketchParameter {
+        document: doc,
+        sketch,
+        name: "breedte".into(),
+        text: "max(80 mm, 90 mm)".into(),
+    });
     assert_eq!(parameter(&h, doc, "breedte").as_deref(), Some("max(80 mm, 90 mm)"));
     assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
     assert!((outline(&h, doc).0 - 90.0).abs() < 1e-6, "{:?}", outline(&h, doc));

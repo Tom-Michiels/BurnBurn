@@ -393,7 +393,12 @@ impl AppController {
     }
 
     /// Parameter ▸ Verwijder (S02): refused while something still uses the parameter.
-    pub(super) fn remove_sketch_parameter(&mut self, document: DocumentId, sketch: SketchId, name: String) -> AppUpdate {
+    pub(super) fn remove_sketch_parameter(
+        &mut self,
+        document: DocumentId,
+        sketch: SketchId,
+        name: String,
+    ) -> AppUpdate {
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let snapshot = s.doc.snapshot();

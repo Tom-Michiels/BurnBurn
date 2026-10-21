@@ -6,9 +6,7 @@ mod common;
 
 use std::sync::Arc;
 
-use burnburn_presentation::{
-    CommandKey, HeadlessEditorHarness, OperationKind, SelectMode, TextEdit, UiIntent,
-};
+use burnburn_presentation::{CommandKey, HeadlessEditorHarness, OperationKind, SelectMode, TextEdit, UiIntent};
 use burnburn_test_support::fixtures::read_fixture;
 use burnburn_text::{FontData, FontRef, FontStyle, MemoryFontSource};
 use burnburn_types::DocumentId;
@@ -55,7 +53,11 @@ fn single_line_text_stays_open_and_unfilled() {
     h.invoke(doc, CommandKey::Compile);
     h.run_tasks();
     let plan = h.document(doc).unwrap().plan.expect("compiled");
-    assert!(plan.preview.scan_length_mm < 1e-9, "no fill scan lines over open strokes: {}", plan.preview.scan_length_mm);
+    assert!(
+        plan.preview.scan_length_mm < 1e-9,
+        "no fill scan lines over open strokes: {}",
+        plan.preview.scan_length_mm
+    );
     assert!(plan.warnings + plan.errors > 0, "the operator is told the fill has nothing to fill: {:?}", plan.findings);
 }
 
@@ -65,7 +67,8 @@ fn single_line_text_stays_open_and_unfilled() {
 
 fn two_fonts() -> (Arc<MemoryFontSource>, FontRef) {
     let mut src = MemoryFontSource::new();
-    let liberation = Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
+    let liberation =
+        Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
     let biz = Arc::new(FontData::from_bytes(read_fixture("fonts", "BIZUDPGothic-Regular.ttf").unwrap()).unwrap());
     let regular = src.insert("Liberation Sans", FontStyle::Regular, liberation);
     src.insert("BIZ UDPGothic", FontStyle::Regular, biz);

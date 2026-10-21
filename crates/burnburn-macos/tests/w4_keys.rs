@@ -2,8 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use burnburn_macos::adapter::{NativeEvent, Reaction, key_code, translate};
 use burnburn_editor::{CanvasKey, Modifiers};
+use burnburn_macos::adapter::{NativeEvent, Reaction, key_code, translate};
 use burnburn_presentation::{HeadlessEditorHarness, UiIntent};
 
 #[test]

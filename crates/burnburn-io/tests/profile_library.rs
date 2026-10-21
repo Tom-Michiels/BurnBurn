@@ -7,7 +7,9 @@
 use std::path::Path;
 
 use burnburn_io::memory::MemoryFileSystem;
-use burnburn_io::profile_library::{PROFILE_LIBRARY_SCHEMA, decode_profile_library, load_profile_library, save_profile_library};
+use burnburn_io::profile_library::{
+    PROFILE_LIBRARY_SCHEMA, decode_profile_library, load_profile_library, save_profile_library,
+};
 use burnburn_io::{LoadError, fs::FileSystem};
 use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
 
@@ -47,7 +49,10 @@ fn a_newer_schema_is_reported_and_a_foreign_or_damaged_file_is_refused() {
     save_profile_library(&fs, path, &[profile("a", 400.0)]).unwrap();
     let bytes = fs.read(path, 1 << 20).unwrap();
     let text = String::from_utf8(bytes).unwrap();
-    let newer = text.replace(&format!("\"schema\":{PROFILE_LIBRARY_SCHEMA}"), &format!("\"schema\":{}", PROFILE_LIBRARY_SCHEMA + 1));
+    let newer = text.replace(
+        &format!("\"schema\":{PROFILE_LIBRARY_SCHEMA}"),
+        &format!("\"schema\":{}", PROFILE_LIBRARY_SCHEMA + 1),
+    );
     assert_ne!(newer, text, "the fixture has a schema field to bump (compact JSON)");
     assert_eq!(
         decode_profile_library(newer.as_bytes()).unwrap_err(),

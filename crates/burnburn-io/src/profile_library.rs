@@ -12,7 +12,6 @@ use std::path::Path;
 use burnburn_job::MachineProfile;
 use serde::{Deserialize, Serialize};
 
-
 use crate::error::{LoadError, SaveError};
 use crate::fs::FileSystem;
 use crate::profile::{ProfileDto, profile_from_dto, profile_to_dto};

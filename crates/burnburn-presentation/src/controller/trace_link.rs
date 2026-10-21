@@ -16,7 +16,7 @@ use crate::image_panel::TraceMode;
 use crate::task::{TaskInput, TaskKind, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
 
-use super::{AppController, AppUpdate, Session, apply_command, after_change, error, submit};
+use super::{AppController, AppUpdate, Session, after_change, apply_command, error, submit};
 
 /// Tracers being re-opened: the task that decodes the stored source, and what to show with it.
 #[derive(Default)]

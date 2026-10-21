@@ -45,7 +45,8 @@ fn profiles_from_a_bundle_are_kept_outside_the_session() {
     let mut h = start(std::sync::Arc::new(burnburn_io::memory::MemoryFileSystem::new()));
     let doc = h.new_document().unwrap();
     let profiles = [new_machine()];
-    let bytes = encode_bundle(&BundleContents { materials: None, art: None, profiles: &profiles, templates: &[] }).unwrap();
+    let bytes =
+        encode_bundle(&BundleContents { materials: None, art: None, profiles: &profiles, templates: &[] }).unwrap();
     let path = PathBuf::from("/in/b.burnburnbundle");
     h.fs().insert(&path, bytes);
     h.send(UiIntent::Files(FilesIntent::OpenBundleImport { document: doc, path }));
@@ -74,7 +75,8 @@ fn a_damaged_profile_library_is_kept_and_never_overwritten() {
     h.run_tasks();
     assert_eq!(ids(&mut h), ["research-1500x900"]);
     let profiles = [new_machine()];
-    let bytes = encode_bundle(&BundleContents { materials: None, art: None, profiles: &profiles, templates: &[] }).unwrap();
+    let bytes =
+        encode_bundle(&BundleContents { materials: None, art: None, profiles: &profiles, templates: &[] }).unwrap();
     let path = PathBuf::from("/in/b.burnburnbundle");
     h.fs().insert(&path, bytes);
     h.send(UiIntent::Files(FilesIntent::OpenBundleImport { document: doc, path }));
