@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "description": "Acceptance fixtures (W4-acceptatie). Never regenerate from a Rust run.",
+  "golden_policy": "Changed expectation needs a reviewed explanation (AGENTS.md).",
+  "fixtures": [
+    {
+      "file": "image-modes-golden.txt",
+      "bytes": 4769,
+      "sha256": "4fa9f0b9a0602f64fe72f47afe21bececf23d1c28b9c384bea947aac9e628577",
+      "origin": "W4-acceptatie, see README.md"
+    },
+    {
+      "file": "image_modes_reference.py",
+      "bytes": 4979,
+      "sha256": "e9b9c2924c0876123b1d7ecfb1c8ca4d01bd7ecf8d572f5c87dfdd43012e845f",
+      "origin": "W4-acceptatie, see README.md"
+    }
+  ]
+}
