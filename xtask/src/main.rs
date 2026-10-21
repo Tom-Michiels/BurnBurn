@@ -1,18 +1,23 @@
 //! `cargo xtask <task>`: developer build and verification tasks, written in Rust.
 
 mod bundle;
+mod dist;
 mod layers;
+mod msix;
 mod trace_corpus;
+mod workflows;
 mod workspace_deps;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|gen-trace-corpus|help>
+const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|bundle|msix-layout|gen-trace-corpus|help>
 
   verify            cargo fmt --check, layers, workspace-deps, clippy -D warnings, tests and doc tests (all --locked)
   layers            check crate layering and forbidden dependencies against docs/design/layers.toml
   workspace-deps    every crate dependency must be `{ workspace = true, ... }`
+  bundle            macOS: build BurnBurn.app [--release] [--zip] [--dmg] [--sign-adhoc] (dist files in <target>/<profile>/dist/)
+  msix-layout       Windows: write the MSIX package directory [--exe <burnburn-win.exe>] [--out <dir>] [--publisher CN=...]
   gen-trace-corpus  (re)write test-data/trace/ from the vector references in xtask/src/trace_corpus.rs";
 
 fn main() -> ExitCode {
@@ -21,6 +26,7 @@ fn main() -> ExitCode {
         Some("verify") => verify(),
         Some("layers") => check_layers(),
         Some("bundle") => bundle::run(&root(), args.get(1..).unwrap_or_default()),
+        Some("msix-layout") => msix::run(&root(), args.get(1..).unwrap_or_default()),
         Some("workspace-deps") => check_workspace_deps(),
         Some("gen-trace-corpus") => gen_trace_corpus(),
         Some("help" | "-h" | "--help") | None => {

@@ -139,7 +139,7 @@ pub fn info_plist(spec: &BundleSpec) -> String {
     )
 }
 
-fn escape(v: &str) -> String {
+pub(crate) fn escape(v: &str) -> String {
     v.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
@@ -194,7 +194,7 @@ fn icon_sample(u: f64, v: f64) -> [f64; 4] {
 }
 
 /// RGBA8 pixels with 4 × 4 supersampling (premultiplied while averaging).
-fn draw_icon(size: u32) -> Vec<u8> {
+pub(crate) fn draw_icon(size: u32) -> Vec<u8> {
     const SS: u32 = 4;
     let mut out = Vec::with_capacity((size * size * 4) as usize);
     for y in 0..size {
@@ -244,7 +244,7 @@ fn adler32(bytes: &[u8]) -> u32 {
 }
 
 /// A minimal valid PNG (RGBA8, no filtering, zlib "stored" blocks): no compression library needed.
-fn png_rgba(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+pub(crate) fn png_rgba(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     let mut raw = Vec::with_capacity(rgba.len() + height as usize);
     for row in rgba.chunks(width as usize * 4) {
         raw.push(0); // filter type None
@@ -330,13 +330,13 @@ pub fn write_bundle(spec: &BundleSpec, binary: &Path, out_dir: &Path) -> Result<
     Ok(app)
 }
 
-/// `cargo xtask bundle [--release]`: build `burnburn` for macOS 13+ and bundle it next to the binary
-/// (`<target>/<profile>/BurnBurn.app`). Unsigned.
+/// `cargo xtask bundle [--release] [--zip] [--dmg] [--sign-adhoc]`: build `burnburn` for macOS 13+ and
+/// bundle it next to the binary (`<target>/<profile>/BurnBurn.app`). Unsigned unless `--sign-adhoc`;
+/// `--zip`/`--dmg` write the distributable files and their checksums to `<target>/<profile>/dist/`
+/// (see [`crate::dist`]). Notarisation is a manual step (docs/release.md).
 pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
-    let release = args.iter().any(|a| a == "--release");
-    if let Some(other) = args.iter().find(|a| *a != "--release") {
-        return Err(format!("bundle: unknown argument `{other}` (only --release)"));
-    }
+    let options = crate::dist::parse_options(args)?;
+    let release = options.release;
     if !cfg!(target_os = "macos") {
         return Err("bundle: an .app is built on macOS only".into());
     }
@@ -359,9 +359,17 @@ pub fn run(root: &Path, args: &[String]) -> Result<(), String> {
     let target = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target"));
     let target = if target.is_absolute() { target } else { root.join(target) };
     let profile_dir = target.join(if release { "release" } else { "debug" });
-    let app =
-        write_bundle(&BundleSpec::burnburn(env!("CARGO_PKG_VERSION")), &profile_dir.join("burnburn"), &profile_dir)?;
-    println!("bundle: {} (unsigned)", app.display());
+    let spec = BundleSpec::burnburn(env!("CARGO_PKG_VERSION"));
+    let app = write_bundle(&spec, &profile_dir.join("burnburn"), &profile_dir)?;
+    println!("bundle: {}", app.display());
+    let files = crate::dist::finish(&options, &app, &profile_dir.join("dist"), &spec.name, &spec.version)?;
+    for f in &files {
+        println!("dist: {}", f.display());
+    }
+    println!(
+        "bundle: {}; notarisation is manual (docs/release.md)",
+        if options.adhoc_sign { "ad-hoc signed (not notarised)" } else { "unsigned" }
+    );
     Ok(())
 }
 
@@ -421,6 +429,35 @@ mod tests {
         assert!(!declaration.contains("public.zip-archive"), "it is not a project container: {declaration}");
         // The project type is still declared next to it.
         assert!(exported.contains(&format!("<string>{PROJECT_UTI}</string>")));
+    }
+
+    /// X07: the bundle version is the workspace version of `Cargo.toml`, not a second copy.
+    #[test]
+    fn bundle_version_is_the_workspace_version_from_cargo() {
+        let cargo = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml")).unwrap();
+        let workspace: toml::Table = toml::from_str(&cargo).unwrap();
+        let version = workspace["workspace"]["package"]["version"].as_str().unwrap();
+        let plist = info_plist(&BundleSpec::burnburn(env!("CARGO_PKG_VERSION")));
+        assert_eq!(value_after(&plist, "CFBundleShortVersionString"), Some(version));
+        assert_eq!(value_after(&plist, "CFBundleVersion"), Some(version));
+    }
+
+    /// Independent oracle: macOS's own `plutil -lint` parses the generated Info.plist.
+    #[test]
+    fn info_plist_passes_plutil_lint() {
+        if !cfg!(target_os = "macos") {
+            println!("SKIPPED (not macOS; not a pass)");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("burnburn-xtask-plist-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Info.plist");
+        std::fs::write(&path, info_plist(&BundleSpec::burnburn("0.1.0"))).unwrap();
+        let out = std::process::Command::new("plutil").arg("-lint").arg(&path).output();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let out = out.unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success(), "{text}{}", String::from_utf8_lossy(&out.stderr));
     }
 
     #[test]
