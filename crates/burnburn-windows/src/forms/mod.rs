@@ -21,6 +21,7 @@ use crate::panels::{LayerColumn, ParamSection, SchikkenControl, Slot};
 pub mod cam;
 pub mod cut_settings;
 pub mod inspector;
+pub mod layout;
 pub mod layers;
 pub mod schikken;
 pub mod shapes;
