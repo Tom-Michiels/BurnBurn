@@ -1,6 +1,7 @@
 //! The thin Win32 layer (Windows only, ADR 0006 route 8a + Win32 controls): one frame window per
-//! document with a list box (objects), edit controls (inspector), a status line and a child canvas
-//! window with the shared wgpu DX12 surface. Every message goes through
+//! document with a tool strip, a list box (objects), docked and floating panels built from the
+//! headless forms in [`crate::forms`] (inspector, layers, Cut Settings, CAM dialogs, Schikken, text,
+//! sketch), a status line and a child canvas window with the shared wgpu DX12 surface. Every message goes through
 //! [`adapter::on_message`](crate::adapter::on_message); this file only reads and writes widgets.
 //!
 //! **Unconfirmed**: this module is type-checked from macOS (`cargo check --target
@@ -19,6 +20,18 @@
 
 #![allow(unsafe_code)]
 
+mod dialogs;
+mod forms;
+mod menu;
+mod strip;
+mod util;
+
+use dialogs::{FileKind, open_dialog, open_dialog_of, save_dialog, save_dialog_of};
+use forms::{FORM_CLASS, FormWin, close_command};
+use menu::{build_menu, refresh_popup};
+use strip::{STRIP_BASE, StripWin, choose_variant};
+use util::{list_selection, send, set_text, wide};
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::num::NonZeroIsize;
@@ -28,45 +41,41 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use burnburn_presentation::{
-    AppController, AppPorts, AppUpdate, AppViewModel, CommandKey, FieldKey, HostEffect, UiIntent,
+    AppController, AppPorts, AppUpdate, AppViewModel, CamDialog, DialogViewModel, HostEffect, UiIntent,
 };
 use burnburn_render::surface::SurfaceCanvas;
 use burnburn_render::{Theme, build_packet};
-use burnburn_types::{DocumentId, StableId};
+use burnburn_types::{DocumentId, OperationId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-};
+use windows::Win32::Graphics::Gdi::{COLOR_BTNFACE, GetSysColorBrush, ScreenToClient};
+use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_MENU};
-use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
-use windows::Win32::UI::Shell::{
-    DefSubclassProc, FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog, SIGDN_FILESYSPATH,
-    SetWindowSubclass,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ACCEL, AppendMenuW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateMenu, CreateWindowExW,
-    DefWindowProcW, DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EnableMenuItem, FCONTROL, FSHIFT, FVIRTKEY,
-    GWLP_USERDATA, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, GetWindowTextLengthW,
-    GetWindowTextW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING, LB_GETSELCOUNT, LB_GETSELITEMS, LB_RESETCONTENT,
+    ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW,
+    DestroyWindow, DispatchMessageW, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA, GetClientRect, GetCursorPos,
+    GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT,
     LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL,
-    MESSAGEBOX_RESULT, MF_ENABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow,
-    PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SendMessageW, SetTimer, SetWindowLongPtrW,
-    SetWindowTextW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY,
-    WM_INITMENUPOPUP, WM_TIMER, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
+    SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
+    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_INITMENUPOPUP, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD,
+    WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
 use crate::adapter::{
-    CharDecoder, Control, INSPECTOR_FIELDS, MenuItem, MessageContext, Reaction, accelerators, command_id, field_text,
-    menu_enabled, menu_items, message_text, msg, object_labels, on_close_box, on_message, on_open_dialog,
-    on_recovery_box, on_save_dialog, recovery_box_text, recovery_dir, selected_rows, vk, window_title,
+    CharDecoder, Control, MessageContext, Reaction, accelerators, message_text, msg, object_labels, on_close_box,
+    on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text, recovery_dir, selected_rows,
+    window_title,
+};
+use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
+use crate::forms::{
+    ControlId, ControlValue, FilePick, FormAux, FormContext, FormKind, FormOutcome, PanelState, Placement,
+    cam as cam_forms, cut_settings as cut_forms, react as react_form, text as text_forms,
 };
 use crate::tasks::{TaskInbox, task_channel};
 
@@ -77,24 +86,10 @@ const WM_AUTOSAVE: u32 = WM_APP + 2;
 /// The autosave timer on the message window (every 30 s; only changed documents are written).
 const AUTOSAVE_TIMER: usize = 1;
 const AUTOSAVE_MS: u32 = 30_000;
-const SIDEBAR_PX: i32 = 220;
-const INSPECTOR_PX: i32 = 260;
-
-fn set_text(hwnd: HWND, text: &str) {
-    // SAFETY: `hwnd` is one of our windows on this (UI) thread; the HSTRING outlives the call.
-    let _ = unsafe { SetWindowTextW(hwnd, &HSTRING::from(text)) };
-}
-
-/// `SendMessageW` to one of our own controls. Pointer-carrying `lparam`s must point to buffers
-/// that live for the (synchronous) call.
-fn send(hwnd: HWND, message: u32, wparam: usize, lparam: isize) -> LRESULT {
-    // SAFETY: our own control on the UI thread; see the function contract for pointer arguments.
-    unsafe { SendMessageW(hwnd, message, Some(WPARAM(wparam)), Some(LPARAM(lparam))) }
-}
-
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
+/// Width of the left and right columns, in logical pixels.
+const LEFT_PX: i32 = 280;
+const RIGHT_PX: i32 = 290;
+const STATUS_PX: i32 = 44;
 
 struct DocWin {
     // Field order: the surface goes before the windows it draws into.
@@ -102,9 +97,15 @@ struct DocWin {
     frame: HWND,
     canvas: HWND,
     list: HWND,
-    edits: Vec<(FieldKey, HWND)>,
     status: HWND,
     syncing: bool,
+    /// Panels of this window: docked ones in the columns, floating ones as tool windows.
+    forms: Vec<FormWin>,
+    strip: StripWin,
+    /// Window state of the panels that is not in the view model.
+    state: PanelState,
+    /// The operation whose Cut Settings draft the sheet's controls hold.
+    cut_op: Option<OperationId>,
 }
 
 struct Host {
@@ -154,38 +155,33 @@ fn view() -> Arc<AppViewModel> {
     })
 }
 
-fn window_text(hwnd: HWND) -> String {
-    // SAFETY: the length query and the copy use a buffer of the reported length + NUL.
-    let len = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize;
-    let mut buf = vec![0u16; len + 1];
-    // SAFETY: `buf` is a valid, writable buffer for the duration of the call.
-    let n = unsafe { GetWindowTextW(hwnd, &mut buf) }.max(0) as usize;
-    String::from_utf16_lossy(&buf[..n.min(len)])
-}
-
-fn list_selection(list: HWND) -> Vec<usize> {
-    // SAFETY: LB_GETSELCOUNT/LB_GETSELITEMS on our list box; the buffer holds `count` ints.
-    let count = unsafe { SendMessageW(list, LB_GETSELCOUNT, None, None) }.0.max(0) as usize;
-    let mut rows = vec![0i32; count];
-    // SAFETY: as above; the pointer stays valid during the synchronous call.
-    let n =
-        unsafe { SendMessageW(list, LB_GETSELITEMS, Some(WPARAM(count)), Some(LPARAM(rows.as_mut_ptr() as isize))) }.0;
-    rows.truncate(n.max(0) as usize);
-    rows.into_iter().filter_map(|r| usize::try_from(r).ok()).collect()
-}
-
-/// Send an intent, then perform the effects with the host borrow released.
 fn dispatch(intent: UiIntent) {
     let Some(update) = with_host(|h| h.controller.handle(intent)) else { return };
     apply(update);
 }
 
 fn react(reaction: Reaction) -> bool {
+    react_for(None, reaction)
+}
+
+/// Perform a reaction for the window of `document` (the active window when unknown).
+fn react_for(document: Option<DocumentId>, reaction: Reaction) -> bool {
     match reaction {
         Reaction::PassOn => false,
         Reaction::Nothing => true,
         Reaction::Intent(intent) => {
             dispatch(intent);
+            true
+        }
+        Reaction::ToggleSchikkenPanel => {
+            if let Some(document) = document.or_else(|| view().active) {
+                with_host(|h| {
+                    if let Some(w) = h.windows.get_mut(&document) {
+                        w.state.schikken_shown = !w.state.schikken_shown;
+                    }
+                });
+                refresh();
+            }
             true
         }
         Reaction::ShowOpenDialog => {
@@ -253,25 +249,62 @@ fn apply(update: AppUpdate) {
     }
 }
 
+/// What the panels of one window are built from, read out of the host.
+struct FormInputs {
+    document: DocumentId,
+    state: PanelState,
+    cam: Vec<(CamDialog, DialogViewModel)>,
+    /// The values of the Cut Settings controls when they hold a draft of the sheet that is open.
+    cut_live: Vec<(ControlId, ControlValue)>,
+}
+
+fn form_inputs(vm: &AppViewModel, locale: crate::l10n::Locale) -> Vec<FormInputs> {
+    with_host(|h| {
+        h.windows
+            .iter()
+            .map(|(document, w)| {
+                let cam = CamDialog::ALL
+                    .iter()
+                    .filter_map(|d| h.controller.cam_dialog(*document, *d).map(|m| (*d, m)))
+                    .collect();
+                let ctx = FormContext { vm, document: *document, locale };
+                let open = cut_forms::open_operation(&ctx);
+                let cut_live = match w.forms.iter().find(|f| f.kind == FormKind::CutSettings) {
+                    Some(f) if open.is_some() && open == w.cut_op => f.values(),
+                    _ => Vec::new(),
+                };
+                FormInputs { document: *document, state: w.state.clone(), cam, cut_live }
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 fn refresh() {
     let vm = view();
+    let locale = system_locale();
+    // The panels first: they are built from the view model and the controls' current values.
+    for input in form_inputs(&vm, locale) {
+        if vm.document(input.document).is_none() {
+            continue;
+        }
+        let ctx = FormContext { vm: &vm, document: input.document, locale };
+        let aux = FormAux { state: &input.state, cam: &input.cam };
+        let wanted = crate::forms::forms(&ctx, &aux, &input.cut_live);
+        let open = cut_forms::open_operation(&ctx);
+        with_host(|h| sync_forms(h, input.document, &wanted, open));
+    }
     with_host(|h| {
         for (document, w) in h.windows.iter_mut() {
             let Some(doc) = vm.document(*document) else { continue };
             set_text(w.frame, &window_title(&vm, *document));
-            for (key, edit) in &w.edits {
-                let text = field_text(&vm, *document, *key).unwrap_or_default();
-                let has_error = doc.inspector.as_ref().and_then(|i| i.field(*key)).is_some_and(|f| f.error.is_some());
-                if !has_error && window_text(*edit) != text {
-                    set_text(*edit, &text);
-                }
-            }
             let message = doc
                 .inspector
                 .as_ref()
                 .and_then(|i| i.fields.iter().find_map(|f| f.error))
                 .or(doc.messages.last().map(|m| m.key))
-                .map(|m| message_text(m, system_locale()))
+                .map(|m| message_text(m, locale))
+                .or_else(|| doc.tool_measurement.as_ref().map(|m| crate::toolbar::measurement_text(m, locale)))
                 .unwrap_or_default();
             set_text(w.status, &message);
             w.syncing = true;
@@ -286,6 +319,37 @@ fn refresh() {
             w.syncing = false;
         }
     });
+    let frames: Vec<HWND> = with_host(|h| h.windows.values().map(|w| w.frame).collect()).unwrap_or_default();
+    for frame in frames {
+        layout(frame);
+    }
+}
+
+/// Create, update and remove the panels of `document` so that they are `wanted`.
+fn sync_forms(h: &mut Host, document: DocumentId, wanted: &[crate::forms::Form], open_cut: Option<OperationId>) {
+    let instance = h.instance;
+    let Some(w) = h.windows.get_mut(&document) else { return };
+    // SAFETY: GetDpiForWindow on our frame.
+    let scale = f64::from(unsafe { GetDpiForWindow(w.frame) }.max(96)) / 96.0;
+    let (gone, kept): (Vec<FormWin>, Vec<FormWin>) =
+        std::mem::take(&mut w.forms).into_iter().partition(|f| !wanted.iter().any(|x| x.kind == f.kind));
+    w.forms = kept;
+    for fw in gone {
+        fw.destroy();
+    }
+    for form in wanted {
+        if let Some(fw) = w.forms.iter_mut().find(|f| f.kind == form.kind) {
+            fw.sync(form);
+        } else if let Some(mut fw) = FormWin::create(instance, w.frame, document, form, scale) {
+            if form.placement == Placement::Floating {
+                fw.fit_floating();
+                // SAFETY: showing our own tool window without taking the focus from the canvas.
+                let _ = unsafe { ShowWindow(fw.hwnd, SW_SHOWNOACTIVATE) };
+            }
+            w.forms.push(fw);
+        }
+    }
+    w.cut_op = open_cut;
 }
 
 fn redraw(document: DocumentId) {
@@ -323,7 +387,9 @@ fn surface_for(instance: HINSTANCE, canvas: HWND) -> Option<SurfaceCanvas> {
 }
 
 fn open_window(document: DocumentId) {
-    let Some((instance, menu)) = with_host(|h| (h.instance, build_menu())) else { return };
+    let vm = view();
+    let menu = build_menu(&vm, system_locale());
+    let Some(instance) = with_host(|h| h.instance) else { return };
     let child = |class: PCWSTR, style, parent: HWND, id: usize| {
         // SAFETY: creating a child control of our frame; class names are system or ours.
         unsafe {
@@ -375,36 +441,37 @@ fn open_window(document: DocumentId) {
     );
     let canvas = child(w!("BurnBurnCanvas"), WS_TABSTOP, frame, 1003);
     let status = child(w!("STATIC"), windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0), frame, 1004);
-    let mut edits = Vec::new();
-    for (i, key) in INSPECTOR_FIELDS.iter().enumerate() {
-        if let Ok(edit) = child(
-            w!("EDIT"),
-            WS_BORDER | WS_TABSTOP | windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-            frame,
-            1010 + i,
-        ) {
-            // SAFETY: subclassing our own edit control to see Enter; ref data is the document id.
-            let _ = unsafe { SetWindowSubclass(edit, Some(edit_proc), 1, document.raw() as usize) };
-            edits.push((*key, edit));
-        }
-    }
     let (Ok(list), Ok(canvas), Ok(status)) = (list, canvas, status) else { return };
     // The document id on every child too, so accelerators work wherever the focus is.
-    for hwnd in [list, canvas, status].into_iter().chain(edits.iter().map(|(_, e)| *e)) {
+    for hwnd in [list, canvas, status] {
         // SAFETY: user data on our own child windows (unused by the system classes).
         unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, document.raw() as isize) };
     }
     let canvas_surface = surface_for(instance, canvas);
     with_host(|h| {
-        h.windows.insert(document, DocWin { canvas_surface, frame, canvas, list, edits, status, syncing: false });
+        h.windows.insert(
+            document,
+            DocWin {
+                canvas_surface,
+                frame,
+                canvas,
+                list,
+                status,
+                syncing: false,
+                forms: Vec::new(),
+                strip: StripWin::new(),
+                state: PanelState::default(),
+                cut_op: None,
+            },
+        );
     });
-    layout(frame);
     // SAFETY: showing our own frame.
     let _ = unsafe { ShowWindow(frame, SW_SHOW) };
     refresh();
     redraw(document);
 }
 
+/// Place the strip, the object list, the canvas, the docked panels and the status line.
 fn layout(frame: HWND) {
     let Some(document) = document_of(frame) else { return };
     let mut rc = RECT::default();
@@ -416,112 +483,29 @@ fn layout(frame: HWND) {
     let scale = f64::from(unsafe { GetDpiForWindow(frame) }.max(96)) / 96.0;
     let px = |v: i32| (f64::from(v) * scale).round() as i32;
     let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
-    let (side, insp) = (px(SIDEBAR_PX), px(INSPECTOR_PX));
-    let parts =
-        with_host(|host| host.windows.get(&document).map(|d| (d.list, d.canvas, d.status, d.edits.clone()))).flatten();
-    let Some((list, canvas, status, edits)) = parts else { return };
+    let (left, right, status_h) = (px(LEFT_PX), px(RIGHT_PX), px(STATUS_PX));
+    let panels = strip(&view(), system_locale());
     let place = |hwnd: HWND, x: i32, y: i32, width: i32, height: i32| {
         // SAFETY: one of our child windows on the UI thread; repaint requested.
-        let _ = unsafe { MoveWindow(hwnd, x, y, width, height, true) };
+        let _ = unsafe { MoveWindow(hwnd, x, y, width.max(1), height.max(1), true) };
     };
-    place(list, 0, 0, side, h);
-    place(canvas, side, 0, (w - side - insp).max(1), h);
-    for (i, (_, edit)) in edits.iter().enumerate() {
-        place(*edit, w - insp + px(12), px(16) + i as i32 * px(36), insp - px(24), px(24));
-    }
-    place(status, w - insp + px(12), px(16) + edits.len() as i32 * px(36), insp - px(24), px(40));
-}
-
-fn new_menu() -> Option<HMENU> {
-    // SAFETY: creates a menu this thread owns (handed to a window or destroyed with it).
-    unsafe { CreateMenu() }.ok()
-}
-
-fn append(menu: HMENU, flags: windows::Win32::UI::WindowsAndMessaging::MENU_ITEM_FLAGS, id: usize, title: &str) {
-    let text = HSTRING::from(title);
-    // SAFETY: our menu; for MF_POPUP `id` is a menu handle we created; the string outlives the call.
-    let _ = unsafe { AppendMenuW(menu, flags, id, &text) };
-}
-
-fn build_menu() -> Option<HMENU> {
-    {
-        let bar = new_menu()?;
-        let add =
-            |menu: HMENU, item: MenuItem, title: &str| append(menu, MF_STRING, usize::from(command_id(item)), title);
-        let c = MenuItem::Command;
-        let file = new_menu()?;
-        add(file, c(CommandKey::New), "&Nieuw\tCtrl+N");
-        add(file, MenuItem::Open, "&Open…\tCtrl+O");
-        append(file, MF_SEPARATOR, 0, "");
-        add(file, c(CommandKey::Save), "&Bewaar\tCtrl+S");
-        add(file, c(CommandKey::SaveAs), "Bewaar &als…\tCtrl+Shift+S");
-        add(file, c(CommandKey::Close), "&Sluit\tCtrl+W");
-        let edit = new_menu()?;
-        add(edit, c(CommandKey::Undo), "&Herstel\tCtrl+Z");
-        add(edit, c(CommandKey::Redo), "&Opnieuw\tCtrl+Y");
-        add(edit, c(CommandKey::Delete), "&Verwijder\tDel");
-        add(edit, c(CommandKey::SelectAll), "Selecteer &alles");
-        let tools = new_menu()?;
-        for item in menu_items() {
-            if let MenuItem::Command(
-                k @ (CommandKey::ToolSelect
-                | CommandKey::ToolRectangle
-                | CommandKey::ToolEllipse
-                | CommandKey::ToolLine),
-            ) = item
-            {
-                add(tools, item, &format!("{k:?}"));
+    with_host(|host| {
+        let instance = host.instance;
+        let Some(d) = host.windows.get_mut(&document) else { return };
+        let top = d.strip.sync(instance, frame, &panels, w, scale);
+        let body = (h - top).max(1);
+        let list_h = body * 35 / 100;
+        place(d.list, 0, top, left, list_h);
+        place(d.canvas, left, top, (w - left - right).max(1), body);
+        place(d.status, w - right + px(8), h - status_h, right - px(16), status_h - px(4));
+        for form in &mut d.forms {
+            match form.placement {
+                Placement::DockLeft => form.dock(0, top + list_h, left, body - list_h),
+                Placement::DockRight => form.dock(w - right, top, right, body - status_h),
+                Placement::Floating => {}
             }
         }
-        append(bar, MF_POPUP, file.0 as usize, "&Archief");
-        append(bar, MF_POPUP, edit.0 as usize, "&Wijzig");
-        append(bar, MF_POPUP, tools.0 as usize, "&Gereedschap");
-        Some(bar)
-    }
-}
-
-fn file_filter() -> [COMDLG_FILTERSPEC; 1] {
-    [COMDLG_FILTERSPEC { pszName: w!("BurnBurn-project"), pszSpec: w!("*.burnburn") }]
-}
-
-/// The chosen file of a closed dialog (`Show` returned OK).
-fn dialog_path(dialog: &windows::Win32::UI::Shell::IFileDialog) -> Option<PathBuf> {
-    // SAFETY: COM call on the STA UI thread on a live dialog.
-    let item = unsafe { dialog.GetResult() }.ok()?;
-    // SAFETY: as above, on the returned shell item.
-    let name = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH) }.ok()?;
-    // SAFETY: `name` is a valid NUL-terminated string owned by us until freed below.
-    let path = unsafe { name.to_string() }.ok().map(PathBuf::from);
-    // SAFETY: freeing the CoTaskMem string GetDisplayName allocated, exactly once.
-    unsafe { CoTaskMemFree(Some(name.0 as *const _)) };
-    path
-}
-
-fn open_dialog() -> Option<PathBuf> {
-    // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
-    let dialog: IFileOpenDialog = unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
-    // SAFETY: the filter specs point to static strings and live for the call.
-    unsafe { dialog.SetFileTypes(&filter) }.ok()?;
-    // SAFETY: modal dialog on the UI thread; Cancel returns an error (→ None).
-    unsafe { dialog.Show(None) }.ok()?;
-    dialog_path(&dialog)
-}
-
-fn save_dialog(owner: HWND, suggested: &str) -> Option<PathBuf> {
-    // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
-    let dialog: IFileSaveDialog = unsafe { CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
-    // SAFETY: the filter specs point to static strings and live for the call.
-    unsafe { dialog.SetFileTypes(&filter) }.ok()?;
-    // SAFETY: static string.
-    unsafe { dialog.SetDefaultExtension(w!("burnburn")) }.ok()?;
-    let name = HSTRING::from(suggested);
-    // SAFETY: the string outlives the call.
-    unsafe { dialog.SetFileName(&name) }.ok()?;
-    // SAFETY: modal dialog owned by our frame on the UI thread; Cancel returns an error (→ None).
-    unsafe { dialog.Show(Some(owner)) }.ok()?;
-    dialog_path(&dialog)
+    });
 }
 
 fn context_for<'a>(
@@ -556,12 +540,7 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 return LRESULT(0);
             }
             WM_INITMENUPOPUP => {
-                let vm = view();
-                for item in menu_items() {
-                    let flag = if menu_enabled(item, &vm) { MF_ENABLED } else { MF_GRAYED };
-                    // SAFETY: the popup handle comes with the message; ids are ours.
-                    let _ = unsafe { EnableMenuItem(HMENU(wparam.0 as *mut _), u32::from(command_id(item)), flag) };
-                }
+                refresh_popup(HMENU(wparam.0 as *mut _), &view(), system_locale());
                 return LRESULT(0);
             }
             WM_DESTROY => {
@@ -579,27 +558,31 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
             }
             _ => {}
         }
+        // A tool-strip button: its child id is in the strip's range (lParam is its HWND).
+        let id = wparam.0 & 0xFFFF;
+        if message == msg::WM_COMMAND && lparam.0 != 0 && (STRIP_BASE..STRIP_BASE + 1000).contains(&id) {
+            strip_clicked(document, id);
+            return LRESULT(0);
+        }
         // Which control a WM_COMMAND notification came from (lParam is its HWND).
         let source = HWND(lparam.0 as *mut _);
-        let parts = with_host(|h| h.windows.get(&document).map(|w| (w.list, w.edits.clone(), w.syncing))).flatten();
-        let Some((list, edits, syncing)) = parts else { return default() };
+        let parts = with_host(|h| h.windows.get(&document).map(|w| (w.list, w.syncing))).flatten();
+        let Some((list, syncing)) = parts else { return default() };
         let control = if message == msg::WM_COMMAND && source == list {
             if syncing {
                 return LRESULT(0);
             }
             Control::ObjectList
-        } else if let Some((key, _)) = edits.iter().find(|(_, e)| message == msg::WM_COMMAND && *e == source) {
-            Control::Field(*key)
         } else {
             Control::Frame
         };
-        let text = match control {
-            Control::Field(_) => window_text(source),
-            _ => String::new(),
-        };
         let rows = if control == Control::ObjectList { list_selection(list) } else { Vec::new() };
-        let ctx = context_for(document, control, hwnd, &text, &rows);
-        if react(on_message(&ctx, message, wparam.0, lparam.0, &view())) { LRESULT(0) } else { default() }
+        let ctx = context_for(document, control, hwnd, "", &rows);
+        if react_for(Some(document), on_message(&ctx, message, wparam.0, lparam.0, &view())) {
+            LRESULT(0)
+        } else {
+            default()
+        }
     })
 }
 
@@ -628,33 +611,191 @@ extern "system" fn canvas_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam:
             String::new()
         };
         let ctx = context_for(document, Control::Canvas, hwnd, &text, &[]);
-        if react(on_message(&ctx, message, wparam.0, lparam.0, &view())) { LRESULT(0) } else { default() }
+        if react_for(Some(document), on_message(&ctx, message, wparam.0, lparam.0, &view())) {
+            LRESULT(0)
+        } else {
+            default()
+        }
     })
 }
 
-extern "system" fn edit_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    _id: usize,
-    data: usize,
-) -> LRESULT {
-    // SAFETY: the subclass chain's default handling.
-    let default = || unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
-    guard("edit_proc", LRESULT(0), || {
-        if message != msg::WM_KEYDOWN || wparam.0 != vk::RETURN {
-            return default();
+/// A tool-strip button was clicked: a tool is chosen, a drop-down offers the variants of its group.
+fn strip_clicked(document: DocumentId, id: usize) {
+    let found =
+        with_host(|h| h.windows.get(&document).map(|w| (w.strip.action(id).cloned(), w.strip.button(id), w.frame)))
+            .flatten();
+    let Some((Some(action), button, frame)) = found else { return };
+    let vm = view();
+    match action {
+        StripAction::Tool(tool) => {
+            if let Some(intent) = tool_intent(&vm, document, &tool) {
+                dispatch(intent);
+            }
         }
-        let document = DocumentId::from_raw(data as u64);
-        let key = with_host(|h| {
-            h.windows.get(&document).and_then(|w| w.edits.iter().find(|(_, e)| *e == hwnd).map(|(k, _)| *k))
+        StripAction::Dropdown { group } => {
+            let panels = strip(&vm, system_locale());
+            let variants = panels
+                .iter()
+                .flat_map(|p| &p.groups)
+                .find(|g| g.group.as_deref() == Some(group.as_str()))
+                .map(|g| g.variants.clone())
+                .unwrap_or_default();
+            let chosen = button.and_then(|b| choose_variant(frame, b, &variants));
+            if let Some(intent) = chosen.and_then(|id| variant_intent(&vm, document, &group, &id)) {
+                dispatch(intent);
+            }
+        }
+    }
+    refresh();
+}
+
+/// Everything `forms::react` needs, copied out of the host so that no borrow is held meanwhile.
+struct FormEvent {
+    document: DocumentId,
+    kind: FormKind,
+    values: Vec<(ControlId, ControlValue)>,
+    state: PanelState,
+    cam: Vec<(CamDialog, DialogViewModel)>,
+    frame: HWND,
+}
+
+fn form_event(hwnd: HWND) -> Option<FormEvent> {
+    with_host(|h| {
+        h.windows.iter().find_map(|(document, w)| {
+            let f = w.forms.iter().find(|f| f.hwnd == hwnd)?;
+            let cam =
+                CamDialog::ALL.iter().filter_map(|d| h.controller.cam_dialog(*document, *d).map(|m| (*d, m))).collect();
+            Some(FormEvent {
+                document: *document,
+                kind: f.kind,
+                values: f.values(),
+                state: w.state.clone(),
+                cam,
+                frame: w.frame,
+            })
         })
-        .flatten();
-        let Some(key) = key else { return default() };
-        let text = window_text(hwnd);
-        let ctx = context_for(document, Control::Field(key), hwnd, &text, &[]);
-        if react(on_message(&ctx, message, wparam.0, lparam.0, &view())) { LRESULT(0) } else { default() }
+    })
+    .flatten()
+}
+
+/// A control of a panel reported `value`: ask the form what it means and do it.
+fn form_control(hwnd: HWND, id: &ControlId, value: &ControlValue) {
+    let Some(ev) = form_event(hwnd) else { return };
+    let vm = view();
+    let ctx = FormContext { vm: &vm, document: ev.document, locale: system_locale() };
+    let aux = FormAux { state: &ev.state, cam: &ev.cam };
+    let outcome = react_form(ev.kind, id, value, &ev.values, &ctx, &aux);
+    perform(outcome, &ev, &ctx, &aux);
+    refresh();
+}
+
+fn perform(outcome: FormOutcome, ev: &FormEvent, ctx: &FormContext<'_>, aux: &FormAux<'_>) {
+    match outcome {
+        FormOutcome::Nothing | FormOutcome::Redraw => {}
+        FormOutcome::Intent(intent) => dispatch(intent),
+        FormOutcome::SelectLayerRow(row) => {
+            with_host(|h| {
+                if let Some(w) = h.windows.get_mut(&ev.document) {
+                    w.state.layer_row = row;
+                }
+            });
+        }
+        FormOutcome::PickFile(FilePick::CamExportRd(dialog)) => {
+            let path = save_dialog_of(ev.frame, "test.rd", FileKind::Rd);
+            if let Some(path) = path {
+                let model = aux.cam.iter().find(|(d, _)| *d == dialog).map(|(_, m)| m);
+                if let FormOutcome::Intent(intent) = cam_forms::file_chosen(dialog, model, path, ctx) {
+                    dispatch(intent);
+                }
+            }
+        }
+        FormOutcome::PickFile(FilePick::Csv) => {
+            let file = open_dialog_of(FileKind::Csv).and_then(|path| {
+                let bytes = std::fs::read(&path).ok()?;
+                let name = path.file_name()?.to_string_lossy().into_owned();
+                Some((name, bytes))
+            });
+            if let FormOutcome::Intent(intent) = text_forms::file_chosen(file, ctx) {
+                dispatch(intent);
+            }
+        }
+    }
+}
+
+/// Closing a floating panel: the dialogs cancel, the Schikken panel hides, the others stay.
+fn form_closed(hwnd: HWND) {
+    let Some(ev) = form_event(hwnd) else { return };
+    if ev.kind == FormKind::Schikken {
+        with_host(|h| {
+            if let Some(w) = h.windows.get_mut(&ev.document) {
+                w.state.schikken_shown = false;
+            }
+        });
+        refresh();
+        return;
+    }
+    if let Some(id) = close_command(ev.kind) {
+        form_control(hwnd, &id, &ControlValue::Press);
+    }
+}
+
+extern "system" fn form_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    // SAFETY: default handling of a message for our own window.
+    let default = || unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
+    guard("form_proc", LRESULT(0), || match message {
+        msg::WM_COMMAND => {
+            let (id, code) = (wparam.0 & 0xFFFF, ((wparam.0 >> 16) & 0xFFFF) as u16);
+            let event = with_host(|h| {
+                h.windows.values().find_map(|w| w.forms.iter().find(|f| f.hwnd == hwnd).map(|f| f.event(id, code)))
+            })
+            .flatten()
+            .flatten();
+            if let Some((control, value)) = event {
+                form_control(hwnd, &control, &value);
+            }
+            LRESULT(0)
+        }
+        WM_VSCROLL => {
+            let code = (wparam.0 & 0xFFFF) as u16;
+            with_host(|h| {
+                for w in h.windows.values_mut() {
+                    if let Some(f) = w.forms.iter_mut().find(|f| f.hwnd == hwnd) {
+                        let track = f.track_pos();
+                        f.scroll_request(code, track);
+                    }
+                }
+            });
+            LRESULT(0)
+        }
+        msg::WM_MOUSEWHEEL => {
+            let notches = i32::from(((wparam.0 >> 16) & 0xFFFF) as u16 as i16) / 120;
+            with_host(|h| {
+                for w in h.windows.values_mut() {
+                    if let Some(f) = w.forms.iter_mut().find(|f| f.hwnd == hwnd) {
+                        f.scroll_request(if notches > 0 { 0 } else { 1 }, 0);
+                        for _ in 1..notches.abs() {
+                            f.scroll_request(if notches > 0 { 0 } else { 1 }, 0);
+                        }
+                    }
+                }
+            });
+            LRESULT(0)
+        }
+        msg::WM_SIZE => {
+            with_host(|h| {
+                for w in h.windows.values_mut() {
+                    if let Some(f) = w.forms.iter_mut().find(|f| f.hwnd == hwnd) {
+                        f.relayout();
+                    }
+                }
+            });
+            default()
+        }
+        msg::WM_CLOSE => {
+            form_closed(hwnd);
+            LRESULT(0)
+        }
+        _ => default(),
     })
 }
 
@@ -706,6 +847,26 @@ fn register(instance: HINSTANCE, name: PCWSTR, proc_: windows::Win32::UI::Window
     unsafe { RegisterClassExW(&class) != 0 }
 }
 
+/// The panel container class: like the others, with the dialog background colour.
+fn register_form(instance: HINSTANCE) -> bool {
+    // SAFETY: loads the shared system arrow cursor (no ownership).
+    let cursor = unsafe { LoadCursorW(None, IDC_ARROW) }.unwrap_or_default();
+    // SAFETY: a shared system brush (not owned, never deleted).
+    let background = unsafe { GetSysColorBrush(COLOR_BTNFACE) };
+    let class = WNDCLASSEXW {
+        cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+        style: CS_HREDRAW | CS_VREDRAW,
+        lpfnWndProc: Some(form_proc),
+        hInstance: instance,
+        hCursor: cursor,
+        hbrBackground: background,
+        lpszClassName: FORM_CLASS,
+        ..Default::default()
+    };
+    // SAFETY: a fully initialised class description with a static name and our window procedure.
+    unsafe { RegisterClassExW(&class) != 0 }
+}
+
 /// `burnburn-win`: one document window, the message loop, quit when the last window closes.
 pub fn run_app() -> ExitCode {
     // SAFETY: process-wide DPI mode, set once before any window exists.
@@ -719,7 +880,8 @@ pub fn run_app() -> ExitCode {
     };
     if !(register(instance, w!("BurnBurnFrame"), Some(frame_proc))
         && register(instance, w!("BurnBurnCanvas"), Some(canvas_proc))
-        && register(instance, w!("BurnBurnMessages"), Some(message_proc)))
+        && register(instance, w!("BurnBurnMessages"), Some(message_proc))
+        && register_form(instance))
     {
         return ExitCode::FAILURE;
     }
