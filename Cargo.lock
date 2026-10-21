@@ -394,6 +394,7 @@ version = "0.1.0"
 dependencies = [
  "burnburn-cam",
  "burnburn-document",
+ "burnburn-editor",
  "burnburn-generators",
  "burnburn-geometry",
  "burnburn-image",

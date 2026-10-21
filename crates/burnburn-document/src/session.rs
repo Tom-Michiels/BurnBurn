@@ -30,6 +30,38 @@ struct HistoryEntry {
     after: DocumentSnapshot,
     changes: ChangeSet,
     label: UndoLabel,
+    /// Estimated memory this step retains (see [`step_bytes`]).
+    bytes: usize,
+}
+
+/// Rough size of a stored object: its struct, name, groups and path segments.
+fn object_bytes(o: &GeometryObject) -> usize {
+    let segments: usize = o.path().subpaths().iter().map(|sp| sp.segments().len()).sum();
+    std::mem::size_of::<GeometryObject>()
+        + o.name().len()
+        + o.groups().len() * 8
+        + std::mem::size_of_val(o.path().subpaths())
+        + segments * std::mem::size_of::<burnburn_geometry::Segment>()
+}
+
+/// Estimated memory one step adds: the object-map copy it made plus the object versions it
+/// created or modified (older versions were counted by the step that made them).
+fn step_bytes(after: &DocumentSnapshot, changes: &ChangeSet) -> usize {
+    const MAP_ENTRY: usize = 48;
+    let versions: usize =
+        changes.created.iter().chain(&changes.modified).filter_map(|id| after.object(*id)).map(object_bytes).sum();
+    after.len() * MAP_ENTRY + versions
+}
+
+/// Memory budget of the undo history, in estimated bytes retained by the steps (X04).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryBudget {
+    pub max_bytes: usize,
+}
+
+impl HistoryBudget {
+    /// 512 MiB: far above ordinary documents, a guard for 100k-object designs edited all day.
+    pub const DEFAULT: HistoryBudget = HistoryBudget { max_bytes: 512 * 1024 * 1024 };
 }
 
 /// The mutable owner of one open document: current snapshot plus undo/redo history.
@@ -42,6 +74,7 @@ pub struct DocumentSession {
     redo: Vec<HistoryEntry>,
     /// Content last marked as saved; compared by pointer, since undo restores the same `Arc`s.
     saved: Option<Saved>,
+    budget: HistoryBudget,
 }
 
 type Saved = (
@@ -88,7 +121,38 @@ impl DocumentSession {
     /// A session over a loaded or recovered snapshot. History starts empty.
     pub fn from_snapshot(id: DocumentId, snapshot: DocumentSnapshot) -> Self {
         let saved = Some(content_of(&snapshot));
-        DocumentSession { id, current: Arc::new(snapshot), undo: Vec::new(), redo: Vec::new(), saved }
+        DocumentSession {
+            id,
+            current: Arc::new(snapshot),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            saved,
+            budget: HistoryBudget::DEFAULT,
+        }
+    }
+
+    pub fn set_history_budget(&mut self, budget: HistoryBudget) {
+        self.budget = budget;
+    }
+
+    pub fn history_budget(&self) -> HistoryBudget {
+        self.budget
+    }
+
+    /// Estimated memory retained by the undo and redo steps.
+    pub fn history_bytes(&self) -> usize {
+        self.undo.iter().chain(&self.redo).map(|e| e.bytes).sum()
+    }
+
+    /// Forgets the oldest undo steps while the history exceeds its budget; the newest step is
+    /// always kept. Returns how many were dropped.
+    fn trim_history(&mut self) -> usize {
+        let mut dropped = 0;
+        while self.undo.len() > 1 && self.history_bytes() > self.budget.max_bytes {
+            self.undo.remove(0);
+            dropped += 1;
+        }
+        dropped
     }
 
     pub fn id(&self) -> DocumentId {
@@ -188,7 +252,12 @@ impl DocumentSession {
         let before = (*self.current).clone();
         self.current = Arc::new(after.clone());
         self.redo.clear();
-        self.undo.push(HistoryEntry { before, after, changes: txn.changes.clone(), label });
+        let bytes = step_bytes(&after, &txn.changes);
+        self.undo.push(HistoryEntry { before, after, changes: txn.changes.clone(), label, bytes });
+        let dropped_steps = self.trim_history();
+        if dropped_steps > 0 {
+            txn.warnings.push(CommandWarning::HistoryTrimmed { dropped_steps });
+        }
         Ok(CommandOutcome { previous, revision, changes: txn.changes, warnings: txn.warnings, undo_label: label })
     }
 
@@ -374,8 +443,14 @@ impl Txn {
                 self.transform(target, &m)
             }
             CommandPayload::Transform { targets, transform } => {
+                // One lookup set for the whole command: a per-object `contains` on the change
+                // list is quadratic for a 100k-object selection (X04).
+                let mut seen: std::collections::HashSet<GeometryId> = self.changes.modified.iter().copied().collect();
                 for id in targets {
-                    self.transform(id, &transform)?;
+                    self.transform_object(id, &transform)?;
+                    if seen.insert(id) {
+                        self.changes.modified.push(id);
+                    }
                 }
                 Ok(())
             }
@@ -434,6 +509,7 @@ impl Txn {
                         ids: &mut self.ids,
                         changes: &mut self.changes,
                         warnings: &mut self.warnings,
+                        cache: Default::default(),
                     },
                 )
                 .map_err(CommandError::Edit)?;
@@ -544,10 +620,15 @@ impl Txn {
         self.objects.get(&id).cloned().ok_or(CommandError::UnknownGeometry(id))
     }
 
-    fn transform(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
+    fn transform_object(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
         let obj = self.get(id)?;
         let moved = obj.transformed(m);
         self.objects.insert(id, Arc::new(moved));
+        Ok(())
+    }
+
+    fn transform(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
+        self.transform_object(id, m)?;
         if !self.changes.modified.contains(&id) {
             self.changes.modified.push(id);
         }
