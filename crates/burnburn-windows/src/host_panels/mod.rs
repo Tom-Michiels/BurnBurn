@@ -9,6 +9,8 @@
 //!
 //! **Command ids**: this lane owns `6000..=7999` of the `WM_COMMAND` id space ([`ids`]).
 
+pub mod camera;
+pub mod camera_port;
 pub mod files;
 pub mod filters;
 pub mod ids;
