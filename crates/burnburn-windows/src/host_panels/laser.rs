@@ -171,7 +171,12 @@ pub fn laser_spec(input: &LaserInput<'_>) -> PanelSpec {
         Row::one(ControlSpec::label(id::STATUS, model.status.clone())),
         Row::of(vec![
             ControlSpec::label(id::POSITION, model.position.clone()).weighted(3),
-            action_button(&model, id::SHOW_POSITION, t(LaserText::ShowPosition, locale), &LaserControlKind::ShowPosition),
+            action_button(
+                &model,
+                id::SHOW_POSITION,
+                t(LaserText::ShowPosition, locale),
+                &LaserControlKind::ShowPosition,
+            ),
         ]),
     ];
 

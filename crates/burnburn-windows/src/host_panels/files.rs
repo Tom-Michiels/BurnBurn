@@ -39,7 +39,8 @@ pub enum Sheet {
 }
 
 impl Sheet {
-    pub const ALL: [Sheet; 6] = [Sheet::Start, Sheet::Import, Sheet::Export, Sheet::Material, Sheet::Art, Sheet::Bundle];
+    pub const ALL: [Sheet; 6] =
+        [Sheet::Start, Sheet::Import, Sheet::Export, Sheet::Material, Sheet::Art, Sheet::Bundle];
 
     /// A small number that names the sheet in a window key.
     pub fn code(self) -> u8 {
@@ -283,7 +284,11 @@ fn start_spec(input: &FilesInput<'_>) -> PanelSpec {
             ControlSpec::button(s::CLEAR_RECENT, host_text(HostText::ClearRecent, locale), !recent.is_empty()),
         ]),
         Row::one(ControlSpec::list(s::RECENT, 5, recent.clone(), input.recent_row.filter(|r| *r < recent.len()), true)),
-        Row::one(ControlSpec::button(s::OPEN_RECENT, host_text(HostText::Open, locale), input.recent_row.is_some_and(|r| r < recent.len()))),
+        Row::one(ControlSpec::button(
+            s::OPEN_RECENT,
+            host_text(HostText::Open, locale),
+            input.recent_row.is_some_and(|r| r < recent.len()),
+        )),
         Row::one(ControlSpec::heading(s::HEAD_IMPORT, host_text(HostText::ImportTitle, locale))),
         Row::of(vec![
             ControlSpec::button(s::IMPORT, host_text(HostText::Import, locale), open),
@@ -378,7 +383,12 @@ fn export_spec(input: &FilesInput<'_>) -> PanelSpec {
     let rows = vec![
         Row::one(ControlSpec::heading(e::TITLE, p.title.clone())),
         Row::one(ControlSpec::label(e::OBJECTS, p.objects.clone())),
-        Row::one(ControlSpec::check(e::SELECTION_ONLY, ft(FilesText::CheckSelectionOnly, locale), p.selection_only, true)),
+        Row::one(ControlSpec::check(
+            e::SELECTION_ONLY,
+            ft(FilesText::CheckSelectionOnly, locale),
+            p.selection_only,
+            true,
+        )),
         pair(e::UNIT_CAPTION, ft(FilesText::LabelUnit, locale), combo_of(e::UNIT, &p.units, true)),
         pair(e::LAYERS_CAPTION, ft(FilesText::LabelLayers, locale), combo_of(e::LAYERS, &p.layers, true)),
         Row::of(vec![
@@ -416,13 +426,19 @@ fn material_spec(input: &FilesInput<'_>) -> PanelSpec {
     use id::material as m;
     let locale = input.locale;
     let title = ft(FilesText::MaterialTitle, locale).to_owned();
-    let Some(p) = material_panel(input.vm, input.document, locale) else { return PanelSpec { title, rows: Vec::new() } };
+    let Some(p) = material_panel(input.vm, input.document, locale) else {
+        return PanelSpec { title, rows: Vec::new() };
+    };
     // The layer the buttons act on is host state; the first layer is the default, as on the Mac.
     let actions = material_actions(input.vm, input.document, 0);
     let rows = vec![
         Row::one(ControlSpec::label(m::STATUS, p.status.clone())),
         pair(m::MATERIAL_CAPTION, ft(FilesText::LabelMaterial, locale), combo_of(m::MATERIAL, &p.materials, true)),
-        pair(m::THICKNESS_CAPTION, ft(FilesText::LabelThickness, locale), ControlSpec::edit(m::THICKNESS, p.thickness.clone(), true)),
+        pair(
+            m::THICKNESS_CAPTION,
+            ft(FilesText::LabelThickness, locale),
+            ControlSpec::edit(m::THICKNESS, p.thickness.clone(), true),
+        ),
         pair(m::MACHINE_CAPTION, ft(FilesText::LabelMachine, locale), combo_of(m::MACHINE, &p.machines, true)),
         Row::one(ControlSpec::label(m::ENTRIES_CAPTION, ft(FilesText::LabelEntries, locale))),
         Row::one(ControlSpec::list(m::ENTRIES, 5, p.entries.items.clone(), p.entries.selected, true)),
@@ -434,8 +450,16 @@ fn material_spec(input: &FilesInput<'_>) -> PanelSpec {
             ControlSpec::button(m::UPDATE_APPLY, ft(FilesText::ButtonUpdateApply, locale), actions.update),
         ]),
         pair(m::NAME_CAPTION, ft(FilesText::LabelName, locale), ControlSpec::edit(m::NAME, "", true)),
-        pair(m::NEW_MATERIAL_CAPTION, ft(FilesText::LabelNewMaterial, locale), ControlSpec::edit(m::NEW_MATERIAL, "", true)),
-        pair(m::STORE_THICKNESS_CAPTION, ft(FilesText::LabelThickness, locale), ControlSpec::edit(m::STORE_THICKNESS, "", true)),
+        pair(
+            m::NEW_MATERIAL_CAPTION,
+            ft(FilesText::LabelNewMaterial, locale),
+            ControlSpec::edit(m::NEW_MATERIAL, "", true),
+        ),
+        pair(
+            m::STORE_THICKNESS_CAPTION,
+            ft(FilesText::LabelThickness, locale),
+            ControlSpec::edit(m::STORE_THICKNESS, "", true),
+        ),
         Row::of(vec![
             ControlSpec::button(m::SAVE, ft(FilesText::ButtonSave, locale), actions.save),
             ControlSpec::button(m::OVERWRITE, ft(FilesText::ButtonOverwrite, locale), actions.overwrite),
@@ -455,7 +479,11 @@ fn art_spec(input: &FilesInput<'_>) -> PanelSpec {
     let rows = vec![
         Row::one(ControlSpec::label(a::STATUS, p.status.clone())),
         pair(a::GROUP_CAPTION, ft(FilesText::LabelGroup, locale), combo_of(a::GROUP, &p.groups, true)),
-        pair(a::SEARCH_CAPTION, ft(FilesText::LabelSearch, locale), ControlSpec::edit(a::SEARCH, p.search.clone(), true)),
+        pair(
+            a::SEARCH_CAPTION,
+            ft(FilesText::LabelSearch, locale),
+            ControlSpec::edit(a::SEARCH, p.search.clone(), true),
+        ),
         Row::one(ControlSpec::list(a::ITEMS, 6, p.items.items.clone(), p.items.selected, true)),
         Row::one(ControlSpec::bitmap(a::THUMBNAIL, 70, p.thumbnail.clone())),
         Row::one(ControlSpec::label(a::DETAIL, p.detail.clone())),
@@ -473,7 +501,8 @@ fn art_spec(input: &FilesInput<'_>) -> PanelSpec {
         Row::one(ControlSpec::label(a::SCALE_PROMPT, prompt).hidden_if(p.scale_prompt.is_none())),
         Row::of(vec![
             ControlSpec::combo(a::UNIT, art_unit_titles(), Some(0), true).hidden_if(p.scale_prompt.is_none()),
-            ControlSpec::button(a::RETRY, ft(FilesText::ButtonAddFile, locale), true).hidden_if(p.scale_prompt.is_none()),
+            ControlSpec::button(a::RETRY, ft(FilesText::ButtonAddFile, locale), true)
+                .hidden_if(p.scale_prompt.is_none()),
         ]),
         Row::of(vec![
             ControlSpec::button(a::NEW_GROUP, ft(FilesText::ButtonNewGroup, locale), true),
@@ -489,7 +518,10 @@ fn bundle_spec(input: &FilesInput<'_>) -> PanelSpec {
     use id::bundle as b;
     let locale = input.locale;
     let Some(p) = bundle_panel(input.vm, input.document, locale) else { return PanelSpec::default() };
-    let mut rows = vec![Row::one(ControlSpec::heading(b::TITLE, p.title.clone())), Row::one(ControlSpec::label(b::STATUS, p.status.clone()))];
+    let mut rows = vec![
+        Row::one(ControlSpec::heading(b::TITLE, p.title.clone())),
+        Row::one(ControlSpec::label(b::STATUS, p.status.clone())),
+    ];
     for slot in 0..4u16 {
         let row = p.kinds.get(usize::from(slot));
         rows.push(Row::one(
@@ -627,9 +659,9 @@ fn on_import(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
             if ready { invoke(input, CommandKey::CommitImport) } else { PanelReaction::Nothing }
         }
         (i::CANCEL, notify::CLICKED) => invoke(input, CommandKey::CancelImport),
-        (i::UNIT, notify::CHANGED) => {
-            intent(import_unit(event.values.selected(i::UNIT)).map(|unit| UiIntent::SetImportUnit { document: doc, unit }))
-        }
+        (i::UNIT, notify::CHANGED) => intent(
+            import_unit(event.values.selected(i::UNIT)).map(|unit| UiIntent::SetImportUnit { document: doc, unit }),
+        ),
         (i::PAGES, notify::CHANGED) => intent(import_pages_intent(doc, input.vm, event.values.selected(i::PAGES))),
         _ => PanelReaction::Nothing,
     }
@@ -665,7 +697,9 @@ fn on_export(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
         return intent(export_options_intent(doc, input.vm, &form));
     }
     match (event.id, event.code) {
-        (e::ACKNOWLEDGE, notify::CLICKED) => PanelReaction::Intent(export_acknowledge_intent(doc, v.checked(e::ACKNOWLEDGE))),
+        (e::ACKNOWLEDGE, notify::CLICKED) => {
+            PanelReaction::Intent(export_acknowledge_intent(doc, v.checked(e::ACKNOWLEDGE)))
+        }
         (e::EXPORT, notify::CLICKED) => {
             let ready = export_panel(input.vm, doc, locale).is_some_and(|p| p.can_export);
             let title = input.vm.document(doc).map(|d| d.title.clone()).unwrap_or_default();
@@ -693,12 +727,21 @@ fn on_material(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
     let (vm, v) = (input.vm, &event.values);
     let layer = v.selected(m::LAYER);
     if event.code == notify::CLOSED || (event.id == m::CLOSE && event.code == notify::CLICKED) {
-        return PanelReaction::Intent(UiIntent::Invoke { document: Some(doc), command: CommandKey::ShowMaterialLibrary });
+        return PanelReaction::Intent(UiIntent::Invoke {
+            document: Some(doc),
+            command: CommandKey::ShowMaterialLibrary,
+        });
     }
     let search = matches!(event.id, m::MATERIAL | m::MACHINE) && event.code == notify::CHANGED
         || event.id == m::THICKNESS && matches!(event.code, notify::ENTER | notify::EDIT_DONE);
     if search {
-        return intent(material_filter_intent(doc, vm, v.selected(m::MATERIAL), v.text(m::THICKNESS), v.selected(m::MACHINE)));
+        return intent(material_filter_intent(
+            doc,
+            vm,
+            v.selected(m::MATERIAL),
+            v.text(m::THICKNESS),
+            v.selected(m::MACHINE),
+        ));
     }
     if event.id == m::ENTRIES && event.code == notify::CHANGED {
         return intent(material_select_intent(doc, vm, v.selected(m::ENTRIES)));
@@ -711,7 +754,14 @@ fn on_material(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
         m::OVERWRITE => intent(material_overwrite_intent(doc, vm, layer)),
         m::UPDATE => intent(material_update_intent(doc, vm, layer, false)),
         m::UPDATE_APPLY => intent(material_update_intent(doc, vm, layer, true)),
-        m::SAVE => intent(material_save_intent(doc, vm, layer, v.text(m::NAME), v.text(m::NEW_MATERIAL), v.text(m::STORE_THICKNESS))),
+        m::SAVE => intent(material_save_intent(
+            doc,
+            vm,
+            layer,
+            v.text(m::NAME),
+            v.text(m::NEW_MATERIAL),
+            v.text(m::STORE_THICKNESS),
+        )),
         m::REMOVE => intent(material_remove_intent(doc, vm)),
         _ => PanelReaction::Nothing,
     }
@@ -767,7 +817,11 @@ fn on_bundle(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
             intent(bundle_profile_intent(doc, vm, slot, v.checked(cid)))
         }
         (b::PRIMARY, notify::CLICKED) if panel.import => {
-            if panel.can_apply { PanelReaction::Intent(bundle_apply_intent(doc)) } else { PanelReaction::Nothing }
+            if panel.can_apply {
+                PanelReaction::Intent(bundle_apply_intent(doc))
+            } else {
+                PanelReaction::Nothing
+            }
         }
         (b::PRIMARY, notify::CLICKED) => {
             if panel.can_export {

@@ -10,13 +10,17 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use burnburn_presentation::{
-    AppController, AppIntent, CommandKey, DebugLogViewModel, DiagnosticOptions, HeadlessEditorHarness,
-    KeyBinding, NudgeDirection, NudgeStep, PlaybackSpeed, PrefKey, PreviewIntent, SelectMode, UiIntent,
+    AppController, AppIntent, CommandKey, DebugLogViewModel, DiagnosticOptions, HeadlessEditorHarness, KeyBinding,
+    NudgeDirection, NudgeStep, PlaybackSpeed, PrefKey, PreviewIntent, SelectMode, UiIntent,
 };
 use burnburn_types::{DocumentId, StableId};
-const _: fn() = || { let _ = <DocumentId as StableId>::from_raw; };
+const _: fn() = || {
+    let _ = <DocumentId as StableId>::from_raw;
+};
 use burnburn_windows::app_menu::{AppAction, action_reaction, binding_from_keystroke, binding_glyphs, nudge_intent};
-use burnburn_windows::host_panels::app::{AppInput, AppSheet, PREVIEW_SIZE, app_spec, id, on_app_event, on_app_file_chosen};
+use burnburn_windows::host_panels::app::{
+    AppInput, AppSheet, PREVIEW_SIZE, app_spec, id, on_app_event, on_app_file_chosen,
+};
 use burnburn_windows::host_panels::ids;
 use burnburn_windows::host_panels::{
     ControlKind, DialogRequest, Family, FilePurpose, HostRequest, KeyStroke, PanelEvent, PanelReaction, PanelSpec,
@@ -103,7 +107,9 @@ fn compiled() -> (HeadlessEditorHarness, DocumentId) {
 fn history_preview_and_rd_need_what_they_show_and_the_manual_a_known_address() {
     let mut empty = HeadlessEditorHarness::new();
     let vm = empty.view();
-    for always in [AppAction::About, AppAction::Preferences, AppAction::Shortcuts, AppAction::SupportData, AppAction::DebugLog] {
+    for always in
+        [AppAction::About, AppAction::Preferences, AppAction::Shortcuts, AppAction::SupportData, AppAction::DebugLog]
+    {
         assert!(always.enabled(&vm, false), "{always:?}");
     }
     for needs_window in [AppAction::History, AppAction::Preview, AppAction::InspectRd] {
@@ -320,10 +326,23 @@ fn the_shortcut_editor_lists_ctrl_bindings_records_a_key_and_offers_replace_on_a
         values.selection.insert(id::SC_LIST, Some(0));
         click(cid, values)
     };
-    assert_eq!(app_intent(on_app_event(AppSheet::Shortcuts, &inp, &sel(id::SC_CLEAR))), AppIntent::ClearShortcut { id: row_id.clone() });
-    assert_eq!(app_intent(on_app_event(AppSheet::Shortcuts, &inp, &sel(id::SC_RESET_ONE))), AppIntent::ResetShortcut { id: row_id.clone() });
-    assert_eq!(app_intent(v.react(AppSheet::Shortcuts, click(id::SC_RESET_ALL, PanelValues::default()))), AppIntent::ResetAllShortcuts);
-    assert_eq!(v.react(AppSheet::Shortcuts, click(id::SC_CLEAR, PanelValues::default())), PanelReaction::Nothing, "no row chosen");
+    assert_eq!(
+        app_intent(on_app_event(AppSheet::Shortcuts, &inp, &sel(id::SC_CLEAR))),
+        AppIntent::ClearShortcut { id: row_id.clone() }
+    );
+    assert_eq!(
+        app_intent(on_app_event(AppSheet::Shortcuts, &inp, &sel(id::SC_RESET_ONE))),
+        AppIntent::ResetShortcut { id: row_id.clone() }
+    );
+    assert_eq!(
+        app_intent(v.react(AppSheet::Shortcuts, click(id::SC_RESET_ALL, PanelValues::default()))),
+        AppIntent::ResetAllShortcuts
+    );
+    assert_eq!(
+        v.react(AppSheet::Shortcuts, click(id::SC_CLEAR, PanelValues::default())),
+        PanelReaction::Nothing,
+        "no row chosen"
+    );
 
     // While recording, the next key becomes the binding; a bare modifier is not a key.
     let recording = Host { row: Some(0), recording: Some(row_id.as_str()), ..host() };
@@ -333,7 +352,10 @@ fn the_shortcut_editor_lists_ctrl_bindings_records_a_key_and_offers_replace_on_a
         app_intent(on_app_event(AppSheet::Shortcuts, &inp, &press(stroke(0x4B, true, false, true)))),
         AppIntent::SetShortcut { id: row_id.clone(), binding: key("Cmd+Shift+K"), replace: false }
     );
-    assert_eq!(on_app_event(AppSheet::Shortcuts, &inp, &press(stroke(0x11, true, false, false))), PanelReaction::Nothing);
+    assert_eq!(
+        on_app_event(AppSheet::Shortcuts, &inp, &press(stroke(0x11, true, false, false))),
+        PanelReaction::Nothing
+    );
     // Without a recording a key press does nothing.
     assert_eq!(v.react(AppSheet::Shortcuts, press(stroke(0x4B, true, false, true))), PanelReaction::Nothing);
     assert!(!text(&v.spec(AppSheet::Shortcuts), id::SC_RECORD).is_empty());
@@ -384,7 +406,10 @@ fn the_history_lists_the_steps_and_a_click_jumps_to_that_state() {
     let host = host();
     let mut sel = PanelValues::default();
     sel.selection.insert(id::HI_LIST, Some(1));
-    assert_eq!(on_app_event(AppSheet::History, &gone.input(Locale::En, &host), &event(id::HI_LIST, notify::CHANGED, sel)), PanelReaction::Nothing);
+    assert_eq!(
+        on_app_event(AppSheet::History, &gone.input(Locale::En, &host), &event(id::HI_LIST, notify::CHANGED, sel)),
+        PanelReaction::Nothing
+    );
 }
 
 #[test]
@@ -490,8 +515,14 @@ fn support_data_writes_what_the_user_saw_through_a_save_dialog_and_the_debug_log
     }
     let mut on = PanelValues::default();
     on.checks.insert(id::SU_DEBUG, true);
-    assert_eq!(app_intent(v.react(AppSheet::Support, click(id::SU_DEBUG, on))), AppIntent::SetDebugLog { enabled: true });
-    assert_eq!(app_intent(v.react(AppSheet::Support, click(id::SU_CLEAR_LOG, PanelValues::default()))), AppIntent::ClearDebugLog);
+    assert_eq!(
+        app_intent(v.react(AppSheet::Support, click(id::SU_DEBUG, on))),
+        AppIntent::SetDebugLog { enabled: true }
+    );
+    assert_eq!(
+        app_intent(v.react(AppSheet::Support, click(id::SU_CLEAR_LOG, PanelValues::default()))),
+        AppIntent::ClearDebugLog
+    );
 }
 
 #[test]

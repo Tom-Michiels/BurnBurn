@@ -14,14 +14,12 @@ use std::sync::Arc;
 use burnburn_document::process::GrayMethod;
 use burnburn_geometry::{Path, Point, Rect};
 use burnburn_presentation::{
-    AppViewModel, CommandKey, CommandState, HeadlessEditorHarness, ImageAdjustInput, ImageAdjustViewModel,
-    ImageImportViewModel, ImageIssue, ImageField, ImagePreview, MessageKey, ThresholdChoice, TraceFormInput, TraceFormViewModel,
+    AppViewModel, CommandKey, CommandState, HeadlessEditorHarness, ImageAdjustInput, ImageAdjustViewModel, ImageField,
+    ImageImportViewModel, ImageIssue, ImagePreview, MessageKey, ThresholdChoice, TraceFormInput, TraceFormViewModel,
     TraceMode, TracePreset, TraceSummary, TracerViewModel, UiIntent,
 };
 use burnburn_types::{DocumentId, Length, OperationId, StableId};
-use burnburn_windows::host_panels::image::{
-    ImageInput, id, image_spec, on_image_event, on_image_file_chosen,
-};
+use burnburn_windows::host_panels::image::{ImageInput, id, image_spec, on_image_event, on_image_file_chosen};
 use burnburn_windows::host_panels::{
     ControlKind, DialogRequest, FilePurpose, PanelEvent, PanelReaction, PanelSpec, PanelValues, notify,
 };
@@ -86,8 +84,7 @@ fn trace_input() -> TraceFormInput {
 }
 
 fn tracer_model() -> TracerViewModel {
-    let rect =
-        Rect::new(Point::new(0.0, 0.0), Length::from_mm(40.0).unwrap(), Length::from_mm(25.0).unwrap()).unwrap();
+    let rect = Rect::new(Point::new(0.0, 0.0), Length::from_mm(40.0).unwrap(), Length::from_mm(25.0).unwrap()).unwrap();
     TracerViewModel {
         width_px: 800,
         height_px: 600,
@@ -351,7 +348,17 @@ fn an_edited_adjust_field_sends_every_field_as_typed_and_an_unchanged_one_nothin
     enable(&mut vm, &[CommandKey::ApplyImageAdjust, CommandKey::CancelImageAdjust]);
     let shown = adjust_input();
     let mut values = PanelValues::default();
-    let fields = [&shown.brightness, &shown.contrast, "2,5", &shown.sharpen_amount, &shown.sharpen_radius, "10", "20", "300", "200"];
+    let fields = [
+        &shown.brightness,
+        &shown.contrast,
+        "2,5",
+        &shown.sharpen_amount,
+        &shown.sharpen_radius,
+        "10",
+        "20",
+        "300",
+        "200",
+    ];
     for (i, text) in fields.iter().enumerate() {
         values.texts.insert(id::ADJ_FIELD + i as u16, (*text).to_owned());
     }
@@ -375,8 +382,15 @@ fn an_edited_adjust_field_sends_every_field_as_typed_and_an_unchanged_one_nothin
     // Everything as shown (Return then focus loss): nothing.
     let mut same = PanelValues::default();
     let shown_fields = [
-        &shown.brightness, &shown.contrast, &shown.gamma, &shown.sharpen_amount, &shown.sharpen_radius,
-        &shown.crop_x, &shown.crop_y, &shown.crop_width, &shown.crop_height,
+        &shown.brightness,
+        &shown.contrast,
+        &shown.gamma,
+        &shown.sharpen_amount,
+        &shown.sharpen_radius,
+        &shown.crop_x,
+        &shown.crop_y,
+        &shown.crop_width,
+        &shown.crop_height,
     ];
     for (i, text) in shown_fields.iter().enumerate() {
         same.texts.insert(id::ADJ_FIELD + i as u16, (*text).to_owned());
@@ -426,7 +440,9 @@ fn tracer_edits_presets_and_the_suggestion_become_their_intents() {
     let (mut vm, doc) = vm_with(|d| d.tracer = Some(tracer_model()));
     enable(&mut vm, &[CommandKey::ApplyTrace, CommandKey::CloseTracer]);
     let mut values = PanelValues::default();
-    for (cid, text) in [(id::TR_DPI, "600"), (id::TR_THRESHOLD, "100"), (id::TR_IGNORE, "0,5"), (id::TR_SMOOTHNESS, "0,05")] {
+    for (cid, text) in
+        [(id::TR_DPI, "600"), (id::TR_THRESHOLD, "100"), (id::TR_IGNORE, "0,5"), (id::TR_SMOOTHNESS, "0,05")]
+    {
         values.texts.insert(cid, text.to_owned());
     }
     values.selection.insert(id::TR_MODE, Some(1));

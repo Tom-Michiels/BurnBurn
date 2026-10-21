@@ -73,7 +73,15 @@ fn entries_that_need_a_window_or_a_stored_entry_are_off_without_it() {
     let none: [PathBuf; 0] = [];
     let vm = h.view();
     let c = ctx(&vm, &none, &none, Locale::En);
-    for item in [Item::LaserWindow, Item::ImportImage, Item::TraceImage, Item::ImagePanel, Item::FilesPanel, Item::Import, Item::CameraWindow] {
+    for item in [
+        Item::LaserWindow,
+        Item::ImportImage,
+        Item::TraceImage,
+        Item::ImagePanel,
+        Item::FilesPanel,
+        Item::Import,
+        Item::CameraWindow,
+    ] {
         assert!(!item.enabled(&c), "{item:?} needs a window");
     }
     assert!(Item::ExportDiagnostics.enabled(&c), "the journal replay needs no window");
@@ -83,7 +91,15 @@ fn entries_that_need_a_window_or_a_stored_entry_are_off_without_it() {
     let vm = h.view();
     let recent = [PathBuf::from("C:/a.burnburn")];
     let c = ctx(&vm, &recent, &none, Locale::En);
-    for item in [Item::LaserWindow, Item::ImportImage, Item::TraceImage, Item::ImagePanel, Item::FilesPanel, Item::Import, Item::CameraWindow] {
+    for item in [
+        Item::LaserWindow,
+        Item::ImportImage,
+        Item::TraceImage,
+        Item::ImagePanel,
+        Item::FilesPanel,
+        Item::Import,
+        Item::CameraWindow,
+    ] {
         assert!(item.enabled(&c), "{item:?} with a window");
     }
     assert!(Item::RecentProject(0).enabled(&c) && !Item::RecentProject(1).enabled(&c), "only stored entries");
@@ -104,7 +120,11 @@ fn choosing_an_entry_opens_the_right_panel_dialog_or_command_for_the_active_wind
     assert_eq!(reaction(Item::FilesPanel, &c), PanelReaction::Host(HostRequest::ShowSheet(Family::Files, 0)));
     match reaction(Item::ExportDiagnostics, &c) {
         PanelReaction::Dialog(DialogRequest::Save { purpose, .. }) => {
-            assert_eq!(purpose, FilePurpose::Diagnostics { options: DiagnosticOptions::default() }, "private data only when ticked");
+            assert_eq!(
+                purpose,
+                FilePurpose::Diagnostics { options: DiagnosticOptions::default() },
+                "private data only when ticked"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -120,7 +140,9 @@ fn choosing_an_entry_opens_the_right_panel_dialog_or_command_for_the_active_wind
         other => panic!("{other:?}"),
     }
     match reaction(Item::TraceImage, &c) {
-        PanelReaction::Dialog(DialogRequest::Open { purpose, .. }) => assert_eq!(purpose, FilePurpose::TraceImage { document: doc }),
+        PanelReaction::Dialog(DialogRequest::Open { purpose, .. }) => {
+            assert_eq!(purpose, FilePurpose::TraceImage { document: doc })
+        }
         other => panic!("{other:?}"),
     }
     // Command entries are enabled by the command state of the window; an off command sends nothing.
@@ -136,7 +158,11 @@ fn choosing_an_entry_opens_the_right_panel_dialog_or_command_for_the_active_wind
     ] {
         let on = vm.commands.get(&command).is_some_and(|s| s.enabled);
         assert_eq!(item.enabled(&c), on, "{item:?}");
-        let want = if on { PanelReaction::Intent(UiIntent::Invoke { document: Some(doc), command }) } else { PanelReaction::Nothing };
+        let want = if on {
+            PanelReaction::Intent(UiIntent::Invoke { document: Some(doc), command })
+        } else {
+            PanelReaction::Nothing
+        };
         assert_eq!(reaction(item, &c), want, "{item:?}");
     }
     assert_eq!(reaction(Item::RecentProject(1), &c), PanelReaction::Intent(UiIntent::Open { path: recent[1].clone() }));

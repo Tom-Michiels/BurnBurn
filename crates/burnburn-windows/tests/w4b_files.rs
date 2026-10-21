@@ -16,7 +16,9 @@ use burnburn_presentation::{
     SelectMode, TemplateScope, UiIntent,
 };
 use burnburn_types::{DocumentId, StableId};
-use burnburn_windows::host_panels::files::{FilesInput, Sheet, effect_dialog, files_spec, id, on_files_event, on_files_file_chosen, sheet_open};
+use burnburn_windows::host_panels::files::{
+    FilesInput, Sheet, effect_dialog, files_spec, id, on_files_event, on_files_file_chosen, sheet_open,
+};
 use burnburn_windows::host_panels::{
     ControlKind, DialogRequest, FilePurpose, PanelEvent, PanelReaction, PanelSpec, PanelValues, notify,
 };
@@ -46,7 +48,12 @@ fn rect_layer(h: &mut HeadlessEditorHarness) -> DocumentId {
     h.send(UiIntent::Select { document: doc, ids: vec![object], mode: SelectMode::Replace });
     h.send(UiIntent::AssignLayer { document: doc, slot: 1, add: false });
     let op = h.document(doc).unwrap().operations[0].id;
-    h.send(UiIntent::SetOperationField { document: doc, operation: op, field: OperationField::Speed, text: "12".into() });
+    h.send(UiIntent::SetOperationField {
+        document: doc,
+        operation: op,
+        field: OperationField::Speed,
+        text: "12".into(),
+    });
     doc
 }
 
@@ -84,7 +91,12 @@ struct Ctx {
     templates: Vec<PathBuf>,
 }
 
-fn input<'a>(h: &'a HeadlessEditorHarness, doc: DocumentId, ctx: &'a Ctx, vm: &'a burnburn_presentation::AppViewModel) -> FilesInput<'a> {
+fn input<'a>(
+    h: &'a HeadlessEditorHarness,
+    doc: DocumentId,
+    ctx: &'a Ctx,
+    vm: &'a burnburn_presentation::AppViewModel,
+) -> FilesInput<'a> {
     let _ = h;
     FilesInput {
         document: doc,
@@ -271,12 +283,21 @@ fn the_export_dialog_waits_for_the_acknowledgement_sends_the_whole_form_and_writ
     assert!(s.control(id::export::STROKE).unwrap().visible && !s.control(id::export::CURVES).unwrap().visible);
     assert_eq!(combo(&s, id::export::UNIT).0, ["millimetres", "inches", "pixels (96 per inch)"]);
     // Export without the acknowledgement asks nothing.
-    assert_eq!(react(&h, doc, Sheet::Export, click(id::export::EXPORT, PanelValues::default())), PanelReaction::Nothing);
+    assert_eq!(
+        react(&h, doc, Sheet::Export, click(id::export::EXPORT, PanelValues::default())),
+        PanelReaction::Nothing
+    );
 
     let mut ack = PanelValues::default();
     ack.checks.insert(id::export::ACKNOWLEDGE, true);
     let r = react(&h, doc, Sheet::Export, click(id::export::ACKNOWLEDGE, ack));
-    assert_eq!(r, PanelReaction::Intent(UiIntent::Files(FilesIntent::SetExportAcknowledged { document: doc, acknowledged: true })));
+    assert_eq!(
+        r,
+        PanelReaction::Intent(UiIntent::Files(FilesIntent::SetExportAcknowledged {
+            document: doc,
+            acknowledged: true
+        }))
+    );
     run(&mut h, r);
     let s = spec(&h, doc, Sheet::Export);
     assert!(checked(&s, id::export::ACKNOWLEDGE) && s.control(id::export::EXPORT).unwrap().enabled);
@@ -291,14 +312,22 @@ fn the_export_dialog_waits_for_the_acknowledgement_sends_the_whole_form_and_writ
         form.texts.insert(cid, t.to_owned());
     }
     let r = react(&h, doc, Sheet::Export, event(id::export::UNIT, notify::CHANGED, form.clone()));
-    assert!(matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SetExportOptions { options, .. })] if options.decimals == "2"));
+    assert!(
+        matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SetExportOptions { options, .. })] if options.decimals == "2")
+    );
     run(&mut h, r);
-    assert_eq!(react(&h, doc, Sheet::Export, event(id::export::DECIMALS, notify::EDIT_DONE, form)), PanelReaction::Nothing);
+    assert_eq!(
+        react(&h, doc, Sheet::Export, event(id::export::DECIMALS, notify::EDIT_DONE, form)),
+        PanelReaction::Nothing
+    );
 
     match react(&h, doc, Sheet::Export, click(id::export::EXPORT, PanelValues::default())) {
         PanelReaction::Dialog(DialogRequest::Save { purpose, suggested_name, filters, .. }) => {
             assert_eq!(purpose, FilePurpose::ExportDrawing { document: doc });
-            assert_eq!(suggested_name, format!("{}.svg", h.view().document(doc).unwrap().title.trim_end_matches(".burnburn")));
+            assert_eq!(
+                suggested_name,
+                format!("{}.svg", h.view().document(doc).unwrap().title.trim_end_matches(".burnburn"))
+            );
             assert_eq!(filters[0].extensions, vec!["svg"]);
             let vm = h.view();
             let r = on_files_file_chosen(&vm, &purpose, Some(PathBuf::from("/out/plaat.svg")));
@@ -327,10 +356,16 @@ fn the_material_sheet_stores_a_layer_filters_and_applies_with_its_buttons_gated(
     h.run_tasks();
 
     // Store layer one as an entry.
-    let mut values = texts(&[(id::material::NAME, "Snijden"), (id::material::NEW_MATERIAL, "Berken"), (id::material::STORE_THICKNESS, "3")]);
+    let mut values = texts(&[
+        (id::material::NAME, "Snijden"),
+        (id::material::NEW_MATERIAL, "Berken"),
+        (id::material::STORE_THICKNESS, "3"),
+    ]);
     values.selection.insert(id::material::LAYER, Some(0));
     let r = react(&h, doc, Sheet::Material, click(id::material::SAVE, values.clone()));
-    assert!(matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SaveMaterial { name, material, thickness, .. })] if name == "Snijden" && material == "Berken" && thickness == "3"));
+    assert!(
+        matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SaveMaterial { name, material, thickness, .. })] if name == "Snijden" && material == "Berken" && thickness == "3")
+    );
     run(&mut h, r);
     let s = spec(&h, doc, Sheet::Material);
     assert_eq!(combo(&s, id::material::ENTRIES).0, ["Snijden — Berken 3 mm (r1)"]);
@@ -344,7 +379,9 @@ fn the_material_sheet_stores_a_layer_filters_and_applies_with_its_buttons_gated(
     filter.selection.insert(id::material::MATERIAL, Some(1));
     filter.selection.insert(id::material::MACHINE, Some(0));
     let r = react(&h, doc, Sheet::Material, event(id::material::THICKNESS, notify::EDIT_DONE, filter));
-    assert!(matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SetMaterialFilter { material: Some(m), thickness, .. })] if m == "Berken" && thickness == "6"));
+    assert!(
+        matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SetMaterialFilter { material: Some(m), thickness, .. })] if m == "Berken" && thickness == "6")
+    );
 
     // Apply needs the layer of the pop-up; remove asks nothing more but needs the entry.
     let mut apply = PanelValues::default();
@@ -402,7 +439,10 @@ fn the_art_sheet_adds_a_file_via_a_dialog_shows_a_thumbnail_and_places_it() {
     let r = react(&h, doc, Sheet::Art, event(id::art::SEARCH, notify::ENTER, texts(&[(id::art::SEARCH, "nope")])));
     run(&mut h, r);
     assert_eq!(combo(&spec(&h, doc, Sheet::Art), id::art::ITEMS).0, ["No items"]);
-    assert_eq!(react(&h, doc, Sheet::Art, event(id::art::SEARCH, notify::EDIT_DONE, texts(&[(id::art::SEARCH, "nope")]))), PanelReaction::Nothing);
+    assert_eq!(
+        react(&h, doc, Sheet::Art, event(id::art::SEARCH, notify::EDIT_DONE, texts(&[(id::art::SEARCH, "nope")]))),
+        PanelReaction::Nothing
+    );
 }
 
 // ---- bundles -----------------------------------------------------------------------------------
@@ -414,7 +454,11 @@ fn the_bundle_export_gates_on_a_choice_toggles_kinds_and_writes_through_a_save_d
     h.send(UiIntent::Files(FilesIntent::OpenMaterialLibrary { document: doc }));
     h.run_tasks();
     for name in ["Snijden", "Graveren"] {
-        let mut v = texts(&[(id::material::NAME, name), (id::material::NEW_MATERIAL, "Berken"), (id::material::STORE_THICKNESS, "3")]);
+        let mut v = texts(&[
+            (id::material::NAME, name),
+            (id::material::NEW_MATERIAL, "Berken"),
+            (id::material::STORE_THICKNESS, "3"),
+        ]);
         v.selection.insert(id::material::LAYER, Some(0));
         let r = react(&h, doc, Sheet::Material, click(id::material::SAVE, v));
         run(&mut h, r);
@@ -428,7 +472,10 @@ fn the_bundle_export_gates_on_a_choice_toggles_kinds_and_writes_through_a_save_d
     assert!(!s.control(id::bundle::KIND + 1).unwrap().enabled, "no art to choose from");
 
     let r = react(&h, doc, Sheet::Bundle, click(id::bundle::KIND, PanelValues::default()));
-    assert!(matches!(r.intents().as_slice(), [UiIntent::Files(FilesIntent::SetBundleKind { kind: BundleKind::Materials, selected: true, .. })]));
+    assert!(matches!(
+        r.intents().as_slice(),
+        [UiIntent::Files(FilesIntent::SetBundleKind { kind: BundleKind::Materials, selected: true, .. })]
+    ));
     run(&mut h, r);
     let s = spec(&h, doc, Sheet::Bundle);
     assert!(checked(&s, id::bundle::KIND) && s.control(id::bundle::PRIMARY).unwrap().enabled);
@@ -516,7 +563,10 @@ fn template_effects_become_dialogs_and_the_answers_become_template_intents() {
     let mut inp = input(&h, doc, &c, &vm);
     inp.template_scope = 1;
 
-    match effect_dialog(&HostEffect::ShowTemplateSavePanel { document: doc, suggested_name: "Vorm.burnburntemplate".into() }, &inp) {
+    match effect_dialog(
+        &HostEffect::ShowTemplateSavePanel { document: doc, suggested_name: "Vorm.burnburntemplate".into() },
+        &inp,
+    ) {
         Some(DialogRequest::Save { purpose, suggested_name, filters, .. }) => {
             assert_eq!(suggested_name, "Vorm.burnburntemplate");
             assert_eq!(filters[0].extensions, vec!["burnburntemplate"]);
@@ -524,7 +574,11 @@ fn template_effects_become_dialogs_and_the_answers_become_template_intents() {
             let path = PathBuf::from("C:/t/vorm.burnburntemplate");
             assert_eq!(
                 on_files_file_chosen(&vm, &purpose, Some(path.clone())),
-                PanelReaction::Intent(UiIntent::Files(FilesIntent::SaveAsTemplate { document: doc, path, scope: TemplateScope::SettingsOnly }))
+                PanelReaction::Intent(UiIntent::Files(FilesIntent::SaveAsTemplate {
+                    document: doc,
+                    path,
+                    scope: TemplateScope::SettingsOnly
+                }))
             );
         }
         other => panic!("{other:?}"),
@@ -555,7 +609,10 @@ fn template_effects_become_dialogs_and_the_answers_become_template_intents() {
         Some(DialogRequest::Save { purpose, suggested_name, .. }) => {
             assert_eq!((suggested_name.as_str(), &purpose), ("Plaat.rd", &FilePurpose::ExportRd { document: doc }));
             let path = PathBuf::from("C:/o/plaat.rd");
-            assert_eq!(on_files_file_chosen(&vm, &purpose, Some(path.clone())), PanelReaction::Intent(UiIntent::ExportRd { document: doc, path }));
+            assert_eq!(
+                on_files_file_chosen(&vm, &purpose, Some(path.clone())),
+                PanelReaction::Intent(UiIntent::ExportRd { document: doc, path })
+            );
         }
         other => panic!("{other:?}"),
     }

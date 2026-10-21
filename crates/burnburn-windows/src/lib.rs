@@ -18,10 +18,12 @@ pub mod win32;
 // too, so both hosts show the same texts, enablement and intents. Windows adds only control ids,
 // message decoding and control layout (`panel_*`, `host_panels`). The `crate::` paths inside these
 // files resolve to the module names below.
+pub mod app_menu;
 #[path = "../../burnburn-macos/src/app_text.rs"]
 pub mod app_text;
 #[path = "../../burnburn-macos/src/app_view.rs"]
 pub mod app_view;
+pub mod host_panels;
 #[path = "../../burnburn-macos/src/l10n_files.rs"]
 pub mod l10n_files;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]
@@ -32,5 +34,5 @@ pub mod panels_files;
 pub mod panels_image;
 #[path = "../../burnburn-macos/src/toolbar.rs"]
 pub mod toolbar;
-pub mod app_menu;
-pub mod host_panels;
+#[cfg(windows)]
+pub mod win32_panels;

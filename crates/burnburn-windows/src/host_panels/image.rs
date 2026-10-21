@@ -125,7 +125,10 @@ fn command_rows(input: &ImageInput<'_>) -> Vec<Row> {
             cmd(id::MASK, CommandKey::MaskImage),
             cmd(id::REPLACE, CommandKey::ReplaceImage),
         ]),
-        Row::of(vec![cmd(id::REFRESH, CommandKey::RefreshImage), cmd(id::SAVE_BITMAP, CommandKey::SaveProcessedBitmap)]),
+        Row::of(vec![
+            cmd(id::REFRESH, CommandKey::RefreshImage),
+            cmd(id::SAVE_BITMAP, CommandKey::SaveProcessedBitmap),
+        ]),
     ]
 }
 
@@ -201,7 +204,11 @@ pub fn image_spec(input: &ImageInput<'_>) -> PanelSpec {
                 ht(HostText::ImageAdjustApply, locale),
                 p.apply_enabled && on(CommandKey::ApplyImageAdjust),
             ),
-            ControlSpec::button(id::ADJ_CANCEL, ht(HostText::ImageAdjustCancel, locale), on(CommandKey::CancelImageAdjust)),
+            ControlSpec::button(
+                id::ADJ_CANCEL,
+                ht(HostText::ImageAdjustCancel, locale),
+                on(CommandKey::CancelImageAdjust),
+            ),
         ]));
     } else if let Some(tracer) = &doc.tracer {
         let p = tracer_panel(tracer, locale);
@@ -304,7 +311,9 @@ pub fn on_image_event(input: &ImageInput<'_>, event: &PanelEvent) -> PanelReacti
         id::IMPORT if clicked => {
             open(FilePurpose::ImportDrawing { document }, HostText::ImageMenuImport, import_filters(true))
         }
-        id::TRACE if clicked => open(FilePurpose::TraceImage { document }, HostText::ImageMenuTrace, vec![trace_filter()]),
+        id::TRACE if clicked => {
+            open(FilePurpose::TraceImage { document }, HostText::ImageMenuTrace, vec![trace_filter()])
+        }
         id::REPLACE if clicked => {
             if command_on(vm, document, CommandKey::ReplaceImage) {
                 open(FilePurpose::ReplaceImage { document }, HostText::ImageMenuImport, vec![bitmap_filter()])

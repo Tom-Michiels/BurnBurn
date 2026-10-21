@@ -42,21 +42,39 @@ pub enum ControlKind {
     /// Static text in bold: a section header.
     Heading,
     /// Read-only multi-line text (reports, lists of findings).
-    Report { lines: u16 },
+    Report {
+        lines: u16,
+    },
     Button,
     /// A button that reports press and release instead of a click (jog).
     HoldButton,
-    Check { checked: bool },
+    Check {
+        checked: bool,
+    },
     /// A single-line edit; the text is committed by Return or by leaving the control.
     Edit,
     /// A drop-down list.
-    Combo { items: Vec<String>, selected: Option<usize> },
+    Combo {
+        items: Vec<String>,
+        selected: Option<usize>,
+    },
     /// A list box of `lines` rows.
-    List { items: Vec<String>, selected: Option<usize>, lines: u16 },
+    List {
+        items: Vec<String>,
+        selected: Option<usize>,
+        lines: u16,
+    },
     /// A horizontal slider.
-    Slider { min: i32, max: i32, pos: i32 },
+    Slider {
+        min: i32,
+        max: i32,
+        pos: i32,
+    },
     /// A picture of fixed height; clicks are reported with their position.
-    Bitmap { image: Option<BitmapImage>, height_px: i32 },
+    Bitmap {
+        image: Option<BitmapImage>,
+        height_px: i32,
+    },
 }
 
 /// One control. `weight` is its share of the row's width.

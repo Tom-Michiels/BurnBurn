@@ -13,6 +13,7 @@ use burnburn_presentation::{
     DiagnosticOptions, FrameShape, JobAnchor, JogKey, LaserAction, LaserCommand, LaserControlKind, LaserSetup,
     MachineAction, StartFrom, UiIntent,
 };
+use burnburn_types::{DocumentId, StableId};
 use burnburn_windows::host_panels::laser::{
     LaserInput, id, jog_control_for_vk, laser_spec, on_laser_event, on_laser_file_chosen,
 };
@@ -21,7 +22,6 @@ use burnburn_windows::host_panels::{
     on_confirmed,
 };
 use burnburn_windows::l10n::Locale;
-use burnburn_types::{DocumentId, StableId};
 use common::{click, event, laser_view, rig, texts};
 
 fn input<'a>(
@@ -83,7 +83,8 @@ fn the_position_reads_onbekend_never_zero_and_an_off_control_explains_itself() {
     assert!(home.tooltip.starts_with("Niet geverifieerd"), "{}", home.tooltip);
     assert!(home.tooltip.contains("HOME_XY"), "the missing evidence is named: {}", home.tooltip);
     // An off control sends nothing: not an intent, not a request.
-    let reaction = on_laser_event(&input(r.doc, &vm, Some(&laser), None, None), &click(id::HOME, PanelValues::default()));
+    let reaction =
+        on_laser_event(&input(r.doc, &vm, Some(&laser), None, None), &click(id::HOME, PanelValues::default()));
     assert_eq!(reaction, PanelReaction::Nothing);
     let press = event(id::JOG_LEFT, notify::PRESS, PanelValues::default());
     assert_eq!(on_laser_event(&input(r.doc, &vm, Some(&laser), None, None), &press), PanelReaction::Nothing);
@@ -119,13 +120,8 @@ fn a_proven_control_sends_the_view_models_key_unchanged_and_jogging_ends_with_a_
         );
     }
     // Sending it makes the key count as held; the panel then says so.
-    for intent in [PanelReaction::Intent(match reaction {
-        PanelReaction::Intent(i) => i,
-        _ => unreachable!("asserted above"),
-    })] {
-        for i in intent.intents() {
-            r.h.send(i.clone());
-        }
+    for i in reaction.intents() {
+        r.h.send(i.clone());
     }
     let held = laser_view(&mut r);
     assert_eq!(held.jog_held, Some(JogKey::XLeft));
@@ -173,7 +169,10 @@ fn home_frames_and_the_fixed_buttons_become_their_laser_intents() {
     let inp = input(r.doc, &vm, Some(&laser), None, None);
     let home = on_laser_event(&inp, &click(id::HOME, PanelValues::default()));
     assert!(
-        matches!(home.intents().as_slice(), [UiIntent::Laser { command: LaserCommand::Action(LaserAction::Home(_)), .. }]),
+        matches!(
+            home.intents().as_slice(),
+            [UiIntent::Laser { command: LaserCommand::Action(LaserAction::Home(_)), .. }]
+        ),
         "{home:?}"
     );
     // Frame buttons are off until a reviewed plan exists (no plan here): nothing is sent.
@@ -290,7 +289,7 @@ fn deleting_a_controller_file_asks_first_and_only_yes_sends() {
 
 #[test]
 fn the_diagnostic_export_asks_for_a_path_with_the_ticked_options_and_cancel_exports_nothing() {
-    let mut r = rig(true);
+    let r = rig(true);
     let vm = r.h.view();
     let inp = input(r.doc, &vm, None, None, None);
     let mut values = PanelValues::default();
@@ -327,10 +326,8 @@ fn compile_and_export_rd_invoke_the_commands_and_soft_stop_is_the_machines_cance
     let enabled = vm.commands.get(&burnburn_presentation::CommandKey::Compile).is_some_and(|c| c.enabled);
     assert_eq!(
         compile.intents().first().cloned().cloned(),
-        enabled.then_some(UiIntent::Invoke {
-            document: Some(r.doc),
-            command: burnburn_presentation::CommandKey::Compile
-        })
+        enabled
+            .then_some(UiIntent::Invoke { document: Some(r.doc), command: burnburn_presentation::CommandKey::Compile })
     );
     // The software stop sends the machine view's own Cancel control (key and seen state unchanged),
     // and nothing when that control is off.

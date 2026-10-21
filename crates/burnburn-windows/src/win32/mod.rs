@@ -70,6 +70,8 @@ use crate::adapter::{
 };
 use crate::tasks::{TaskInbox, task_channel};
 
+mod panels_bridge;
+
 /// Posted by workers to the message window: task outcomes are waiting.
 const WM_TASKS_DONE: u32 = WM_APP + 1;
 /// Posted after a caught panic: autosave unsaved work into recovery files.
@@ -198,6 +200,8 @@ fn react(reaction: Reaction) -> bool {
 
 fn apply(update: AppUpdate) {
     for effect in &update.effects {
+        // W4-L8b: RD export, template and bundle dialogs, recent lists.
+        crate::win32_panels::manager::effect(effect);
         match effect {
             HostEffect::OpenWindow { document } => open_window(*document),
             HostEffect::CloseWindow { document } => {
@@ -286,6 +290,7 @@ fn refresh() {
             w.syncing = false;
         }
     });
+    crate::win32_panels::manager::refresh();
 }
 
 fn redraw(document: DocumentId) {
@@ -323,7 +328,9 @@ fn surface_for(instance: HINSTANCE, canvas: HWND) -> Option<SurfaceCanvas> {
 }
 
 fn open_window(document: DocumentId) {
-    let Some((instance, menu)) = with_host(|h| (h.instance, build_menu())) else { return };
+    // The menu is built outside the host borrow: the lane's popups read the controller.
+    let Some(instance) = with_host(|h| h.instance) else { return };
+    let menu = build_menu();
     let child = |class: PCWSTR, style, parent: HWND, id: usize| {
         // SAFETY: creating a child control of our frame; class names are system or ours.
         unsafe {
@@ -476,6 +483,8 @@ fn build_menu() -> Option<HMENU> {
         append(bar, MF_POPUP, file.0 as usize, "&Archief");
         append(bar, MF_POPUP, edit.0 as usize, "&Wijzig");
         append(bar, MF_POPUP, tools.0 as usize, "&Gereedschap");
+        // W4-L8b: Laser, Beeld, Bestanden, Camera and Help popups.
+        crate::win32_panels::manager::append_menus(bar);
         Some(bar)
     }
 }
@@ -550,6 +559,14 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
     let default = || unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
     guard("frame_proc", LRESULT(0), || {
         let Some(document) = document_of(hwnd) else { return default() };
+        // W4-L8b: the menu ids 6000..=7999 belong to the panel families.
+        if message == msg::WM_COMMAND
+            && ((wparam.0 >> 16) & 0xFFFF) <= 1
+            && crate::host_panels::ids::RANGE.contains(&((wparam.0 & 0xFFFF) as u16))
+            && crate::win32_panels::manager::handle_menu((wparam.0 & 0xFFFF) as u16)
+        {
+            return LRESULT(0);
+        }
         match message {
             msg::WM_SIZE => {
                 layout(hwnd);
@@ -562,6 +579,7 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                     // SAFETY: the popup handle comes with the message; ids are ours.
                     let _ = unsafe { EnableMenuItem(HMENU(wparam.0 as *mut _), u32::from(command_id(item)), flag) };
                 }
+                crate::win32_panels::manager::refresh_menu_state(HMENU(wparam.0 as *mut _));
                 return LRESULT(0);
             }
             WM_DESTROY => {
@@ -797,6 +815,7 @@ pub fn run_app() -> ExitCode {
             });
         }
     });
+    panels_bridge::install();
     dispatch(UiIntent::NewDocument);
     dispatch(UiIntent::CheckRecovery);
     let mut message = MSG::default();

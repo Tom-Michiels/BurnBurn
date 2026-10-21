@@ -114,8 +114,7 @@ fn new_items_for_a_list_and_a_new_check_state_are_patches_but_a_new_control_is_a
         ])],
     };
     let mut items = old.clone();
-    items.rows[0].controls[0] =
-        ControlSpec::list(1, 3, vec!["x".into(), "y".into()], Some(1), true);
+    items.rows[0].controls[0] = ControlSpec::list(1, 3, vec!["x".into(), "y".into()], Some(1), true);
     items.rows[0].controls[1] = ControlSpec::check(2, "c", true, true);
     match diff_specs(&old, &items) {
         SpecDiff::Patch(p) => {

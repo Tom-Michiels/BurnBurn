@@ -115,6 +115,8 @@ pub struct CameraInput<'a> {
     pub primary: Option<&'a CameraViewModel>,
     /// The alignment photo with the clicked marks drawn into it (host state), if any.
     pub photo: Option<BitmapImage>,
+    /// The mark the list shows chosen (host state: it moves on after a click in the photo).
+    pub mark: Option<usize>,
 }
 
 const COMMANDS: [(u16, CameraCommand); 18] = [
@@ -178,7 +180,8 @@ pub fn camera_spec(input: &CameraInput<'_>) -> PanelSpec {
         ]),
         Row::of(vec![
             caption(id::OPACITY_CAPTION, ct(CameraText::Opacity, locale)),
-            ControlSpec::slider(id::OPACITY, 0, 100, w.opacity_percent.round().clamp(0.0, 100.0) as i32, true).weighted(2),
+            ControlSpec::slider(id::OPACITY, 0, 100, w.opacity_percent.round().clamp(0.0, 100.0) as i32, true)
+                .weighted(2),
         ]),
         labeled_edit(id::HEIGHT_CAPTION, ct(CameraText::MaterialHeight, locale), id::HEIGHT, &w.height_text),
         labeled_edit(id::MARGIN_CAPTION, ct(CameraText::EdgeMargin, locale), id::MARGIN, &w.margin_text),
@@ -186,17 +189,31 @@ pub fn camera_spec(input: &CameraInput<'_>) -> PanelSpec {
         Row::one(ControlSpec::label(id::NOTE, w.note.clone())),
         // The cameras.
         Row::one(ControlSpec::heading(id::CAMERAS_HEADING, ct(CameraText::SectionCameras, locale))),
-        Row::one(ControlSpec::combo(id::DEVICE, w.devices.clone(), (!w.devices.is_empty()).then_some(0), !w.devices.is_empty())),
+        Row::one(ControlSpec::combo(
+            id::DEVICE,
+            w.devices.clone(),
+            (!w.devices.is_empty()).then_some(0),
+            !w.devices.is_empty(),
+        )),
         labeled_edit(id::LENS_PROFILE_CAPTION, ct(CameraText::LensProfile, locale), id::LENS_PROFILE, ""),
         Row::one(command_button(&w, id::USE_CAMERA, CameraCommand::UseCamera, locale)),
-        Row::one(ControlSpec::combo(id::RUNNING, w.running.clone(), (!w.running.is_empty()).then_some(0), !w.running.is_empty())),
+        Row::one(ControlSpec::combo(
+            id::RUNNING,
+            w.running.clone(),
+            (!w.running.is_empty()).then_some(0),
+            !w.running.is_empty(),
+        )),
         Row::one(command_button(&w, id::DROP_CAMERA, CameraCommand::DropCamera, locale)),
         // Stored calibrations.
         Row::one(ControlSpec::heading(id::CAL_HEADING, ct(CameraText::SectionCalibrations, locale))),
         Row::one(ControlSpec::list(
             id::CALIBRATIONS,
             4,
-            if w.calibrations.is_empty() { vec![ct(CameraText::NoCalibrations, locale).to_owned()] } else { w.calibrations.clone() },
+            if w.calibrations.is_empty() {
+                vec![ct(CameraText::NoCalibrations, locale).to_owned()]
+            } else {
+                w.calibrations.clone()
+            },
             (!w.calibrations.is_empty()).then_some(0),
             !w.calibrations.is_empty(),
         )),
@@ -223,7 +240,12 @@ pub fn camera_spec(input: &CameraInput<'_>) -> PanelSpec {
         Row::one(ControlSpec::heading(id::ALIGN_HEADING, ct(CameraText::SectionAlignment, locale))),
         labeled_edit(id::ALIGN_HEIGHT_CAPTION, ct(CameraText::AlignHeight, locale), id::ALIGN_HEIGHT, "0"),
         Row::one(command_button(&w, id::START_ALIGN, CameraCommand::StartAlignment, locale)),
-        Row::one(ControlSpec::combo(id::MARK, w.marks.clone(), (!w.marks.is_empty()).then_some(0), !w.marks.is_empty())),
+        Row::one(ControlSpec::combo(
+            id::MARK,
+            w.marks.clone(),
+            (!w.marks.is_empty()).then(|| input.mark.filter(|m| *m < w.marks.len()).unwrap_or(0)),
+            !w.marks.is_empty(),
+        )),
         Row::of(vec![
             caption(id::MARK_X_CAPTION, ct(CameraText::MarkX, locale)),
             ControlSpec::edit(id::MARK_X, "", true),
@@ -316,7 +338,12 @@ pub fn on_camera_event(input: &CameraInput<'_>, event: &PanelEvent) -> PanelReac
         id::PHOTO if code == notify::BITMAP_CLICK => {
             let (Some(click), Some(view)) = (event.click_px, event.view_px) else { return PanelReaction::Nothing };
             // Win32 measures from the top, the photo model from the bottom.
-            intent(photo_click_intent(input.workspace, v.selected(id::MARK), (view[0], view[1]), (click[0], view[1] - click[1])))
+            intent(photo_click_intent(
+                input.workspace,
+                v.selected(id::MARK),
+                (view[0], view[1]),
+                (click[0], view[1] - click[1]),
+            ))
         }
         _ if clicked => {
             let command = COMMANDS.iter().find(|(c, _)| *c == cid).map(|(_, c)| *c);

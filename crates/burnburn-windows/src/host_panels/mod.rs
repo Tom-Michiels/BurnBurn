@@ -23,8 +23,8 @@ pub mod spec;
 use std::path::PathBuf;
 
 pub use spec::{
-    ControlKind, ControlPatch, ControlSpec, KeyStroke, Metrics, PanelEvent, PanelSpec, PanelValues, Placement, Row, SpecDiff,
-    diff_specs, layout, notify,
+    ControlKind, ControlPatch, ControlSpec, KeyStroke, Metrics, PanelEvent, PanelSpec, PanelValues, Placement, Row,
+    SpecDiff, diff_specs, layout, notify,
 };
 
 use burnburn_presentation::UiIntent;
@@ -145,6 +145,10 @@ pub fn on_file_chosen(vm: &burnburn_presentation::AppViewModel, purpose: &FilePu
 
 /// Whether `command` is on for the window of `document`: the view model's command states are those
 /// of the active window, so another window's panel never invokes them.
-pub fn command_on(vm: &burnburn_presentation::AppViewModel, document: DocumentId, command: burnburn_presentation::CommandKey) -> bool {
+pub fn command_on(
+    vm: &burnburn_presentation::AppViewModel,
+    document: DocumentId,
+    command: burnburn_presentation::CommandKey,
+) -> bool {
     vm.active == Some(document) && vm.commands.get(&command).is_some_and(|c| c.enabled)
 }

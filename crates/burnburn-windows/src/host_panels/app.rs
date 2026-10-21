@@ -189,7 +189,13 @@ fn prefs_spec(input: &AppInput<'_>) -> PanelSpec {
 /// The text of one line of the shortcut list: name, key, and the default when it was changed.
 fn shortcut_text(line: &ShortcutLine, locale: Locale) -> String {
     if line.customized {
-        format!("{}    {}    ({}: {})", line.name, line.key_text, at(AppText::ShortcutColDefault, locale), line.default_text)
+        format!(
+            "{}    {}    ({}: {})",
+            line.name,
+            line.key_text,
+            at(AppText::ShortcutColDefault, locale),
+            line.default_text
+        )
     } else {
         format!("{}    {}", line.name, line.key_text)
     }
@@ -221,7 +227,10 @@ fn shortcuts_spec(input: &AppInput<'_>) -> PanelSpec {
             ControlSpec::edit(id::SC_SEARCH, input.shortcut_filter, true).weighted(2),
         ]),
         Row::one(ControlSpec::list(id::SC_LIST, 12, items, row, true)),
-        Row::one(ControlSpec::label(id::SC_RECORDING, at(AppText::ShortcutRecording, locale)).hidden_if(input.recording.is_none())),
+        Row::one(
+            ControlSpec::label(id::SC_RECORDING, at(AppText::ShortcutRecording, locale))
+                .hidden_if(input.recording.is_none()),
+        ),
         Row::one(ControlSpec::label(id::SC_NOTICE, notice)),
         Row::of(vec![
             ControlSpec::button(id::SC_RECORD, at(AppText::ShortcutRecord, locale), has_row),
@@ -281,7 +290,8 @@ fn preview_spec(input: &AppInput<'_>) -> PanelSpec {
     };
     let p = preview_panel(view, locale);
     let frame = PreviewFrame::for_view(view, PREVIEW_SIZE, PREVIEW_MARGIN);
-    let pos = if p.slider_max > 0.0 { (p.slider_value / p.slider_max * f64::from(SLIDER_STEPS)).round() as i32 } else { 0 };
+    let pos =
+        if p.slider_max > 0.0 { (p.slider_value / p.slider_max * f64::from(SLIDER_STEPS)).round() as i32 } else { 0 };
     let rows = vec![
         Row::one(ControlSpec::label(id::PV_PLAN, p.plan_text.clone())),
         Row::one(ControlSpec::label(id::PV_STALE, p.stale.clone().unwrap_or_default())),
@@ -442,23 +452,26 @@ fn on_preview(input: &AppInput<'_>, event: &PanelEvent) -> PanelReaction {
         (id::PV_PLAY, notify::CLICKED) => preview(PreviewIntent::Play { document, playing: !view.playing }),
         (id::PV_SLIDER, notify::SLIDER) => {
             let pos = f64::from(v.slider(id::PV_SLIDER).unwrap_or(0).clamp(0, SLIDER_STEPS));
-            preview(PreviewIntent::Seek { document, seconds: pos / f64::from(SLIDER_STEPS) * view.estimated_total_seconds })
+            preview(PreviewIntent::Seek {
+                document,
+                seconds: pos / f64::from(SLIDER_STEPS) * view.estimated_total_seconds,
+            })
         }
         (id::PV_SPEED, notify::CHANGED) => {
             let speed = usize::try_from(v.selected(id::PV_SPEED)).ok().and_then(|i| PlaybackSpeed::ALL.get(i));
             speed.map_or(PanelReaction::Nothing, |speed| preview(PreviewIntent::SetSpeed { document, speed: *speed }))
         }
-        (id::PV_TRAVEL, notify::CLICKED) => preview(PreviewIntent::ShowTravel { document, show: v.checked(id::PV_TRAVEL) }),
+        (id::PV_TRAVEL, notify::CLICKED) => {
+            preview(PreviewIntent::ShowTravel { document, show: v.checked(id::PV_TRAVEL) })
+        }
         (id::PV_BITMAP, notify::BITMAP_CLICK) => {
             let (Some(click), Some(shown)) = (event.click_px, event.view_px) else { return PanelReaction::Nothing };
             if !(shown[0] > 0.0 && shown[1] > 0.0) {
                 return PanelReaction::Nothing;
             }
             // The control stretches the bitmap: scale the click back to bitmap pixels.
-            let px = [
-                click[0] * f64::from(PREVIEW_SIZE[0]) / shown[0],
-                click[1] * f64::from(PREVIEW_SIZE[1]) / shown[1],
-            ];
+            let px =
+                [click[0] * f64::from(PREVIEW_SIZE[0]) / shown[0], click[1] * f64::from(PREVIEW_SIZE[1]) / shown[1]];
             let frame = PreviewFrame::for_view(view, PREVIEW_SIZE, PREVIEW_MARGIN);
             preview(PreviewIntent::Pick { document, at_mm: frame.to_mm(px), tolerance_mm: frame.hit_radius_mm(4.0) })
         }

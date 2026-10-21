@@ -127,7 +127,13 @@ fn snap(r: &mut Rig) -> Snap {
 
 impl Snap {
     fn input(&self, locale: Locale) -> CameraInput<'_> {
-        CameraInput { locale, workspace: self.workspace.as_ref(), primary: self.primary.as_ref(), photo: None }
+        CameraInput {
+            locale,
+            workspace: self.workspace.as_ref(),
+            primary: self.primary.as_ref(),
+            photo: None,
+            mark: None,
+        }
     }
     fn spec(&self, locale: Locale) -> PanelSpec {
         camera_spec(&self.input(locale))
@@ -163,7 +169,13 @@ fn the_unavailable_port_says_so_and_cannot_start_anything() {
     let mut h = HeadlessEditorHarness::new();
     h.controller().attach_camera(Arc::new(UnavailableCameraPort));
     let primary = h.controller().camera_view();
-    let s = camera_spec(&CameraInput { locale: Locale::Nl, workspace: None, primary: primary.as_ref(), photo: None });
+    let s = camera_spec(&CameraInput {
+        locale: Locale::Nl,
+        workspace: None,
+        primary: primary.as_ref(),
+        photo: None,
+        mark: None,
+    });
     assert!(!on(&s, id::BED_START) && !on(&s, id::BED_STOP) && !on(&s, id::BED_ACCESS));
     assert!(!text(&s, id::BED_STATUS).is_empty());
 }
@@ -199,7 +211,10 @@ fn the_bed_section_starts_the_largest_bgra_mode_and_stop_waits_for_a_running_cam
     r.h.send(UiIntent::BedCamera(BedCameraIntent::Start { device: cam(), mode: mode(1280) }));
     let sn = snap(&mut r);
     assert!(on(&sn.spec(Locale::En), id::BED_STOP));
-    assert_eq!(sn.react(click(id::BED_STOP, values)), PanelReaction::Intent(UiIntent::BedCamera(BedCameraIntent::Stop)));
+    assert_eq!(
+        sn.react(click(id::BED_STOP, values)),
+        PanelReaction::Intent(UiIntent::BedCamera(BedCameraIntent::Stop))
+    );
 }
 
 #[test]
@@ -255,12 +270,27 @@ fn an_invalid_calibration_is_badged_with_its_reason_and_a_refusal_is_in_words() 
 fn buttons_become_the_intents_of_the_state_they_were_offered_in_and_off_buttons_send_nothing() {
     let mut r = rig();
     let off = snap(&mut r);
-    for button in [id::UPDATE_OVERLAY, id::DROP_CAMERA, id::START_LENS, id::ADD_PHOTO, id::FIT_LENS, id::START_ALIGN, id::TAKE_PHOTO, id::SAVE_ALIGN] {
+    for button in [
+        id::UPDATE_OVERLAY,
+        id::DROP_CAMERA,
+        id::START_LENS,
+        id::ADD_PHOTO,
+        id::FIT_LENS,
+        id::START_ALIGN,
+        id::TAKE_PHOTO,
+        id::SAVE_ALIGN,
+    ] {
         assert_eq!(off.react(click(button, PanelValues::default())), PanelReaction::Nothing, "{button}");
     }
     start_camera(&mut r, 640);
     let sn = snap(&mut r);
-    let mut values = texts(&[(id::COLS, "9"), (id::ROWS, "6"), (id::PITCH, "25"), (id::ALIGN_HEIGHT, "2,5"), (id::LENS_PROFILE, "  groothoek ")]);
+    let mut values = texts(&[
+        (id::COLS, "9"),
+        (id::ROWS, "6"),
+        (id::PITCH, "25"),
+        (id::ALIGN_HEIGHT, "2,5"),
+        (id::LENS_PROFILE, "  groothoek "),
+    ]);
     values.selection.insert(id::RUNNING, Some(0));
     values.selection.insert(id::DEVICE, Some(0));
     values.selection.insert(id::CALIBRATIONS, Some(0));
@@ -270,17 +300,28 @@ fn buttons_become_the_intents_of_the_state_they_were_offered_in_and_off_buttons_
     );
     assert_eq!(
         sn.react(click(id::START_LENS, values.clone())),
-        PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartLensCalibration { device: cam(), cols: 9, rows: 6, pitch_mm: "25".into() }))
+        PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartLensCalibration {
+            device: cam(),
+            cols: 9,
+            rows: 6,
+            pitch_mm: "25".into()
+        }))
     );
     let mut junk = values.clone();
     junk.texts.insert(id::COLS, "negen".into());
-    assert!(matches!(
-        sn.react(click(id::START_LENS, junk)),
-        PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartLensCalibration { cols: 0, .. }))
-    ), "not a number: presentation gets 0 and refuses a bad grid");
+    assert!(
+        matches!(
+            sn.react(click(id::START_LENS, junk)),
+            PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartLensCalibration { cols: 0, .. }))
+        ),
+        "not a number: presentation gets 0 and refuses a bad grid"
+    );
     assert_eq!(
         sn.react(click(id::START_ALIGN, values.clone())),
-        PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartAlignment { device: cam(), material_height_mm: "2,5".into() }))
+        PanelReaction::Intent(UiIntent::CameraWorkspace(I::StartAlignment {
+            device: cam(),
+            material_height_mm: "2,5".into()
+        }))
     );
     assert!(matches!(
         sn.react(click(id::USE_CAMERA, values.clone())),
@@ -330,4 +371,20 @@ fn a_click_in_the_photo_is_flipped_to_the_photo_pixel_and_goes_to_the_next_unpla
     assert_eq!(sn.react(bar), PanelReaction::Nothing, "beside the photo");
     assert_eq!(next_mark_after(&sn.input(Locale::En), 0), Some(1));
     assert_eq!(next_mark_after(&sn.input(Locale::En), -1), None);
+}
+
+#[test]
+fn the_mark_list_shows_the_mark_the_host_chose_and_moves_on_after_a_click() {
+    let mut r = rig();
+    start_camera(&mut r, 640);
+    go(&mut r, I::StartAlignment { device: cam(), material_height_mm: "0".into() });
+    let sn = snap(&mut r);
+    let selected =
+        |mark| match &camera_spec(&CameraInput { mark, ..sn.input(Locale::En) }).control(id::MARK).unwrap().kind {
+            ControlKind::Combo { selected, .. } => *selected,
+            other => panic!("{other:?}"),
+        };
+    assert_eq!(selected(None), Some(0), "the first mark by default");
+    assert_eq!(selected(Some(3)), Some(3));
+    assert_eq!(selected(Some(99)), Some(0), "a mark that does not exist falls back to the first");
 }

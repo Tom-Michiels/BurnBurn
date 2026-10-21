@@ -10,9 +10,7 @@
 //! Shift+arrow = large, Alt+arrow = small (the Mac uses Ctrl for small; Ctrl+arrow is text
 //! navigation on Windows and is left alone).
 
-use burnburn_presentation::{
-    AppIntent, AppViewModel, HelpInfo, KeyBinding, NudgeDirection, NudgeStep, UiIntent,
-};
+use burnburn_presentation::{AppIntent, AppViewModel, HelpInfo, KeyBinding, NudgeDirection, NudgeStep, UiIntent};
 use burnburn_types::DocumentId;
 
 use crate::app_text::{AppText, app_text};
@@ -109,12 +107,9 @@ impl AppAction {
 /// A binding as the menus and the shortcut editor draw it on Windows.
 pub fn binding_glyphs(binding: &KeyBinding) -> String {
     let mut out = String::new();
-    for (on, name) in [
-        (binding.command, "Ctrl"),
-        (binding.control, "Win"),
-        (binding.option, "Alt"),
-        (binding.shift, "Shift"),
-    ] {
+    for (on, name) in
+        [(binding.command, "Ctrl"), (binding.control, "Win"), (binding.option, "Alt"), (binding.shift, "Shift")]
+    {
         if on {
             out.push_str(name);
             out.push('+');
@@ -209,8 +204,8 @@ pub fn action_reaction(action: AppAction, vm: &AppViewModel, help: &HelpInfo, lo
         AppAction::Preview => sheet(AppSheet::Preview),
         AppAction::InspectRd => sheet(AppSheet::Rd),
         AppAction::SupportData | AppAction::DebugLog => sheet(AppSheet::Support),
-        AppAction::Manual => {
-            help.manual_url.map_or(PanelReaction::Nothing, |url| PanelReaction::Host(HostRequest::OpenUrl(url.to_owned())))
-        }
+        AppAction::Manual => help
+            .manual_url
+            .map_or(PanelReaction::Nothing, |url| PanelReaction::Host(HostRequest::OpenUrl(url.to_owned()))),
     }
 }

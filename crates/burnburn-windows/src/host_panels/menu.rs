@@ -248,7 +248,9 @@ pub fn reaction(item: Item, ctx: &MenuContext<'_>) -> PanelReaction {
         (Item::CameraWindow, Some(_)) => show(Family::Camera),
         (Item::ImagePanel, Some(_)) => show(Family::Image),
         (Item::FilesPanel, Some(_)) => show(Family::Files),
-        (Item::ImportImage, Some(document)) => open(FilePurpose::ImportDrawing { document }, title, import_filters(true)),
+        (Item::ImportImage, Some(document)) => {
+            open(FilePurpose::ImportDrawing { document }, title, import_filters(true))
+        }
         (Item::Import, Some(document)) => open(FilePurpose::ImportDrawing { document }, title, import_filters(false)),
         (Item::TraceImage, Some(document)) => open(FilePurpose::TraceImage { document }, title, vec![trace_filter()]),
         _ => PanelReaction::Nothing,
