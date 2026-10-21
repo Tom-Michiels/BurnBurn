@@ -269,3 +269,23 @@ struct LinkDto {
     entry: u64,
     revision: u32,
 }
+
+/// The schema version in the manifest of container `bytes`, without loading the project.
+///
+/// Only `manifest.json` is read. A file that is not a BurnBurn container (or whose manifest does
+/// not say so) is an error; a newer schema is *not* (that is what the caller wants to know).
+pub fn container_schema(bytes: &[u8]) -> Result<u32, LoadError> {
+    let mut zip = ZipArchive::new(Cursor::new(bytes)).map_err(|e| LoadError::Container(e.to_string()))?;
+    let entry = zip.by_name(MANIFEST).map_err(|_| LoadError::MissingEntry(MANIFEST))?;
+    let mut data = Vec::new();
+    entry.take(MAX_JSON_BYTES + 1).read_to_end(&mut data).map_err(|e| LoadError::Container(e.to_string()))?;
+    if data.len() as u64 > MAX_JSON_BYTES {
+        return Err(LoadError::Limit("manifest size"));
+    }
+    let loose: serde_json::Value = serde_json::from_slice(&data).map_err(|e| json_error(MANIFEST, &e))?;
+    if loose.get("format").and_then(|v| v.as_str()) != Some(FORMAT) {
+        return Err(LoadError::NotAProject);
+    }
+    let schema = loose.get("schema").and_then(serde_json::Value::as_u64).ok_or(LoadError::NotAProject)?;
+    Ok(u32::try_from(schema).unwrap_or(u32::MAX))
+}

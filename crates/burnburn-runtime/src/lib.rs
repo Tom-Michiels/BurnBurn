@@ -10,6 +10,7 @@ pub mod fonts;
 mod history_store;
 mod journal_fs;
 pub mod udp;
+pub mod update_gate;
 pub mod usb;
 
 pub use clock::SystemClock;

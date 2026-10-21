@@ -49,7 +49,10 @@ impl fmt::Display for LoadError {
             LoadError::UnexpectedEntry(e) => write!(f, "unexpected entry {e:?} in project container"),
             LoadError::NotAProject => f.write_str("not a BurnBurn project"),
             LoadError::NewerSchema { found, supported } => {
-                write!(f, "project schema {found} is newer than supported schema {supported}")
+                write!(
+                    f,
+                    "project schema {found} is newer than supported schema {supported}: the project was saved by a newer BurnBurn. Update BurnBurn to open it"
+                )
             }
             LoadError::UnknownField { entry, detail } => write!(f, "{entry}: {detail}"),
             LoadError::Json { entry, detail } => write!(f, "{entry}: {detail}"),
@@ -72,6 +75,11 @@ pub enum SaveError {
     Encode(String),
     /// The project is inconsistent (for example an operation targets missing geometry).
     Invalid(String),
+    /// The file at the target path was written by a newer BurnBurn; this build does not overwrite it.
+    NewerFileOnDisk {
+        found: u32,
+        supported: u32,
+    },
 }
 
 impl fmt::Display for SaveError {
@@ -81,6 +89,12 @@ impl fmt::Display for SaveError {
             SaveError::Unconfirmed(e) => write!(f, "saved, but not confirmed durable: {e}"),
             SaveError::Encode(m) => write!(f, "could not encode project: {m}"),
             SaveError::Invalid(m) => write!(f, "project is inconsistent: {m}"),
+            SaveError::NewerFileOnDisk { found, supported } => {
+                write!(
+                    f,
+                    "the file on disk has schema {found}, newer than supported schema {supported}: not overwritten"
+                )
+            }
         }
     }
 }

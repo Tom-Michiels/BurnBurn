@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::container::{MAX_CONTAINER_BYTES, decode_container, encode_container};
+use crate::container::{MAX_CONTAINER_BYTES, SCHEMA_VERSION, container_schema, decode_container, encode_container};
 use crate::error::{LoadError, SaveError};
 use crate::fs::FileSystem;
 use crate::project::{Project, ProjectUuid};
@@ -73,4 +73,63 @@ pub fn discard_recovery(fs: &dyn FileSystem, recovery_dir: &Path, uuid: ProjectU
         fs.remove_file(&path).map_err(SaveError::Fs)?;
     }
     Ok(())
+}
+
+/// What [`save_project_keeping_previous`] did besides saving.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveOutcome {
+    /// Where the previous file was copied to, when there was one worth keeping.
+    pub backup: Option<PathBuf>,
+}
+
+/// Save that never destroys a file the current build cannot reproduce.
+///
+/// When a file already exists at `path`:
+/// - written by an **older** schema, or **unreadable**: it is first copied byte for byte to
+///   `<name>.schema<N>.bak` / `<name>.unreadable.bak` (same atomic route; an existing backup is never
+///   replaced, a numbered name is used instead) and only then replaced. If the copy fails the
+///   original stays and nothing is saved.
+/// - written by a **newer** schema: refused with [`SaveError::NewerFileOnDisk`]; nothing changes.
+/// - of the current schema: replaced as by [`save_project`], no backup.
+pub fn save_project_keeping_previous(
+    fs: &dyn FileSystem,
+    path: &Path,
+    project: &Project,
+) -> Result<SaveOutcome, SaveError> {
+    // Validate the new content first, so a failing project never costs a backup.
+    let bytes = encode_container(project)?;
+    decode_container(&bytes).map_err(|e| SaveError::Invalid(e.to_string()))?;
+
+    let mut backup = None;
+    if fs.exists(path).map_err(SaveError::Fs)? {
+        let old = fs.read(path, MAX_CONTAINER_BYTES).map_err(SaveError::Fs)?;
+        let tag = match container_schema(&old) {
+            Ok(found) if found > SCHEMA_VERSION => {
+                return Err(SaveError::NewerFileOnDisk { found, supported: SCHEMA_VERSION });
+            }
+            Ok(found) if found == SCHEMA_VERSION => None,
+            Ok(found) => Some(format!("schema{found}")),
+            Err(_) => Some("unreadable".to_owned()),
+        };
+        if let Some(tag) = tag {
+            let target = free_backup_path(fs, path, &tag)?;
+            write_atomic(fs, &target, &old)?;
+            backup = Some(target);
+        }
+    }
+    write_atomic(fs, path, &bytes)?;
+    Ok(SaveOutcome { backup })
+}
+
+/// `<name>.<tag>.bak`, or `<name>.<tag>.<n>.bak` when that exists already.
+fn free_backup_path(fs: &dyn FileSystem, path: &Path, tag: &str) -> Result<PathBuf, SaveError> {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("project");
+    for n in 1..=999u32 {
+        let candidate = if n == 1 { format!("{name}.{tag}.bak") } else { format!("{name}.{tag}.{n}.bak") };
+        let candidate = path.with_file_name(candidate);
+        if !fs.exists(&candidate).map_err(SaveError::Fs)? {
+            return Ok(candidate);
+        }
+    }
+    Err(SaveError::Invalid(format!("too many backups of {name} next to it; remove old .bak files")))
 }
