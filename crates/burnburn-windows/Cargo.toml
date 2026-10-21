@@ -49,6 +49,9 @@ toml = { workspace = true }
 # Machine profiles with blocked features for the Cut Settings tests.
 burnburn-job = { workspace = true }
 burnburn-ruida = { workspace = true }
+# Text panels: a font source with several faces and the OFL test fonts.
+burnburn-test-support = { workspace = true }
+burnburn-text = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 burnburn-render = { workspace = true }
