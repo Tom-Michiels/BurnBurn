@@ -177,6 +177,9 @@ pub enum CommandWarning {
     ReferenceBroken { holder: RefHolder, reason: BreakReason },
     /// A reference whose origin now yields several edges; the user must choose one.
     ReferenceAmbiguous { reference: ReferenceId, candidates: Vec<EdgeName> },
+    /// The undo history exceeded its memory budget, so this many of the OLDEST steps can no
+    /// longer be undone. The document itself is untouched (X04).
+    HistoryTrimmed { dropped_steps: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -41,6 +41,6 @@ pub use patch::{
     DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DerivedRecord, DocumentPatch, EvalDiagnosis, EvalStatus,
     Evaluator, ModifierFailure, OwnerSolution,
 };
-pub use session::DocumentSession;
+pub use session::{DocumentSession, HistoryBudget};
 pub use shape_edit::{ShapeCommand, ShapeError, ShapeLabel};
 pub use snapshot::{DocumentSnapshot, PickingKey, PlateView, SnapshotError};
