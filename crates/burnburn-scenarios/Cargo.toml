@@ -20,9 +20,14 @@ burnburn-geometry = { workspace = true }
 burnburn-image = { workspace = true }
 burnburn-io = { workspace = true }
 burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-presentation = { workspace = true }
 burnburn-ruida = { workspace = true }
 burnburn-sketch = { workspace = true }
 burnburn-test-support = { workspace = true }
+burnburn-text = { workspace = true }
 burnburn-trace = { workspace = true }
 burnburn-types = { workspace = true }
+proptest = { workspace = true }
+rxing = { workspace = true }
 serde_json = { workspace = true }

@@ -95,8 +95,10 @@ pub(super) struct ImageState {
     pub(super) adjust: Option<AdjustState>,
     /// Decoded originals by pixel hash.
     pub(super) sources: BTreeMap<ContentHash, Arc<SourceImage>>,
-    /// The file an image operation was read from (Refresh).
-    pub(super) origins: BTreeMap<OperationId, PathBuf>,
+    /// The file the pixels of an image operation were read from (Refresh), per operation AND pixel
+    /// hash: an undo that brings the old pixels back also brings their file back (W4-acceptatie,
+    /// IM03 regression `refresh_after_replace_and_undo_reads_the_original_file_again`).
+    pub(super) origins: BTreeMap<(OperationId, ContentHash), PathBuf>,
     pub(super) loads: BTreeMap<TaskId, LoadPurpose>,
 }
 
@@ -230,6 +232,12 @@ fn selected_image(s: &Session) -> Option<(OperationId, GeometryId)> {
     })
 }
 
+/// The file the operation's current pixels came from.
+fn origin_of(s: &Session, operation: OperationId) -> Option<&PathBuf> {
+    let source = image_settings(s, operation)?.source();
+    s.image.origins.get(&(operation, source))
+}
+
 fn image_settings(s: &Session, operation: OperationId) -> Option<ImageSettings> {
     match s.doc.snapshot().process().operation(operation)?.mode() {
         OperationMode::Image(settings) => Some(settings),
@@ -348,7 +356,7 @@ pub(super) fn command_enabled(key: CommandKey, s: &Session) -> bool {
         CommandKey::AdjustImage | CommandKey::ReplaceImage | CommandKey::SaveProcessedBitmap => {
             selected_image(s).is_some()
         }
-        CommandKey::RefreshImage => selected_image(s).is_some_and(|(op, _)| s.image.origins.contains_key(&op)),
+        CommandKey::RefreshImage => selected_image(s).is_some_and(|(op, _)| origin_of(s, op).is_some()),
         CommandKey::MaskImage => mask_plan(s).is_some(),
         CommandKey::ApplyImageAdjust => image_view(s).adjust.is_some_and(|a| a.can_apply),
         CommandKey::CancelImageAdjust => s.image.adjust.is_some(),
@@ -439,7 +447,7 @@ impl AppController {
             if let Some(target) = s.selection.single()
                 && let Some(op) = s.doc.snapshot().process().operations_using(target).first().copied()
             {
-                s.image.origins.insert(op, pending.path.clone());
+                s.image.origins.insert((op, pending.source.content_hash()), pending.path.clone());
             }
             s.image.sources.insert(pending.source.content_hash(), Arc::clone(&pending.source));
             s.image.pending = None;
@@ -602,7 +610,7 @@ pub(super) fn sync(s: &mut Session) {
         close_adjust(s);
     }
     let snapshot = s.doc.snapshot();
-    s.image.origins.retain(|op, _| snapshot.process().operation(*op).is_some());
+    s.image.origins.retain(|(op, _), _| snapshot.process().operation(*op).is_some());
 }
 
 // ---- mask -------------------------------------------------------------------------------------
@@ -715,7 +723,7 @@ impl AppController {
         let request = self.next_id::<RequestId>();
         let Some((operation, path)) = self.sessions.get(&document).and_then(|s| {
             let (op, _) = selected_image(s)?;
-            Some((op, s.image.origins.get(&op)?.clone()))
+            Some((op, origin_of(s, op)?.clone()))
         }) else {
             return AppUpdate::default();
         };
@@ -794,8 +802,9 @@ fn apply_replacement(
         _ => replaced,
     };
     s.assets.add(media_of(&bytes), &bytes);
-    s.image.sources.insert(source.content_hash(), source);
-    s.image.origins.insert(operation, path);
+    let pixels = source.content_hash();
+    s.image.sources.insert(pixels, source);
+    s.image.origins.insert((operation, pixels), path);
     let draft = OperationDraft { mode: OperationMode::Image(replaced), ..op.draft() };
     apply_edit(s, document, CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft }), request)
 }

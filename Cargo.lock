@@ -411,11 +411,16 @@ dependencies = [
  "burnburn-image",
  "burnburn-io",
  "burnburn-job",
+ "burnburn-machine",
+ "burnburn-presentation",
  "burnburn-ruida",
  "burnburn-sketch",
  "burnburn-test-support",
+ "burnburn-text",
  "burnburn-trace",
  "burnburn-types",
+ "proptest",
+ "rxing",
  "serde_json",
 ]
 
