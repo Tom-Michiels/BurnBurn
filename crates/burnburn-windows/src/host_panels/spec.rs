@@ -67,11 +67,14 @@ pub struct ControlSpec {
     /// The reason in words when the control is off (the tooltip), empty when there is none.
     pub tooltip: String,
     pub weight: u16,
+    /// A hidden control keeps its place in the structure (so the panel is patched, not rebuilt,
+    /// when it appears) but is not shown.
+    pub visible: bool,
 }
 
 impl ControlSpec {
     fn new(id: u16, kind: ControlKind, text: impl Into<String>) -> Self {
-        ControlSpec { id, kind, text: text.into(), enabled: true, tooltip: String::new(), weight: 1 }
+        ControlSpec { id, kind, text: text.into(), enabled: true, tooltip: String::new(), weight: 1, visible: true }
     }
     pub fn label(id: u16, text: impl Into<String>) -> Self {
         Self::new(id, ControlKind::Label, text)
@@ -108,6 +111,10 @@ impl ControlSpec {
     }
     pub fn weighted(mut self, weight: u16) -> Self {
         self.weight = weight.max(1);
+        self
+    }
+    pub fn hidden_if(mut self, hidden: bool) -> Self {
+        self.visible = !hidden;
         self
     }
     pub fn tip(mut self, tooltip: impl Into<String>) -> Self {
@@ -229,6 +236,7 @@ pub struct ControlPatch {
     pub text: Option<String>,
     pub enabled: Option<bool>,
     pub tooltip: Option<String>,
+    pub visible: Option<bool>,
     pub checked: Option<bool>,
     /// New items and selection of a combo or list.
     pub items: Option<(Vec<String>, Option<usize>)>,
@@ -282,6 +290,10 @@ pub fn diff_specs(old: &PanelSpec, new: &PanelSpec) -> SpecDiff {
         }
         if a.enabled != b.enabled {
             patch.enabled = Some(b.enabled);
+            changed = true;
+        }
+        if a.visible != b.visible {
+            patch.visible = Some(b.visible);
             changed = true;
         }
         if a.tooltip != b.tooltip {

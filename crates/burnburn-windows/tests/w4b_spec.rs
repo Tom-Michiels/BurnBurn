@@ -147,3 +147,20 @@ fn panel_values_read_missing_controls_as_empty() {
     assert!(!v.checked(99));
     assert_eq!((v.selected(6), v.selected(7), v.selected(99)), (2, -1, -1));
 }
+
+#[test]
+fn a_control_that_appears_or_disappears_is_a_patch_not_a_rebuild() {
+    let old = PanelSpec {
+        title: String::new(),
+        rows: vec![Row::of(vec![ControlSpec::button(1, "Start", true).hidden_if(true), ControlSpec::label(2, "x")])],
+    };
+    let mut new = old.clone();
+    new.rows[0].controls[0].visible = true;
+    match diff_specs(&old, &new) {
+        SpecDiff::Patch(p) => {
+            assert_eq!(p.len(), 1);
+            assert_eq!((p[0].id, p[0].visible), (1, Some(true)));
+        }
+        other => panic!("{other:?}"),
+    }
+}

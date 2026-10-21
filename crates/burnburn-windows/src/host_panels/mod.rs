@@ -9,7 +9,10 @@
 //!
 //! **Command ids**: this lane owns `6000..=7999` of the `WM_COMMAND` id space ([`ids`]).
 
+pub mod filters;
 pub mod ids;
+pub mod image;
+pub mod laser;
 pub mod spec;
 
 use std::path::PathBuf;
@@ -111,3 +114,17 @@ impl PanelReaction {
 
 /// `path` as a dialog answer: a chosen file, or `None` for Cancel.
 pub type Chosen = Option<PathBuf>;
+
+/// The answer to a [`DialogRequest::Confirm`].
+pub fn on_confirmed(purpose: &ConfirmPurpose, yes: bool) -> PanelReaction {
+    match (purpose, yes) {
+        (ConfirmPurpose::DeleteControllerFile { intent }, true) => PanelReaction::Intent((**intent).clone()),
+        _ => PanelReaction::Nothing,
+    }
+}
+
+/// Whether `command` is on for the window of `document`: the view model's command states are those
+/// of the active window, so another window's panel never invokes them.
+pub fn command_on(vm: &burnburn_presentation::AppViewModel, document: DocumentId, command: burnburn_presentation::CommandKey) -> bool {
+    vm.active == Some(document) && vm.commands.get(&command).is_some_and(|c| c.enabled)
+}

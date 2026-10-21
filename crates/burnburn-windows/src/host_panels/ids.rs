@@ -17,6 +17,13 @@ pub const CONTROL_BASE: u16 = 7000;
 /// Width of a family's control-id block.
 pub const CONTROL_BLOCK: u16 = 200;
 
+/// First control id of each family's panel (`CONTROL_BASE + n * CONTROL_BLOCK`).
+pub const LASER_CONTROLS: u16 = CONTROL_BASE;
+pub const IMAGE_CONTROLS: u16 = CONTROL_BASE + CONTROL_BLOCK;
+pub const FILES_CONTROLS: u16 = CONTROL_BASE + 2 * CONTROL_BLOCK;
+pub const CAMERA_CONTROLS: u16 = CONTROL_BASE + 3 * CONTROL_BLOCK;
+pub const APP_CONTROLS: u16 = CONTROL_BASE + 4 * CONTROL_BLOCK;
+
 const FAMILIES: [Family; 5] = [Family::Laser, Family::Image, Family::Files, Family::Camera, Family::App];
 
 fn slot(family: Family) -> u16 {
