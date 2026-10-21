@@ -638,3 +638,66 @@ mod mask {
         assert!(!h.view().commands[&CommandKey::MaskImage].enabled, "only the image");
     }
 }
+
+/// W4-UI-machine: composed image commands are one undo step each.
+mod one_undo_step {
+    use super::*;
+    use burnburn_document::{CompoundLabel, UndoLabel};
+
+    #[test]
+    fn importing_an_image_is_one_undo_step_and_one_redo_restores_frame_and_operation() {
+        let (mut h, doc, _) = with_image(&eight_by_eight());
+        let vm = h.document(doc).unwrap();
+        assert_eq!(vm.objects.len(), 1);
+        assert_eq!(vm.undo, Some(UndoLabel::Compound(CompoundLabel::ImportImage)));
+
+        h.invoke(doc, CommandKey::Undo);
+
+        let vm = h.document(doc).unwrap();
+        assert_eq!(vm.objects.len(), 0, "the frame is gone with one undo");
+        assert_eq!(vm.undo, None, "nothing left to undo: the operation went with it");
+        let project = saved(&mut h, doc);
+        assert!(image_ops(&project).is_empty(), "and the image operation");
+
+        h.invoke(doc, CommandKey::Redo);
+
+        let vm = h.document(doc).unwrap();
+        assert_eq!(vm.objects.len(), 1, "one redo brings the frame back");
+        let project = saved(&mut h, doc);
+        let ops = image_ops(&project);
+        assert_eq!(ops.len(), 1, "and its operation");
+        assert_eq!(ops[0].targets.len(), 1);
+    }
+
+    #[test]
+    fn masking_an_image_is_one_undo_step_and_one_redo_restores_the_mask() {
+        let (mut h, doc, _) = with_image(&png(10, 10, &[100; 100], ONE_MM_PER_PX));
+        let frame = frame_of(&mut h, doc);
+        if h.view().commands[&CommandKey::SnapToObjects].checked {
+            h.invoke(doc, CommandKey::SnapToObjects);
+        }
+        h.invoke(doc, CommandKey::ToolRectangle);
+        h.drag(doc, (2.0, 2.0), (6.0, 8.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        let shape = h.document(doc).unwrap().objects.last().unwrap().id;
+        select(&mut h, doc, vec![frame, shape]);
+
+        h.invoke(doc, CommandKey::MaskImage);
+        assert_eq!(h.document(doc).unwrap().undo, Some(UndoLabel::Compound(CompoundLabel::MaskImage)));
+        h.invoke(doc, CommandKey::Undo);
+
+        let project = saved(&mut h, doc);
+        let op = &image_ops(&project)[0];
+        assert_eq!(op.targets, vec![frame], "one undo gives the frame back as the target");
+        assert!(!op.settings.mask(), "and the unmasked settings");
+        assert_eq!(op.settings.crop(), None);
+        assert_eq!(h.document(doc).unwrap().undo, Some(UndoLabel::CreateRectangle));
+
+        h.invoke(doc, CommandKey::Redo);
+
+        let project = saved(&mut h, doc);
+        let op = &image_ops(&project)[0];
+        assert_eq!(op.targets, vec![shape], "one redo restores the mask");
+        assert!(op.settings.mask());
+    }
+}

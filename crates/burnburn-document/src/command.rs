@@ -70,6 +70,8 @@ pub enum CommandPayload {
     Shape(crate::shape_edit::ShapeCommand),
     /// Draw order, locks, paste, break apart and auto-group (W2-L1-bewerken).
     Arrange(crate::arrange_edit::ArrangeCommand),
+    /// Several steps as one transaction and one undo step (W4-UI-machine).
+    Compound(crate::compound::CompoundCommand),
 }
 
 impl CommandPayload {
@@ -90,6 +92,7 @@ impl CommandPayload {
             CommandPayload::Generator(g) => UndoLabel::Generator(g.label()),
             CommandPayload::Shape(s) => UndoLabel::Shape(s.label()),
             CommandPayload::Arrange(a) => UndoLabel::Arrange(a.label()),
+            CommandPayload::Compound(c) => UndoLabel::Compound(c.label),
         }
     }
 }
@@ -127,6 +130,7 @@ pub enum UndoLabel {
     Generator(GeneratorLabel),
     Shape(crate::shape_edit::ShapeLabel),
     Arrange(crate::arrange_edit::ArrangeLabel),
+    Compound(crate::compound::CompoundLabel),
 }
 
 /// Which objects a committed command (or undo/redo) created, modified or deleted.
@@ -249,6 +253,8 @@ pub enum CommandError {
     Shape(crate::shape_edit::ShapeError),
     /// An arrangement command was rejected (W2-L1-bewerken); nothing changed.
     Arrange(crate::arrange_edit::ArrangeError),
+    /// A compound command was rejected (W4-UI-machine); nothing changed.
+    Compound(crate::compound::CompoundError),
 }
 
 impl fmt::Display for CommandError {
@@ -280,6 +286,7 @@ impl fmt::Display for CommandError {
             CommandError::Engine(e) => write!(f, "{e}"),
             CommandError::Shape(e) => write!(f, "shape: {e}"),
             CommandError::Arrange(e) => write!(f, "arrange: {e}"),
+            CommandError::Compound(e) => write!(f, "compound: {e:?}"),
         }
     }
 }

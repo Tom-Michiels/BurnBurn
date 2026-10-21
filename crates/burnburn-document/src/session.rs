@@ -307,6 +307,34 @@ impl Txn {
         Ok(())
     }
 
+    /// Runs the steps on this working copy; the first failing step drops the whole transaction.
+    fn execute_compound(&mut self, compound: crate::compound::CompoundCommand) -> Result<(), CommandError> {
+        use crate::compound::{CompoundError, CompoundStep};
+        if compound.steps.is_empty() {
+            return Err(CommandError::Compound(CompoundError::Empty));
+        }
+        let first_created = self.changes.created.len();
+        for step in compound.steps {
+            match step {
+                CompoundStep::Run(CommandPayload::Compound(_)) => {
+                    return Err(CommandError::Compound(CompoundError::Nested));
+                }
+                CompoundStep::Run(payload) => self.execute(payload)?,
+                CompoundStep::AddOperationForCreated { draft } => {
+                    let targets = self.changes.created[first_created..].to_vec();
+                    if targets.is_empty() {
+                        return Err(CommandError::Compound(CompoundError::NothingCreated));
+                    }
+                    self.execute(CommandPayload::Process(crate::process::ProcessCommand::AddOperation {
+                        draft,
+                        targets,
+                    }))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn execute(&mut self, payload: CommandPayload) -> Result<(), CommandError> {
         self.refuse_derived(&payload)?;
         match payload {
@@ -360,6 +388,7 @@ impl Txn {
                 }
                 Ok(())
             }
+            CommandPayload::Compound(compound) => self.execute_compound(compound),
             CommandPayload::Process(cmd) => {
                 let objects = &self.objects;
                 process::apply(

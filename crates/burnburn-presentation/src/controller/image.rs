@@ -14,7 +14,9 @@ use burnburn_document::process::{
     DitherMode, ImageCrop, ImageRender, ImageSettings, ImageSharpen, OperationDraft, OperationMode, Passes,
     PowerPercent, PowerRange, ProcessCommand, ProcessSettings, Speed, ToneSettings,
 };
-use burnburn_document::{CommandPayload, EditLabel, GeometryCommand, ImportItem, UndoLabel};
+use burnburn_document::{
+    CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, GeometryCommand, ImportItem, UndoLabel,
+};
 use burnburn_geometry::{Bounds, Path, Point, ProductionTolerance, Rect};
 use burnburn_image::SourceImage;
 use burnburn_io::AssetStore;
@@ -359,10 +361,10 @@ impl AppController {
         })
     }
 
-    /// Commit of the bitmap import sheet: the frame (one entry) and its image operation (a
-    /// second one: the document has no single command for both yet).
+    /// Commit of the bitmap import sheet: the frame and its image operation, as one document
+    /// transaction and so one undo step.
     fn commit_bitmap(&mut self, document: DocumentId) -> AppUpdate {
-        let (first, second) = (self.next_id::<RequestId>(), self.next_id::<RequestId>());
+        let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let Some(pending) = s.image.pending.clone() else { return AppUpdate::default() };
             let Ok(dpi) = dpi_of(&pending.dpi_text) else { return AppUpdate::default() };
@@ -374,24 +376,29 @@ impl AppController {
             else {
                 return error(Some(document), MessageKey::ImportFailed);
             };
+            let Some(draft) = new_image_operation(&pending) else {
+                return error(Some(document), MessageKey::CommandRejected);
+            };
             let asset = s.assets.add(pending.media, &pending.bytes);
             let item = ImportItem {
                 name: format!("Beeld {}", pending.file),
                 entity: Some("image".to_owned()),
                 path: Path::rectangle(frame),
             };
-            let import = GeometryCommand::Import { asset, items: vec![item] };
-            let update = apply_edit(s, document, CommandPayload::Edit(import), first);
-            if s.doc.undo_label() != Some(UndoLabel::Edit(EditLabel::Import)) {
+            let compound = CompoundCommand {
+                label: CompoundLabel::ImportImage,
+                steps: vec![
+                    CompoundStep::Run(CommandPayload::Edit(GeometryCommand::Import { asset, items: vec![item] })),
+                    CompoundStep::AddOperationForCreated { draft },
+                ],
+            };
+            let update = apply_edit(s, document, CommandPayload::Compound(compound), request);
+            if s.doc.undo_label() != Some(UndoLabel::Compound(CompoundLabel::ImportImage)) {
                 return update;
             }
-            let Some(target) = s.selection.single() else { return update };
-            let Some(draft) = new_image_operation(&pending) else {
-                return error(Some(document), MessageKey::CommandRejected);
-            };
-            let edit = ProcessCommand::AddOperation { draft, targets: vec![target] };
-            let update = apply_edit(s, document, CommandPayload::Process(edit), second);
-            if let Some(op) = s.doc.snapshot().process().operations_using(target).first().copied() {
+            if let Some(target) = s.selection.single()
+                && let Some(op) = s.doc.snapshot().process().operations_using(target).first().copied()
+            {
                 s.image.origins.insert(op, pending.path.clone());
             }
             s.image.sources.insert(pending.source.content_hash(), Arc::clone(&pending.source));
@@ -618,10 +625,10 @@ fn mask_plan(s: &Session) -> Option<MaskPlan> {
 
 impl AppController {
     /// Mask Image: the shapes become the operation's targets and the crop window is the part of
-    /// the picture they cover, so the picture stays where it was. Three history entries (assign,
-    /// unassign, update): the document has no single command for it yet.
+    /// the picture they cover, so the picture stays where it was. Assign, unassign and update
+    /// are one document transaction and so one undo step.
     fn mask_image(&mut self, document: DocumentId) -> AppUpdate {
-        let requests = [self.next_id::<RequestId>(), self.next_id::<RequestId>(), self.next_id::<RequestId>()];
+        let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let Some(plan) = mask_plan(s) else { return AppUpdate::default() };
             let masked = match plan.settings.with_crop(Some(plan.crop)) {
@@ -631,19 +638,22 @@ impl AppController {
             let snapshot = s.doc.snapshot();
             let Some(op) = snapshot.process().operation(plan.operation) else { return AppUpdate::default() };
             let draft = OperationDraft { mode: OperationMode::Image(masked), ..op.draft() };
-            let edits = [
-                ProcessCommand::AssignGeometry { operation: plan.operation, targets: plan.shapes.clone() },
-                ProcessCommand::UnassignGeometry { operation: plan.operation, targets: vec![plan.frame] },
-                ProcessCommand::UpdateOperation { operation: plan.operation, draft },
-            ];
-            let mut update = AppUpdate::default();
-            for (edit, request) in edits.into_iter().zip(requests) {
-                update = apply_edit(s, document, CommandPayload::Process(edit), request);
-                if !update.effects.is_empty() {
-                    break;
-                }
-            }
-            update
+            let operation = plan.operation;
+            let compound = CompoundCommand {
+                label: CompoundLabel::MaskImage,
+                steps: vec![
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::AssignGeometry {
+                        operation,
+                        targets: plan.shapes.clone(),
+                    })),
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::UnassignGeometry {
+                        operation,
+                        targets: vec![plan.frame],
+                    })),
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft })),
+                ],
+            };
+            apply_edit(s, document, CommandPayload::Compound(compound), request)
         })
     }
 }
