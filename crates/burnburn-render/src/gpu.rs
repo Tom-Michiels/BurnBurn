@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::packet::{ImageCell, Primitive, RenderPacket};
-use crate::tess::{Vertex, tessellate};
+use crate::tess::{Vertex, tessellate_primitives};
 
 /// The offscreen target format.
 pub const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -133,6 +133,15 @@ const PICTURE_VERTEX_STRIDE: u64 = 16;
 /// The two triangles of a quad cell, as corner indices (top-left, top-right, bottom-right, bottom-left).
 const CELL_TRIANGLES: [usize; 6] = [0, 1, 2, 0, 2, 3];
 
+/// One picture ready to draw. `bitmap` is the index of its [`Primitive::Bitmap`] in the packet
+/// (drawn in list order); `None` is a [`Primitive::Image`] (drawn beneath everything).
+struct Prepared {
+    group: wgpu::BindGroup,
+    vertices: wgpu::Buffer,
+    count: u32,
+    bitmap: Option<usize>,
+}
+
 /// The textured pass for pictures (the camera overlay). Textures are kept between frames by
 /// picture id, so an unchanged picture is uploaded once; ids not drawn in a frame are dropped.
 struct PicturePass {
@@ -256,17 +265,16 @@ impl PicturePass {
         view
     }
 
-    /// Record every image of the packet; `draw` runs inside the render pass.
-    fn prepare(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        packet: &RenderPacket,
-    ) -> Vec<(wgpu::BindGroup, wgpu::Buffer, u32)> {
+    /// Record every image and bitmap of the packet; `draw` runs inside the render pass.
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, packet: &RenderPacket) -> Vec<Prepared> {
         let mut kept = HashMap::new();
         let mut drawn = Vec::new();
-        for primitive in &packet.primitives {
-            let Primitive::Image { picture, cells, opacity } = primitive else { continue };
+        for (index, primitive) in packet.primitives.iter().enumerate() {
+            let (picture, cells, opacity, bitmap) = match primitive {
+                Primitive::Image { picture, cells, opacity } => (picture, cells, opacity, None),
+                Primitive::Bitmap { picture, cells, opacity } => (picture, cells, opacity, Some(index)),
+                _ => continue,
+            };
             let bytes = picture_vertex_bytes(cells, packet.size_px);
             if bytes.is_empty() || !(opacity.is_finite() && *opacity > 0.0) {
                 continue;
@@ -297,7 +305,12 @@ impl PicturePass {
                     wgpu::BindGroupEntry { binding: 2, resource: uniform.as_entire_binding() },
                 ],
             });
-            drawn.push((group, vertices, (bytes.len() as u64 / PICTURE_VERTEX_STRIDE) as u32));
+            drawn.push(Prepared {
+                group,
+                vertices,
+                count: (bytes.len() as u64 / PICTURE_VERTEX_STRIDE) as u32,
+                bitmap,
+            });
         }
         *self.textures.lock().unwrap_or_else(|e| e.into_inner()) = kept;
         drawn
@@ -379,7 +392,22 @@ impl CanvasRenderer {
         packet: &RenderPacket,
     ) {
         let pictures = self.pictures.prepare(device, queue, packet);
-        let vertices = tessellate(packet);
+        // The fills and strokes between two bitmaps are one run; a bitmap is drawn between runs.
+        let bitmap_at: Vec<usize> = packet
+            .primitives
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| matches!(p, Primitive::Bitmap { .. }).then_some(i))
+            .collect();
+        let mut vertices = Vec::new();
+        let mut runs = Vec::with_capacity(bitmap_at.len() + 1);
+        let mut from = 0;
+        for end in bitmap_at.iter().copied().chain(std::iter::once(packet.primitives.len())) {
+            let run = tessellate_primitives(&packet.primitives[from..end]);
+            runs.push(vertices.len() as u32..(vertices.len() + run.len()) as u32);
+            vertices.extend(run);
+            from = end + 1;
+        }
         let bytes = clip_space_bytes(&vertices, packet.size_px);
         let buffer = (!bytes.is_empty()).then(|| {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -414,18 +442,29 @@ impl CanvasRenderer {
             multiview_mask: None,
         });
         // Pictures lie beneath every fill and stroke.
-        if !pictures.is_empty() {
+        let draw_picture = |pass: &mut wgpu::RenderPass<'_>, picture: &Prepared| {
             pass.set_pipeline(&self.pictures.pipeline);
-            for (group, vertices, count) in &pictures {
-                pass.set_bind_group(0, group, &[]);
-                pass.set_vertex_buffer(0, vertices.slice(..));
-                pass.draw(0..*count, 0..1);
-            }
+            pass.set_bind_group(0, &picture.group, &[]);
+            pass.set_vertex_buffer(0, picture.vertices.slice(..));
+            pass.draw(0..picture.count, 0..1);
+        };
+        for picture in pictures.iter().filter(|p| p.bitmap.is_none()) {
+            draw_picture(&mut pass, picture);
         }
-        if let Some(buffer) = &buffer {
-            pass.set_pipeline(&self.pipeline);
-            pass.set_vertex_buffer(0, buffer.slice(..));
-            pass.draw(0..vertices.len() as u32, 0..1);
+        // Then the runs of fills and strokes, with each bitmap between its neighbours.
+        for (k, run) in runs.iter().enumerate() {
+            if let Some(buffer) = &buffer
+                && !run.is_empty()
+            {
+                pass.set_pipeline(&self.pipeline);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(run.clone(), 0..1);
+            }
+            if let Some(at) = bitmap_at.get(k)
+                && let Some(picture) = pictures.iter().find(|p| p.bitmap == Some(*at))
+            {
+                draw_picture(&mut pass, picture);
+            }
         }
     }
 }

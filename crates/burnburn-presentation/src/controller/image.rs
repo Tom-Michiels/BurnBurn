@@ -17,10 +17,13 @@ use burnburn_document::process::{
 use burnburn_document::{
     CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, GeometryCommand, ImportItem, UndoLabel,
 };
+use burnburn_editor::{BedPicture, BedQuad, Overlay};
 use burnburn_geometry::{Bounds, Path, Point, ProductionTolerance, Rect};
 use burnburn_image::SourceImage;
 use burnburn_io::AssetStore;
-use burnburn_types::{CancellationSource, ContentHash, DocumentId, GeometryId, Length, OperationId, RequestId, TaskId};
+use burnburn_types::{
+    CancellationSource, ContentHash, DocumentId, GeometryId, HashDomain, Length, OperationId, RequestId, TaskId,
+};
 
 use crate::field::{format_mm, parse_number};
 use crate::image_panel::{
@@ -80,6 +83,8 @@ pub(super) struct AdjustState {
     /// The validated settings the newest preview is for; `None` while the input is invalid.
     pub(super) parsed: Option<ImageSettings>,
     pub(super) preview: Option<ImagePreview>,
+    /// The preview as a canvas picture (gray8 expanded once, id from the pixels).
+    pub(super) picture: Option<Arc<BedPicture>>,
     /// Newest submitted preview; only its result may be shown.
     pub(super) latest: Option<TaskId>,
 }
@@ -263,6 +268,36 @@ fn bitmap_job(s: &Session, operation: OperationId, settings: ImageSettings) -> O
     })
 }
 
+// ---- canvas -----------------------------------------------------------------------------------
+
+/// The preview as a picture for the canvas. Its id comes from the pixels, so a renderer keeps the
+/// texture of an unchanged preview and replaces it as soon as the values change the result.
+fn picture_of(preview: &ImagePreview) -> Option<Arc<BedPicture>> {
+    let hash = ContentHash::of(HashDomain::SourcePixels, &preview.gray8);
+    let mut id = [0u8; 8];
+    id.copy_from_slice(&hash.as_bytes()[..8]);
+    BedPicture::from_gray8(u64::from_be_bytes(id), preview.width, preview.height, &preview.gray8).map(Arc::new)
+}
+
+/// The open Adjust Image preview, laid on the bounds of the image it is computed for (the scan
+/// grid covers the target geometry). A visual aid of the window; never document data.
+pub(super) fn preview_overlay(s: &Session) -> Option<Overlay> {
+    let adjust = s.image.adjust.as_ref()?;
+    let picture = Arc::clone(adjust.picture.as_ref()?);
+    let snapshot = s.doc.snapshot();
+    let target = *snapshot.process().operation(adjust.operation)?.targets().first()?;
+    let bounds = snapshot.object(target)?.bounds()?;
+    let (min, max) = (bounds.min(), bounds.max());
+    if !(max.x > min.x && max.y > min.y) {
+        return None;
+    }
+    let quad = BedQuad {
+        bed_mm: [Point::new(min.x, max.y), Point::new(max.x, max.y), Point::new(max.x, min.y), Point::new(min.x, min.y)],
+        uv: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+    };
+    Some(Overlay::ImagePreview { picture, quads: Arc::from(vec![quad]), opacity: 1.0 })
+}
+
 // ---- view -------------------------------------------------------------------------------------
 
 pub(super) fn image_view(s: &Session) -> ImageViewModel {
@@ -441,7 +476,7 @@ impl AppController {
             CommandKey::ApplyImageAdjust => self.apply_adjust(document),
             CommandKey::CancelImageAdjust => self.with_session(document, |s| {
                 close_adjust(s);
-                AppUpdate { view_changed: true, ..AppUpdate::default() }
+                AppUpdate::redraw(document)
             }),
             CommandKey::MaskImage => self.mask_image(document),
             CommandKey::RefreshImage => self.refresh_image(document),
@@ -462,6 +497,7 @@ impl AppController {
                 issue: None,
                 parsed: Some(settings),
                 preview: None,
+                picture: None,
                 latest: None,
             });
             submit_preview(s, &tasks, document, id, operation, settings)
@@ -799,8 +835,11 @@ pub(super) fn finished(
         (TaskKind::ImagePreview, Ok(TaskOutput::ImagePreview { preview, source })) => {
             s.image.sources.insert(source.content_hash(), source);
             if let Some(a) = s.image.adjust.as_mut().filter(|a| a.latest == Some(id)) {
+                a.picture = picture_of(&preview);
                 a.preview = Some(preview);
                 a.latest = None;
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
             }
         }
         (TaskKind::ImagePreview, Err(e)) => {

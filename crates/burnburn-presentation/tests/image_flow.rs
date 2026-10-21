@@ -701,3 +701,78 @@ mod one_undo_step {
         assert!(op.settings.mask());
     }
 }
+
+/// W4-UI-machine: the Adjust Image preview is drawn on the canvas, on the bounds of the image.
+mod canvas_preview {
+    use super::*;
+    use burnburn_editor::Overlay;
+    use std::sync::Arc;
+
+    type Preview = (Arc<burnburn_editor::BedPicture>, Arc<[burnburn_editor::BedQuad]>, f32);
+
+    fn previews(h: &HeadlessEditorHarness, doc: DocumentId) -> Vec<Preview> {
+        h.scene(doc)
+            .unwrap()
+            .overlays
+            .iter()
+            .filter_map(|o| match o {
+                Overlay::ImagePreview { picture, quads, opacity } => {
+                    Some((Arc::clone(picture), Arc::clone(quads), *opacity))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn open(h: &mut HeadlessEditorHarness, doc: DocumentId) {
+        let frame = frame_of(h, doc);
+        select(h, doc, vec![frame]);
+        h.invoke(doc, CommandKey::AdjustImage);
+    }
+
+    /// The 8 × 8 mm frame sits at the origin; the scan grid is 80 × 80 cells (burn = 0 on the left
+    /// half). The bitmap covers the frame exactly: picture top = frame top (y 8), picture left = x 0.
+    #[test]
+    fn the_preview_lies_on_the_image_bounds_and_follows_the_values() {
+        let (mut h, doc, _) = with_image(&eight_by_eight());
+        open(&mut h, doc);
+        assert!(previews(&h, doc).is_empty(), "nothing to draw while the first preview is computed");
+
+        h.run_tasks();
+
+        let found = previews(&h, doc);
+        assert_eq!(found.len(), 1);
+        let (picture, quads, opacity) = &found[0];
+        assert_eq!((picture.width, picture.height), (80, 80));
+        assert_eq!(&picture.rgba[0..4], &[0, 0, 0, 255], "burning cells are black");
+        assert_eq!(&picture.rgba[40 * 4..40 * 4 + 4], &[255, 255, 255, 255], "white where nothing burns");
+        assert_eq!(*opacity, 1.0);
+        assert_eq!(quads.len(), 1);
+        let corners: Vec<(f64, f64)> = quads[0].bed_mm.iter().map(|p| (p.x, p.y)).collect();
+        let near = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9;
+        for (got, want) in corners.iter().zip([(0.0, 8.0), (8.0, 8.0), (8.0, 0.0), (0.0, 0.0)]) {
+            assert!(near(*got, want), "{corners:?}");
+        }
+        assert_eq!(quads[0].uv, [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+
+        let first_id = picture.id;
+        set_adjust(&mut h, doc, |i| i.brightness = "0,5".into());
+        h.run_tasks();
+        let found = previews(&h, doc);
+        assert_eq!(found.len(), 1);
+        assert_ne!(found[0].0.id, first_id, "other pixels, other picture id: a renderer must not keep the old texture");
+        assert_eq!(&found[0].0.rgba[0..4], &[255, 255, 255, 255], "brighter: nothing burns there any more");
+    }
+
+    #[test]
+    fn closing_or_cancelling_the_panel_removes_the_preview_from_the_canvas() {
+        let (mut h, doc, _) = with_image(&eight_by_eight());
+        open(&mut h, doc);
+        h.run_tasks();
+        assert_eq!(previews(&h, doc).len(), 1);
+
+        h.invoke(doc, CommandKey::CancelImageAdjust);
+
+        assert!(previews(&h, doc).is_empty());
+    }
+}

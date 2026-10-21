@@ -273,6 +273,21 @@ fn grid(out: &mut Vec<Primitive>, spacing_mm: f64, color: Rgba, proj: &Projectio
     }
 }
 
+/// The cells of a picture that project to finite pixels, or `None` when there is nothing to draw:
+/// no usable cell, or an opacity of 0 (or not a number).
+fn picture_cells(quads: &[burnburn_editor::BedQuad], opacity: f32, proj: &Projection) -> Option<Vec<ImageCell>> {
+    if !(opacity.is_finite() && opacity > 0.0) {
+        return None;
+    }
+    let cells: Vec<ImageCell> = quads
+        .iter()
+        .filter(|q| q.bed_mm.iter().all(|p| p.x.is_finite() && p.y.is_finite()))
+        .map(|q| ImageCell { corners_px: q.bed_mm.map(|p| proj.px32(p)), uv: q.uv })
+        .filter(|c| c.corners_px.iter().flatten().all(|v| v.is_finite()))
+        .collect();
+    (!cells.is_empty()).then_some(cells)
+}
+
 /// A camera picture as one image primitive: cells with a corner that does not project to a finite
 /// pixel are dropped, and a picture without cells or with an opacity of 0 (or not a number) is
 /// not drawn at all.
@@ -283,17 +298,22 @@ fn bed_image(
     opacity: f32,
     proj: &Projection,
 ) {
-    if !(opacity.is_finite() && opacity > 0.0) {
-        return;
-    }
-    let cells: Vec<ImageCell> = quads
-        .iter()
-        .filter(|q| q.bed_mm.iter().all(|p| p.x.is_finite() && p.y.is_finite()))
-        .map(|q| ImageCell { corners_px: q.bed_mm.map(|p| proj.px32(p)), uv: q.uv })
-        .filter(|c| c.corners_px.iter().flatten().all(|v| v.is_finite()))
-        .collect();
-    if !cells.is_empty() {
+    if let Some(cells) = picture_cells(quads, opacity, proj) {
         out.push(Primitive::Image { picture: std::sync::Arc::clone(picture), cells, opacity: opacity.min(1.0) });
+    }
+}
+
+/// A bitmap on top of the design (the Adjust Image preview): same rules as [`bed_image`], but a
+/// [`Primitive::Bitmap`] that is painted in list order.
+fn bitmap(
+    out: &mut Vec<Primitive>,
+    picture: &std::sync::Arc<burnburn_editor::BedPicture>,
+    quads: &[burnburn_editor::BedQuad],
+    opacity: f32,
+    proj: &Projection,
+) {
+    if let Some(cells) = picture_cells(quads, opacity, proj) {
+        out.push(Primitive::Bitmap { picture: std::sync::Arc::clone(picture), cells, opacity: opacity.min(1.0) });
     }
 }
 
@@ -322,6 +342,12 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
     }
     for item in &scene.items {
         draw_path(&mut out, flatten(&item.path, &item.transform, &proj), theme.role(item.role), proj.scale);
+    }
+    // A bitmap preview lies on its image object: above the design, below the selection marks.
+    for overlay in &scene.overlays {
+        if let Overlay::ImagePreview { picture, quads, opacity } = overlay {
+            bitmap(&mut out, picture, quads, *opacity, &proj);
+        }
     }
     let selection_width = (theme.selection_width_pt * proj.scale) as f32;
     for overlay in &scene.overlays {
