@@ -9,6 +9,7 @@
 //!
 //! **Command ids**: this lane owns `6000..=7999` of the `WM_COMMAND` id space ([`ids`]).
 
+pub mod files;
 pub mod filters;
 pub mod ids;
 pub mod image;
@@ -47,6 +48,7 @@ pub struct FileFilter {
 /// Why a file dialog was opened: the answer comes back to the family that asked.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilePurpose {
+    OpenProject,
     ImportDrawing { document: DocumentId },
     ReplaceImage { document: DocumentId },
     TraceImage { document: DocumentId },
