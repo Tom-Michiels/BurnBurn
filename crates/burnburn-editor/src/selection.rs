@@ -1,14 +1,76 @@
-use std::cmp::Reverse;
+use std::collections::HashSet;
+use std::hash::Hash;
 
 use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{Bounds, HitTestTolerance, Point, SpatialIndex};
+use burnburn_geometry::{Bounds, HitTestTolerance, Point};
 use burnburn_types::{GeometryId, Length};
+
+/// Insertion-ordered set: the order of a `Vec` and the membership test of a hash set (a 100k
+/// object selection must not cost a linear scan per `contains`, X04).
+#[derive(Debug, Clone)]
+pub(crate) struct OrderedSet<K> {
+    order: Vec<K>,
+    members: HashSet<K>,
+}
+
+impl<K> Default for OrderedSet<K> {
+    fn default() -> Self {
+        OrderedSet { order: Vec::new(), members: HashSet::new() }
+    }
+}
+
+impl<K: PartialEq> PartialEq for OrderedSet<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.order == other.order
+    }
+}
+
+impl<K: Eq> Eq for OrderedSet<K> {}
+
+impl<K: Copy + Eq + Hash> OrderedSet<K> {
+    pub(crate) fn as_slice(&self) -> &[K] {
+        &self.order
+    }
+
+    pub(crate) fn contains(&self, k: &K) -> bool {
+        self.members.contains(k)
+    }
+
+    /// Appends `k` unless it is already a member.
+    pub(crate) fn insert(&mut self, k: K) {
+        if self.members.insert(k) {
+            self.order.push(k);
+        }
+    }
+
+    pub(crate) fn remove(&mut self, k: &K) {
+        if self.members.remove(k)
+            && let Some(pos) = self.order.iter().position(|x| x == k)
+        {
+            self.order.remove(pos);
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.order.clear();
+        self.members.clear();
+    }
+
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        self.order.retain(|k| keep(k));
+        self.members.retain(|k| keep(k));
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.order.len()
+    }
+}
 
 /// The selection of one window/document session. Never document data and never shared.
 /// Order is selection order: the first id is the align/distribute reference (E04).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Selection {
-    ids: Vec<GeometryId>,
+    ids: OrderedSet<GeometryId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +84,7 @@ pub enum SelectionChange {
 
 impl Selection {
     pub fn ids(&self) -> &[GeometryId] {
-        &self.ids
+        self.ids.as_slice()
     }
 
     pub fn contains(&self, id: GeometryId) -> bool {
@@ -30,7 +92,7 @@ impl Selection {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
+        self.ids.len() == 0
     }
 
     pub fn len(&self) -> usize {
@@ -47,7 +109,7 @@ impl Selection {
 
     /// The reference object for align/distribute: the first one selected.
     pub fn reference(&self) -> Option<GeometryId> {
-        self.ids.first().copied()
+        self.ids.as_slice().first().copied()
     }
 
     pub fn apply(&mut self, change: &SelectionChange) {
@@ -58,10 +120,10 @@ impl Selection {
             }
             SelectionChange::Extend(ids) => self.extend(ids),
             SelectionChange::Toggle(id) => {
-                if let Some(pos) = self.ids.iter().position(|x| x == id) {
-                    self.ids.remove(pos);
+                if self.ids.contains(id) {
+                    self.ids.remove(id);
                 } else {
-                    self.ids.push(*id);
+                    self.ids.insert(*id);
                 }
             }
             SelectionChange::Clear => self.ids.clear(),
@@ -70,9 +132,7 @@ impl Selection {
 
     fn extend(&mut self, ids: &[GeometryId]) {
         for id in ids {
-            if !self.ids.contains(id) {
-                self.ids.push(*id);
-            }
+            self.ids.insert(*id);
         }
     }
 
@@ -83,7 +143,7 @@ impl Selection {
 
     /// Union of the selected objects' bounds.
     pub fn bounds(&self, snapshot: &DocumentSnapshot) -> Option<Bounds> {
-        self.ids.iter().filter_map(|id| snapshot.object(*id)?.bounds()).reduce(Bounds::union)
+        self.ids.as_slice().iter().filter_map(|id| snapshot.object(*id)?.bounds()).reduce(Bounds::union)
     }
 }
 
@@ -95,19 +155,18 @@ pub fn hit_test(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: f64) -> Ve
     let Some(tol) = Length::from_mm(tolerance_mm).ok().and_then(|l| HitTestTolerance::new(l).ok()) else {
         return Vec::new();
     };
-    // The key's first part makes the domain's tie-break pick the topmost object.
-    let order = snapshot.draw_order();
-    let index = SpatialIndex::build(
-        order
-            .iter()
-            .enumerate()
-            .filter(|(_, id)| snapshot.is_selectable(**id))
-            .filter_map(|(rank, id)| snapshot.object(*id)?.bounds().map(|b| ((Reverse(rank), *id), b))),
-    );
-    burnburn_geometry::hit_test(&index, |(_, id)| snapshot.object(id).map(|o| o.path().as_ref()), at, &tol)
-        .into_iter()
-        .map(|c| c.key.1)
-        .collect()
+    // The key's first part makes the domain's tie-break pick the topmost object. The index covers
+    // all objects and is reused per document state; locked and hidden ones are skipped here.
+    let index = crate::pick_index::pick_index(snapshot);
+    burnburn_geometry::hit_test(
+        &index.index,
+        |(_, id)| snapshot.is_selectable(id).then(|| snapshot.object(id)).flatten().map(|o| o.path().as_ref()),
+        at,
+        &tol,
+    )
+    .into_iter()
+    .map(|c| c.key.1)
+    .collect()
 }
 
 /// Objects whose bounds lie entirely inside `area` (rubber-band selection), in drawing order.
@@ -204,6 +263,54 @@ mod tests {
         let snap = DocumentSnapshot::from_parts(vec![rect_obj(1, 0.0, 0.0, 1.0, 1.0)], 3).unwrap();
         s.retain_existing(&snap);
         assert!(s.is_empty());
+    }
+
+    /// X04: membership must not cost a linear scan. A key type counts its equality comparisons;
+    /// 5 000 inserts plus 5 000 lookups may only compare on hash collisions, never ~N² / 2 times.
+    #[test]
+    fn ordered_set_membership_does_not_scan_linearly() {
+        use std::cell::Cell;
+        thread_local!(static EQ: Cell<u64> = const { Cell::new(0) });
+        #[allow(clippy::derived_hash_with_manual_eq)] // eq only adds a counter; it stays consistent with Hash
+        #[derive(Clone, Copy, Debug, Hash, Eq)]
+        struct Counted(u32);
+        impl PartialEq for Counted {
+            fn eq(&self, other: &Self) -> bool {
+                EQ.with(|c| c.set(c.get() + 1));
+                self.0 == other.0
+            }
+        }
+        let n = 5_000u32;
+        let mut set = OrderedSet::default();
+        for k in 0..n {
+            set.insert(Counted(k));
+        }
+        for k in 0..n {
+            assert!(set.contains(&Counted(k)));
+        }
+        assert!(!set.contains(&Counted(n)));
+        for k in 0..n {
+            set.insert(Counted(k)); // duplicates change nothing
+        }
+        assert_eq!(set.len(), n as usize);
+        let order: Vec<u32> = set.as_slice().iter().map(|c| c.0).collect();
+        assert!(order.windows(2).all(|w| w[0] + 1 == w[1]), "insertion order is kept");
+        let compares = EQ.with(Cell::get);
+        assert!(compares < 20 * u64::from(n), "{compares} comparisons for {n} keys: linear scan per lookup");
+    }
+
+    /// Selecting everything in a large document keeps the selection order and ignores duplicates.
+    #[test]
+    fn large_replace_keeps_order_and_deduplicates() {
+        let mut s = Selection::default();
+        let ids: Vec<GeometryId> = (1..=2_000).chain(1..=10).map(id).collect();
+        s.apply(&SelectionChange::Replace(ids));
+        assert_eq!(s.len(), 2_000);
+        assert_eq!(s.reference(), Some(id(1)));
+        assert!(s.contains(id(2_000)) && !s.contains(id(2_001)));
+        s.apply(&SelectionChange::Toggle(id(1)));
+        assert_eq!(s.ids().first(), Some(&id(2)));
+        assert!(!s.contains(id(1)));
     }
 
     #[test]

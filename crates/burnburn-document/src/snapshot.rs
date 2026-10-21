@@ -39,6 +39,30 @@ pub struct DocumentSnapshot {
     pub(crate) arrange: Arc<ArrangeLayer>,
 }
 
+/// Identity of the content canvas picking depends on: the objects and the arrange layer (draw
+/// order, locks, hidden flags). Two keys are equal only when they name the very same shared
+/// content; holding a key keeps that content alive, so nothing can change it in place. An
+/// editor-side spatial index keyed by this stays valid exactly as long as the key is equal.
+#[derive(Clone)]
+pub struct PickingKey {
+    objects: Objects,
+    arrange: Arc<ArrangeLayer>,
+}
+
+impl fmt::Debug for PickingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PickingKey({} objects @ {:p})", self.objects.len(), Arc::as_ptr(&self.objects))
+    }
+}
+
+impl PartialEq for PickingKey {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.objects, &other.objects) && Arc::ptr_eq(&self.arrange, &other.arrange)
+    }
+}
+
+impl Eq for PickingKey {}
+
 /// The part of a document that one plate compiles (P06): only the plate's objects, operations
 /// restricted to them, and what had to be left out or must block production.
 #[derive(Debug, Clone)]
@@ -304,6 +328,11 @@ impl DocumentSnapshot {
     /// Draw order and locks.
     pub fn arrange(&self) -> &ArrangeLayer {
         &self.arrange
+    }
+
+    /// The identity of the content canvas picking depends on (see [`PickingKey`]).
+    pub fn picking_key(&self) -> PickingKey {
+        PickingKey { objects: Arc::clone(&self.objects), arrange: Arc::clone(&self.arrange) }
     }
 
     /// All objects back to front: the order they are drawn in (not the cut order).

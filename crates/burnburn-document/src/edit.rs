@@ -2,7 +2,7 @@
 //! gap repair, align/distribute, groups and import commits. Each runs on the transaction's
 //! working copy; an error drops the copy, so a failed edit changes nothing.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -252,6 +252,19 @@ pub(crate) struct EditTxn<'a> {
     pub ids: &'a mut IdAllocator,
     pub changes: &'a mut ChangeSet,
     pub warnings: &'a mut Vec<CommandWarning>,
+    /// Lazily built lookups that keep batch edits (import of 100k objects) linear, X04.
+    pub cache: EditCache,
+}
+
+/// Scratch indexes of one [`EditTxn`]. Names never change inside an edit transaction (only
+/// `create` adds objects), so a name index stays correct if each hit is re-checked against the
+/// live objects, which also covers deletions.
+#[derive(Default)]
+pub(crate) struct EditCache {
+    /// Object ids per name, ascending; built on the first named `create`.
+    names: Option<HashMap<String, Vec<GeometryId>>>,
+    /// Ids already in `changes.modified`; built on the first `mark_modified`.
+    modified: Option<HashSet<GeometryId>>,
 }
 
 impl EditTxn<'_> {
@@ -276,10 +289,23 @@ impl EditTxn<'_> {
         path: Path,
     ) -> Result<GeometryId, EditError> {
         let id: GeometryId = self.ids.allocate().map_err(|_| EditError::IdsExhausted)?;
-        if !name.is_empty()
-            && let Some(other) = self.objects.values().find(|o| o.name() == name)
-        {
-            self.warnings.push(CommandWarning::DuplicateName { name: name.clone(), other: other.id() });
+        if !name.is_empty() {
+            let objects = &*self.objects;
+            let names = self.cache.names.get_or_insert_with(|| {
+                let mut by_name: HashMap<String, Vec<GeometryId>> = HashMap::new();
+                for (oid, o) in objects {
+                    by_name.entry(o.name().to_owned()).or_default().push(*oid);
+                }
+                by_name
+            });
+            // The lowest id that still carries the name, as the full scan found it.
+            let other = names
+                .get(&name)
+                .and_then(|ids| ids.iter().find(|oid| objects.get(oid).is_some_and(|o| o.name() == name)));
+            if let Some(other) = other {
+                self.warnings.push(CommandWarning::DuplicateName { name: name.clone(), other: *other });
+            }
+            names.entry(name.clone()).or_default().push(id);
         }
         self.objects.insert(id, Arc::new(GeometryObject::new(id, name, kind, source, path)));
         self.changes.created.push(id);
@@ -297,8 +323,10 @@ impl EditTxn<'_> {
     }
 
     fn mark_modified(&mut self, id: GeometryId) {
-        if !self.changes.modified.contains(&id) {
-            self.changes.modified.push(id);
+        let changes = &mut *self.changes;
+        let seen = self.cache.modified.get_or_insert_with(|| changes.modified.iter().copied().collect());
+        if seen.insert(id) {
+            changes.modified.push(id);
         }
     }
 

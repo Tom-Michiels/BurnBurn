@@ -11,6 +11,7 @@ eigen `[workspace]` en een eigen lockfile die bij de eerste run ontstaat. Nightl
 |---|---|---|
 | `ruida_decode` | `burnburn_ruida::decode` | `Ok` of `DecodeError`, begrensd door `MAX_DECODE_INPUT` |
 | `ruida_rd_file` | `burnburn_ruida::decode_rd_file` (magic 0x88 en eerste byte als magic) | `Ok` of `FileError` |
+| `grbl_status` | `burnburn_gcode::grbl::{parse_line, GrblSession}` | geen panic; status eindig; RX-venster nooit > 127 bytes |
 | `ruida_udp_frame` | `burnburn_ruida::udp::parse_frame` | payload = datagram zonder 2 checksumbytes |
 | `io_container` | `burnburn_io::decode_container` | `Ok` of `LoadError`; limieten op entries/grootte |
 | `io_dto_json` | `serde_json` → `dto::v1::{Document, Manifest}` | `Ok` of `serde_json::Error` |

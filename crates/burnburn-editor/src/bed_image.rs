@@ -24,6 +24,16 @@ impl BedPicture {
         let wanted = (width as usize).checked_mul(height as usize)?.checked_mul(4)?;
         (width > 0 && height > 0 && rgba.len() == wanted).then_some(BedPicture { id, width, height, rgba })
     }
+
+    /// A gray8 bitmap (one byte per pixel, top row first) as an opaque RGBA picture.
+    pub fn from_gray8(id: u64, width: u32, height: u32, gray8: &[u8]) -> Option<BedPicture> {
+        let pixels = (width as usize).checked_mul(height as usize)?;
+        if width == 0 || height == 0 || gray8.len() != pixels {
+            return None;
+        }
+        let rgba: Vec<u8> = gray8.iter().flat_map(|g| [*g, *g, *g, 255]).collect();
+        BedPicture::new(id, width, height, rgba.into())
+    }
 }
 
 /// One mesh cell: where the corners of a texture cell land on the bed. Corner order is

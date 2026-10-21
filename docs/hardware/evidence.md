@@ -14,6 +14,8 @@ controller op `127.0.0.1` in het testproces (`crates/burnburn-runtime/tests/udp.
 | — | — | — | bestandslijst / benoemde upload / verwijderen | geen | — | onbevestigd |
 | — | — | — | instellingen lezen/schrijven | geen | — | onbevestigd |
 | — | — | USB | alles | geen | — | niet ondersteund |
+| — | GRBL 1.1 | USB-serieel | G-code-upload/streaming (character counting, `ok`/`error`/`ALARM`), status `?`, realtime `!` `~` 0x18 0x85, `$H` `$X` `$J=` | geen; alleen fake controller in `crates/burnburn-gcode/tests` (W4-L4, 22-10-2026) | — | onbevestigd (geen hardware, geen seriële adapter) |
+| — | GRBL 1.1 | — | lasermodus `$32=1`, `M4` dynamisch vermogen, S-schaal `$30`, `M8`/`M9` luchtondersteuning, G54 | geen | — | onbevestigd |
 
 ## Benodigd bewijs voor het laservenster (W1-L4a, 18-10-2026)
 

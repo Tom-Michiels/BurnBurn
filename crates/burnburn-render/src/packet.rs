@@ -18,6 +18,9 @@ pub enum Primitive {
     /// A textured mesh (the camera picture on the bed). Every image is painted *beneath* all
     /// fills and strokes, in list order, whatever its place in the list.
     Image { picture: Arc<BedPicture>, cells: Vec<ImageCell>, opacity: f32 },
+    /// A textured mesh painted in list order, above the fills and strokes before it and below
+    /// those after it (the Adjust Image preview on the image object; W4-UI-machine).
+    Bitmap { picture: Arc<BedPicture>, cells: Vec<ImageCell>, opacity: f32 },
 }
 
 /// One mesh cell in device pixels: corners top-left, top-right, bottom-right, bottom-left of the

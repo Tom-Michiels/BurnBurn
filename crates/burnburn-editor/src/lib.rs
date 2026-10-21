@@ -12,6 +12,7 @@ mod input;
 mod issues;
 mod node_ops;
 mod operands;
+mod pick_index;
 mod place;
 mod registration;
 mod scene;
@@ -27,6 +28,7 @@ pub use input::{CanvasInput, CanvasKey, KeyPhase, Modifiers, PointerButton, Poin
 pub use issues::{GeometryIssue, IssueKind, NEARLY_CLOSED_MM, geometry_issues, open_contours, self_intersections};
 pub use node_ops::{NodeCommand, NodeCommandError, node_command_op};
 pub use operands::{cut_operands, join_operands, path_op_operands};
+pub use pick_index::pick_index_builds;
 pub use place::{
     PreviewError, ReferenceChoice, WarpPreview, dock_operands, expand_to_groups, move_together_operands,
     reshape_operands, warp_preview, warp_start_corners,

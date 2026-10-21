@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 81c5568625e7d0d51c84564d82ab99621e25213a03d575a6b88559a31f0f96bd # shrinks to lens = [1], acks_per_round = [1]
+cc 756f3d7e85afd2a0950a8f3ac2c9f264365923ba456d90f199b1a1a350fc8a37 # shrinks to lens = [1, 38, 12, 25, 46], acks_per_round = [1]

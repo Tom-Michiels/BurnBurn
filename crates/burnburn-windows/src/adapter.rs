@@ -10,10 +10,12 @@ use std::path::PathBuf;
 
 use burnburn_editor::{CanvasKey, Modifiers, PointerButton, PointerId, PointerPhase, Viewport};
 use burnburn_presentation::{
-    AppViewModel, CameraIntent, CloseChoice, CommandKey, DialogKind, FieldKey, MessageKey, SelectMode, UiIntent,
-    ViewPointerEvent,
+    AppViewModel, CameraIntent, CloseChoice, DialogKind, FieldKey, MessageKey, SelectMode, UiIntent, ViewPointerEvent,
 };
 use burnburn_types::{DocumentId, MonotonicTime};
+
+mod menu;
+pub use menu::*;
 
 /// Win32 message numbers (stable ABI values from WinUser.h).
 pub mod msg {
@@ -75,68 +77,6 @@ pub const WHEEL_NOTCH_PT: f64 = 40.0;
 pub const WHEEL_NOTCH_ZOOM: f64 = 0.1;
 /// 100 % scaling.
 pub const BASE_DPI: f64 = 96.0;
-
-/// A menu item: Open needs `IFileOpenDialog` first; the rest are presentation commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MenuItem {
-    Command(CommandKey),
-    Open,
-}
-
-/// Every menu item the host offers.
-pub fn menu_items() -> Vec<MenuItem> {
-    std::iter::once(MenuItem::Open).chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k))).collect()
-}
-
-/// Command ids: Open is 100, commands 101 + their index in `CommandKey::ALL`.
-const FIRST_ID: u16 = 100;
-
-/// `WM_COMMAND` id of a menu item (also used by the accelerator table).
-pub fn command_id(item: MenuItem) -> u16 {
-    match item {
-        MenuItem::Open => FIRST_ID,
-        MenuItem::Command(key) => CommandKey::ALL
-            .iter()
-            .position(|k| *k == key)
-            .and_then(|i| u16::try_from(i).ok())
-            .map_or(0, |i| FIRST_ID + 1 + i),
-    }
-}
-
-pub fn menu_item(id: u16) -> Option<MenuItem> {
-    match id.checked_sub(FIRST_ID)? {
-        0 => Some(MenuItem::Open),
-        n => CommandKey::ALL.get(usize::from(n - 1)).map(|k| MenuItem::Command(*k)),
-    }
-}
-
-/// An accelerator: virtual key, Ctrl, Shift, command id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Accelerator {
-    pub key: u16,
-    pub ctrl: bool,
-    pub shift: bool,
-    pub id: u16,
-}
-
-/// The accelerator table (Ctrl is the shortcut modifier on Windows; presentation-api.md).
-pub fn accelerators() -> Vec<Accelerator> {
-    let c = MenuItem::Command;
-    [
-        (b'N', false, c(CommandKey::New)),
-        (b'O', false, MenuItem::Open),
-        (b'S', false, c(CommandKey::Save)),
-        (b'S', true, c(CommandKey::SaveAs)),
-        (b'W', false, c(CommandKey::Close)),
-        (b'Z', false, c(CommandKey::Undo)),
-        (b'Y', false, c(CommandKey::Redo)),
-        (b'Z', true, c(CommandKey::Redo)),
-        (b'A', false, c(CommandKey::SelectAll)),
-    ]
-    .into_iter()
-    .map(|(key, shift, item)| Accelerator { key: u16::from(key), ctrl: true, shift, id: command_id(item) })
-    .collect()
-}
 
 /// Inspector fields, top to bottom (edit controls in this order).
 pub const INSPECTOR_FIELDS: [FieldKey; 5] =
@@ -235,6 +175,8 @@ pub enum Reaction {
     Nothing,
     Intent(UiIntent),
     ShowOpenDialog,
+    /// Show or hide the Schikken options panel of the window.
+    ToggleSchikkenPanel,
 }
 
 /// Decode and translate one message for the window showing `vm`.
@@ -300,6 +242,8 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
         (Control::Frame, msg::WM_COMMAND) if matches!(hiword(wparam), notify::MENU | notify::ACCELERATOR) => {
             match menu_item(loword(wparam)) {
                 Some(MenuItem::Open) => return Reaction::ShowOpenDialog,
+                Some(MenuItem::CamDialog(dialog)) => UiIntent::OpenCamDialog { document, dialog },
+                Some(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
                 Some(MenuItem::Command(command)) => UiIntent::Invoke { document: Some(document), command },
                 None => return Reaction::PassOn,
             }
@@ -338,7 +282,7 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
 
 /// A field commit, or `None` when the text equals what the view model shows (Enter then focus
 /// loss sends the same text twice).
-fn commit(
+pub(crate) fn commit(
     doc: &burnburn_presentation::DocumentViewModel,
     document: DocumentId,
     field: FieldKey,
@@ -455,14 +399,6 @@ pub fn on_close_box(document: DocumentId, result: i32, vm: &AppViewModel) -> Rea
         _ => CloseChoice::Cancel,
     };
     Reaction::Intent(UiIntent::ConfirmClose { document, choice })
-}
-
-/// Menu enablement from the view model (`EnableMenuItem` on `WM_INITMENUPOPUP`).
-pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
-    match item {
-        MenuItem::Open => true,
-        MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
-    }
 }
 
 /// Title bar text: file name, `*` when dirty, then the app name.

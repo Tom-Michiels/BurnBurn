@@ -389,3 +389,88 @@ impl HistoryStore for JournalHistoryStore {
         Ok(StoredOrders { orders, executions })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    /// Every action kind the laser window and the job flow can journal. The `match` makes this
+    /// list fail to compile when a `LiveKind` is added without an entry here.
+    fn every_kind() -> Vec<MachineAction> {
+        let live = [
+            LiveKind::JogPress,
+            LiveKind::JogRelease,
+            LiveKind::JogStep,
+            LiveKind::MoveTo,
+            LiveKind::PositionLaser,
+            LiveKind::GoToOrigin,
+            LiveKind::Home,
+            LiveKind::Pause,
+            LiveKind::Resume,
+            LiveKind::ShowPosition,
+            LiveKind::ListFiles,
+            LiveKind::FileMetadata,
+            LiveKind::RunFile,
+            LiveKind::DeleteFile,
+        ];
+        for kind in live {
+            match kind {
+                LiveKind::JogPress
+                | LiveKind::JogRelease
+                | LiveKind::JogStep
+                | LiveKind::MoveTo
+                | LiveKind::PositionLaser
+                | LiveKind::GoToOrigin
+                | LiveKind::Home
+                | LiveKind::Pause
+                | LiveKind::Resume
+                | LiveKind::ShowPosition
+                | LiveKind::ListFiles
+                | LiveKind::FileMetadata
+                | LiveKind::RunFile
+                | LiveKind::DeleteFile => {}
+            }
+        }
+        let mut kinds = vec![
+            MachineAction::Upload,
+            MachineAction::ConfirmStored,
+            MachineAction::Start,
+            MachineAction::QueryStatus,
+            MachineAction::Cancel,
+            MachineAction::Reconnect,
+            MachineAction::Frame,
+        ];
+        kinds.extend(Outcome::ALL.map(MachineAction::RecordOutcome));
+        kinds.extend(live.map(MachineAction::Live));
+        kinds
+    }
+
+    #[test]
+    fn every_action_kind_has_its_own_history_id() {
+        let ids: Vec<_> = every_kind()
+            .into_iter()
+            .map(|kind| history_action(&ActionId { kind, subject: ActionSubject::Machine, generation: 0 }))
+            .collect();
+
+        let distinct: BTreeSet<_> = ids.iter().map(|id| id.raw()).collect();
+        assert_eq!(distinct.len(), ids.len(), "two action kinds share a history id");
+    }
+
+    #[test]
+    fn the_generation_and_the_subject_separate_ids_of_the_same_kind() {
+        let at = |subject, generation| {
+            history_action(&ActionId { kind: MachineAction::Live(LiveKind::Home), subject, generation })
+        };
+        assert_ne!(at(ActionSubject::Machine, 0), at(ActionSubject::Machine, 1));
+        assert_ne!(at(ActionSubject::Machine, 0), at(ActionSubject::Execution(ExecutionId::from_raw(1)), 0));
+        assert_eq!(
+            at(ActionSubject::Machine, 3),
+            at(ActionSubject::Machine, 3),
+            "stable: the same click is the same id"
+        );
+    }
+}

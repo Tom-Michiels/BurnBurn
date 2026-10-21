@@ -1,0 +1,52 @@
+name: Release
+# Handmatig of op een versietag. Maakt installeerbare artefacten; ondertekenen met een echte
+# identiteit en notarisatie blijven handmatige stappen (docs/release.md): hier worden geen geheimen gebruikt.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+jobs:
+  macos:
+    name: macOS app (zip + dmg)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain uit rust-toolchain.toml
+        run: rustup show
+      - name: Bundel, onderteken ad hoc, zip en dmg
+        run: cargo xtask bundle --release --zip --dmg --sign-adhoc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurnBurn-macos
+          path: |
+            target/release/dist/*.zip
+            target/release/dist/*.dmg
+            target/release/dist/*.sha256
+          if-no-files-found: error
+
+  windows:
+    name: Windows MSIX-indeling
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain uit rust-toolchain.toml
+        run: rustup show
+      - name: Bouw burnburn-win
+        run: cargo build --release --locked -p burnburn-windows --bin burnburn-win
+      - name: Schrijf de pakketmap (manifest, logos, programma)
+        run: cargo xtask msix-layout --exe target/release/burnburn-win.exe --out target/msix-layout
+      - name: Pak het ongetekende MSIX-pakket
+        shell: pwsh
+        run: |
+          $tool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe' | Sort-Object FullName | Select-Object -Last 1
+          & $tool.FullName pack /d target/msix-layout /p target/BurnBurn-unsigned.msix /o
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BurnBurn-windows-unsigned
+          path: target/BurnBurn-unsigned.msix
+          if-no-files-found: error

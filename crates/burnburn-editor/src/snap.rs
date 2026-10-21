@@ -75,8 +75,22 @@ pub fn snap_candidates(
     else {
         return Vec::new();
     };
-    let shapes: Vec<(GeometryId, &Path)> =
-        snapshot.objects().filter(|(id, _)| !exclude.contains(id)).map(|(id, obj)| (id, obj.path().as_ref())).collect();
+    // Only objects whose bounds come within the radius can offer a target (the domain skips the
+    // others), so ask the cached spatial index instead of scanning every object (X04). The
+    // candidates go to the domain in id order, as the full scan did.
+    let index = crate::pick_index::pick_index(snapshot);
+    let mut near: Vec<GeometryId> = index.index.query_point(at, tol.mm()).into_iter().map(|(_, id)| id).collect();
+    near.sort_unstable();
+    // A short exclude list is scanned per candidate; a long one (a whole selection being dragged)
+    // is hashed once so the cost stays linear in the list, not candidates x list.
+    let excluded: Option<std::collections::HashSet<GeometryId>> =
+        (near.len().saturating_mul(exclude.len()) > 4096).then(|| exclude.iter().copied().collect());
+    let is_excluded = |id: &GeometryId| excluded.as_ref().map_or_else(|| exclude.contains(id), |set| set.contains(id));
+    let shapes: Vec<(GeometryId, &Path)> = near
+        .into_iter()
+        .filter(|id| !is_excluded(id))
+        .filter_map(|id| snapshot.object(id).map(|obj| (id, obj.path().as_ref())))
+        .collect();
     burnburn_geometry::snap_candidates(&shapes, at, &tol, &SnapFilter::all())
         .into_iter()
         .map(|c| SnapCandidate { at: c.point, kind: c.kind.into(), source: Some(c.source) })

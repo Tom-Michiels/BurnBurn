@@ -9,6 +9,7 @@ mod arrange;
 mod arrange_edit;
 mod canonical;
 mod command;
+mod compound;
 mod edit;
 pub mod engine;
 pub mod generator;
@@ -29,6 +30,7 @@ pub use command::{
     Anchor, Axis, ChangeSet, CommandError, CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, UndoLabel,
     ValueError,
 };
+pub use compound::{CompoundCommand, CompoundError, CompoundLabel, CompoundStep};
 pub use edit::{
     AlignTarget, EditError, EditLabel, GeometryCommand, ImportItem, MoveAnchor, OpsCommand, PlaceCommand, PlaceUnits,
     ReshapeCommand,
@@ -41,6 +43,6 @@ pub use patch::{
     DerivedKey, DerivedOutput, DerivedOwner, DerivedOwnerKind, DerivedRecord, DocumentPatch, EvalDiagnosis, EvalStatus,
     Evaluator, ModifierFailure, OwnerSolution,
 };
-pub use session::DocumentSession;
+pub use session::{DocumentSession, HistoryBudget};
 pub use shape_edit::{ShapeCommand, ShapeError, ShapeLabel};
-pub use snapshot::{DocumentSnapshot, PlateView, SnapshotError};
+pub use snapshot::{DocumentSnapshot, PickingKey, PlateView, SnapshotError};
