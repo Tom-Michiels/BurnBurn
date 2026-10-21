@@ -346,8 +346,14 @@ impl Txn {
                 self.transform(target, &m)
             }
             CommandPayload::Transform { targets, transform } => {
+                // One lookup set for the whole command: a per-object `contains` on the change
+                // list is quadratic for a 100k-object selection (X04).
+                let mut seen: std::collections::HashSet<GeometryId> = self.changes.modified.iter().copied().collect();
                 for id in targets {
-                    self.transform(id, &transform)?;
+                    self.transform_object(id, &transform)?;
+                    if seen.insert(id) {
+                        self.changes.modified.push(id);
+                    }
                 }
                 Ok(())
             }
@@ -405,6 +411,7 @@ impl Txn {
                         ids: &mut self.ids,
                         changes: &mut self.changes,
                         warnings: &mut self.warnings,
+                        cache: Default::default(),
                     },
                 )
                 .map_err(CommandError::Edit)?;
@@ -515,10 +522,15 @@ impl Txn {
         self.objects.get(&id).cloned().ok_or(CommandError::UnknownGeometry(id))
     }
 
-    fn transform(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
+    fn transform_object(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
         let obj = self.get(id)?;
         let moved = obj.transformed(m);
         self.objects.insert(id, Arc::new(moved));
+        Ok(())
+    }
+
+    fn transform(&mut self, id: GeometryId, m: &Affine) -> Result<(), CommandError> {
+        self.transform_object(id, m)?;
         if !self.changes.modified.contains(&id) {
             self.changes.modified.push(id);
         }

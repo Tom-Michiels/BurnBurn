@@ -352,6 +352,7 @@ fn auto_group(txn: &mut ArrangeTxn<'_>, targets: &[GeometryId]) -> Result<(), Ar
                 ids: &mut *txn.ids,
                 changes: &mut *txn.changes,
                 warnings: &mut warnings,
+                cache: Default::default(),
             },
         )
         .map_err(|_| ArrangeError::NothingChanged)?;

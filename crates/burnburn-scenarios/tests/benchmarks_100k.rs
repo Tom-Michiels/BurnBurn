@@ -255,3 +255,28 @@ fn bench_interaction_100k() {
         assert_eq!(loaded.document.len(), fx.objects);
     }
 }
+
+/// Import and move-all must scale (near-)linearly: quadrupling the object count may cost about
+/// four times as much, never sixteen times (the pre-X04 name check and change-set bookkeeping
+/// were quadratic). A ratio is robust against the absolute speed of the machine. Run in release.
+#[test]
+#[ignore = "benchmark with a scaling bound; run in release with --ignored --nocapture"]
+fn bench_import_and_move_all_scale_linearly() {
+    let measure = |objects: usize| {
+        let fx = Fixture100k { name: "scaling", objects, sides: 1, spacing: 3.0, radius: 1.0 };
+        let t = Instant::now();
+        let (mut s, ids) = fx.session();
+        let import = ms(t);
+        let m = Affine::translate(Vector::new(1.0, 2.0)).unwrap();
+        let t = Instant::now();
+        apply(&mut s, CommandPayload::Transform { targets: ids, transform: m }, &[]);
+        (import, ms(t))
+    };
+    let (small_import, small_move) = measure(25_000);
+    let (big_import, big_move) = measure(100_000);
+    println!(
+        "bench scaling: import 25k {small_import:.0} ms, 100k {big_import:.0} ms; move-all 25k {small_move:.0} ms, 100k {big_move:.0} ms"
+    );
+    assert!(big_import < 8.0 * small_import.max(5.0), "import scales superlinearly: {small_import} -> {big_import} ms");
+    assert!(big_move < 8.0 * small_move.max(5.0), "move-all scales superlinearly: {small_move} -> {big_move} ms");
+}
