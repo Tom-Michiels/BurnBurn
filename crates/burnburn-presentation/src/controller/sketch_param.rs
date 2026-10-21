@@ -10,7 +10,7 @@ use burnburn_sketch::param::Expression;
 /// arguments: at the top level or inside grouping parentheses. A comma inside the parentheses of a
 /// call (`max(80 mm, 90 mm)`, `min(1,5)`) stays an argument separator; to use a decimal comma
 /// there, write the point (assumption: the evaluator's call syntax wins over the locale).
-pub(super) fn normalise_decimal_commas(text: &str) -> String {
+pub(crate) fn normalise_decimal_commas(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     // One entry per open parenthesis: `true` when it opens a function call.
     let mut calls: Vec<bool> = Vec::new();

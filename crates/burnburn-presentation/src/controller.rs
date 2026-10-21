@@ -62,6 +62,8 @@ mod shapes;
 mod shortcuts;
 mod sketch;
 mod sketch_param;
+
+pub(crate) use sketch_param::normalise_decimal_commas;
 mod support;
 mod tasks;
 mod tests_gen;

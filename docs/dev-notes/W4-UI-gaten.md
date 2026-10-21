@@ -54,3 +54,9 @@ Handmatig/onbevestigd E04: of de Tab-toets het canvas bereikt (AppKit key-view l
 Beperking P07: alleen profielen die een bundel *toevoegt* gaan naar `profiles.json`. Een bundelprofiel dat het actieve apparaat
 *vervangt* werkt in de sessie (bestaand gedrag) maar wordt niet bewaard: de host bepaalt het actieve profiel (`SetMachineProfile`).
 Het native selecteren van een bewaard profiel als actief apparaat (host) is niet gebouwd.
+| S01 `burnburn-editor sketch::draw::tests::{an_arc_adds_centre_start_end_and_the_arc_in_the_drawn_direction, an_arc_ending_on_an_existing_point_shares_it}` (+ wacht `curves_that_are_not_circular_arcs_cannot_be_drawn_into_a_sketch`) | `plan_commit` weigerde `CreatePath` (`Unsupported`) | `cargo test -p burnburn-editor --locked --lib sketch::draw` → 2 FAILED (unwrap op `Unsupported`) | → 14 ok | `circular_arc` in `sketch/draw.rs`; alleen cirkelbogen, ellips/vrije curve blijft geweigerd (geen sketch-entity) |
+| S01 `w4_sketch::an_arc_drawn_in_sketch_mode_becomes_an_arc_entity_that_dimensions_can_drive` | — | geen eigen rode run (de editor-wijziging maakte hem direct groen) | ok | |
+| E01 `w4_edit::the_arc_tools_draw_open_arcs_as_one_undoable_object_each` | — | geen rode run: de boogtools bestonden al (catalogus + editor); alleen de presentatietest ontbrak | ok | gap "boog-gereedschap" in de storydekking was achterhaald |
+| E01 `w4_edit::numeric_fields_take_expressions_and_refuse_broken_ones` | rekenkundige expressie in een veld (`100/4 + 5`) gaf een fout | `--test w4_edit numeric` → FAILED `assertion failed: (width_of_first - 30.0).abs() < 1e-9` | → ok; volledige `--lib` ok | `field::parse_expression` hergebruikt de schets-expressieparser (eenheden, decimale komma) |
+
+Ellips in een schets (S01) blijft open: het schets-domein kent geen ellips-entity.

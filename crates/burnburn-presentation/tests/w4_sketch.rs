@@ -327,3 +327,40 @@ fn setting_a_parameter_to_the_value_it_already_has_is_not_a_new_entry() {
     h.invoke(doc, CommandKey::Undo);
     assert_eq!(parameter(&h, doc, "breedte").as_deref(), Some("100 mm"), "one undo reverts the only change");
 }
+
+// ---------------------------------------------------------------------------------------------
+// S01: bogen in een schets
+// ---------------------------------------------------------------------------------------------
+
+/// The three-point arc tool inside sketch mode draws an arc entity: one history entry, the
+/// sketch solves, the output follows the drawn arc; dimensioning its radius drives the arc.
+#[test]
+fn an_arc_drawn_in_sketch_mode_becomes_an_arc_entity_that_dimensions_can_drive() {
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::SketchNew);
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.arc.three_point".to_owned() });
+    for at in [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0)] {
+        h.click(doc, at, Modifiers::default());
+    }
+    let after = vm(&h, doc);
+    assert_eq!(after.undo.map(|u| matches!(u, burnburn_document::UndoLabel::Sketch(_))), Some(true), "one sketch entry");
+    assert_eq!(after.sketch_mode.as_ref().unwrap().refused, None, "the arc was accepted");
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
+    let b = h.scene(doc).unwrap().items[0].path.bounds().unwrap();
+    assert!((b.max().y - 10.0).abs() < 1e-3 && (b.width() - 20.0).abs() < 1e-3, "{b:?}");
+
+    // A radius dimension on the arc, through the panel.
+    let arc = burnburn_document::sketch::EntityId::from_raw(3);
+    h.send(UiIntent::SketchSelect { document: doc, entities: vec![arc], constraints: vec![], mode: SelectMode::Replace });
+    h.send(UiIntent::AddSketchDimension {
+        document: doc,
+        kind: burnburn_presentation::SketchDimensionKind::Radius,
+        text: "10 mm".into(),
+    });
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
+    assert_eq!(sketch_row(&h, doc).constraints, 1, "the radius dimension");
+    h.invoke(doc, CommandKey::Undo);
+    assert_eq!(sketch_row(&h, doc).constraints, 0, "the dimension is one entry");
+    assert_eq!(vm(&h, doc).objects.len(), 1, "the arc stays");
+}

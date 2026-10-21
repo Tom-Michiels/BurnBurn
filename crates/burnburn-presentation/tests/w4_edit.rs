@@ -148,3 +148,78 @@ fn tab_steps_through_the_snap_candidates_and_the_gesture_uses_the_one_shown() {
     let b = scene.items.last().unwrap().path.bounds().unwrap();
     assert!((b.min().x - 21.0).abs() < 1e-9 && (b.min().y - 20.0).abs() < 1e-9, "{b:?}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// E01: boog-gereedschap
+// ---------------------------------------------------------------------------------------------
+
+/// The arc tools draw open arcs through the window: three points or centre, start, end; each is
+/// one undoable object and the arc stays open (a stroke, not a filled shape).
+#[test]
+fn the_arc_tools_draw_open_arcs_as_one_undoable_object_each() {
+    use burnburn_editor::Modifiers;
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.arc.three_point".to_owned() });
+    for at in [(10.0, 0.0), (0.0, 10.0), (-10.0, 0.0)] {
+        h.click(doc, at, Modifiers::default());
+    }
+    assert_eq!(vm(&h, doc).objects.len(), 1);
+    let scene = h.scene(doc).unwrap();
+    let path = &scene.items[0].path;
+    assert!(path.subpaths().iter().all(|s| !s.is_closed()), "an arc stays open");
+    let b = path.bounds().unwrap();
+    assert!((b.max().y - 10.0).abs() < 1e-3 && (b.width() - 20.0).abs() < 1e-3, "{b:?}");
+
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.arc.center_point".to_owned() });
+    for at in [(50.0, 0.0), (60.0, 0.0), (50.0, 25.0)] {
+        h.click(doc, at, Modifiers::default());
+    }
+    assert_eq!(vm(&h, doc).objects.len(), 2, "the second arc is a second object");
+    h.invoke(doc, CommandKey::Undo);
+    assert_eq!(vm(&h, doc).objects.len(), 1);
+    h.invoke(doc, CommandKey::Undo);
+    assert!(vm(&h, doc).objects.is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// E01: expressies in tekenvelden
+// ---------------------------------------------------------------------------------------------
+
+fn width_of_first(h: &HeadlessEditorHarness, doc: DocumentId) -> f64 {
+    h.scene(doc).unwrap().items[0].path.bounds().unwrap().width()
+}
+
+/// The size and position fields take arithmetic: `100/4 + 5`, `(2+3)*10 mm`, with a decimal comma.
+/// An expression that cannot be evaluated changes nothing and says which field is wrong.
+#[test]
+fn numeric_fields_take_expressions_and_refuse_broken_ones() {
+    use burnburn_presentation::FieldKey;
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::ToolRectangle);
+    h.drag(doc, (0.0, 0.0), (20.0, 10.0));
+    h.invoke(doc, CommandKey::ToolSelect);
+    let id = vm(&h, doc).objects[0].id;
+    h.send(UiIntent::Select { document: doc, ids: vec![id], mode: SelectMode::Replace });
+    let commit = |h: &mut HeadlessEditorHarness, text: &str| {
+        h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: text.into() });
+    };
+    commit(&mut h, "100/4 + 5");
+    assert!((width_of_first(&h, doc) - 30.0).abs() < 1e-9);
+    commit(&mut h, "(2+3)*10 mm");
+    assert!((width_of_first(&h, doc) - 50.0).abs() < 1e-9);
+    commit(&mut h, "12,5*2");
+    assert!((width_of_first(&h, doc) - 25.0).abs() < 1e-9, "decimal comma inside an expression");
+    commit(&mut h, "1 in + 5 mm");
+    assert!((width_of_first(&h, doc) - 30.4).abs() < 1e-9, "units mix");
+
+    let revision = vm(&h, doc).revision;
+    for broken in ["100/0", "2 +", "(3", "5 deg + 2", "abc * 2"] {
+        commit(&mut h, broken);
+        assert_eq!(vm(&h, doc).revision, revision, "{broken:?} changes nothing");
+        let field = vm(&h, doc).inspector.unwrap().field(FieldKey::Width).cloned().unwrap();
+        assert!(field.error.is_some(), "{broken:?} is shown at its field");
+    }
+    assert!((width_of_first(&h, doc) - 30.4).abs() < 1e-9);
+}

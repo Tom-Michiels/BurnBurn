@@ -3,7 +3,7 @@
 //! without the suppress modifier (S01); an imported or hand-converted contour never gets any.
 
 use burnburn_document::sketch::{Entity, EntityId, Relation, Sketch, SketchConstraint, SketchEntity, SketchStep};
-use burnburn_geometry::{Point, Segment, Shape};
+use burnburn_geometry::{Path, Point, Segment, Shape};
 
 use super::geometry::SketchGeometry;
 use crate::tool::{EditCommit, ShapeKind, ToolPreview};
@@ -47,6 +47,7 @@ pub fn plan_commit(sketch: &Sketch, commit: &EditCommit, tol_mm: f64, suppress: 
         points: Vec::new(),
         lines: Vec::new(),
         circle: None,
+        arc: None,
         axis_aligned: false,
         suggestions: Vec::new(),
     };
@@ -62,9 +63,31 @@ pub fn plan_commit(sketch: &Sketch, commit: &EditCommit, tol_mm: f64, suppress: 
             Shape::Circle { center, radius } => plan.circle(*center, radius.mm()),
             _ => return Err(PlanError::Unsupported),
         },
+        EditCommit::CreatePath { path } => {
+            let (center, start, end, clockwise) = circular_arc(path).ok_or(PlanError::Unsupported)?;
+            plan.arc(center, start, end, clockwise);
+        }
         _ => return Err(PlanError::Unsupported),
     }
     Ok(plan.finish())
+}
+
+/// The centre, start, end and direction of a path that is one circular arc and nothing else
+/// (a free curve or an elliptical arc has no sketch entity).
+fn circular_arc(path: &Path) -> Option<(Point, Point, Point, bool)> {
+    let [sub] = path.subpaths() else { return None };
+    if sub.is_closed() {
+        return None;
+    }
+    let [Segment::Arc(arc)] = sub.segments() else { return None };
+    let (u, v) = arc.semi_diameters();
+    let tolerance = 1e-9 * u.length().max(1.0);
+    if (u.length() - v.length()).abs() > tolerance || u.dot(v).abs() > tolerance * u.length().max(1.0) {
+        return None;
+    }
+    // A negative sweep runs the other way; so does a left-handed (u, v) frame.
+    let clockwise = (arc.sweep_parameter() < 0.0) != (u.cross(v) < 0.0);
+    Some((arc.center(), arc.start_point(), arc.end_point(), clockwise))
 }
 
 struct Planner<'a> {
@@ -77,6 +100,8 @@ struct Planner<'a> {
     /// Lines between point ids.
     lines: Vec<(EntityId, EntityId)>,
     circle: Option<(EntityId, f64)>,
+    /// Centre, start, end and direction of a drawn arc.
+    arc: Option<(EntityId, EntityId, EntityId, bool)>,
     axis_aligned: bool,
     suggestions: Vec<Suggestion>,
 }
@@ -139,6 +164,11 @@ impl Planner<'_> {
         self.circle = Some((c, radius));
     }
 
+    fn arc(&mut self, center: Point, start: Point, end: Point, clockwise: bool) {
+        let (c, s, e) = (self.point(center), self.point(start), self.point(end));
+        self.arc = Some((c, s, e, clockwise));
+    }
+
     fn position(&self, id: EntityId) -> Option<Point> {
         match id.raw().checked_sub(self.next) {
             Some(i) => self.points.get(usize::try_from(i).ok()?).copied(),
@@ -153,6 +183,9 @@ impl Planner<'_> {
         steps.extend(self.lines.iter().map(|(start, end)| entity(Entity::Line { start: *start, end: *end })));
         if let Some((center, radius)) = self.circle {
             steps.push(entity(Entity::Circle { center, radius }));
+        }
+        if let Some((center, start, end, clockwise)) = self.arc {
+            steps.push(entity(Entity::Arc { center, start, end, clockwise }));
         }
         if !self.suppress {
             for (k, (a, b)) in self.lines.clone().into_iter().enumerate() {
@@ -347,6 +380,86 @@ mod tests {
                     construction: false
                 }),
             ]
+        );
+    }
+
+    fn arc_path_through(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> Path {
+        let arc = burnburn_geometry::arc_through_three(Point::new(a.0, a.1), Point::new(b.0, b.1), Point::new(c.0, c.1))
+            .unwrap();
+        burnburn_geometry::PathBuilder::new().move_to(arc.start_point()).arc(arc).build().unwrap()
+    }
+
+    fn arc_step(center: u32, start: u32, end: u32, clockwise: bool) -> SketchStep {
+        SketchStep::AddEntity(SketchEntity {
+            entity: Entity::Arc { center: id(center), start: id(start), end: id(end), clockwise },
+            construction: false,
+        })
+    }
+
+    /// S01: a drawn circular arc becomes centre, start and end points plus an arc entity running
+    /// the way it was drawn; nothing else is guessed (no relations).
+    #[test]
+    fn an_arc_adds_centre_start_end_and_the_arc_in_the_drawn_direction() {
+        // (10,0) over (0,10) to (-10,0) around the origin: counter-clockwise.
+        let ccw = EditCommit::CreatePath { path: arc_path_through((10.0, 0.0), (0.0, 10.0), (-10.0, 0.0)) };
+        let plan = plan_commit(&Sketch::new("t"), &ccw, 0.5, false).unwrap();
+        assert_eq!(plan.steps.len(), 4, "{:?}", plan.steps);
+        assert_eq!(&plan.steps[3], &arc_step(0, 1, 2, false));
+        let at = |i: usize| match &plan.steps[i] {
+            SketchStep::AddEntity(e) => match e.entity {
+                Entity::Point { at } => at,
+                _ => panic!("a point"),
+            },
+            _ => panic!("an entity"),
+        };
+        assert!(at(0).distance(Point::new(0.0, 0.0)) < 1e-9, "centre");
+        assert!(at(1).distance(Point::new(10.0, 0.0)) < 1e-9, "start");
+        assert!(at(2).distance(Point::new(-10.0, 0.0)) < 1e-9, "end");
+        assert!(plan.suggestions.is_empty());
+        // The same points the other way round: clockwise.
+        let cw = EditCommit::CreatePath { path: arc_path_through((10.0, 0.0), (0.0, -10.0), (-10.0, 0.0)) };
+        let plan = plan_commit(&Sketch::new("t"), &cw, 0.5, false).unwrap();
+        assert_eq!(&plan.steps[3], &arc_step(0, 1, 2, true));
+    }
+
+    /// An arc that starts on an existing point shares it instead of duplicating it.
+    #[test]
+    fn an_arc_ending_on_an_existing_point_shares_it() {
+        let plan = plan_commit(
+            &existing(),
+            &EditCommit::CreatePath { path: arc_path_through((10.0, 0.0), (5.0, 8.66), (0.0, 0.0)) },
+            0.5,
+            false,
+        )
+        .unwrap();
+        let new_points = plan
+            .steps
+            .iter()
+            .filter(|s| matches!(s, SketchStep::AddEntity(e) if matches!(e.entity, Entity::Point { .. })))
+            .count();
+        assert_eq!(new_points, 1, "only the centre is new: start (10,0) and end (0,0) exist");
+    }
+
+    /// Free curves and elliptical arcs have no sketch entity.
+    #[test]
+    fn curves_that_are_not_circular_arcs_cannot_be_drawn_into_a_sketch() {
+        let ellipse_arc = burnburn_geometry::EllipticalArc::new(
+            Point::new(0.0, 0.0),
+            burnburn_geometry::Vector::new(10.0, 0.0),
+            burnburn_geometry::Vector::new(0.0, 5.0),
+            Angle::ZERO,
+            Angle::from_radians(2.0).unwrap(),
+        )
+        .unwrap();
+        let path = burnburn_geometry::PathBuilder::new().move_to(ellipse_arc.start_point()).arc(ellipse_arc).build().unwrap();
+        assert_eq!(
+            plan_commit(&Sketch::new("t"), &EditCommit::CreatePath { path }, 0.5, false),
+            Err(PlanError::Unsupported)
+        );
+        let two_lines = Path::polyline(&[Point::new(0.0, 0.0), Point::new(5.0, 5.0), Point::new(9.0, 0.0)], false).unwrap();
+        assert_eq!(
+            plan_commit(&Sketch::new("t"), &EditCommit::CreatePath { path: two_lines }, 0.5, false),
+            Err(PlanError::Unsupported)
         );
     }
 
