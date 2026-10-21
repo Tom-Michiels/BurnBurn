@@ -175,6 +175,8 @@ pub enum Reaction {
     Nothing,
     Intent(UiIntent),
     ShowOpenDialog,
+    /// Show or hide the Schikken options panel of the window.
+    ToggleSchikkenPanel,
 }
 
 /// Decode and translate one message for the window showing `vm`.
@@ -240,6 +242,8 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
         (Control::Frame, msg::WM_COMMAND) if matches!(hiword(wparam), notify::MENU | notify::ACCELERATOR) => {
             match menu_item(loword(wparam)) {
                 Some(MenuItem::Open) => return Reaction::ShowOpenDialog,
+                Some(MenuItem::CamDialog(dialog)) => UiIntent::OpenCamDialog { document, dialog },
+                Some(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
                 Some(MenuItem::Command(command)) => UiIntent::Invoke { document: Some(document), command },
                 None => return Reaction::PassOn,
             }

@@ -24,7 +24,7 @@ mod menu;
 mod util;
 
 use dialogs::{open_dialog, save_dialog};
-use menu::build_menu;
+use menu::{build_menu, refresh_popup};
 use util::{list_selection, send, set_text, wide, window_text};
 
 use std::cell::RefCell;
@@ -51,20 +51,20 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, S
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW,
-    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EnableMenuItem, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA,
-    GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer,
-    LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION,
-    MB_ICONWARNING, MB_YESNOCANCEL, MESSAGEBOX_RESULT, MF_ENABLED, MF_GRAYED, MSG, MessageBoxW, MoveWindow,
-    PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SetTimer, SetWindowLongPtrW, ShowWindow,
-    TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_INITMENUPOPUP, WM_TIMER,
-    WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA, GetClientRect,
+    GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING,
+    LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING,
+    MB_YESNOCANCEL, MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SW_SHOW, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP,
+    WM_DESTROY, WM_INITMENUPOPUP, WM_TIMER, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
 use crate::adapter::{
-    CharDecoder, Control, INSPECTOR_FIELDS, MessageContext, Reaction, accelerators, command_id, field_text,
-    menu_enabled, menu_items, message_text, msg, object_labels, on_close_box, on_message, on_open_dialog,
-    on_recovery_box, on_save_dialog, recovery_box_text, recovery_dir, selected_rows, vk, window_title,
+    CharDecoder, Control, INSPECTOR_FIELDS, MessageContext, Reaction, accelerators, field_text, message_text, msg,
+    object_labels, on_close_box, on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text,
+    recovery_dir, selected_rows, vk, window_title,
 };
 use crate::tasks::{TaskInbox, task_channel};
 
@@ -149,6 +149,7 @@ fn react(reaction: Reaction) -> bool {
             dispatch(intent);
             true
         }
+        Reaction::ToggleSchikkenPanel => true,
         Reaction::ShowOpenDialog => {
             let path = open_dialog();
             react(on_open_dialog(path));
@@ -284,7 +285,9 @@ fn surface_for(instance: HINSTANCE, canvas: HWND) -> Option<SurfaceCanvas> {
 }
 
 fn open_window(document: DocumentId) {
-    let Some((instance, menu)) = with_host(|h| (h.instance, build_menu())) else { return };
+    let vm = view();
+    let menu = build_menu(&vm, system_locale());
+    let Some(instance) = with_host(|h| h.instance) else { return };
     let child = |class: PCWSTR, style, parent: HWND, id: usize| {
         // SAFETY: creating a child control of our frame; class names are system or ours.
         unsafe {
@@ -425,12 +428,7 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 return LRESULT(0);
             }
             WM_INITMENUPOPUP => {
-                let vm = view();
-                for item in menu_items() {
-                    let flag = if menu_enabled(item, &vm) { MF_ENABLED } else { MF_GRAYED };
-                    // SAFETY: the popup handle comes with the message; ids are ours.
-                    let _ = unsafe { EnableMenuItem(HMENU(wparam.0 as *mut _), u32::from(command_id(item)), flag) };
-                }
+                refresh_popup(HMENU(wparam.0 as *mut _), &view(), system_locale());
                 return LRESULT(0);
             }
             WM_DESTROY => {
