@@ -409,6 +409,7 @@ dependencies = [
  "burnburn-trace",
  "burnburn-types",
  "proptest",
+ "rxing",
  "serde_json",
 ]
 

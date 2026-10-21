@@ -29,4 +29,5 @@ burnburn-text = { workspace = true }
 burnburn-trace = { workspace = true }
 burnburn-types = { workspace = true }
 proptest = { workspace = true }
+rxing = { workspace = true }
 serde_json = { workspace = true }
