@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use acc_machine::*;
 use burnburn_machine::{
-    Capabilities, Capability, ControllerFileName, ExecutionActor, FileCapabilities, LiveCapabilities,
-    LiveError, LiveFeature, MachineIdentity, Policy, RdArtifact, Reply, Request,
+    Capabilities, Capability, ControllerFileName, ExecutionActor, FileCapabilities, LiveCapabilities, LiveError,
+    LiveFeature, MachineIdentity, Policy, RdArtifact, Reply, Request,
 };
 use burnburn_presentation::{JobCardViewModel, MachineAction, MachineStatusKey};
 use burnburn_ruida::udp::{UdpError, checksum, frame, parse_frame, reply_from_wire};
@@ -101,7 +101,9 @@ fn tr_ack_lost_makes_the_upload_unknown_and_the_chunk_is_never_resent() {
     assert_eq!(chunks_sent(&r, 1), 1, "a non-idempotent chunk is not resent after a lost ACK");
     assert_eq!(chunks_sent(&r, 2), 0, "and the following chunks are not sent past an unconfirmed one");
     assert_untrusted(&r, false);
-    assert!(!r.h.machine_view().unwrap().offers(MachineAction::ConfirmStored) || status(&r) != MachineStatusKey::Stored);
+    assert!(
+        !r.h.machine_view().unwrap().offers(MachineAction::ConfirmStored) || status(&r) != MachineStatusKey::Stored
+    );
 }
 
 #[test]
@@ -357,7 +359,7 @@ proptest! {
         payload in proptest::collection::vec(prop_oneof![3 => any::<u8>(), 1 => Just(0_u8)], 2..300), cut in 1_usize..300,
     ) {
         let framed = frame(&payload).unwrap();
-        let keep = framed.len().saturating_sub(cut).max(0);
+        let keep = framed.len().saturating_sub(cut);
         let truncated = &framed[..keep];
         let removed_sum: u32 = framed[keep.max(2)..].iter().map(|b| u32::from(*b)).sum();
         let verdict = parse_frame(truncated);

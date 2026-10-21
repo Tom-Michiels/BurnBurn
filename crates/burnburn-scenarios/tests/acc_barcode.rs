@@ -80,7 +80,8 @@ fn raster(path: &Path, module_mm: f64, px: f64) -> (Vec<u8>, u32, u32) {
     let mut img = vec![255u8; fw * fh];
     for (x0, y0, x1, y1) in rectangles(path) {
         let (c0, c1) = (((x0 - b.min().x) * scale).round() as usize, ((x1 - b.min().x) * scale).round() as usize);
-        let (r0, r1) = (h - ((y1 - b.min().y) * scale).round() as usize, h - ((y0 - b.min().y) * scale).round() as usize);
+        let (r0, r1) =
+            (h - ((y1 - b.min().y) * scale).round() as usize, h - ((y0 - b.min().y) * scale).round() as usize);
         for r in r0..r1 {
             for c in c0..c1 {
                 img[(r + m) * fw + c + m] = 0;
@@ -208,7 +209,11 @@ fn bc01_data_mode_names_the_first_character_it_cannot_carry_instead_of_changing_
     fill(&mut h, doc, Symbology::QrCode, "Pla\u{e5}t \u{20ac}", "0,4");
     let d = h.document(doc).unwrap().barcode_dialog.unwrap();
     assert!(!d.can_create);
-    assert!(d.problems.iter().any(|p| p.issue == BarcodeIssue::InvalidChar { ch: '\u{20ac}', index: 6 }), "{:?}", d.problems);
+    assert!(
+        d.problems.iter().any(|p| p.issue == BarcodeIssue::InvalidChar { ch: '\u{20ac}', index: 6 }),
+        "{:?}",
+        d.problems
+    );
     edit(&mut h, doc, BarcodeEdit::InputMode(SymbolInputMode::Unicode));
     assert!(h.document(doc).unwrap().barcode_dialog.unwrap().can_create);
 }

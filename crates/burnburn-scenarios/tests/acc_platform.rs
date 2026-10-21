@@ -11,7 +11,9 @@ mod common;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use burnburn_document::process::{Kerf, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, Speed};
+use burnburn_document::process::{
+    Kerf, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, Speed,
+};
 use burnburn_editor::{Camera, Viewport};
 use burnburn_presentation::{
     AppIntent, CameraIntent, CommandKey, FieldKey, HeadlessEditorHarness, PrefKey, SelectMode, UiIntent,

@@ -15,8 +15,8 @@ use burnburn_cam::test_job::{
 };
 use burnburn_geometry::{Point, RegistrationError, RegistrationOptions, ScaleMode, register};
 use burnburn_image::calib::{
-    CalibError, CalibrationStore, CameraConfigKey, CameraDeviceId, CameraMode, CameraPixelFormat, Invalidity,
-    LensModel, MarkObservation, MarkRole, StoreMiss, WorkspaceAlignment, AlignmentLens,
+    AlignmentLens, CalibError, CalibrationStore, CameraConfigKey, CameraDeviceId, CameraMode, CameraPixelFormat,
+    Invalidity, LensModel, MarkObservation, MarkRole, StoreMiss, WorkspaceAlignment,
 };
 use burnburn_io::fs::FileSystem;
 use burnburn_io::memory::MemoryFileSystem;
@@ -129,10 +129,7 @@ fn ca01_a_mark_that_contradicts_the_others_makes_no_calibration_instead_of_a_bad
     let mut obs = noisy_marks(&cam, 0.0, 0.0);
     obs[3].pixel[0] += 12.0; // a mis-clicked mark, ~7 mm on the bed
     let r = WorkspaceAlignment::align(&obs, cfg, AlignmentLens::Profile(LensModel::Fixed { k1: 0.0 }), 0.0, 0.5);
-    assert!(
-        matches!(r, Err(burnburn_image::calib::AlignError::Calibration(CalibError::Inconsistent { .. }))),
-        "{r:?}"
-    );
+    assert!(matches!(r, Err(burnburn_image::calib::AlignError::Calibration(CalibError::Inconsistent { .. }))), "{r:?}");
 }
 
 #[test]
@@ -141,10 +138,26 @@ fn ca02_every_single_change_of_the_camera_configuration_refuses_the_stored_calib
     let mut store = CalibrationStore::default();
     store.insert_alignment(align(&base, 0.0, 0.0).unwrap());
     let cases: Vec<(&str, CameraConfigKey, StoreMiss)> = vec![
-        ("resolution", config("cam-A", 1280, 720, CameraPixelFormat::Bgra8, 30_000, "standard"), StoreMiss::Invalid(Invalidity::ResolutionChanged)),
-        ("pixel format", config("cam-A", 1920, 1080, CameraPixelFormat::Yuv420Video, 30_000, "standard"), StoreMiss::Invalid(Invalidity::PixelFormatChanged)),
-        ("frame rate", config("cam-A", 1920, 1080, CameraPixelFormat::Bgra8, 60_000, "standard"), StoreMiss::Invalid(Invalidity::FrameRateChanged)),
-        ("lens profile", config("cam-A", 1920, 1080, CameraPixelFormat::Bgra8, 30_000, "wide"), StoreMiss::Invalid(Invalidity::LensChanged)),
+        (
+            "resolution",
+            config("cam-A", 1280, 720, CameraPixelFormat::Bgra8, 30_000, "standard"),
+            StoreMiss::Invalid(Invalidity::ResolutionChanged),
+        ),
+        (
+            "pixel format",
+            config("cam-A", 1920, 1080, CameraPixelFormat::Yuv420Video, 30_000, "standard"),
+            StoreMiss::Invalid(Invalidity::PixelFormatChanged),
+        ),
+        (
+            "frame rate",
+            config("cam-A", 1920, 1080, CameraPixelFormat::Bgra8, 60_000, "standard"),
+            StoreMiss::Invalid(Invalidity::FrameRateChanged),
+        ),
+        (
+            "lens profile",
+            config("cam-A", 1920, 1080, CameraPixelFormat::Bgra8, 30_000, "wide"),
+            StoreMiss::Invalid(Invalidity::LensChanged),
+        ),
         ("source", config("cam-B", 1920, 1080, CameraPixelFormat::Bgra8, 30_000, "standard"), StoreMiss::NotCalibrated),
     ];
     for (what, cfg, miss) in cases {
@@ -229,7 +242,10 @@ fn reg01_targets_that_are_near_coincident_on_either_side_are_refused() {
     let close = [Point::new(0.0, 0.0), Point::new(4.99, 0.0)];
     assert_eq!(register(&close, &far, &opts).unwrap_err(), RegistrationError::DesignTargetsTooClose);
     assert_eq!(register(&far, &close, &opts).unwrap_err(), RegistrationError::MeasuredTargetsTooClose);
-    assert!(register(&[Point::new(0.0, 0.0), Point::new(5.0, 0.0)], &[Point::new(1.0, 1.0), Point::new(6.0, 1.0)], &opts).is_ok());
+    assert!(
+        register(&[Point::new(0.0, 0.0), Point::new(5.0, 0.0)], &[Point::new(1.0, 1.0), Point::new(6.0, 1.0)], &opts)
+            .is_ok()
+    );
     assert_eq!(register(&far[..1], &far[..1], &opts).unwrap_err(), RegistrationError::TooFewTargets);
 }
 
@@ -300,7 +316,10 @@ mod reg_app {
         pc(&mut r, PrintAndCutIntent::Register { document: doc });
         let plain = r.h.document(doc).unwrap().schikken.print_and_cut.unwrap().result.expect("registered");
         assert!((plain.scale - 1.0).abs() < 1e-12 && plain.rms_mm > 1.0, "{plain:?}");
-        pc(&mut r, PrintAndCutIntent::SetScale { document: doc, scale: PrintCutScale::Uniform, max_deviation: "0,1".into() });
+        pc(
+            &mut r,
+            PrintAndCutIntent::SetScale { document: doc, scale: PrintCutScale::Uniform, max_deviation: "0,1".into() },
+        );
         pc(&mut r, PrintAndCutIntent::Register { document: doc });
         let scaled = r.h.document(doc).unwrap().schikken.print_and_cut.unwrap().result.expect("registered");
         assert!((scaled.scale - 1.05).abs() < 1e-9 && scaled.rms_mm < 1e-9, "{scaled:?}");
@@ -340,7 +359,8 @@ fn rotary_rd_y_extent(rotary: Option<RotaryConfig>, y0: f64, h: f64) -> (f64, f6
         Some(r) => common::profile().with_rotary(r).unwrap(),
         None => common::profile(),
     };
-    let plan = compile(&s.snapshot(), &profile, &common::options(), &burnburn_types::CancellationToken::never()).unwrap();
+    let plan =
+        compile(&s.snapshot(), &profile, &common::options(), &burnburn_types::CancellationToken::never()).unwrap();
     let rd = common::decode(&common::rd_bytes(&plan));
     let (lo, hi) = common::cut_extent(&common::cuts(&rd));
     (lo.y, hi.y)
@@ -470,7 +490,8 @@ fn mat01_an_interval_test_scans_every_cell_at_its_own_interval() {
         border: None,
     };
     let job = generate_interval_test(&spec).unwrap();
-    let plan = job.compile(&common::profile(), &common::options(), &burnburn_types::CancellationToken::never()).unwrap();
+    let plan =
+        job.compile(&common::profile(), &common::options(), &burnburn_types::CancellationToken::never()).unwrap();
     // Per cell (20 x 8 mm): scan length = area / interval = 160 / interval.
     let mut lengths = Vec::new();
     let mut current = None;
@@ -509,11 +530,12 @@ mod lib01 {
     };
     use burnburn_io::art_library::{ArtFormat, ArtLibrary, NewArt, load_art_library, save_art_library};
     use burnburn_io::bundle::{
-        BundleContents, ImportChoices, ImportTarget, LocalState, apply_import, decode_bundle,
-        encode_bundle, preview_import,
+        BundleContents, ImportChoices, ImportTarget, LocalState, apply_import, decode_bundle, encode_bundle,
+        preview_import,
     };
     use burnburn_io::material_library::{
-        LinkStatus, MaterialLibrary, link_for, link_status, load_material_library, refresh_command, save_material_library,
+        LinkStatus, MaterialLibrary, link_for, link_status, load_material_library, refresh_command,
+        save_material_library,
     };
     use burnburn_types::Length;
 
@@ -568,7 +590,10 @@ mod lib01 {
 
         // A project recipe copied from the library entry, with its link.
         let mut s = acc_cam::session();
-        let out = acc_cam::run(&mut s, burnburn_document::CommandPayload::Process(mats.get(entry).unwrap().add_recipe_command()));
+        let out = acc_cam::run(
+            &mut s,
+            burnburn_document::CommandPayload::Process(mats.get(entry).unwrap().add_recipe_command()),
+        );
         let recipe_id = out.changes.recipes[0];
         let link = link_for(&mats, entry, recipe_id).unwrap();
         assert_eq!(link_status(&link, &mats), LinkStatus::UpToDate);
@@ -576,7 +601,9 @@ mod lib01 {
         // "Move" = save at the old path, copy the bytes to a new place, delete the old file.
         save_material_library(&fs, Path::new("/oud/materiaal.bblib"), &mats).unwrap();
         save_art_library(&fs, Path::new("/oud/kunst.bbart"), &art).unwrap();
-        for (from, to) in [("/oud/materiaal.bblib", "/nieuw/materiaal.bblib"), ("/oud/kunst.bbart", "/nieuw/kunst.bbart")] {
+        for (from, to) in
+            [("/oud/materiaal.bblib", "/nieuw/materiaal.bblib"), ("/oud/kunst.bbart", "/nieuw/kunst.bbart")]
+        {
             let bytes = fs.read(Path::new(from), u64::MAX).unwrap();
             let temp = fs.create_temp_in(Path::new("/nieuw"), ".move").unwrap();
             fs.write_all(&temp, &bytes).unwrap();

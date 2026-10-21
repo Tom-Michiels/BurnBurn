@@ -15,7 +15,7 @@ use burnburn_document::structure::{EvalMode, Modifier, ModifierChain, ModifierSt
 use burnburn_document::{CommandPayload, DocumentCommand, DocumentSession, GeometryCommand};
 use burnburn_geometry::array::{CircularArray, GridArray};
 use burnburn_geometry::{
-    AlignEdge, AlignTo, BooleanOp, BooleanOptions, Bounds, DockContact, DockDirection, Direction, FillRule, OffsetJoin,
+    AlignEdge, AlignTo, BooleanOp, BooleanOptions, Bounds, Direction, DockContact, DockDirection, FillRule, OffsetJoin,
     Path, Point, ProductionTolerance, Rect, Spacing, Vector, align_offsets, boolean, distribute_offsets, dock_offset,
     offset,
 };
@@ -72,7 +72,7 @@ fn ar01_each_align_command_lines_up_its_edge_with_the_first_selected_and_keeps_s
             assert!(near(pick(b), expected), "{command:?}: object {k} is at {} not {expected}", pick(b));
             assert!(near(b.2 - b.0, sizes[k].0) && near(b.3 - b.1, sizes[k].1), "{command:?}: size changed");
         }
-        assert_eq!(view(&h, doc).undo.is_some(), true);
+        assert!(view(&h, doc).undo.is_some());
         h.invoke(doc, CommandKey::Undo);
         assert!(near(bounds_of(&h, doc, ids[2]).0, 70.0), "{command:?}: one undo restores");
     }
@@ -116,8 +116,15 @@ fn ar01_dock_slides_to_the_reference_edge_and_keeps_the_requested_gap() {
         let v = dock_offset(&[&moving], &[&reference], DockDirection::Left, DockContact::Bounds, gap, &tol).unwrap();
         assert!(near(v.x, dx) && near(v.y, 0.0), "gap {gap}: {v:?}");
     }
-    let up = dock_offset(&[&rect(5.0, 100.0, 4.0, 4.0)], &[&reference], DockDirection::Down, DockContact::Geometry, 0.0, &tol)
-        .unwrap();
+    let up = dock_offset(
+        &[&rect(5.0, 100.0, 4.0, 4.0)],
+        &[&reference],
+        DockDirection::Down,
+        DockContact::Geometry,
+        0.0,
+        &tol,
+    )
+    .unwrap();
     assert!(near(up.y, -70.0), "down onto the 30 mm tall reference: {up:?}");
 }
 
@@ -146,9 +153,12 @@ fn ar02_grid_array_has_count_spacing_and_offsets_of_a_two_part_source() {
     // A compound source of two squares (a "group" of outlines in one object).
     let mut subs = rect(0.0, 0.0, 10.0, 10.0).subpaths().to_vec();
     subs.extend(rect(14.0, 0.0, 4.0, 4.0).subpaths().iter().cloned());
-    let src = run(&mut s, CommandPayload::Edit(GeometryCommand::CreatePath { path: Path::from_subpaths(subs), name: "Bron".into() }))
-        .changes
-        .created[0];
+    let src = run(
+        &mut s,
+        CommandPayload::Edit(GeometryCommand::CreatePath { path: Path::from_subpaths(subs), name: "Bron".into() }),
+    )
+    .changes
+    .created[0];
     let grid = Modifier::GridArray(GridArray { columns: 4, rows: 3, pitch_x: mm(25.0), pitch_y: mm(18.0) });
     let out = run(&mut s, CommandPayload::Structure(StructureCommand::CreateModifier { chain: chain(src, grid) }));
     let snap = s.snapshot();
@@ -204,7 +214,11 @@ fn ar02_circular_array_orients_every_copy_by_its_own_angle_and_a_partial_sweep_i
                 let p = Point::new(10.0, 0.0); // source start relative to the centre
                 Point::new(50.0 + p.x * a.cos() - p.y * a.sin(), 50.0 + p.x * a.sin() + p.y * a.cos())
             };
-            assert!(sp.start().distance(want) < 1e-9, "count {count}: copy {k} starts at {:?}, want {want:?}", sp.start());
+            assert!(
+                sp.start().distance(want) < 1e-9,
+                "count {count}: copy {k} starts at {:?}, want {want:?}",
+                sp.start()
+            );
         }
     }
 }
@@ -212,9 +226,12 @@ fn ar02_circular_array_orients_every_copy_by_its_own_angle_and_a_partial_sweep_i
 #[test]
 fn ar02_invalid_counts_are_refused_and_change_nothing() {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
-    let src = run(&mut s, CommandPayload::Edit(GeometryCommand::CreatePath { path: rect(0.0, 0.0, 5.0, 5.0), name: "x".into() }))
-        .changes
-        .created[0];
+    let src = run(
+        &mut s,
+        CommandPayload::Edit(GeometryCommand::CreatePath { path: rect(0.0, 0.0, 5.0, 5.0), name: "x".into() }),
+    )
+    .changes
+    .created[0];
     let rev = s.revision();
     for bad in [
         Modifier::GridArray(GridArray { columns: 0, rows: 3, pitch_x: mm(1.0), pitch_y: mm(1.0) }),
@@ -256,7 +273,10 @@ fn ring(s: f64, t: f64) -> Path {
 fn sheet() -> Stock {
     let mut subs = rect(0.0, 0.0, 200.0, 120.0).subpaths().to_vec();
     let hole = Path::polyline(
-        &[(80.0, 40.0), (80.0, 80.0), (120.0, 80.0), (120.0, 40.0)].iter().map(|&(x, y)| Point::new(x, y)).collect::<Vec<_>>(),
+        &[(80.0, 40.0), (80.0, 80.0), (120.0, 80.0), (120.0, 40.0)]
+            .iter()
+            .map(|&(x, y)| Point::new(x, y))
+            .collect::<Vec<_>>(),
         true,
     )
     .unwrap();
@@ -290,13 +310,21 @@ fn check_no_collisions(parts: &[NestPart], stock: &Stock, p: &NestParams, result
         .iter()
         .map(|pl| {
             let part = parts.iter().find(|q| q.key == pl.part).unwrap();
-            assert!(part.rotations.degrees().iter().any(|d| (d - pl.rotation_deg).abs() < 1e-9), "rotation outside set");
+            assert!(
+                part.rotations.degrees().iter().any(|d| (d - pl.rotation_deg).abs() < 1e-9),
+                "rotation outside set"
+            );
             (pl.copy as usize, part.outline.transform(&pl.transform))
         })
         .collect();
-    let usable =
-        offset(&stock.outline, -(p.edge_margin.mm() - slack), OffsetJoin::Miter, &p.tolerance, &CancellationToken::never())
-            .unwrap();
+    let usable = offset(
+        &stock.outline,
+        -(p.edge_margin.mm() - slack),
+        OffsetJoin::Miter,
+        &p.tolerance,
+        &CancellationToken::never(),
+    )
+    .unwrap();
     for (i, (_, a)) in placed.iter().enumerate() {
         let outside = bool_area(a, &usable, BooleanOp::Difference);
         assert!(outside.abs() < 1e-3, "placement {i} sticks out of the usable sheet by {outside} mm2");
@@ -310,13 +338,23 @@ fn check_no_collisions(parts: &[NestPart], stock: &Stock, p: &NestParams, result
 }
 
 fn nest_parts(a: u32, b: u32, c: u32, locked: bool) -> Vec<NestPart> {
-    let rots = |all: bool| {
-        RotationSet::new(if all { vec![0.0, 90.0, 180.0, 270.0] } else { vec![0.0] }).unwrap()
-    };
+    let rots = |all: bool| RotationSet::new(if all { vec![0.0, 90.0, 180.0, 270.0] } else { vec![0.0] }).unwrap();
     vec![
-        NestPart { key: PartKey(1), outline: l_shape(40.0, 30.0, 10.0), count: a, rotations: rots(!locked), grain_deg: None },
+        NestPart {
+            key: PartKey(1),
+            outline: l_shape(40.0, 30.0, 10.0),
+            count: a,
+            rotations: rots(!locked),
+            grain_deg: None,
+        },
         NestPart { key: PartKey(2), outline: ring(30.0, 6.0), count: b, rotations: rots(!locked), grain_deg: None },
-        NestPart { key: PartKey(3), outline: rect(0.0, 0.0, 14.0, 9.0), count: c, rotations: rots(false), grain_deg: None },
+        NestPart {
+            key: PartKey(3),
+            outline: rect(0.0, 0.0, 14.0, 9.0),
+            count: c,
+            rotations: rots(false),
+            grain_deg: None,
+        },
     ]
 }
 
@@ -345,11 +383,23 @@ fn ar03_a_small_part_may_sit_inside_the_hole_of_a_ring_but_never_touch_it() {
     // the square can only go inside the ring's hole.
     let stock = Stock { id: StockId(1), outline: rect(0.0, 0.0, 66.0, 66.0), keep_out: vec![], grain_deg: None };
     let parts = vec![
-        NestPart { key: PartKey(1), outline: ring(60.0, 6.0), count: 1, rotations: RotationSet::new(vec![0.0]).unwrap(), grain_deg: None },
-        NestPart { key: PartKey(2), outline: rect(0.0, 0.0, 20.0, 20.0), count: 1, rotations: RotationSet::new(vec![0.0]).unwrap(), grain_deg: None },
+        NestPart {
+            key: PartKey(1),
+            outline: ring(60.0, 6.0),
+            count: 1,
+            rotations: RotationSet::new(vec![0.0]).unwrap(),
+            grain_deg: None,
+        },
+        NestPart {
+            key: PartKey(2),
+            outline: rect(0.0, 0.0, 20.0, 20.0),
+            count: 1,
+            rotations: RotationSet::new(vec![0.0]).unwrap(),
+            grain_deg: None,
+        },
     ];
     let p = params(3.0, 2.0);
-    let r = nest(&parts, &[stock.clone()], &p, &CancellationToken::never()).unwrap();
+    let r = nest(&parts, std::slice::from_ref(&stock), &p, &CancellationToken::never()).unwrap();
     assert_eq!(r.placements.len(), 2, "{r:?}");
     check_no_collisions(&parts, &stock, &p, &r);
     let sq = r.placements.iter().find(|pl| pl.part == PartKey(2)).unwrap();

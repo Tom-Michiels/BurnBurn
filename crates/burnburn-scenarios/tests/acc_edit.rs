@@ -10,7 +10,7 @@ mod acc_rig;
 
 use std::path::PathBuf;
 
-use acc_rig::{bounds_of, fingerprint, opened_with, open_file, save_bytes, select, selected, square, view};
+use acc_rig::{bounds_of, fingerprint, open_file, opened_with, save_bytes, select, selected, square, view};
 use burnburn_editor::Modifiers;
 use burnburn_presentation::{CommandKey, FieldKey, HeadlessEditorHarness, RefPoint, UiIntent};
 use burnburn_types::{DocumentId, GeometryId};

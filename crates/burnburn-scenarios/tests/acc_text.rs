@@ -15,12 +15,10 @@ use std::sync::Arc;
 
 use burnburn_cam::preflight;
 use burnburn_document::text::TextCommand;
-use burnburn_document::{
-    CommandPayload, DerivedOwner, DocumentCommand, DocumentSession, EvalStatus, GeometrySource,
-};
+use burnburn_document::{CommandPayload, DerivedOwner, DocumentCommand, DocumentSession, EvalStatus, GeometrySource};
 use burnburn_generators::{
-    DataTable, FrozenRows, JobClock, OnEnd, ProductionRecord, RowBinding, SerialCounter, SerialSpec, VariableError,
-    CsvError,
+    CsvError, DataTable, FrozenRows, JobClock, OnEnd, ProductionRecord, RowBinding, SerialCounter, SerialSpec,
+    VariableError,
 };
 use burnburn_geometry::{Affine, Point, Vector};
 use burnburn_test_support::fixtures::read_fixture;
@@ -234,7 +232,8 @@ fn table(csv: &str) -> Result<DataTable, CsvError> {
 
 #[test]
 fn tx02_quoted_commas_newlines_and_quotes_stay_inside_their_cell() {
-    let t = table("naam,adres,opm\r\n\"Jansen, J.\",\"Straat 1\nBus 2\",\"zei \"\"hoi\"\"\"\r\nPiet,Dorp 3,\r\n").unwrap();
+    let t =
+        table("naam,adres,opm\r\n\"Jansen, J.\",\"Straat 1\nBus 2\",\"zei \"\"hoi\"\"\"\r\nPiet,Dorp 3,\r\n").unwrap();
     assert_eq!(t.headers, ["naam", "adres", "opm"]);
     assert_eq!(
         t.rows,

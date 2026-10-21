@@ -67,7 +67,8 @@ impl ControllerPort for FakePort {
 
     fn try_recv(&mut self) -> Result<Option<Incoming>, PortError> {
         let reply = self.peer.recv().map_err(port_error)?;
-        let from = if SPOOF.with(std::cell::Cell::get) { MachineId::new("other-machine") } else { self.machine.clone() };
+        let from =
+            if SPOOF.with(std::cell::Cell::get) { MachineId::new("other-machine") } else { self.machine.clone() };
         Ok(reply.map(|reply| Incoming { from, tag: self.last_tag.unwrap(), reply }))
     }
 

@@ -234,7 +234,13 @@ fn dist_to_polyline(p: Point, pts: &[Point], closed: bool) -> f64 {
     let n = pts.len();
     let mut best = f64::INFINITY;
     for i in 0..n {
-        let j = if i + 1 < n { i + 1 } else if closed { 0 } else { break };
+        let j = if i + 1 < n {
+            i + 1
+        } else if closed {
+            0
+        } else {
+            break;
+        };
         best = best.min(dist_point_segment(p, pts[i], pts[j]));
     }
     best
@@ -281,7 +287,8 @@ fn ge03_a_cusp_is_flattened_within_the_budget_and_stays_closed() {
     assert!(line.closed);
     let b = |u: f64| {
         let m = 1.0 - u;
-        let f = |a: f64, b: f64, c: f64, d: f64| m * m * m * a + 3.0 * m * m * u * b + 3.0 * m * u * u * c + u * u * u * d;
+        let f =
+            |a: f64, b: f64, c: f64, d: f64| m * m * m * a + 3.0 * m * m * u * b + 3.0 * m * u * u * c + u * u * u * d;
         Point::new(f(p0.x, p1.x, p2.x, p3.x), f(p0.y, p1.y, p2.y, p3.y))
     };
     assert!(b(0.5).distance(Point::new(7.5, 5.0)) < 1e-12, "the test curve really has its cusp at (7.5, 5)");

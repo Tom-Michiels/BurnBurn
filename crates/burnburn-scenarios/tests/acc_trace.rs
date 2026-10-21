@@ -123,13 +123,19 @@ fn tr01_hierarchy_areas_and_boundaries_follow_the_drawn_bitmap() {
     assert!(near(result.contours[plate].area_mm2, area_of(PLATE)));
     assert!(near(result.contours[hole].area_mm2, area_of(HOLE)));
     assert!(near(result.contours[island].area_mm2, area_of(ISLAND)));
-    let line = result.contours.iter().find(|c| c.kind == ContourKind::Outer && c.parent.is_none() && c.area_mm2 < 2.0).unwrap();
+    let line = result
+        .contours
+        .iter()
+        .find(|c| c.kind == ContourKind::Outer && c.parent.is_none() && c.area_mm2 < 2.0)
+        .unwrap();
     assert!(near(line.area_mm2, area_of(LINE)), "the thin stroke keeps its 5 x 0.2 mm: {}", line.area_mm2);
 
     // Every traced boundary point lies within the budget of its drawn rectangle's boundary.
     for (idx, r) in [(plate, PLATE), (hole, HOLE), (island, ISLAND)] {
         let path = Path::from_subpaths(vec![result.contours[idx].path.clone()]);
-        let lines = path.flatten(&burnburn_geometry::ProductionTolerance::new(burnburn_types::Length::from_mm(0.01).unwrap()).unwrap());
+        let lines = path.flatten(
+            &burnburn_geometry::ProductionTolerance::new(burnburn_types::Length::from_mm(0.01).unwrap()).unwrap(),
+        );
         let worst = lines[0].points.iter().map(|p| dist_to_rect(*p, mm(r))).fold(0.0, f64::max);
         assert!(worst <= 0.05, "{r:?}: traced boundary is {worst} mm off the drawn rectangle");
     }

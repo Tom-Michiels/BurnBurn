@@ -22,8 +22,8 @@ use std::process::Command;
 
 use burnburn_cam::{JobAnchor, Placement, compile};
 use burnburn_document::process::{
-    FillSettings, Kerf, OperationDraft, OperationMode, OptimizationSettings, Passes,
-    PowerPercent, PowerRange, ProcessCommand, ProcessSettings, ScanAxis, ScanDirection, Speed,
+    FillSettings, Kerf, OperationDraft, OperationMode, OptimizationSettings, Passes, PowerPercent, PowerRange,
+    ProcessCommand, ProcessSettings, ScanAxis, ScanDirection, Speed,
 };
 use burnburn_document::{CommandPayload, DocumentSession, GeometryCommand};
 use burnburn_geometry::{PathBuilder, Point};
@@ -67,12 +67,7 @@ fn oracle(rd: &[u8], tag: &str) -> Option<Vec<Rec>> {
         .iter()
         .map(|r| Rec {
             offset: r["offset"].as_u64().unwrap() as usize,
-            hex: r["hex"]
-                .as_str()
-                .unwrap()
-                .split(' ')
-                .map(|h| u8::from_str_radix(h, 16).unwrap())
-                .collect(),
+            hex: r["hex"].as_str().unwrap().split(' ').map(|h| u8::from_str_radix(h, 16).unwrap()).collect(),
             names: r["names"].as_array().unwrap().iter().map(|n| n.as_str().unwrap().to_owned()).collect(),
         })
         .collect();
@@ -190,7 +185,9 @@ fn open_path(s: &mut DocumentSession, pts: &[(f64, f64)], closed: bool) -> burnb
     if closed {
         b = b.close();
     }
-    acc_cam::run(s, CommandPayload::Edit(GeometryCommand::CreatePath { path: b.build().unwrap(), name: "p".into() })).changes.created[0]
+    acc_cam::run(s, CommandPayload::Edit(GeometryCommand::CreatePath { path: b.build().unwrap(), name: "p".into() }))
+        .changes
+        .created[0]
 }
 
 /// Keeps the drawn start and direction (no best-start / best-direction search).
@@ -247,7 +244,10 @@ fn assert_rd_matches_plan(plan: &JobPlan, tag: &str) -> Option<Read> {
     assert_eq!(actual.len(), expected.len(), "{tag}: number of laser-on segments");
     for (i, (a, e)) in actual.iter().zip(&expected).enumerate() {
         assert!(
-            (a.0 .0 - e.0 .0).abs() <= 1 && (a.0 .1 - e.0 .1).abs() <= 1 && (a.1 .0 - e.1 .0).abs() <= 1 && (a.1 .1 - e.1 .1).abs() <= 1,
+            (a.0.0 - e.0.0).abs() <= 1
+                && (a.0.1 - e.0.1).abs() <= 1
+                && (a.1.0 - e.1.0).abs() <= 1
+                && (a.1.1 - e.1.1).abs() <= 1,
             "{tag}: segment {i}: file {a:?} vs plan {e:?}"
         );
     }
@@ -352,11 +352,22 @@ fn rd_diff_03_each_bed_corner_origin_maps_the_same_design_to_its_own_machine_coo
         let tag = format!("origin-{origin:?}");
         let Some(got) = assert_rd_matches_plan(&plan, &tag) else { return };
         let (lo, hi) = got.cut_extent();
-        let want = ((um(f64::from(expect.0 .0)), um(f64::from(expect.0 .1))), (um(f64::from(expect.1 .0)), um(f64::from(expect.1 .1))));
+        let want = (
+            (um(f64::from(expect.0.0)), um(f64::from(expect.0.1))),
+            (um(f64::from(expect.1.0)), um(f64::from(expect.1.1))),
+        );
         assert_eq!((lo, hi), want, "{tag}");
         // And the header's document bounds (E7 50 / E7 51) agree with the motion (they may be a few um wider).
         let (dmin, dmax) = (got.doc_min.unwrap(), got.doc_max.unwrap());
-        assert!(dmin.0 <= lo.0 && dmin.1 <= lo.1 && dmax.0 >= hi.0 && dmax.1 >= hi.1 && dmin.0 >= lo.0 - 5 && dmax.1 <= hi.1 + 5, "{tag}: header {dmin:?} {dmax:?}");
+        assert!(
+            dmin.0 <= lo.0
+                && dmin.1 <= lo.1
+                && dmax.0 >= hi.0
+                && dmax.1 >= hi.1
+                && dmin.0 >= lo.0 - 5
+                && dmax.1 <= hi.1 + 5,
+            "{tag}: header {dmin:?} {dmax:?}"
+        );
     }
 }
 
@@ -423,7 +434,11 @@ fn rd_diff_04_power_values_reach_the_file_as_the_scaled_14_bit_value_and_min_max
         let tag = format!("power-{pct}");
         let Some(got) = assert_rd_matches_plan(&plan, &tag) else { return };
         let raw = (pct / 100.0 * 16383.0).round() as u16;
-        assert!(got.powers.contains(&(1, raw)) && got.powers.contains(&(2, raw)), "{tag}: {:?} vs raw {raw}", got.powers);
+        assert!(
+            got.powers.contains(&(1, raw)) && got.powers.contains(&(2, raw)),
+            "{tag}: {:?} vs raw {raw}",
+            got.powers
+        );
         if pct == 20.0 {
             assert_eq!(raw, 3277, "the hardware-evidenced pair");
         }
@@ -496,8 +511,12 @@ fn rd_diff_06_fill_rows_sit_at_half_interval_centres_and_alternate_only_when_bid
         }
         let signs: Vec<i64> = cuts.iter().map(|c| (c.to.0 - c.from.0).signum()).collect();
         match dir {
-            ScanDirection::Bidirectional => assert!(signs.windows(2).all(|w| w[0] == -w[1]), "{tag}: alternates {signs:?}"),
-            ScanDirection::Unidirectional => assert!(signs.windows(2).all(|w| w[0] == w[1]), "{tag}: same way {signs:?}"),
+            ScanDirection::Bidirectional => {
+                assert!(signs.windows(2).all(|w| w[0] == -w[1]), "{tag}: alternates {signs:?}")
+            }
+            ScanDirection::Unidirectional => {
+                assert!(signs.windows(2).all(|w| w[0] == w[1]), "{tag}: same way {signs:?}")
+            }
         }
     }
 }
@@ -530,7 +549,8 @@ fn rd_diff_06_vertical_and_angled_fills_are_refused_at_export_not_written_wrong(
 fn rd_diff_12_the_file_checksum_is_the_byte_sum_of_everything_before_it_also_for_a_very_large_file() {
     // 6000 short zig-zag cuts: a file of several hundred kilobytes; the sum is far beyond 16 bits.
     let mut s = acc_cam::session();
-    let pts: Vec<(f64, f64)> = (0..6000).map(|i| (100.0 + f64::from(i % 2) * 5.0, 100.0 + f64::from(i) * 0.1)).collect();
+    let pts: Vec<(f64, f64)> =
+        (0..6000).map(|i| (100.0 + f64::from(i % 2) * 5.0, 100.0 + f64::from(i) * 0.1)).collect();
     let g = open_path(&mut s, &pts, false);
     acc_cam::add_op(&mut s, acc_cam::line_op("Snijden", 100.0, 50.0), vec![g]);
     keep_drawn(&mut s);
@@ -600,7 +620,9 @@ fn rd_diff_08_a_dithered_image_is_read_back_from_the_file_as_the_same_burn_patte
         output_enabled: true,
     };
     acc_cam::add_op(&mut s, draft, vec![frame]);
-    let plan = burnburn_cam::compile_with(&s.snapshot(), &common::profile(), &common::options(), &vec![source], &never()).unwrap();
+    let plan =
+        burnburn_cam::compile_with(&s.snapshot(), &common::profile(), &common::options(), &vec![source], &never())
+            .unwrap();
     let Some(recs) = oracle(&rd_of(&plan), "image") else { return };
     let got = read(&recs);
     // Rebuild the pattern from the laser-on segments of the FILE (rows top to bottom, 0.1 mm dots).
@@ -645,5 +667,8 @@ fn rd_diff_11_a_focus_offset_is_refused_at_export_and_two_passes_repeat_the_moti
     let Some(got) = assert_rd_matches_plan(&plan, "two-passes") else { return };
     let cuts = got.cuts();
     assert_eq!(cuts.len(), 8, "2 passes x 4 sides");
-    assert_eq!(cuts[..4].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>(), cuts[4..].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>());
+    assert_eq!(
+        cuts[..4].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>(),
+        cuts[4..].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>()
+    );
 }

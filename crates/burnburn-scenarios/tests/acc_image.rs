@@ -13,10 +13,10 @@ use std::path::{Path as FsPath, PathBuf};
 
 use acc_cam::*;
 use burnburn_cam::{CompileError, compile_with};
+use burnburn_document::DocumentSession;
 use burnburn_document::process::{
     DitherMode, ImageRender, ImageSettings, OperationDraft, OperationMode, ScreenSettings, ToneSettings,
 };
-use burnburn_document::DocumentSession;
 use burnburn_image::{DecodeLimits, SourceImage, decode, encode_png_gray8};
 use burnburn_job::{JobPlan, PlanEvent};
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, SelectMode, UiIntent};
@@ -138,7 +138,12 @@ fn im01_a_one_pixel_border_stays_one_dot_on_the_grid_and_survives_a_non_integer_
     );
     // 2x: the border is two dots wide, exactly.
     let two = burn(&source, t, 20, 12);
-    assert!(two[0].chars().all(|c| c == '#') && two[1].chars().all(|c| c == '#') && two[2].starts_with("##..") && two[2].ends_with("..##"));
+    assert!(
+        two[0].chars().all(|c| c == '#')
+            && two[1].chars().all(|c| c == '#')
+            && two[2].starts_with("##..")
+            && two[2].ends_with("..##")
+    );
     // 1.5x (15 x 9 dots): dot 0 is entirely border (burns), dot 1 is 1/3 border + 2/3 white (gray 170, no burn).
     let odd = burn(&source, t, 15, 9);
     assert!(odd[0].chars().all(|c| c == '#') && odd[8].chars().all(|c| c == '#'), "top and bottom rows: {odd:?}");
@@ -207,7 +212,12 @@ fn im02_every_image_mode_matches_the_python_reference_at_one_and_two_times_scale
             failures.push(format!("{mode} x{scale}:\n  got      {}\n  expected {}", got.join("/"), expected.join("/")));
         }
     }
-    assert!(failures.is_empty(), "{} of 22 differ from the independent reference:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} of 22 differ from the independent reference:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
@@ -245,7 +255,13 @@ fn two_tone() -> Vec<u8> {
 fn imported() -> (HeadlessEditorHarness, burnburn_types::DocumentId, PathBuf) {
     let mut h = HeadlessEditorHarness::new();
     let doc = h.new_document().unwrap();
-    h.send(UiIntent::SetMachineProfile { profile: Box::new(profile()), ruida: burnburn_ruida::RuidaProfile { magic: burnburn_ruida::Magic::FIXTURE_0X88, overscan: burnburn_ruida::OverscanPolicy::ControllerManaged } });
+    h.send(UiIntent::SetMachineProfile {
+        profile: Box::new(profile()),
+        ruida: burnburn_ruida::RuidaProfile {
+            magic: burnburn_ruida::Magic::FIXTURE_0X88,
+            overscan: burnburn_ruida::OverscanPolicy::ControllerManaged,
+        },
+    });
     let path = put(&h, "plaat.png", &two_tone());
     h.send(UiIntent::Import { document: doc, path: path.clone() });
     h.run_tasks();
@@ -308,7 +324,9 @@ fn im03_rotate_replace_refresh_and_undo_keep_the_frame_size_contract() {
     h.invoke(doc, CommandKey::RefreshImage);
     h.run_tasks();
     let refreshed = processed(&mut h, doc, "e.png");
-    assert!(refreshed.samples()[..60].iter().all(|v| *v == 255) && refreshed.samples()[60..120].iter().all(|v| *v == 0));
+    assert!(
+        refreshed.samples()[..60].iter().all(|v| *v == 255) && refreshed.samples()[60..120].iter().all(|v| *v == 0)
+    );
     assert_eq!(frame_bounds(&h, doc), (12.0, 6.0));
     h.invoke(doc, CommandKey::Undo);
     assert_eq!(processed(&mut h, doc, "f.png").samples(), first.samples());

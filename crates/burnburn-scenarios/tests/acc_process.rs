@@ -16,8 +16,8 @@ use std::path::PathBuf;
 use acc_cam::{add_op, fill_op, line_op, mm, plan_from_outside, rectangle, run, session, settings, supporting};
 use burnburn_cam::compile;
 use burnburn_document::process::{
-    AdvancedOptions, CutPriority, Kerf, Lead, LineOptions, OperationDraft, OperationMode, Overcut, Passes, FillGrouping,
-    OptimizationSettings, OrderKey, ProcessCommand, ProcessSettings, TabSpec,
+    AdvancedOptions, CutPriority, FillGrouping, Kerf, Lead, LineOptions, OperationDraft, OperationMode,
+    OptimizationSettings, OrderKey, Overcut, Passes, ProcessCommand, ProcessSettings, TabSpec,
 };
 use burnburn_document::{CommandPayload, DocumentSession, GeometryCommand};
 use burnburn_geometry::{Path, PathBuilder, Point};
@@ -148,7 +148,11 @@ struct Part {
 }
 
 /// `specs`: (layer 0/1, priority 0..3, nested?) per part; parts sit on a grid 60 mm apart.
-fn build(specs: &[(usize, i32, bool)], order: Vec<OrderKey>, reduce: bool) -> (DocumentSession, Vec<Part>, [OperationId; 2]) {
+fn build(
+    specs: &[(usize, i32, bool)],
+    order: Vec<OrderKey>,
+    reduce: bool,
+) -> (DocumentSession, Vec<Part>, [OperationId; 2]) {
     let mut s = session();
     let mut parts = Vec::new();
     let mut targets: [Vec<GeometryId>; 2] = [Vec::new(), Vec::new()];
@@ -293,7 +297,13 @@ fn cam02_tabs_kerf_leads_overcut_and_passes_give_the_arithmetic_length_without_b
         overcut: Some(Overcut::new(mm(1.0)).unwrap()),
         ..Default::default()
     };
-    run(&mut s, CommandPayload::Process(ProcessCommand::SetAdvanced { operation: op, advanced: AdvancedOptions { line, ..Default::default() } }));
+    run(
+        &mut s,
+        CommandPayload::Process(ProcessCommand::SetAdvanced {
+            operation: op,
+            advanced: AdvancedOptions { line, ..Default::default() },
+        }),
+    );
     let plan = plan_from_outside(&s, &common::profile()).unwrap();
 
     // Kerf: the cut path is offset by half the kerf on every side. Its bounds are the shape's +-0.2
@@ -433,7 +443,11 @@ fn cam04_every_wanted_area_is_scanned_exactly_once_per_planned_pass() {
     // Grouped fill: the ring and a copy of it, grouped: once each.
     let mut s = session();
     let a = path_geometry(&mut s, ring_square());
-    let b = path_geometry(&mut s, ring_square().transform(&burnburn_geometry::Affine::translate(burnburn_geometry::Vector::new(40.0, 0.0)).unwrap()));
+    let b = path_geometry(
+        &mut s,
+        ring_square()
+            .transform(&burnburn_geometry::Affine::translate(burnburn_geometry::Vector::new(40.0, 0.0)).unwrap()),
+    );
     run(&mut s, CommandPayload::Edit(GeometryCommand::Group { targets: vec![a, b] }));
     let draft = OperationDraft {
         name: "Vullen".into(),
@@ -486,7 +500,9 @@ fn cam04_offset_fill_rings_total_the_concentric_perimeters() {
 
 #[test]
 fn cam05_the_placed_plan_its_preview_and_the_header_bounds_agree_on_selection_and_origin() {
-    use burnburn_machine::{CompileScope, JobAnchor, PlacementInput, PlacementSpec, Rect, ScopeObject, StartFrom, place_plan, resolve_scope};
+    use burnburn_machine::{
+        CompileScope, JobAnchor, PlacementInput, PlacementSpec, Rect, ScopeObject, StartFrom, place_plan, resolve_scope,
+    };
     let mut s = session();
     let a = rectangle(&mut s, 100.0, 100.0, 40.0, 20.0);
     let b = rectangle(&mut s, 300.0, 200.0, 10.0, 10.0);
@@ -501,7 +517,8 @@ fn cam05_the_placed_plan_its_preview_and_the_header_bounds_agree_on_selection_an
         ScopeObject { id: a.raw(), bounds: rect(100.0, 100.0, 40.0, 20.0) },
         ScopeObject { id: b.raw(), bounds: rect(300.0, 200.0, 10.0, 10.0) },
     ];
-    let scope = resolve_scope(&CompileScope { cut_selected: false, use_selection_origin: true }, &objects, &[b.raw()]).unwrap();
+    let scope =
+        resolve_scope(&CompileScope { cut_selected: false, use_selection_origin: true }, &objects, &[b.raw()]).unwrap();
     assert_eq!(scope.included.len(), 2, "all objects are cut");
     let head = burnburn_job::MachinePoint::new(500.0, 400.0).unwrap();
     let input = PlacementInput { frame: plan.frame(), current_position: Some(head), user_origin: None };
@@ -516,8 +533,10 @@ fn cam05_the_placed_plan_its_preview_and_the_header_bounds_agree_on_selection_an
     // Preview of the placed plan, the plan's own bounds and the RD header all describe the same box.
     let (lo, hi) = (100.0 + 200.0, 100.0 + 200.0);
     let pv = preview(&placed.plan, &profile);
-    let xs: Vec<f64> = pv.moves.iter().filter(|m| m.source.is_some()).flat_map(|m| [m.from.x_mm(), m.to.x_mm()]).collect();
-    let ys: Vec<f64> = pv.moves.iter().filter(|m| m.source.is_some()).flat_map(|m| [m.from.y_mm(), m.to.y_mm()]).collect();
+    let xs: Vec<f64> =
+        pv.moves.iter().filter(|m| m.source.is_some()).flat_map(|m| [m.from.x_mm(), m.to.x_mm()]).collect();
+    let ys: Vec<f64> =
+        pv.moves.iter().filter(|m| m.source.is_some()).flat_map(|m| [m.from.y_mm(), m.to.y_mm()]).collect();
     let min_x = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let min_y = ys.iter().copied().fold(f64::INFINITY, f64::min);
     let max_x = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -588,7 +607,12 @@ fn pre02_the_estimate_is_length_over_speed_for_ten_job_shapes_and_claims_no_accu
             plan_from_outside(&s, &profile).unwrap()
         };
         // Short and long cutting jobs at different speeds: time = perimeter / speed + travel / 400.
-        for (name, w, v) in [("short-slow", 5.0, 10.0), ("short-fast", 5.0, 200.0), ("long-slow", 400.0, 20.0), ("long-fast", 400.0, 300.0)] {
+        for (name, w, v) in [
+            ("short-slow", 5.0, 10.0),
+            ("short-fast", 5.0, 200.0),
+            ("long-slow", 400.0, 20.0),
+            ("long-fast", 400.0, 300.0),
+        ] {
             let plan = mk(w, v);
             let pv = preview(&plan, &profile);
             let expected = 4.0 * w / v + pv.travel_length_mm / 400.0;
@@ -629,7 +653,10 @@ fn pre02_the_estimate_is_length_over_speed_for_ten_job_shapes_and_claims_no_accu
         out.push(("mixed", plan, 80.0 / 50.0 + (400.0 / 1.0) / 100.0 + pv.travel_length_mm / 400.0));
         let mut s = session();
         let g = rectangle(&mut s, 10.0, 10.0, 30.0, 30.0);
-        let draft = OperationDraft { settings: ProcessSettings { passes: Passes::new(2).unwrap(), ..settings(60.0, 50.0) }, ..line_op("c", 60.0, 50.0) };
+        let draft = OperationDraft {
+            settings: ProcessSettings { passes: Passes::new(2).unwrap(), ..settings(60.0, 50.0) },
+            ..line_op("c", 60.0, 50.0)
+        };
         add_op(&mut s, draft, vec![g]);
         let plan = plan_from_outside(&s, &profile).unwrap();
         let pv = preview(&plan, &profile);
