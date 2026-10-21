@@ -282,7 +282,7 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
 
 /// A field commit, or `None` when the text equals what the view model shows (Enter then focus
 /// loss sends the same text twice).
-fn commit(
+pub(crate) fn commit(
     doc: &burnburn_presentation::DocumentViewModel,
     document: DocumentId,
     field: FieldKey,

@@ -10,6 +10,7 @@ pub mod adapter;
 /// the same strings (interim until it moves into `burnburn-presentation`, contracts-phase-c §IM20).
 #[path = "../../burnburn-macos/src/l10n.rs"]
 pub mod l10n;
+pub mod forms;
 pub mod menus;
 pub mod tasks;
 
