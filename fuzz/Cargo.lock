@@ -48,6 +48,7 @@ name = "burnburn-fuzz"
 version = "0.0.0"
 dependencies = [
  "burnburn-document",
+ "burnburn-gcode",
  "burnburn-geometry",
  "burnburn-image",
  "burnburn-io",
@@ -56,6 +57,14 @@ dependencies = [
  "burnburn-types",
  "libfuzzer-sys",
  "serde_json",
+]
+
+[[package]]
+name = "burnburn-gcode"
+version = "0.1.0"
+dependencies = [
+ "burnburn-job",
+ "burnburn-types",
 ]
 
 [[package]]

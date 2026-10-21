@@ -162,6 +162,7 @@ version = "0.1.0"
 dependencies = [
  "burnburn-cam",
  "burnburn-document",
+ "burnburn-gcode",
  "burnburn-geometry",
  "burnburn-history",
  "burnburn-io",
