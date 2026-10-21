@@ -108,6 +108,24 @@ fn scenario() -> Result<(), String> {
     s.wait(5.0, "the first preview", || {
         s.app.with_window(doc, |w| w.adjust_preview.image().is_some()).unwrap_or(false)
     })?;
+    // W4-UI-machine: the same preview lies on the image's bounds on the canvas (a bitmap above the frame).
+    let on_canvas = || -> Vec<(u32, u32)> {
+        s.app
+            .scene(doc)
+            .map(|scene| {
+                scene
+                    .overlays
+                    .iter()
+                    .filter_map(|o| match o {
+                        burnburn_editor::Overlay::ImagePreview { picture, .. } => Some((picture.width, picture.height)),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let drawn = on_canvas();
+    expect(|| format!("the preview bitmap is in the canvas scene: {drawn:?}"), drawn.len() == 1 && drawn[0].0 > 0)?;
     let (source, gamma) = s
         .app
         .with_window(doc, |w| {
@@ -130,6 +148,8 @@ fn scenario() -> Result<(), String> {
     s.wait(3.0, "the sheet to close", || {
         s.app.with_window(doc, |w| w.window.attachedSheet().is_none()).unwrap_or(false)
     })?;
+    let left = on_canvas();
+    expect(|| format!("closing the sheet takes the preview off the canvas: {left:?}"), left.is_empty())?;
 
     // ---- Tracer on the same picture.
     let trace_path = s.dir.join("ring.png");

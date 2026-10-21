@@ -292,7 +292,12 @@ pub(super) fn preview_overlay(s: &Session) -> Option<Overlay> {
         return None;
     }
     let quad = BedQuad {
-        bed_mm: [Point::new(min.x, max.y), Point::new(max.x, max.y), Point::new(max.x, min.y), Point::new(min.x, min.y)],
+        bed_mm: [
+            Point::new(min.x, max.y),
+            Point::new(max.x, max.y),
+            Point::new(max.x, min.y),
+            Point::new(min.x, min.y),
+        ],
         uv: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
     };
     Some(Overlay::ImagePreview { picture, quads: Arc::from(vec![quad]), opacity: 1.0 })

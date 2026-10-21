@@ -110,8 +110,7 @@ fn an_invisible_or_unusable_preview_produces_no_work() {
     }
     let mut bad = quad((-10.0, 10.0), (10.0, -10.0));
     bad.bed_mm[2] = Point::new(f64::NAN, 0.0);
-    let overlay =
-        Overlay::ImagePreview { picture: gray_picture(1, 1, 1, &[0]), quads: vec![bad].into(), opacity: 1.0 };
+    let overlay = Overlay::ImagePreview { picture: gray_picture(1, 1, 1, &[0]), quads: vec![bad].into(), opacity: 1.0 };
     assert!(bitmaps(&build_packet(&scene(vec![], vec![overlay]), &t).primitives).is_empty());
 }
 
