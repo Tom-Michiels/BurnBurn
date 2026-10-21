@@ -271,6 +271,7 @@ mod tests {
     fn ordered_set_membership_does_not_scan_linearly() {
         use std::cell::Cell;
         thread_local!(static EQ: Cell<u64> = const { Cell::new(0) });
+        #[allow(clippy::derived_hash_with_manual_eq)] // eq only adds a counter; it stays consistent with Hash
         #[derive(Clone, Copy, Debug, Hash, Eq)]
         struct Counted(u32);
         impl PartialEq for Counted {

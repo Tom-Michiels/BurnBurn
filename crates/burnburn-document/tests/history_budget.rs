@@ -5,8 +5,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // test helpers
 
 use burnburn_document::{
-    CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, DocumentSession, DocumentSnapshot, GeometryCommand,
-    HistoryBudget, ImportItem,
+    CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, DocumentSession, DocumentSnapshot,
+    GeometryCommand, HistoryBudget, ImportItem,
 };
 use burnburn_geometry::{Affine, Path, Point, Vector};
 use burnburn_types::{ContentHash, DocumentId, GeometryId, RequestId, StableId};

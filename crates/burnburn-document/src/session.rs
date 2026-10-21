@@ -40,7 +40,7 @@ fn object_bytes(o: &GeometryObject) -> usize {
     std::mem::size_of::<GeometryObject>()
         + o.name().len()
         + o.groups().len() * 8
-        + o.path().subpaths().len() * std::mem::size_of::<burnburn_geometry::Subpath>()
+        + std::mem::size_of_val(o.path().subpaths())
         + segments * std::mem::size_of::<burnburn_geometry::Segment>()
 }
 
@@ -48,13 +48,8 @@ fn object_bytes(o: &GeometryObject) -> usize {
 /// created or modified (older versions were counted by the step that made them).
 fn step_bytes(after: &DocumentSnapshot, changes: &ChangeSet) -> usize {
     const MAP_ENTRY: usize = 48;
-    let versions: usize = changes
-        .created
-        .iter()
-        .chain(&changes.modified)
-        .filter_map(|id| after.object(*id))
-        .map(object_bytes)
-        .sum();
+    let versions: usize =
+        changes.created.iter().chain(&changes.modified).filter_map(|id| after.object(*id)).map(object_bytes).sum();
     after.len() * MAP_ENTRY + versions
 }
 
@@ -126,7 +121,14 @@ impl DocumentSession {
     /// A session over a loaded or recovered snapshot. History starts empty.
     pub fn from_snapshot(id: DocumentId, snapshot: DocumentSnapshot) -> Self {
         let saved = Some(content_of(&snapshot));
-        DocumentSession { id, current: Arc::new(snapshot), undo: Vec::new(), redo: Vec::new(), saved, budget: HistoryBudget::DEFAULT }
+        DocumentSession {
+            id,
+            current: Arc::new(snapshot),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            saved,
+            budget: HistoryBudget::DEFAULT,
+        }
     }
 
     pub fn set_history_budget(&mut self, budget: HistoryBudget) {

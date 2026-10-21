@@ -15,7 +15,11 @@ fn run(s: &mut DocumentSession, payload: CommandPayload) -> CommandOutcome {
 }
 
 fn item(name: &str, x: f64) -> ImportItem {
-    ImportItem { name: name.into(), entity: None, path: Path::line(Point::new(x, 0.0), Point::new(x + 1.0, 0.0)).unwrap() }
+    ImportItem {
+        name: name.into(),
+        entity: None,
+        path: Path::line(Point::new(x, 0.0), Point::new(x + 1.0, 0.0)).unwrap(),
+    }
 }
 
 fn import(s: &mut DocumentSession, names: &[&str]) -> CommandOutcome {
@@ -79,8 +83,9 @@ fn transform_lists_each_target_once_in_target_order() {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     let mut ids = Vec::new();
     for i in 0..5 {
-        let rect = Rect::new(Point::new(10.0 * i as f64, 0.0), Length::from_mm(2.0).unwrap(), Length::from_mm(2.0).unwrap())
-            .unwrap();
+        let rect =
+            Rect::new(Point::new(10.0 * i as f64, 0.0), Length::from_mm(2.0).unwrap(), Length::from_mm(2.0).unwrap())
+                .unwrap();
         ids.push(run(&mut s, CommandPayload::CreateRectangle { rect, name: format!("r{i}") }).changes.created[0]);
     }
     let m = Affine::translate(Vector::new(1.0, 1.0)).unwrap();

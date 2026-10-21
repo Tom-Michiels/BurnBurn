@@ -5,13 +5,15 @@
 //! The work size is calibrated: if a run finishes before the cancel arrives (fast machine), the
 //! next, larger size is tried, so the test observes a real mid-run cancel without a time limit.
 
-#![allow(clippy::unwrap_used)] // test helpers outside #[test] fns
+#![allow(clippy::unwrap_used, clippy::panic)] // test helpers outside #[test] fns
 
 mod common;
 
 use std::time::Duration;
 
-use burnburn_cam::nest::{NestError, NestParams, NestPart, PartKey, RotationSet, Stock, StockId, UtilisationBasis, nest};
+use burnburn_cam::nest::{
+    NestError, NestParams, NestPart, PartKey, RotationSet, Stock, StockId, UtilisationBasis, nest,
+};
 use burnburn_cam::{CompileError, compile};
 use burnburn_document::{DocumentSession, DocumentSnapshot, GeometryObject, GeometrySource, ObjectKind};
 use burnburn_geometry::{Path, Point, ProductionTolerance, Rect};

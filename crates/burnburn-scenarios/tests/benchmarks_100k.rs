@@ -108,6 +108,11 @@ fn percentiles<T>(label: &str, runs: usize, mut f: impl FnMut(usize) -> T) {
             ms(t)
         })
         .collect();
+    report(label, &mut v);
+}
+
+fn report(label: &str, v: &mut [f64]) {
+    let runs = v.len();
     v.sort_by(f64::total_cmp);
     let at = |q: f64| v[(((v.len() - 1) as f64) * q).ceil() as usize];
     println!("bench {label}: runs {runs} p50 {:.3} ms p95 {:.3} ms max {:.3} ms", at(0.5), at(0.95), v[v.len() - 1]);
@@ -199,7 +204,8 @@ fn bench_interaction_100k() {
             let p0 = targets[0];
             editor.input(&pointer(PointerPhase::Down, p0), &tc);
             percentiles(&format!("drag move of ALL objects, one pointer move ({label})"), 20, |k| {
-                let step = editor.input(&pointer(PointerPhase::Move, Point::new(p0.x + 5.0 + k as f64, p0.y + 3.0)), &tc);
+                let step =
+                    editor.input(&pointer(PointerPhase::Move, Point::new(p0.x + 5.0 + k as f64, p0.y + 3.0)), &tc);
                 let _ = editor.preview();
                 step
             });
@@ -220,14 +226,18 @@ fn bench_interaction_100k() {
 
         // 5. commit + undo + redo of a move.
         let m = Affine::translate(Vector::new(5.0, 3.0)).unwrap();
-        time("commit move of all", || apply(&mut s, CommandPayload::Transform { targets: ids.clone(), transform: m }, &[]));
+        time("commit move of all", || {
+            apply(&mut s, CommandPayload::Transform { targets: ids.clone(), transform: m }, &[])
+        });
         let rev = s.revision();
         time("undo of move-all", || s.undo(rev).unwrap());
         let rev = s.revision();
         time("redo of move-all", || s.redo(rev).unwrap());
         let rev = s.revision();
         s.undo(rev).unwrap();
-        time("commit move of one", || apply(&mut s, CommandPayload::Transform { targets: vec![ids[0]], transform: m }, &[]));
+        time("commit move of one", || {
+            apply(&mut s, CommandPayload::Transform { targets: vec![ids[0]], transform: m }, &[])
+        });
         let rev = s.revision();
         time("undo of move-one", || s.undo(rev).unwrap());
 
@@ -236,14 +246,42 @@ fn bench_interaction_100k() {
         let camera = Camera::new(Point::new(600.0, 375.0), 1.0).unwrap();
         let viewport = Viewport::new(1300.0, 800.0, 2.0).unwrap();
         let (doc_id, snap_ref) = (s.id(), &*snap);
-        percentiles("build_scene (nothing selected)", 20, |_| build_scene(&scene_request(doc_id, snap_ref, &empty, camera, viewport)).items.len());
-        percentiles("build_scene (all selected)", 20, |_| build_scene(&scene_request(doc_id, snap_ref, &sel, camera, viewport)).items.len());
+        percentiles("build_scene (nothing selected)", 20, |_| {
+            build_scene(&scene_request(doc_id, snap_ref, &empty, camera, viewport)).items.len()
+        });
+        percentiles("build_scene (all selected)", 20, |_| {
+            build_scene(&scene_request(doc_id, snap_ref, &sel, camera, viewport)).items.len()
+        });
 
         // 7. compile and preflight.
         add_cut(&mut s, ids.clone());
         let snap2 = s.snapshot();
-        let plan = time("compile to JobPlan", || compile_plan(&snap2));
-        let _ = time("preflight", || burnburn_cam::preflight(&snap2, &plan, &profile()));
+        // F100K-C (100 000 separate contours) takes about 90 s here: the line planner is quadratic in
+        // the number of contours (see the dev-note). Set BB_COMPILE_ALL=1 to include it.
+        if fx.objects <= 10_000 || std::env::var_os("BB_COMPILE_ALL").is_some() {
+            let plan = time("compile to JobPlan", || compile_plan(&snap2));
+            let _ = time("preflight", || burnburn_cam::preflight(&snap2, &plan, &profile()));
+        } else {
+            println!("bench compile to JobPlan: skipped (BB_COMPILE_ALL=1 to run; ~90 s)");
+        }
+
+        // 7b. the first click after every edit pays for a fresh pick index (worst case for the cache).
+        {
+            let m = Affine::translate(Vector::new(0.5, 0.0)).unwrap();
+            let mut seed = 99u64;
+            let mut v = Vec::new();
+            for _ in 0..20 {
+                let i = (lcg(&mut seed) * fx.objects as f64) as usize % fx.objects;
+                apply(&mut s, CommandPayload::Transform { targets: vec![ids[i]], transform: m }, &[]);
+                let snap = s.snapshot();
+                let mut editor = Editor::new();
+                let tc = ToolContext { document: &snap, selection: &empty, mm_per_point: 1.0, snap: &snap_off };
+                let t = Instant::now();
+                editor.input(&pointer(PointerPhase::Down, fx.outline_point(i)), &tc);
+                v.push(ms(t));
+            }
+            report("first click after an edit (edit excluded)", &mut v);
+        }
 
         // 8. save and open (in-memory file system: serialisation cost, not disk).
         let fs = MemoryFileSystem::new();
