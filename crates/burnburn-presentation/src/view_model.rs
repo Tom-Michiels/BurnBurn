@@ -789,6 +789,8 @@ pub enum MessageKey {
     SketchNothingSelected,
     /// "Herstel laatste geldige": no earlier state of this sketch solved.
     SketchNothingToRestore,
+    /// The source image of a trace is not in the project any more.
+    TraceSourceMissing,
     /// A parameter that is still used by a dimension or another parameter is not removed.
     SketchParameterInUse,
     /// Ellipses, free curves and the like cannot be drawn into a sketch yet.

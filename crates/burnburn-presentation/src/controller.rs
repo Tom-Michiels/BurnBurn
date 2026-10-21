@@ -67,6 +67,7 @@ mod tasks;
 mod tests_gen;
 mod text;
 mod trace;
+mod trace_link;
 mod variable;
 mod view;
 
@@ -255,6 +256,8 @@ struct Session {
     options: shapes::ToolOptions,
     /// Bitmap import sheet, Adjust Image panel and decoded sources (window state).
     image: image::ImageState,
+    /// Tracers being re-opened from a stored trace (window state).
+    trace_link: trace_link::TraceLinkState,
     /// Inspector reference point, aspect lock and wireframe view (window state).
     arrange: arrange::ArrangeState,
     /// The open CAM dialogs of this window: Optimization Settings and the test generators.
@@ -325,6 +328,7 @@ impl Session {
             geometry_dialog: None,
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
+            trace_link: trace_link::TraceLinkState::default(),
             arrange: arrange::ArrangeState::default(),
             cam: process::CamState::default(),
             nest: nest::NestState::default(),

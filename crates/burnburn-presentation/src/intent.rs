@@ -740,6 +740,13 @@ pub enum CommandKey {
     ExportRd,
     /// Apply the current trace result (one history entry).
     ApplyTrace,
+    /// Apply the current contour trace as a *trace* of the document (T02): source, recipe and
+    /// engine version are kept, the result objects stay linked to it (one history entry). When the
+    /// tracer was opened with `TraceEdit`, the outputs of that trace are replaced in place.
+    ApplyTraceLinked,
+    /// Bitmap ▸ Bewerk trace: open the tracer on the stored source and recipe of the trace the
+    /// selected object belongs to.
+    TraceEdit,
     CloseTracer,
     /// Freeze the current (fresh, error-free) plan with its RD bytes as the job of this document (C1).
     PrepareJob,
@@ -969,6 +976,8 @@ impl CommandKey {
         CommandKey::Compile,
         CommandKey::ExportRd,
         CommandKey::ApplyTrace,
+        CommandKey::ApplyTraceLinked,
+        CommandKey::TraceEdit,
         CommandKey::CloseTracer,
         CommandKey::PrepareJob,
         CommandKey::ApproveJob,

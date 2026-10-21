@@ -170,6 +170,7 @@ impl AppController {
             {
                 self.commit_project_import(document)
             }
+            CommandKey::TraceEdit => self.trace_edit(document),
             CommandKey::AdjustImage
             | CommandKey::ApplyImageAdjust
             | CommandKey::CancelImageAdjust
@@ -339,6 +340,7 @@ pub(super) fn invoke_in_session(
             let asset = s.assets.add(media, &bytes);
             apply_edit(s, document, CommandPayload::Edit(GeometryCommand::Import { asset, items }), request)
         }
+        CommandKey::ApplyTraceLinked => super::trace_link::apply(s, document, request),
         CommandKey::CommitImport => {
             let Some(pending) = s.import.as_ref().filter(|i| i.ready()) else { return AppUpdate::default() };
             let Ok(draft) = pending.draft() else { return AppUpdate::default() };

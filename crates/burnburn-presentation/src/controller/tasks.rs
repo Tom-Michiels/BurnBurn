@@ -121,7 +121,11 @@ impl AppController {
             }
             Ok(TaskOutput::ImageLoaded { source, bytes, .. }) => {
                 let media = super::image::media_of(&bytes);
-                s.tracer = Some(Tracer::new(source, bytes, media));
+                let mut tracer = Tracer::new(source, bytes, media);
+                if let Some((trace, recipe)) = s.trace_link.take(outcome.id) {
+                    tracer.reopen(trace, *recipe);
+                }
+                s.tracer = Some(tracer);
             }
             Ok(TaskOutput::Traced(result)) => {
                 if let Some(t) = s.tracer.as_mut() {

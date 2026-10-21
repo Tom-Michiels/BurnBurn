@@ -1760,6 +1760,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::SaveProcessedBitmap), "", false),
             sep(),
             item(MenuItem::TraceImage, "", false),
+            item(c(CommandKey::TraceEdit), "", false),
         ],
     ));
     main.addItem(&submenu(

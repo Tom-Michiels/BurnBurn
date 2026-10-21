@@ -72,6 +72,8 @@ pub enum TaskInput {
     ExportRd { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Read and decode an image for the tracer (bounded by `DecodeLimits`).
     LoadImage { path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Decode image bytes already in memory for the tracer (a trace's stored source, T02).
+    DecodeImage { bytes: Arc<[u8]> },
     /// Contour trace of a source image with one recipe (IM12).
     Trace(Box<TraceRequest>),
     /// Read and parse an SVG/DXF for the import preview (P03); nothing is committed.
@@ -127,6 +129,7 @@ impl fmt::Debug for TaskInput {
             }
             TaskInput::ExportRd { plan, path, .. } => write!(f, "ExportRd({:?} to {})", plan.id(), path.display()),
             TaskInput::LoadImage { path, .. } => write!(f, "LoadImage({})", path.display()),
+            TaskInput::DecodeImage { bytes } => write!(f, "DecodeImage({} bytes)", bytes.len()),
             TaskInput::Trace(r) => write!(f, "Trace(task {})", r.task),
             TaskInput::PrepareJob { plan, .. } => write!(f, "PrepareJob({:?})", plan.id()),
             TaskInput::LoadBitmap { input } => write!(f, "LoadBitmap({input:?})"),
@@ -158,7 +161,7 @@ impl TaskInput {
             TaskInput::Boolean { .. } => TaskKind::Boolean,
             TaskInput::Compile { .. } | TaskInput::CompilePlaced { .. } => TaskKind::Compile,
             TaskInput::ExportRd { .. } => TaskKind::ExportRd,
-            TaskInput::LoadImage { .. } => TaskKind::LoadImage,
+            TaskInput::LoadImage { .. } | TaskInput::DecodeImage { .. } => TaskKind::LoadImage,
             TaskInput::Trace(_) => TaskKind::Trace,
             TaskInput::PrepareJob { .. } => TaskKind::PrepareJob,
             TaskInput::LoadBitmap { .. } => TaskKind::LoadBitmap,
@@ -514,6 +517,11 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             cancel.check().map_err(|_| TaskError::Cancelled)?;
             let source = decode(&bytes, DecodeLimits::default()).map_err(TaskError::Decode)?;
             Ok(TaskOutput::ImageLoaded { source: Arc::new(source), bytes: Arc::from(bytes), path })
+        }
+        TaskInput::DecodeImage { bytes } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let source = decode(&bytes, DecodeLimits::default()).map_err(TaskError::Decode)?;
+            Ok(TaskOutput::ImageLoaded { source: Arc::new(source), bytes, path: PathBuf::new() })
         }
         TaskInput::ParseImport { path, fs } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
