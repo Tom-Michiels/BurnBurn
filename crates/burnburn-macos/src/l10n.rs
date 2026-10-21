@@ -1300,6 +1300,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         }
         M::SaveFailed => ("Bewaren is mislukt.", "Saving failed."),
         M::OpenFailed => ("Openen is mislukt.", "Opening failed."),
+        M::OpenNewerSchema => (
+            "Dit project is gemaakt met een nieuwere versie van BurnBurn en wordt niet geopend; het bestand is niet gewijzigd.",
+            "This project was made with a newer version of BurnBurn and is not opened; the file was not changed.",
+        ),
         M::Snap(s) => match s {
             SnapKind::Endpoint => ("Eindpunt", "Endpoint"),
             SnapKind::Intersection => ("Snijpunt", "Intersection"),
@@ -1845,6 +1849,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::CommandRejected,
         MessageKey::SaveFailed,
         MessageKey::OpenFailed,
+        MessageKey::OpenNewerSchema,
         MessageKey::BooleanFailed,
         MessageKey::NoMachineProfile,
         MessageKey::CompileFailed,

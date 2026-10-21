@@ -712,6 +712,8 @@ pub enum MessageKey {
     CommandRejected,
     SaveFailed,
     OpenFailed,
+    /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
+    OpenNewerSchema,
     /// Cursor label of a snap target.
     Snap(SnapKind),
     Issue(IssueKind),

@@ -60,6 +60,9 @@ impl AppController {
                 }
             }
             Err(TaskError::Cancelled) => AppUpdate::default(),
+            Err(TaskError::Open(burnburn_io::LoadError::NewerSchema { .. })) => {
+                error(None, MessageKey::OpenNewerSchema)
+            }
             _ => error(None, MessageKey::OpenFailed),
         }
     }

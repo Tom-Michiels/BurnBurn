@@ -342,6 +342,8 @@ dependencies = [
  "burnburn-text",
  "burnburn-trace",
  "burnburn-types",
+ "serde_json",
+ "zip",
 ]
 
 [[package]]
