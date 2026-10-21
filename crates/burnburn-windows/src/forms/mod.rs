@@ -133,7 +133,11 @@ pub enum ControlValue {
     Toggle(bool),
     Choice(usize),
     Press,
+    /// A button pressed while Shift was held (a palette colour as a second treatment).
+    ShiftPress,
     Rows(Vec<usize>),
+    /// A double-click (or Enter) on list row `n`.
+    Activate(usize),
 }
 
 /// All controls' values at the moment of an event (a sheet's OK reads every field).
@@ -264,6 +268,32 @@ impl Form {
             })
         }
         walk(&self.lines, id)
+    }
+}
+
+impl Form {
+    /// What every control of the form holds as built: the values the Win32 layer would read back
+    /// from untouched controls (a field's text, a check, the chosen item, the selected rows).
+    pub fn values(&self) -> Vec<(ControlId, ControlValue)> {
+        fn walk(lines: &[FormLine], out: &mut Vec<(ControlId, ControlValue)>) {
+            for line in lines {
+                match line {
+                    FormLine::Field { id, text, .. } => out.push((id.clone(), ControlValue::Text(text.clone()))),
+                    FormLine::Check { id, on, .. } => out.push((id.clone(), ControlValue::Toggle(*on))),
+                    FormLine::Choice { id, selected, .. } => out.push((id.clone(), ControlValue::Choice(*selected))),
+                    FormLine::List { id, selected, .. } => out.push((id.clone(), ControlValue::Rows(selected.clone()))),
+                    FormLine::Row(inner) => walk(inner, out),
+                    FormLine::Heading(_)
+                    | FormLine::Text(_)
+                    | FormLine::Problem(_)
+                    | FormLine::Buttons(_)
+                    | FormLine::Grid { .. } => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.lines, &mut out);
+        out
     }
 }
 
