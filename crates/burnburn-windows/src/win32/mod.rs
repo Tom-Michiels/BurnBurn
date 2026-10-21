@@ -19,6 +19,14 @@
 
 #![allow(unsafe_code)]
 
+mod dialogs;
+mod menu;
+mod util;
+
+use dialogs::{open_dialog, save_dialog};
+use menu::build_menu;
+use util::{list_selection, send, set_text, wide, window_text};
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::num::NonZeroIsize;
@@ -27,44 +35,34 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use burnburn_presentation::{
-    AppController, AppPorts, AppUpdate, AppViewModel, CommandKey, FieldKey, HostEffect, UiIntent,
-};
+use burnburn_presentation::{AppController, AppPorts, AppUpdate, AppViewModel, FieldKey, HostEffect, UiIntent};
 use burnburn_render::surface::SurfaceCanvas;
 use burnburn_render::{Theme, build_packet};
 use burnburn_types::{DocumentId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-};
+use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_MENU};
-use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
-use windows::Win32::UI::Shell::{
-    DefSubclassProc, FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog, SIGDN_FILESYSPATH,
-    SetWindowSubclass,
-};
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ACCEL, AppendMenuW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateMenu, CreateWindowExW,
-    DefWindowProcW, DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EnableMenuItem, FCONTROL, FSHIFT, FVIRTKEY,
-    GWLP_USERDATA, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, GetWindowTextLengthW,
-    GetWindowTextW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING, LB_GETSELCOUNT, LB_GETSELITEMS, LB_RESETCONTENT,
-    LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL,
-    MESSAGEBOX_RESULT, MF_ENABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, MessageBoxW, MoveWindow,
-    PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SendMessageW, SetTimer, SetWindowLongPtrW,
-    SetWindowTextW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY,
-    WM_INITMENUPOPUP, WM_TIMER, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW,
+    DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, EnableMenuItem, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA,
+    GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer,
+    LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION,
+    MB_ICONWARNING, MB_YESNOCANCEL, MESSAGEBOX_RESULT, MF_ENABLED, MF_GRAYED, MSG, MessageBoxW, MoveWindow,
+    PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SetTimer, SetWindowLongPtrW, ShowWindow,
+    TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_INITMENUPOPUP, WM_TIMER,
+    WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
 use crate::adapter::{
-    CharDecoder, Control, INSPECTOR_FIELDS, MenuItem, MessageContext, Reaction, accelerators, command_id, field_text,
+    CharDecoder, Control, INSPECTOR_FIELDS, MessageContext, Reaction, accelerators, command_id, field_text,
     menu_enabled, menu_items, message_text, msg, object_labels, on_close_box, on_message, on_open_dialog,
     on_recovery_box, on_save_dialog, recovery_box_text, recovery_dir, selected_rows, vk, window_title,
 };
@@ -79,22 +77,6 @@ const AUTOSAVE_TIMER: usize = 1;
 const AUTOSAVE_MS: u32 = 30_000;
 const SIDEBAR_PX: i32 = 220;
 const INSPECTOR_PX: i32 = 260;
-
-fn set_text(hwnd: HWND, text: &str) {
-    // SAFETY: `hwnd` is one of our windows on this (UI) thread; the HSTRING outlives the call.
-    let _ = unsafe { SetWindowTextW(hwnd, &HSTRING::from(text)) };
-}
-
-/// `SendMessageW` to one of our own controls. Pointer-carrying `lparam`s must point to buffers
-/// that live for the (synchronous) call.
-fn send(hwnd: HWND, message: u32, wparam: usize, lparam: isize) -> LRESULT {
-    // SAFETY: our own control on the UI thread; see the function contract for pointer arguments.
-    unsafe { SendMessageW(hwnd, message, Some(WPARAM(wparam)), Some(LPARAM(lparam))) }
-}
-
-fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
 
 struct DocWin {
     // Field order: the surface goes before the windows it draws into.
@@ -154,27 +136,6 @@ fn view() -> Arc<AppViewModel> {
     })
 }
 
-fn window_text(hwnd: HWND) -> String {
-    // SAFETY: the length query and the copy use a buffer of the reported length + NUL.
-    let len = unsafe { GetWindowTextLengthW(hwnd) }.max(0) as usize;
-    let mut buf = vec![0u16; len + 1];
-    // SAFETY: `buf` is a valid, writable buffer for the duration of the call.
-    let n = unsafe { GetWindowTextW(hwnd, &mut buf) }.max(0) as usize;
-    String::from_utf16_lossy(&buf[..n.min(len)])
-}
-
-fn list_selection(list: HWND) -> Vec<usize> {
-    // SAFETY: LB_GETSELCOUNT/LB_GETSELITEMS on our list box; the buffer holds `count` ints.
-    let count = unsafe { SendMessageW(list, LB_GETSELCOUNT, None, None) }.0.max(0) as usize;
-    let mut rows = vec![0i32; count];
-    // SAFETY: as above; the pointer stays valid during the synchronous call.
-    let n =
-        unsafe { SendMessageW(list, LB_GETSELITEMS, Some(WPARAM(count)), Some(LPARAM(rows.as_mut_ptr() as isize))) }.0;
-    rows.truncate(n.max(0) as usize);
-    rows.into_iter().filter_map(|r| usize::try_from(r).ok()).collect()
-}
-
-/// Send an intent, then perform the effects with the host borrow released.
 fn dispatch(intent: UiIntent) {
     let Some(update) = with_host(|h| h.controller.handle(intent)) else { return };
     apply(update);
@@ -430,98 +391,6 @@ fn layout(frame: HWND) {
         place(*edit, w - insp + px(12), px(16) + i as i32 * px(36), insp - px(24), px(24));
     }
     place(status, w - insp + px(12), px(16) + edits.len() as i32 * px(36), insp - px(24), px(40));
-}
-
-fn new_menu() -> Option<HMENU> {
-    // SAFETY: creates a menu this thread owns (handed to a window or destroyed with it).
-    unsafe { CreateMenu() }.ok()
-}
-
-fn append(menu: HMENU, flags: windows::Win32::UI::WindowsAndMessaging::MENU_ITEM_FLAGS, id: usize, title: &str) {
-    let text = HSTRING::from(title);
-    // SAFETY: our menu; for MF_POPUP `id` is a menu handle we created; the string outlives the call.
-    let _ = unsafe { AppendMenuW(menu, flags, id, &text) };
-}
-
-fn build_menu() -> Option<HMENU> {
-    {
-        let bar = new_menu()?;
-        let add =
-            |menu: HMENU, item: MenuItem, title: &str| append(menu, MF_STRING, usize::from(command_id(item)), title);
-        let c = MenuItem::Command;
-        let file = new_menu()?;
-        add(file, c(CommandKey::New), "&Nieuw\tCtrl+N");
-        add(file, MenuItem::Open, "&Open…\tCtrl+O");
-        append(file, MF_SEPARATOR, 0, "");
-        add(file, c(CommandKey::Save), "&Bewaar\tCtrl+S");
-        add(file, c(CommandKey::SaveAs), "Bewaar &als…\tCtrl+Shift+S");
-        add(file, c(CommandKey::Close), "&Sluit\tCtrl+W");
-        let edit = new_menu()?;
-        add(edit, c(CommandKey::Undo), "&Herstel\tCtrl+Z");
-        add(edit, c(CommandKey::Redo), "&Opnieuw\tCtrl+Y");
-        add(edit, c(CommandKey::Delete), "&Verwijder\tDel");
-        add(edit, c(CommandKey::SelectAll), "Selecteer &alles");
-        let tools = new_menu()?;
-        for item in menu_items() {
-            if let MenuItem::Command(
-                k @ (CommandKey::ToolSelect
-                | CommandKey::ToolRectangle
-                | CommandKey::ToolEllipse
-                | CommandKey::ToolLine),
-            ) = item
-            {
-                add(tools, item, &format!("{k:?}"));
-            }
-        }
-        append(bar, MF_POPUP, file.0 as usize, "&Archief");
-        append(bar, MF_POPUP, edit.0 as usize, "&Wijzig");
-        append(bar, MF_POPUP, tools.0 as usize, "&Gereedschap");
-        Some(bar)
-    }
-}
-
-fn file_filter() -> [COMDLG_FILTERSPEC; 1] {
-    [COMDLG_FILTERSPEC { pszName: w!("BurnBurn-project"), pszSpec: w!("*.burnburn") }]
-}
-
-/// The chosen file of a closed dialog (`Show` returned OK).
-fn dialog_path(dialog: &windows::Win32::UI::Shell::IFileDialog) -> Option<PathBuf> {
-    // SAFETY: COM call on the STA UI thread on a live dialog.
-    let item = unsafe { dialog.GetResult() }.ok()?;
-    // SAFETY: as above, on the returned shell item.
-    let name = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH) }.ok()?;
-    // SAFETY: `name` is a valid NUL-terminated string owned by us until freed below.
-    let path = unsafe { name.to_string() }.ok().map(PathBuf::from);
-    // SAFETY: freeing the CoTaskMem string GetDisplayName allocated, exactly once.
-    unsafe { CoTaskMemFree(Some(name.0 as *const _)) };
-    path
-}
-
-fn open_dialog() -> Option<PathBuf> {
-    // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
-    let dialog: IFileOpenDialog = unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
-    // SAFETY: the filter specs point to static strings and live for the call.
-    unsafe { dialog.SetFileTypes(&filter) }.ok()?;
-    // SAFETY: modal dialog on the UI thread; Cancel returns an error (→ None).
-    unsafe { dialog.Show(None) }.ok()?;
-    dialog_path(&dialog)
-}
-
-fn save_dialog(owner: HWND, suggested: &str) -> Option<PathBuf> {
-    // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
-    let dialog: IFileSaveDialog = unsafe { CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
-    // SAFETY: the filter specs point to static strings and live for the call.
-    unsafe { dialog.SetFileTypes(&filter) }.ok()?;
-    // SAFETY: static string.
-    unsafe { dialog.SetDefaultExtension(w!("burnburn")) }.ok()?;
-    let name = HSTRING::from(suggested);
-    // SAFETY: the string outlives the call.
-    unsafe { dialog.SetFileName(&name) }.ok()?;
-    // SAFETY: modal dialog owned by our frame on the UI thread; Cancel returns an error (→ None).
-    unsafe { dialog.Show(Some(owner)) }.ok()?;
-    dialog_path(&dialog)
 }
 
 fn context_for<'a>(
