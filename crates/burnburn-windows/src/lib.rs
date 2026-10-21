@@ -13,3 +13,24 @@ pub mod l10n;
 pub mod tasks;
 #[cfg(windows)]
 pub mod win32;
+
+// W4-L8b: the Mac host's plain-data panel models (no AppKit in them) compiled for the Windows host
+// too, so both hosts show the same texts, enablement and intents. Windows adds only control ids,
+// message decoding and control layout (`panel_*`, `host_panels`). The `crate::` paths inside these
+// files resolve to the module names below.
+#[path = "../../burnburn-macos/src/app_text.rs"]
+pub mod app_text;
+#[path = "../../burnburn-macos/src/app_view.rs"]
+pub mod app_view;
+#[path = "../../burnburn-macos/src/l10n_files.rs"]
+pub mod l10n_files;
+#[path = "../../burnburn-macos/src/panels/mod.rs"]
+pub mod panels;
+#[path = "../../burnburn-macos/src/panels_files.rs"]
+pub mod panels_files;
+#[path = "../../burnburn-macos/src/panels_image.rs"]
+pub mod panels_image;
+#[path = "../../burnburn-macos/src/toolbar.rs"]
+pub mod toolbar;
+pub mod app_menu;
+pub mod host_panels;

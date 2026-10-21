@@ -35,14 +35,22 @@ path = "src/main.rs"
 # Platform-independent message adapter (Win32 message data -> UiIntent): tested on every host OS.
 burnburn-document = { workspace = true }
 burnburn-editor = { workspace = true }
+# W4-L8b: the macOS host's plain-data panel models are compiled in here (see lib.rs).
+burnburn-geometry = { workspace = true }
+burnburn-image = { workspace = true }
 burnburn-io = { workspace = true }
 burnburn-presentation = { workspace = true }
 # System font source for canvas text input (`fonts::first_readable_font`).
 burnburn-runtime = { workspace = true }
 burnburn-types = { workspace = true }
+# assets/l10n/tools.toml (tool labels in the shortcut list), as in the macOS host.
+toml = { workspace = true }
 
 [dev-dependencies]
-burnburn-geometry = { workspace = true }
+# Laser/camera/file panel tests drive a real controller over fake ports (no laser, no camera).
+burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-ruida = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 burnburn-render = { workspace = true }
