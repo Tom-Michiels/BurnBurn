@@ -119,6 +119,7 @@ pub enum ControlId {
     SketchList,
     SketchValue,
     SketchRole,
+    SketchRemove,
     SketchProblem,
     SketchParamName,
     SketchParamText,
