@@ -16,6 +16,7 @@ burnburn-cam = { path = "crates/burnburn-cam" }
 burnburn-cli = { path = "crates/burnburn-cli" }
 burnburn-document = { path = "crates/burnburn-document" }
 burnburn-editor = { path = "crates/burnburn-editor" }
+burnburn-gcode = { path = "crates/burnburn-gcode" }
 burnburn-generators = { path = "crates/burnburn-generators" }
 burnburn-geometry = { path = "crates/burnburn-geometry" }
 burnburn-icons = { path = "crates/burnburn-icons" }

@@ -195,6 +195,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "burnburn-gcode"
+version = "0.1.0"
+dependencies = [
+ "burnburn-geometry",
+ "burnburn-job",
+ "burnburn-types",
+ "proptest",
+]
+
+[[package]]
 name = "burnburn-generators"
 version = "0.1.0"
 dependencies = [

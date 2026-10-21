@@ -1,0 +1,18 @@
+[package]
+name = "burnburn-gcode"
+description = "G-code backend for GRBL 1.1: JobPlan lowering with capability matrix, streaming protocol state machine, console and macros (no IO)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-job = { workspace = true }
+burnburn-types = { workspace = true }
+
+[dev-dependencies]
+burnburn-geometry = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true
