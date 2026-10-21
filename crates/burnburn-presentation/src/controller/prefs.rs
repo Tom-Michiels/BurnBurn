@@ -368,6 +368,7 @@ impl Preferences {
             objects: self.snap_to_objects,
             grid_mm: self.snap_to_grid.then_some(self.grid_snap_mm),
             radius_pt: self.object_snap_px,
+            cycle: 0,
         }
     }
 }

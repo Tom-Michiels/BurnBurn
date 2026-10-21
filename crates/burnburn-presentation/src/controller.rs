@@ -226,6 +226,8 @@ struct Session {
     /// Default-name counters per created kind ("Rechthoek 2", "Cirkel 1").
     created: BTreeMap<NameKind, u64>,
     snap: SnapSettings,
+    /// The last canvas pointer event: Tab replays it to show the next snap candidate (E04).
+    last_pointer: Option<burnburn_editor::PointerEvent>,
     cycle: Option<SelectionCycle>,
     tool_size_error: Option<MessageKey>,
     /// Problems of the current revision (recomputed on every revision change).
@@ -305,6 +307,7 @@ impl Session {
             pending: BTreeMap::new(),
             created: BTreeMap::new(),
             snap: SnapSettings::default(),
+            last_pointer: None,
             cycle: None,
             tool_size_error: None,
             issues,

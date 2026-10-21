@@ -98,3 +98,53 @@ fn isolate_hides_the_others_in_one_undo_step_and_show_all_restores_them() {
     let _ = (r1, c);
     assert_eq!(vm(&h, doc).objects.iter().filter(|o| o.visible).count(), 3, "undo of isolate shows all again");
 }
+
+// ---------------------------------------------------------------------------------------------
+// E04: Tab door de snapkandidaten
+// ---------------------------------------------------------------------------------------------
+
+type SnapSeen = Option<(burnburn_geometry::Point, burnburn_editor::SnapKind)>;
+
+fn snap_overlay(h: &HeadlessEditorHarness, doc: DocumentId) -> SnapSeen {
+    h.scene(doc).unwrap().overlays.iter().find_map(|o| match o {
+        burnburn_editor::Overlay::SnapCandidate { at, kind } => Some((*at, *kind)),
+        _ => None,
+    })
+}
+
+/// Near a rectangle's top edge the pointer is within reach of the edge midpoint and of the closest
+/// outline point. Tab steps through them (best first, then wrapping); a gesture started now uses
+/// the one shown; moving the pointer starts the list over.
+#[test]
+fn tab_steps_through_the_snap_candidates_and_the_gesture_uses_the_one_shown() {
+    use burnburn_editor::{CanvasKey, SnapKind};
+    use burnburn_geometry::Point;
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::ToolRectangle);
+    h.drag(doc, (0.0, 0.0), (40.0, 20.0));
+    h.invoke(doc, CommandKey::ToolLine);
+    h.hover(doc, (21.0, 19.0));
+    assert_eq!(snap_overlay(&h, doc), Some((Point::new(20.0, 20.0), SnapKind::Midpoint)), "best first");
+    h.key(doc, CanvasKey::Tab);
+    assert_eq!(snap_overlay(&h, doc), Some((Point::new(21.0, 20.0), SnapKind::Nearest)), "the next candidate");
+    h.key(doc, CanvasKey::Tab);
+    assert_eq!(snap_overlay(&h, doc).map(|c| c.1), Some(SnapKind::Midpoint), "wraps around");
+    h.key(doc, CanvasKey::Tab);
+    assert_eq!(snap_overlay(&h, doc).map(|c| c.1), Some(SnapKind::Nearest));
+
+    // Moving the pointer starts the list over.
+    h.hover(doc, (22.0, 19.0));
+    h.hover(doc, (21.0, 19.0));
+    assert_eq!(snap_overlay(&h, doc).map(|c| c.1), Some(SnapKind::Midpoint), "a pointer move resets Tab");
+    h.key(doc, CanvasKey::Tab);
+    assert_eq!(snap_overlay(&h, doc).map(|c| c.1), Some(SnapKind::Nearest));
+
+    // The line starts at the candidate shown.
+    h.drag(doc, (21.0, 19.0), (60.0, 60.0));
+    let objects = vm(&h, doc).objects;
+    assert_eq!(objects.len(), 2);
+    let scene = h.scene(doc).unwrap();
+    let b = scene.items.last().unwrap().path.bounds().unwrap();
+    assert!((b.min().x - 21.0).abs() < 1e-9 && (b.min().y - 20.0).abs() < 1e-9, "{b:?}");
+}

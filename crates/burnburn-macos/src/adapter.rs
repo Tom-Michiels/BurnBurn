@@ -541,6 +541,7 @@ pub mod key_code {
     pub const DELETE: u16 = 51;
     pub const FORWARD_DELETE: u16 = 117;
     pub const RETURN: u16 = 36;
+    pub const TAB: u16 = 48;
 }
 
 /// Points per line for non-precise (mouse wheel) scroll deltas.
@@ -691,6 +692,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                 key_code::DELETE => CanvasKey::Backspace,
                 key_code::FORWARD_DELETE => CanvasKey::Delete,
                 key_code::RETURN => CanvasKey::Return,
+                key_code::TAB => CanvasKey::Tab,
                 _ => return Reaction::Nothing,
             };
             UiIntent::Key { document, key, modifiers: modifiers(raw) }
