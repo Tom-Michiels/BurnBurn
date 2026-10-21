@@ -32,3 +32,11 @@ eerste mislukte stap zijn gedaan worden meegeundo't (undo is chronologisch).
 Dependency: `image`-features `bmp` en `tiff` aan; nieuwe lockregels `tiff`, `fax`, `weezl`, `quick-error 2.0.1` (allen MIT/Apache, offline uit
 de cargo-cache; `cargo xtask layers` en register bijgewerkt). Beperking: TIFF alleen wat de `tiff`-crate in `image` 0.25 decodeert
 (8/16-bit gray/RGB(A), baseline-compressies); BMP/TIFF-resolutie alleen uit de eerste directory/infoheader.
+| T01 `w4_trace::image_scale_keeps_original_pixels` | — | geen rode run: het gedrag bestond al, de test ontbrak alleen (storydekking) | `cargo test -p burnburn-presentation --locked --test w4_trace` → ok | |
+| T02 `w4_trace::{applying_linked_stores_the_recipe_as_a_trace_in_one_undo_entry, a_linked_trace_reopens_in_the_tracer_with_its_recipe_and_retraces_in_place}` (+ wacht `the_plain_apply_still_makes_ordinary_editable_shapes`) | `CommandKey::ApplyTraceLinked`/`TraceEdit` bestonden alleen als stub (enablement false) | zelfde commando → 2 FAILED (panics op enabled-assert en op `ApplyTraceLinked` knop) | zelfde → 4 ok | `controller/trace_link.rs`, `TaskInput::DecodeImage` |
+
+Ontwerpkeuze T02: de bestaande "Pas trace toe" (gewone bewerkbare vormen via `Import`) blijft; daarnaast "Pas toe als trace"
+(`TraceCommand::Create`, bij heropenen via "Bewerk trace…" `Replace`, objecten behouden hun id). Reden: afgeleide uitvoer is niet direct
+bewerkbaar (C-8) en het domein heeft geen "ontkoppel"; vervanging van de standaard zou knoop-bewerken van traceresultaten afsluiten.
+Centerline blijft `Import` (geen centerline-TraceCommand in het domein; T04 open).
+Merge: 23bcd3a (golf 3 op main, barcodetests) is in de branch gemerged.
