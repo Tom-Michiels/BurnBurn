@@ -57,8 +57,8 @@ fn all_29_types_are_listed_and_the_unsupported_ones_say_why() {
     let unsupported: Vec<_> = d.types.iter().filter(|t| !t.supported).map(|t| t.symbology).collect();
     assert_eq!(
         unsupported,
-        [Symbology::TwoOfFive, Symbology::ArucoMip36h11, Symbology::HanXin, Symbology::GridMatrix],
-        "25 of 29 are implemented"
+        [Symbology::ArucoMip36h11, Symbology::GridMatrix],
+        "27 of 29 are implemented (W3-robuust added 2 of 5 and Han Xin)"
     );
     for t in d.types.iter() {
         assert!(!t.name.is_empty());
