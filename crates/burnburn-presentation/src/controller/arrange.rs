@@ -337,6 +337,31 @@ fn area_of(snapshot: &DocumentSnapshot, id: GeometryId) -> Option<f64> {
     snapshot.object(id)?.bounds().map(|b| b.width() * b.height())
 }
 
+/// Type filter: the visible, unlocked objects of `kind`.
+pub(super) fn select_by_kind(
+    s: &mut Session,
+    document: DocumentId,
+    kind: ObjectKind,
+    mode: crate::intent::SelectMode,
+) -> AppUpdate {
+    let snapshot = s.doc.snapshot();
+    let found: Vec<GeometryId> = selectable_ids(&snapshot)
+        .into_iter()
+        .filter(|id| snapshot.object(*id).is_some_and(|o| o.kind() == kind))
+        .collect();
+    let ids = match mode {
+        crate::intent::SelectMode::Replace => found,
+        crate::intent::SelectMode::Toggle => {
+            let mut all = s.selection.ids().to_vec();
+            all.extend(found.into_iter().filter(|id| !s.selection.contains(*id)));
+            all
+        }
+    };
+    apply_selection(s, &SelectionChange::Replace(ids));
+    s.cycle = None;
+    AppUpdate::redraw(document)
+}
+
 /// Replaces the selection by `ids`, or says that nothing matched (the selection stays then).
 fn select_found(s: &mut Session, document: DocumentId, ids: Vec<GeometryId>) -> AppUpdate {
     if ids.is_empty() {
@@ -478,6 +503,34 @@ pub(super) fn command(
                 .collect();
             select_found(s, document, ids)
         }
+        CommandKey::SelectSameType => {
+            let snapshot = s.doc.snapshot();
+            let kinds: Vec<ObjectKind> =
+                targets.iter().filter_map(|id| snapshot.object(*id)).map(|o| o.kind()).collect();
+            let ids = selectable_ids(&snapshot)
+                .into_iter()
+                .filter(|id| snapshot.object(*id).is_some_and(|o| kinds.contains(&o.kind())))
+                .collect();
+            select_found(s, document, ids)
+        }
+        CommandKey::IsolateSelection => {
+            let snapshot = s.doc.snapshot();
+            let others: Vec<GeometryId> = snapshot
+                .draw_order()
+                .into_iter()
+                .filter(|id| !s.selection.contains(*id) && !snapshot.is_hidden(*id))
+                .collect();
+            if targets.is_empty() || others.is_empty() {
+                return Some(AppUpdate::default());
+            }
+            let keep = s.selection.clone();
+            let update =
+                arrange_edit(s, document, ArrangeCommand::SetHidden { targets: others, hidden: true }, request);
+            // The isolated objects stay selected (the command reports the hidden ones as modified).
+            s.selection = keep;
+            s.selection.retain_existing(&s.doc.snapshot());
+            update
+        }
         CommandKey::SelectCircles => {
             let snapshot = s.doc.snapshot();
             let ids = selectable_ids(&snapshot)
@@ -617,6 +670,11 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         CommandKey::UnlockSelected => any(&|id| snapshot.is_locked(id)),
         CommandKey::UnlockAll => snapshot.arrange().locked().len() > 0,
         CommandKey::ShowAll => snapshot.arrange().hidden().len() > 0,
+        CommandKey::SelectSameType => !selected.is_empty(),
+        CommandKey::IsolateSelection => {
+            !selected.is_empty()
+                && snapshot.draw_order().into_iter().any(|id| !s.selection.contains(id) && !snapshot.is_hidden(id))
+        }
         CommandKey::DeleteDuplicates
         | CommandKey::InvertSelection
         | CommandKey::SelectOpenShapes

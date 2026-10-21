@@ -928,6 +928,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::SelectContained => ("Selecteer omsloten vormen", "Select Contained Shapes"),
         C::SelectSmaller => ("Selecteer kleinere vormen", "Select Smaller Shapes"),
         C::SelectCircles => ("Selecteer cirkels", "Select Circles"),
+        C::SelectSameType => ("Selecteer zelfde type", "Select Same Type"),
+        C::IsolateSelection => ("Isoleer selectie", "Isolate Selection"),
         C::ZoomPage => ("Zoom naar werkblad", "Zoom to Page"),
         C::ZoomSelection => ("Zoom naar selectie", "Zoom to Selection"),
         C::ZoomIn => ("Zoom in", "Zoom In"),

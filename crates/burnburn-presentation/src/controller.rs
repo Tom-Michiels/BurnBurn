@@ -506,6 +506,9 @@ impl AppController {
                 }
                 AppUpdate::default()
             }
+            UiIntent::SelectByKind { document, kind, mode } => {
+                self.with_session(document, |s| arrange::select_by_kind(s, document, kind, mode))
+            }
             UiIntent::Select { document, ids, mode } => {
                 let change = match mode {
                     SelectMode::Replace => SelectionChange::Replace(ids),
@@ -845,6 +848,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::ConfirmClose { document, .. }
         | UiIntent::DialogCancelled { document, .. }
         | UiIntent::Select { document, .. }
+        | UiIntent::SelectByKind { document, .. }
         | UiIntent::CommitField { document, .. }
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }
