@@ -208,7 +208,7 @@ fn scenario() -> Result<(), String> {
     expect(|| format!("{items} types"), items == 29)?;
     expect(
         || format!("greyed: {:?}", grey.iter().map(|g| g.0.clone()).collect::<Vec<_>>()),
-        grey.len() == 4 && grey.iter().all(|(_, tip)| !tip.is_empty()),
+        grey.len() == 2 && grey.iter().all(|(_, tip)| !tip.is_empty()),
     )?;
     let payload = s.app.with_text_widgets(doc, |p| p.barcode.payload.retain()).ok_or("no payload field")?;
     payload.setStringValue(&NSString::from_str("BURNBURN"));
