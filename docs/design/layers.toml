@@ -162,6 +162,19 @@ allow = ["burnburn-types", "burnburn-geometry", "burnburn-job"]
 forbid = []
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 
+# GRBL 1.1 G-code backend (W4-L4): pure JobPlan -> G-code lowering with its own capability matrix, the
+# streaming protocol as a state machine over a SerialPort trait, console and macros. Same layer and
+# contract as the Ruida codec: no sockets, serial devices, clock or document. A real serial adapter
+# belongs in a host/runtime crate later (no serial dependency exists yet).
+[crates.burnburn-gcode]
+layer = 3
+kind = "core"
+owner = "implementatie-protocol"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-job"]
+forbid = []
+forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
 # ---------------------------------------------------------------------------------------------
 # Layer 4: storage, editor interaction, machine state machine (all IO behind ports)
 # ---------------------------------------------------------------------------------------------
@@ -292,7 +305,7 @@ unsafe = "forbid"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
          "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-ruida", "burnburn-io",
          "burnburn-text", "burnburn-machine", "burnburn-history", "burnburn-presentation", "burnburn-runtime",
-         "burnburn-generators"]
+         "burnburn-generators", "burnburn-gcode"]
 # C-1: the CLI drives AppController headless + runtime; it never opens sockets itself.
 forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "foreign_kernel"]

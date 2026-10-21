@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 burnburn-cam = { workspace = true }
+burnburn-gcode = { workspace = true }
 burnburn-geometry = { workspace = true }
 burnburn-history = { workspace = true }
 burnburn-io = { workspace = true }

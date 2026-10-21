@@ -17,6 +17,7 @@ members = ["."]
 
 [dependencies]
 burnburn-document = { path = "../crates/burnburn-document" }
+burnburn-gcode = { path = "../crates/burnburn-gcode" }
 burnburn-geometry = { path = "../crates/burnburn-geometry" }
 burnburn-image = { path = "../crates/burnburn-image" }
 burnburn-io = { path = "../crates/burnburn-io" }
@@ -135,6 +136,13 @@ bench = false
 [[bin]]
 name = "make_seeds"
 path = "make_seeds.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "grbl_status"
+path = "fuzz_targets/grbl_status.rs"
 test = false
 doc = false
 bench = false

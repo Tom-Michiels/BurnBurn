@@ -19,7 +19,7 @@ use burnburn_ruida::{Command, Magic, decode_rd_file};
 use burnburn_runtime::MachineDriver;
 use burnburn_types::{ContentHash, Length};
 
-use crate::profile_file::{ProfileFile, parse_profile};
+use crate::profile_file::{Backend, ProfileFile, parse_profile};
 use crate::{Args, CliEnv, CliError, CliOutcome};
 
 /// Same production tolerance as the GUI's compile (`burnburn-presentation`, 0.01 mm). Guarded
@@ -118,6 +118,9 @@ pub fn compile(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
     let c = compile_project(env, a)?;
     refuse_errors(&c.report)?;
     let out = PathBuf::from(a.required("out")?);
+    if let Backend::Grbl(grbl) = &c.profile.backend {
+        return compile_gcode(env, a, &c, grbl, &out);
+    }
     env.cancel.check().map_err(|_| CliError::Cancelled)?;
     let export =
         TaskInput::ExportRd { plan: Arc::clone(&c.plan), ruida: c.profile.ruida, path: out.clone(), fs: fs_dyn(env) };
@@ -163,6 +166,47 @@ pub fn compile(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
         job = Some(id);
     }
     Ok(CliOutcome { stdout, plan: Some(c.plan.id()), job, execution: None })
+}
+
+/// GRBL backend: lower the compiled plan to G-code and write it. Same plan, same preflight; the
+/// RD history journal is not used (it records RD bytes), so `--history` is refused.
+fn compile_gcode(
+    env: &CliEnv,
+    a: &Args,
+    c: &Compiled,
+    grbl: &burnburn_gcode::GrblProfile,
+    out: &Path,
+) -> Result<CliOutcome, CliError> {
+    if a.flag("history").is_some() {
+        return Err(CliError::Usage("--history records RD jobs only; it is not available for the GRBL backend".into()));
+    }
+    let program = burnburn_gcode::lower(&c.plan, grbl).map_err(|e| match e {
+        burnburn_gcode::LowerError::Refused(all) => {
+            let mut report = String::new();
+            for r in &all {
+                let _ = writeln!(report, "error   {r}");
+            }
+            CliError::Preflight { errors: all.len(), report }
+        }
+        other => CliError::Compile(other.to_string()),
+    })?;
+    env.cancel.check().map_err(|_| CliError::Cancelled)?;
+    let text = program.to_text();
+    write_atomically(env.fs.as_ref(), out, text.as_bytes())?;
+    if let Some(plan_json) = a.flag("plan-json") {
+        let blob = encode_plan(&c.plan)?;
+        write_atomically(env.fs.as_ref(), Path::new(plan_json), &blob)?;
+    }
+    let stdout = format!(
+        "plan {}\ngcode {} lines, {} bytes -> {}\npreflight: 0 errors, {} warnings\nestimate {:.1} s (constant-velocity estimate, not measured)\n",
+        c.plan.id(),
+        program.lines().len(),
+        text.len(),
+        out.display(),
+        c.report.warnings().count(),
+        c.preview_seconds
+    );
+    Ok(CliOutcome { stdout, plan: Some(c.plan.id()), ..CliOutcome::default() })
 }
 
 fn write_atomically(fs: &dyn FileSystem, path: &Path, bytes: &[u8]) -> Result<(), CliError> {
@@ -368,6 +412,12 @@ fn machine_session(
         return Err(CliError::MachineContactNotAllowed);
     }
     let profile = read_profile(env, a)?;
+    if matches!(profile.backend, Backend::Grbl(_)) {
+        return Err(CliError::Machine(
+            "GRBL upload/start is not available: no serial adapter and no hardware evidence; nothing was contacted"
+                .into(),
+        ));
+    }
     let identity = profile
         .identity
         .clone()

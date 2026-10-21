@@ -162,6 +162,7 @@ version = "0.1.0"
 dependencies = [
  "burnburn-cam",
  "burnburn-document",
+ "burnburn-gcode",
  "burnburn-geometry",
  "burnburn-history",
  "burnburn-io",
@@ -192,6 +193,16 @@ dependencies = [
  "burnburn-document",
  "burnburn-geometry",
  "burnburn-types",
+]
+
+[[package]]
+name = "burnburn-gcode"
+version = "0.1.0"
+dependencies = [
+ "burnburn-geometry",
+ "burnburn-job",
+ "burnburn-types",
+ "proptest",
 ]
 
 [[package]]
