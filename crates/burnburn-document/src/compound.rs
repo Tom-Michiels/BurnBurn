@@ -1,0 +1,46 @@
+//! Samengestelde commando's (W4-UI-machine): meerdere bewerkingen als één transactie, dus één
+//! revisie en één undo-stap. Beeld importeren (kader + operatie) en Mask Image (toewijzen,
+//! loskoppelen, bijwerken) zijn de eerste gebruikers.
+
+use crate::command::CommandPayload;
+use crate::process::OperationDraft;
+
+/// Undo/redo label (localisation key) of a compound command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum CompoundLabel {
+    /// A bitmap frame plus its image operation.
+    ImportImage,
+    /// Mask Image: the shapes become the targets and the settings are updated.
+    MaskImage,
+}
+
+/// One step of a compound command.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum CompoundStep {
+    /// An ordinary command, applied to the working copy of the transaction.
+    Run(CommandPayload),
+    /// Adds an operation that targets the geometry created by the earlier steps of this compound
+    /// (the caller cannot know those ids in advance).
+    AddOperationForCreated { draft: OperationDraft },
+}
+
+/// Several steps applied as one transaction: all of them or none.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompoundCommand {
+    pub label: CompoundLabel,
+    pub steps: Vec<CompoundStep>,
+}
+
+/// Why a compound command was refused (nothing changed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CompoundError {
+    /// A compound without steps.
+    Empty,
+    /// A compound inside a compound.
+    Nested,
+    /// `AddOperationForCreated` without geometry created by an earlier step.
+    NothingCreated,
+}

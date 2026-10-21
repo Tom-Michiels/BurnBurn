@@ -28,13 +28,18 @@ const TOLERANCE_PX: f32 = 0.05;
 
 /// Triangles (three vertices each) for every primitive, in painting order.
 pub fn tessellate(packet: &RenderPacket) -> Vec<Vertex> {
+    tessellate_primitives(&packet.primitives)
+}
+
+/// Triangles for a run of primitives (the GPU pass tessellates the runs between bitmaps).
+pub fn tessellate_primitives(primitives: &[Primitive]) -> Vec<Vertex> {
     let mut out = Vec::new();
     let mut fill = FillTessellator::new();
     let mut stroke = StrokeTessellator::new();
-    for primitive in &packet.primitives {
+    for primitive in primitives {
         match primitive {
-            // Images are textured in their own pass, not tessellated.
-            Primitive::Image { .. } => {}
+            // Images and bitmaps are textured in their own pass, not tessellated.
+            Primitive::Image { .. } | Primitive::Bitmap { .. } => {}
             Primitive::Fill { contours_px, color } => {
                 let contours: Vec<Vec<[f32; 2]>> =
                     contours_px.iter().map(|c| dedup(c)).filter(|c| c.len() >= 3).collect();

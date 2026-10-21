@@ -14,11 +14,16 @@ use burnburn_document::process::{
     DitherMode, ImageCrop, ImageRender, ImageSettings, ImageSharpen, OperationDraft, OperationMode, Passes,
     PowerPercent, PowerRange, ProcessCommand, ProcessSettings, Speed, ToneSettings,
 };
-use burnburn_document::{CommandPayload, EditLabel, GeometryCommand, ImportItem, UndoLabel};
+use burnburn_document::{
+    CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, GeometryCommand, ImportItem, UndoLabel,
+};
+use burnburn_editor::{BedPicture, BedQuad, Overlay};
 use burnburn_geometry::{Bounds, Path, Point, ProductionTolerance, Rect};
 use burnburn_image::SourceImage;
 use burnburn_io::AssetStore;
-use burnburn_types::{CancellationSource, ContentHash, DocumentId, GeometryId, Length, OperationId, RequestId, TaskId};
+use burnburn_types::{
+    CancellationSource, ContentHash, DocumentId, GeometryId, HashDomain, Length, OperationId, RequestId, TaskId,
+};
 
 use crate::field::{format_mm, parse_number};
 use crate::image_panel::{
@@ -78,6 +83,8 @@ pub(super) struct AdjustState {
     /// The validated settings the newest preview is for; `None` while the input is invalid.
     pub(super) parsed: Option<ImageSettings>,
     pub(super) preview: Option<ImagePreview>,
+    /// The preview as a canvas picture (gray8 expanded once, id from the pixels).
+    pub(super) picture: Option<Arc<BedPicture>>,
     /// Newest submitted preview; only its result may be shown.
     pub(super) latest: Option<TaskId>,
 }
@@ -261,6 +268,41 @@ fn bitmap_job(s: &Session, operation: OperationId, settings: ImageSettings) -> O
     })
 }
 
+// ---- canvas -----------------------------------------------------------------------------------
+
+/// The preview as a picture for the canvas. Its id comes from the pixels, so a renderer keeps the
+/// texture of an unchanged preview and replaces it as soon as the values change the result.
+fn picture_of(preview: &ImagePreview) -> Option<Arc<BedPicture>> {
+    let hash = ContentHash::of(HashDomain::SourcePixels, &preview.gray8);
+    let mut id = [0u8; 8];
+    id.copy_from_slice(&hash.as_bytes()[..8]);
+    BedPicture::from_gray8(u64::from_be_bytes(id), preview.width, preview.height, &preview.gray8).map(Arc::new)
+}
+
+/// The open Adjust Image preview, laid on the bounds of the image it is computed for (the scan
+/// grid covers the target geometry). A visual aid of the window; never document data.
+pub(super) fn preview_overlay(s: &Session) -> Option<Overlay> {
+    let adjust = s.image.adjust.as_ref()?;
+    let picture = Arc::clone(adjust.picture.as_ref()?);
+    let snapshot = s.doc.snapshot();
+    let target = *snapshot.process().operation(adjust.operation)?.targets().first()?;
+    let bounds = snapshot.object(target)?.bounds()?;
+    let (min, max) = (bounds.min(), bounds.max());
+    if !(max.x > min.x && max.y > min.y) {
+        return None;
+    }
+    let quad = BedQuad {
+        bed_mm: [
+            Point::new(min.x, max.y),
+            Point::new(max.x, max.y),
+            Point::new(max.x, min.y),
+            Point::new(min.x, min.y),
+        ],
+        uv: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+    };
+    Some(Overlay::ImagePreview { picture, quads: Arc::from(vec![quad]), opacity: 1.0 })
+}
+
 // ---- view -------------------------------------------------------------------------------------
 
 pub(super) fn image_view(s: &Session) -> ImageViewModel {
@@ -359,10 +401,10 @@ impl AppController {
         })
     }
 
-    /// Commit of the bitmap import sheet: the frame (one entry) and its image operation (a
-    /// second one: the document has no single command for both yet).
+    /// Commit of the bitmap import sheet: the frame and its image operation, as one document
+    /// transaction and so one undo step.
     fn commit_bitmap(&mut self, document: DocumentId) -> AppUpdate {
-        let (first, second) = (self.next_id::<RequestId>(), self.next_id::<RequestId>());
+        let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let Some(pending) = s.image.pending.clone() else { return AppUpdate::default() };
             let Ok(dpi) = dpi_of(&pending.dpi_text) else { return AppUpdate::default() };
@@ -374,24 +416,29 @@ impl AppController {
             else {
                 return error(Some(document), MessageKey::ImportFailed);
             };
+            let Some(draft) = new_image_operation(&pending) else {
+                return error(Some(document), MessageKey::CommandRejected);
+            };
             let asset = s.assets.add(pending.media, &pending.bytes);
             let item = ImportItem {
                 name: format!("Beeld {}", pending.file),
                 entity: Some("image".to_owned()),
                 path: Path::rectangle(frame),
             };
-            let import = GeometryCommand::Import { asset, items: vec![item] };
-            let update = apply_edit(s, document, CommandPayload::Edit(import), first);
-            if s.doc.undo_label() != Some(UndoLabel::Edit(EditLabel::Import)) {
+            let compound = CompoundCommand {
+                label: CompoundLabel::ImportImage,
+                steps: vec![
+                    CompoundStep::Run(CommandPayload::Edit(GeometryCommand::Import { asset, items: vec![item] })),
+                    CompoundStep::AddOperationForCreated { draft },
+                ],
+            };
+            let update = apply_edit(s, document, CommandPayload::Compound(compound), request);
+            if s.doc.undo_label() != Some(UndoLabel::Compound(CompoundLabel::ImportImage)) {
                 return update;
             }
-            let Some(target) = s.selection.single() else { return update };
-            let Some(draft) = new_image_operation(&pending) else {
-                return error(Some(document), MessageKey::CommandRejected);
-            };
-            let edit = ProcessCommand::AddOperation { draft, targets: vec![target] };
-            let update = apply_edit(s, document, CommandPayload::Process(edit), second);
-            if let Some(op) = s.doc.snapshot().process().operations_using(target).first().copied() {
+            if let Some(target) = s.selection.single()
+                && let Some(op) = s.doc.snapshot().process().operations_using(target).first().copied()
+            {
                 s.image.origins.insert(op, pending.path.clone());
             }
             s.image.sources.insert(pending.source.content_hash(), Arc::clone(&pending.source));
@@ -434,7 +481,7 @@ impl AppController {
             CommandKey::ApplyImageAdjust => self.apply_adjust(document),
             CommandKey::CancelImageAdjust => self.with_session(document, |s| {
                 close_adjust(s);
-                AppUpdate { view_changed: true, ..AppUpdate::default() }
+                AppUpdate::redraw(document)
             }),
             CommandKey::MaskImage => self.mask_image(document),
             CommandKey::RefreshImage => self.refresh_image(document),
@@ -455,6 +502,7 @@ impl AppController {
                 issue: None,
                 parsed: Some(settings),
                 preview: None,
+                picture: None,
                 latest: None,
             });
             submit_preview(s, &tasks, document, id, operation, settings)
@@ -618,10 +666,10 @@ fn mask_plan(s: &Session) -> Option<MaskPlan> {
 
 impl AppController {
     /// Mask Image: the shapes become the operation's targets and the crop window is the part of
-    /// the picture they cover, so the picture stays where it was. Three history entries (assign,
-    /// unassign, update): the document has no single command for it yet.
+    /// the picture they cover, so the picture stays where it was. Assign, unassign and update
+    /// are one document transaction and so one undo step.
     fn mask_image(&mut self, document: DocumentId) -> AppUpdate {
-        let requests = [self.next_id::<RequestId>(), self.next_id::<RequestId>(), self.next_id::<RequestId>()];
+        let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let Some(plan) = mask_plan(s) else { return AppUpdate::default() };
             let masked = match plan.settings.with_crop(Some(plan.crop)) {
@@ -631,19 +679,22 @@ impl AppController {
             let snapshot = s.doc.snapshot();
             let Some(op) = snapshot.process().operation(plan.operation) else { return AppUpdate::default() };
             let draft = OperationDraft { mode: OperationMode::Image(masked), ..op.draft() };
-            let edits = [
-                ProcessCommand::AssignGeometry { operation: plan.operation, targets: plan.shapes.clone() },
-                ProcessCommand::UnassignGeometry { operation: plan.operation, targets: vec![plan.frame] },
-                ProcessCommand::UpdateOperation { operation: plan.operation, draft },
-            ];
-            let mut update = AppUpdate::default();
-            for (edit, request) in edits.into_iter().zip(requests) {
-                update = apply_edit(s, document, CommandPayload::Process(edit), request);
-                if !update.effects.is_empty() {
-                    break;
-                }
-            }
-            update
+            let operation = plan.operation;
+            let compound = CompoundCommand {
+                label: CompoundLabel::MaskImage,
+                steps: vec![
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::AssignGeometry {
+                        operation,
+                        targets: plan.shapes.clone(),
+                    })),
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::UnassignGeometry {
+                        operation,
+                        targets: vec![plan.frame],
+                    })),
+                    CompoundStep::Run(CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft })),
+                ],
+            };
+            apply_edit(s, document, CommandPayload::Compound(compound), request)
         })
     }
 }
@@ -789,8 +840,11 @@ pub(super) fn finished(
         (TaskKind::ImagePreview, Ok(TaskOutput::ImagePreview { preview, source })) => {
             s.image.sources.insert(source.content_hash(), source);
             if let Some(a) = s.image.adjust.as_mut().filter(|a| a.latest == Some(id)) {
+                a.picture = picture_of(&preview);
                 a.preview = Some(preview);
                 a.latest = None;
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
             }
         }
         (TaskKind::ImagePreview, Err(e)) => {

@@ -137,6 +137,14 @@ pub enum Overlay {
         quads: Arc<[crate::bed_image::BedQuad]>,
         opacity: f32,
     },
+    /// A bitmap drawn on top of the design objects it belongs to (W4-UI-machine): the live
+    /// preview of Adjust Image on the image's bounds. Selection marks stay above it. Never
+    /// document data.
+    ImagePreview {
+        picture: Arc<crate::bed_image::BedPicture>,
+        quads: Arc<[crate::bed_image::BedQuad]>,
+        opacity: f32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

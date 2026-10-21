@@ -10,7 +10,7 @@
 use burnburn_document::process::ProcessLabel;
 use burnburn_document::sketch::SketchLabel;
 use burnburn_document::structure::StructureLabel;
-use burnburn_document::{ArrangeLabel, EditLabel, ShapeLabel, UndoLabel};
+use burnburn_document::{ArrangeLabel, CompoundLabel, EditLabel, ShapeLabel, UndoLabel};
 use burnburn_editor::{IssueKind, SnapKind};
 use burnburn_presentation::{
     CommandKey, Feature, FieldError, FieldKey, ImageField, ImageIssue, JogKey, LaserWhy, LiveFeature, MachineAction,
@@ -950,6 +950,11 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
         UndoLabel::Transform => ("Verplaatsen", "Move"),
         UndoLabel::Delete => ("Verwijderen", "Delete"),
         UndoLabel::Rename => ("Naam wijzigen", "Rename"),
+        UndoLabel::Compound(c) => match c {
+            CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
+            CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
+            _ => return None,
+        },
         UndoLabel::Arrange(a) => match a {
             ArrangeLabel::DrawOrder => ("Tekenvolgorde wijzigen", "Change Draw Order"),
             ArrangeLabel::Lock => ("Vergrendelen", "Lock"),
@@ -1645,6 +1650,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(UndoLabel::Edit),
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
+    undo.extend([CompoundLabel::ImportImage, CompoundLabel::MaskImage].map(UndoLabel::Compound));
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend(
         [
