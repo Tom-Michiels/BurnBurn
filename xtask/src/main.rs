@@ -5,6 +5,7 @@ mod dist;
 mod layers;
 mod msix;
 mod trace_corpus;
+mod workflows;
 mod workspace_deps;
 
 use std::path::{Path, PathBuf};

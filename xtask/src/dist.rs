@@ -1,7 +1,7 @@
 //! `cargo xtask bundle --zip|--dmg|--sign-adhoc`: the macOS release route (X07).
 //!
 //! The `.app` itself comes from [`crate::bundle`]. This module turns it into distributable files
-//! with system tools only (`ditto`, `hdiutil`, `codesign`), called as processes:
+//! with system tools only (`zip`, `ditto`, `hdiutil`, `codesign`), called as processes:
 //!
 //! - the **zip** is reproducible: file times are normalised to `SOURCE_DATE_EPOCH` first;
 //! - the **dmg** is not byte-reproducible (the disk image format embeds identifiers);
@@ -91,12 +91,59 @@ fn text(p: &Path) -> String {
     p.display().to_string()
 }
 
-pub fn zip_args(app: &Path, out: &Path) -> Vec<String> {
-    ["-c", "-k", "--sequesterRsrc", "--keepParent"]
-        .into_iter()
-        .map(str::to_owned)
-        .chain([text(app), text(out)])
-        .collect()
+/// Every path of the bundle (the bundle itself first), relative to the bundle's parent
+/// directory and in byte order: the order the archive entries get. Symbolic links are listed
+/// but not followed.
+pub fn zip_inputs(app: &Path) -> Result<Vec<String>, String> {
+    fn walk(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<(), String> {
+        let io = |e: std::io::Error| format!("{}: {e}", dir.display());
+        for entry in std::fs::read_dir(dir).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
+            out.push(name.clone());
+            if entry.file_type().map_err(io)?.is_dir() {
+                walk(&entry.path(), &name, out)?;
+            }
+        }
+        Ok(())
+    }
+    let root = app.file_name().and_then(|n| n.to_str()).ok_or("bundle path without a name")?.to_owned();
+    if !app.is_dir() {
+        return Err(format!("no bundle at {}", app.display()));
+    }
+    let mut paths = vec![root.clone()];
+    walk(app, &root, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
+/// `zip -X -y -q -@ <out>`: `-X` leaves uid/gid and access/creation times out of the archive
+/// (they would change on every build), `-y` keeps symbolic links, `-@` reads the names from stdin.
+pub fn zip_args(out: &Path) -> Vec<String> {
+    ["-X", "-y", "-q", "-@"].into_iter().map(str::to_owned).chain([text(out)]).collect()
+}
+
+/// Runs `zip` in the bundle's parent directory with the sorted names on stdin. `TZ=UTC` because the
+/// archive stores local DOS time.
+fn run_zip(app: &Path, out: &Path) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let names = zip_inputs(app)?.join("\n");
+    let parent = app.parent().ok_or("bundle without a parent directory")?;
+    let args = zip_args(out);
+    println!("$ (cd {} && TZ=UTC zip {} < sorted bundle paths)", parent.display(), args.join(" "));
+    let mut child = Command::new("zip")
+        .args(&args)
+        .current_dir(parent)
+        .env("TZ", "UTC")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("zip: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(names.as_bytes()).map_err(|e| format!("zip: {e}"))?;
+    }
+    let status = child.wait().map_err(|e| format!("zip: {e}"))?;
+    if status.success() { Ok(()) } else { Err(format!("zip failed ({status})")) }
 }
 
 pub fn dmg_args(volume_name: &str, source_dir: &Path, out: &Path) -> Vec<String> {
@@ -152,7 +199,7 @@ pub fn finish(
     if options.zip {
         let zip = out_dir.join(artifact_name(name, version, arch, "zip"));
         let _ = std::fs::remove_file(&zip);
-        run_tool("ditto", &zip_args(app, &zip))?;
+        run_zip(app, &zip)?;
         write_checksum(&zip)?;
         written.push(zip.clone());
         written.push(PathBuf::from(format!("{}.sha256", zip.display())));
@@ -223,10 +270,8 @@ mod tests {
     #[test]
     fn the_system_tool_invocations_are_exactly_what_we_document() {
         let app = Path::new("/o/BurnBurn.app");
-        assert_eq!(
-            zip_args(app, Path::new("/o/x.zip")),
-            strings(&["-c", "-k", "--sequesterRsrc", "--keepParent", "/o/BurnBurn.app", "/o/x.zip"])
-        );
+        // `-X`: no uid/gid and no access/creation times in the archive; `-@`: names come from stdin, sorted.
+        assert_eq!(zip_args(Path::new("/o/x.zip")), strings(&["-X", "-y", "-q", "-@", "/o/x.zip"]));
         assert_eq!(
             dmg_args("BurnBurn", Path::new("/o/stage"), Path::new("/o/x.dmg")),
             strings(&[
@@ -243,6 +288,32 @@ mod tests {
         );
         // `-s -` is the ad-hoc identity: no certificate, no notarisation.
         assert_eq!(codesign_args(app), strings(&["--force", "--deep", "--sign", "-", "/o/BurnBurn.app"]));
+    }
+
+    #[test]
+    fn zip_inputs_are_every_path_of_the_bundle_in_byte_order_relative_to_its_parent() {
+        let dir = scratch("inputs");
+        std::fs::create_dir_all(dir.join("BurnBurn.app/Contents/MacOS")).unwrap();
+        std::fs::create_dir_all(dir.join("BurnBurn.app/Contents/Resources")).unwrap();
+        std::fs::write(dir.join("BurnBurn.app/Contents/Info.plist"), b"x").unwrap();
+        std::fs::write(dir.join("BurnBurn.app/Contents/MacOS/burnburn"), b"x").unwrap();
+        std::fs::write(dir.join("BurnBurn.app/Contents/Resources/B.icns"), b"x").unwrap();
+        std::fs::write(dir.join("BurnBurn.app/Contents/Resources/a.txt"), b"x").unwrap();
+        assert_eq!(
+            zip_inputs(&dir.join("BurnBurn.app")).unwrap(),
+            strings(&[
+                "BurnBurn.app",
+                "BurnBurn.app/Contents",
+                "BurnBurn.app/Contents/Info.plist",
+                "BurnBurn.app/Contents/MacOS",
+                "BurnBurn.app/Contents/MacOS/burnburn",
+                "BurnBurn.app/Contents/Resources",
+                "BurnBurn.app/Contents/Resources/B.icns",
+                "BurnBurn.app/Contents/Resources/a.txt",
+            ])
+        );
+        assert!(zip_inputs(&dir.join("missing.app")).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -294,11 +365,19 @@ mod tests {
         }
         let mut zips = Vec::new();
         for (i, tag) in ["z1", "z2"].into_iter().enumerate() {
+            if i > 0 {
+                // Access and creation times move on; the archive must not notice.
+                std::thread::sleep(Duration::from_millis(2100));
+            }
             let dir = scratch(tag);
             let app = fake_app(&dir);
             // Different build times must not show in the artifact.
             let later = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000 + 1000 * i as u64);
             std::fs::File::open(app.join("Contents/Info.plist")).unwrap().set_modified(later).unwrap();
+            // Finder/quarantine style extended attributes must not leak into the archive either.
+            let xattr =
+                Command::new("xattr").args(["-w", "com.apple.test", "x"]).arg(app.join("Contents/Info.plist")).status();
+            assert!(xattr.unwrap().success());
             let files = finish(
                 &BundleOptions { release: false, zip: true, dmg: false, adhoc_sign: false },
                 &app,
@@ -312,6 +391,7 @@ mod tests {
             let listing = String::from_utf8_lossy(&listing.stdout).into_owned();
             assert!(listing.contains("BurnBurn.app/Contents/Info.plist"), "{listing}");
             assert!(listing.contains("BurnBurn.app/Contents/MacOS/burnburn"), "{listing}");
+            assert!(!listing.contains("__MACOSX"), "no AppleDouble sidecars: {listing}");
             let sum = std::fs::read_to_string(format!("{}.sha256", zip.display())).unwrap();
             assert_eq!(sum, checksum_line(&std::fs::read(&zip).unwrap(), zip.file_name().unwrap().to_str().unwrap()));
             zips.push(std::fs::read(&zip).unwrap());

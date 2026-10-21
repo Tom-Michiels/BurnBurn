@@ -41,3 +41,23 @@ jobs:
           else
             echo "crates/burnburn-macos bestaat nog niet; native job overgeslagen."
           fi
+
+  # Native Windows host (crates/burnburn-windows): type-check, lint and the headless adapter
+  # tests on a real Windows runner. The Win32 window, DX12 canvas and file dialogs are NOT
+  # exercised here (manual acceptance, docs/release.md). Core crates run first on Windows too.
+  windows-host:
+    name: Windows host
+    runs-on: windows-2025
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain uit rust-toolchain.toml
+        run: rustup show
+      - name: cargo check -p burnburn-windows
+        run: cargo check -p burnburn-windows --all-targets --locked
+      - name: cargo clippy -p burnburn-windows
+        run: cargo clippy -p burnburn-windows --all-targets --locked -- -D warnings
+      - name: cargo test -p burnburn-windows
+        run: cargo test -p burnburn-windows --locked
+      - name: Kerncrates die de host gebruikt
+        run: cargo test -p burnburn-io -p burnburn-presentation -p burnburn-editor -p burnburn-runtime --locked
