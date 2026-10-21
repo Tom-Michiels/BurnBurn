@@ -117,7 +117,9 @@ pub fn form(ctx: &FormContext<'_>, live: &FormValues) -> Option<Form> {
         let id = ControlId::CutOption(row.field);
         let caption = option_caption(row.field, locale).to_owned();
         lines.push(match row.control {
-            RowControl::Text(text) => FormLine::Field { id, caption, text, enabled: row.enabled, invalid: false, hint: row.note.clone() },
+            RowControl::Text(text) => {
+                FormLine::Field { id, caption, text, enabled: row.enabled, invalid: false, hint: row.note.clone() }
+            }
             RowControl::Check(on) => FormLine::Check { id, caption, on, enabled: row.enabled },
             RowControl::Popup { items: popup, selected } => {
                 FormLine::Choice { id, caption, items: items(&popup), selected, enabled: row.enabled }

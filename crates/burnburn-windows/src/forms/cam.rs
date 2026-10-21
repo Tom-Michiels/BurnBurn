@@ -36,9 +36,10 @@ fn choice_items(row: &DialogRow, locale: Locale) -> Vec<ChoiceItem> {
         .map(|choice| {
             let label = cam_choice_label(*choice, locale);
             match row.blocked_choices.iter().find(|(c, _)| c == choice) {
-                Some((_, reason)) => {
-                    ChoiceItem { title: format!("{label} \u{2014} {}", message_or_key(*reason, locale)), enabled: false }
-                }
+                Some((_, reason)) => ChoiceItem {
+                    title: format!("{label} \u{2014} {}", message_or_key(*reason, locale)),
+                    enabled: false,
+                },
                 None => ChoiceItem::plain(label),
             }
         })
@@ -154,7 +155,9 @@ pub fn react(
         (ControlId::CamAction(kind), ControlValue::Press) => {
             model.and_then(|m| cam_action_intent(m, document, dialog, *kind, None))
         }
-        (ControlId::CamMove(key, up), ControlValue::Press) => model.and_then(|m| cam_move_intent(m, document, *key, *up)),
+        (ControlId::CamMove(key, up), ControlValue::Press) => {
+            model.and_then(|m| cam_move_intent(m, document, *key, *up))
+        }
         _ => None,
     };
     intent.map_or(FormOutcome::Nothing, FormOutcome::Intent)

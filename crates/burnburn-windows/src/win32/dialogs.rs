@@ -8,8 +8,23 @@ use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog, SIGDN_FILESYSPATH};
 use windows::core::{HSTRING, w};
 
-fn file_filter() -> [COMDLG_FILTERSPEC; 1] {
-    [COMDLG_FILTERSPEC { pszName: w!("BurnBurn-project"), pszSpec: w!("*.burnburn") }]
+/// Which kind of file a dialog asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FileKind {
+    /// A BurnBurn project.
+    Project,
+    /// A Ruida file (the saved CAM test).
+    Rd,
+    /// A CSV table (variable text).
+    Csv,
+}
+
+fn file_filter(kind: FileKind) -> [COMDLG_FILTERSPEC; 1] {
+    match kind {
+        FileKind::Project => [COMDLG_FILTERSPEC { pszName: w!("BurnBurn-project"), pszSpec: w!("*.burnburn") }],
+        FileKind::Rd => [COMDLG_FILTERSPEC { pszName: w!("Ruida (RD)"), pszSpec: w!("*.rd") }],
+        FileKind::Csv => [COMDLG_FILTERSPEC { pszName: w!("CSV"), pszSpec: w!("*.csv;*.txt") }],
+    }
 }
 
 /// The chosen file of a closed dialog (`Show` returned OK).
@@ -26,9 +41,13 @@ fn dialog_path(dialog: &windows::Win32::UI::Shell::IFileDialog) -> Option<PathBu
 }
 
 pub(super) fn open_dialog() -> Option<PathBuf> {
+    open_dialog_of(FileKind::Project)
+}
+
+pub(super) fn open_dialog_of(kind: FileKind) -> Option<PathBuf> {
     // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
     let dialog: IFileOpenDialog = unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
+    let filter = file_filter(kind);
     // SAFETY: the filter specs point to static strings and live for the call.
     unsafe { dialog.SetFileTypes(&filter) }.ok()?;
     // SAFETY: modal dialog on the UI thread; Cancel returns an error (→ None).
@@ -37,13 +56,22 @@ pub(super) fn open_dialog() -> Option<PathBuf> {
 }
 
 pub(super) fn save_dialog(owner: HWND, suggested: &str) -> Option<PathBuf> {
+    save_dialog_of(owner, suggested, FileKind::Project)
+}
+
+pub(super) fn save_dialog_of(owner: HWND, suggested: &str, kind: FileKind) -> Option<PathBuf> {
     // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
     let dialog: IFileSaveDialog = unsafe { CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
-    let filter = file_filter();
+    let filter = file_filter(kind);
     // SAFETY: the filter specs point to static strings and live for the call.
     unsafe { dialog.SetFileTypes(&filter) }.ok()?;
+    let extension = match kind {
+        FileKind::Project => w!("burnburn"),
+        FileKind::Rd => w!("rd"),
+        FileKind::Csv => w!("csv"),
+    };
     // SAFETY: static string.
-    unsafe { dialog.SetDefaultExtension(w!("burnburn")) }.ok()?;
+    unsafe { dialog.SetDefaultExtension(extension) }.ok()?;
     let name = HSTRING::from(suggested);
     // SAFETY: the string outlives the call.
     unsafe { dialog.SetFileName(&name) }.ok()?;

@@ -11,8 +11,8 @@ use super::{
 };
 use crate::l10n::{HostText, host_text};
 use crate::panels::{
-    LayerColumn, OPERATION_KINDS, OperationLine, operation_kind, operation_kind_name, operations_panel, palette_buttons,
-    palette_slot,
+    LayerColumn, OPERATION_KINDS, OperationLine, operation_kind, operation_kind_name, operations_panel,
+    palette_buttons, palette_slot,
 };
 
 /// Palette buttons per row.
@@ -134,10 +134,9 @@ pub fn react(
         (ControlId::LayerList, ControlValue::Rows(rows)) => {
             return FormOutcome::SelectLayerRow(rows.first().copied());
         }
-        (ControlId::LayerList, ControlValue::Activate(row)) => doc
-            .operations
-            .get(*row)
-            .map(|op| UiIntent::OpenCutSettings { document, operation: op.id }),
+        (ControlId::LayerList, ControlValue::Activate(row)) => {
+            doc.operations.get(*row).map(|op| UiIntent::OpenCutSettings { document, operation: op.id })
+        }
         (ControlId::LayerCutSettings, ControlValue::Press) => {
             selected_op().map(|op| UiIntent::OpenCutSettings { document, operation: op.id })
         }

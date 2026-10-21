@@ -40,7 +40,12 @@ fn form_of(kind: FormKind, title: &str, lines: Vec<FormLine>) -> Form {
 
 fn toolbar(p: &ToolbarPanel, locale: Locale) -> Form {
     let t = |x| text_text(x, locale);
-    let mut lines = vec![choice(Slot::Family, t(TextText::Font), plain(&p.families.iter().map(String::as_str).collect::<Vec<_>>()), p.family)];
+    let mut lines = vec![choice(
+        Slot::Family,
+        t(TextText::Font),
+        plain(&p.families.iter().map(String::as_str).collect::<Vec<_>>()),
+        p.family,
+    )];
     lines.push(FormLine::Row(vec![
         check(Slot::Bold, t(TextText::Bold), p.bold.on, p.bold.enabled),
         check(Slot::Italic, t(TextText::Italic), p.italic.on, p.italic.enabled),
@@ -81,7 +86,12 @@ fn toolbar(p: &ToolbarPanel, locale: Locale) -> Form {
 fn path(p: &PathPanel, locale: Locale) -> Form {
     let t = |x| text_text(x, locale);
     let mut lines = vec![
-        choice(Slot::PathDistort, t(TextText::Distort), plain(&[t(TextText::DistortRigid), t(TextText::DistortWarp)]), p.distort),
+        choice(
+            Slot::PathDistort,
+            t(TextText::Distort),
+            plain(&[t(TextText::DistortRigid), t(TextText::DistortWarp)]),
+            p.distort,
+        ),
         field(Slot::PathStart, t(TextText::PathStart), &p.start),
         field(Slot::PathOffset, t(TextText::PathOffset), &p.offset),
         check(Slot::PathReverse, t(TextText::PathReverse), p.reverse, true),
@@ -99,7 +109,12 @@ fn path(p: &PathPanel, locale: Locale) -> Form {
 fn variable(p: &VariablePanel, locale: Locale) -> Form {
     let t = |x| text_text(x, locale);
     let mut lines = vec![
-        choice(Slot::VarKind, t(TextText::Kind), plain(&[t(TextText::KindNormal), t(TextText::KindVariable)]), usize::from(p.variable)),
+        choice(
+            Slot::VarKind,
+            t(TextText::Kind),
+            plain(&[t(TextText::KindNormal), t(TextText::KindVariable)]),
+            usize::from(p.variable),
+        ),
         field(Slot::VarOffset, t(TextText::VarOffset), &p.offset),
         FormLine::Row(vec![
             field(Slot::SerialCurrent, t(TextText::SerialCurrent), &p.current),
@@ -173,10 +188,20 @@ fn barcode(p: &BarcodePanel, locale: Locale) -> Form {
         lines.push(field(Slot::BcHeight, t(TextText::BarHeight), height));
     }
     if let Some((steps, selected)) = &p.ecc {
-        lines.push(choice(Slot::BcEcc, t(TextText::Ecc), plain(&steps.iter().map(String::as_str).collect::<Vec<_>>()), *selected));
+        lines.push(choice(
+            Slot::BcEcc,
+            t(TextText::Ecc),
+            plain(&steps.iter().map(String::as_str).collect::<Vec<_>>()),
+            *selected,
+        ));
     }
     if let Some((modes, selected)) = &p.input_modes {
-        lines.push(choice(Slot::BcInputMode, t(TextText::InputMode), plain(&modes.iter().map(String::as_str).collect::<Vec<_>>()), *selected));
+        lines.push(choice(
+            Slot::BcInputMode,
+            t(TextText::InputMode),
+            plain(&modes.iter().map(String::as_str).collect::<Vec<_>>()),
+            *selected,
+        ));
     }
     if let Some(columns) = &p.columns {
         lines.push(field(Slot::BcColumns, t(TextText::Columns), columns));

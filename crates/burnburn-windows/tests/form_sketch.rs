@@ -37,7 +37,13 @@ fn form(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Option<Fo
     sketch::form(&FormContext { vm: &vm, document: doc, locale })
 }
 
-fn react(h: &HeadlessEditorHarness, doc: DocumentId, id: ControlId, value: ControlValue, values: &[(ControlId, ControlValue)]) -> FormOutcome {
+fn react(
+    h: &HeadlessEditorHarness,
+    doc: DocumentId,
+    id: ControlId,
+    value: ControlValue,
+    values: &[(ControlId, ControlValue)],
+) -> FormOutcome {
     let vm = h.view();
     sketch::react(&id, &value, values, &FormContext { vm: &vm, document: doc, locale: Locale::En })
 }
@@ -82,7 +88,9 @@ fn selecting_list_rows_selects_constraints_and_the_same_rows_again_send_nothing(
     assert_eq!(now.selected_constraints, vec![before.rows[0].id, before.rows[2].id]);
     assert_eq!(now.selected_entities, vec![EntityId::from_raw(5)], "the entities stay selected");
     let f = form(&h, doc, Locale::En).unwrap();
-    assert!(matches!(f.find(&ControlId::SketchList), Some(FormLine::List { selected, multi: true, .. }) if *selected == vec![0, 2]));
+    assert!(
+        matches!(f.find(&ControlId::SketchList), Some(FormLine::List { selected, multi: true, .. }) if *selected == vec![0, 2])
+    );
     assert_eq!(react(&h, doc, ControlId::SketchList, ControlValue::Rows(vec![0, 2]), &[]), FormOutcome::Nothing);
     // Remove applies to the selected constraints.
     assert!(f.ids().contains(&ControlId::SketchRemove));
@@ -105,7 +113,9 @@ fn a_dimension_has_a_value_editor_that_sends_the_raw_text_once() {
         h.send(i);
     }
     let f = form(&h, doc, Locale::En).unwrap();
-    assert!(matches!(f.find(&ControlId::SketchValue), Some(FormLine::Field { text, enabled: true, .. }) if text == "20 mm"));
+    assert!(
+        matches!(f.find(&ControlId::SketchValue), Some(FormLine::Field { text, enabled: true, .. }) if text == "20 mm")
+    );
     assert_eq!(
         react(&h, doc, ControlId::SketchValue, ControlValue::Text("breedte + 5 mm".into()), &[]),
         FormOutcome::Intent(UiIntent::SetSketchDimension {
@@ -148,17 +158,36 @@ fn a_relation_has_no_value_editor_and_parameters_are_set_as_typed() {
         })
     );
     assert_eq!(
-        react(&h, doc, ControlId::SketchParamSet, ControlValue::Press, &[(ControlId::SketchParamName, ControlValue::Text("  ".into()))]),
+        react(
+            &h,
+            doc,
+            ControlId::SketchParamSet,
+            ControlValue::Press,
+            &[(ControlId::SketchParamName, ControlValue::Text("  ".into()))]
+        ),
         FormOutcome::Nothing,
         "a parameter needs a name"
     );
-    h.send(UiIntent::SetSketchParameter { document: doc, sketch: sketch_id, name: "breedte".into(), text: "150 mm".into() });
+    h.send(UiIntent::SetSketchParameter {
+        document: doc,
+        sketch: sketch_id,
+        name: "breedte".into(),
+        text: "150 mm".into(),
+    });
     let f = form(&h, doc, Locale::En).unwrap();
     let ids = f.ids();
     let n = ids.iter().position(|i| matches!(i, ControlId::SketchParam(_))).expect("an editor for the parameter");
-    let ControlId::SketchParam(k) = ids[n].clone() else { unreachable!() };
-    assert!(matches!(f.find(&ids[n]), Some(FormLine::Field { caption, text, .. }) if caption == "breedte" && text.contains("150")));
-    assert_eq!(react(&h, doc, ControlId::SketchParam(k), ControlValue::Text("200 mm".into()), &[]), FormOutcome::Intent(UiIntent::SetSketchParameter {
-        document: doc, sketch: sketch_id, name: "breedte".into(), text: "200 mm".into()
-    }));
+    let ControlId::SketchParam(k) = ids[n].clone() else { panic!("a parameter id") };
+    assert!(
+        matches!(f.find(&ids[n]), Some(FormLine::Field { caption, text, .. }) if caption == "breedte" && text.contains("150"))
+    );
+    assert_eq!(
+        react(&h, doc, ControlId::SketchParam(k), ControlValue::Text("200 mm".into()), &[]),
+        FormOutcome::Intent(UiIntent::SetSketchParameter {
+            document: doc,
+            sketch: sketch_id,
+            name: "breedte".into(),
+            text: "200 mm".into()
+        })
+    );
 }

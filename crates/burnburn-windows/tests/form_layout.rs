@@ -73,13 +73,23 @@ fn nothing_leaves_the_client_width_overlaps_or_starts_above_the_previous_line() 
             let l = layout(&form, width, 1.0);
             for (i, a) in l.items.iter().enumerate() {
                 assert!(a.rect.x >= 0 && a.rect.right() <= width, "{:?} item {i} {:?} in {width}", form.kind, a.rect);
-                assert!(a.rect.w > 0 && a.rect.h > 0 && a.rect.y >= 0 && a.rect.bottom() <= l.height, "{:?} {i}", form.kind);
+                assert!(
+                    a.rect.w > 0 && a.rect.h > 0 && a.rect.y >= 0 && a.rect.bottom() <= l.height,
+                    "{:?} {i}",
+                    form.kind
+                );
                 if let Some((_, c)) = &a.caption {
                     assert!(c.x >= 0 && c.right() <= width && c.w > 0, "{:?} caption {i}", form.kind);
                     assert!(!c.overlaps(&a.rect), "{:?}: caption over its control {i}", form.kind);
                 }
                 for (j, b) in l.items.iter().enumerate().skip(i + 1) {
-                    assert!(!a.rect.overlaps(&b.rect), "{:?}: items {i} and {j} overlap: {:?} {:?}", form.kind, a.rect, b.rect);
+                    assert!(
+                        !a.rect.overlaps(&b.rect),
+                        "{:?}: items {i} and {j} overlap: {:?} {:?}",
+                        form.kind,
+                        a.rect,
+                        b.rect
+                    );
                 }
             }
         }

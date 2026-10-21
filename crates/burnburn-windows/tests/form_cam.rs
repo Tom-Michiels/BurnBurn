@@ -47,7 +47,13 @@ fn open(h: &mut HeadlessEditorHarness, doc: DocumentId, dialog: CamDialog) -> Di
     h.controller().cam_dialog(doc, dialog).unwrap()
 }
 
-fn form(h: &HeadlessEditorHarness, doc: DocumentId, dialog: CamDialog, model: &DialogViewModel, locale: Locale) -> Form {
+fn form(
+    h: &HeadlessEditorHarness,
+    doc: DocumentId,
+    dialog: CamDialog,
+    model: &DialogViewModel,
+    locale: Locale,
+) -> Form {
     let vm = h.view();
     cam::form(&FormContext { vm: &vm, document: doc, locale }, dialog, model).expect("a dialog form")
 }
@@ -90,9 +96,11 @@ fn every_dialog_is_a_floating_form_with_its_title_its_visible_rows_and_its_butto
                 if !hidden {
                     let caption = cam_caption(row.field, &model, locale);
                     let shown = match f.find(&id) {
-                        Some(FormLine::Field { caption, .. } | FormLine::Check { caption, .. } | FormLine::Choice { caption, .. }) => {
-                            caption.clone()
-                        }
+                        Some(
+                            FormLine::Field { caption, .. }
+                            | FormLine::Check { caption, .. }
+                            | FormLine::Choice { caption, .. },
+                        ) => caption.clone(),
                         other => panic!("{other:?}"),
                     };
                     assert_eq!(shown, caption);
@@ -136,10 +144,20 @@ fn a_changed_control_becomes_one_set_field_and_a_repeat_becomes_none() {
         FormOutcome::Intent(UiIntent::SetCamField { value: DialogValue::Choice(1), .. })
     ));
     assert!(matches!(
-        react(&h, doc, CamDialog::Device, Some(&model), ControlId::Cam(DialogField::RotaryEnabled), ControlValue::Toggle(true)),
+        react(
+            &h,
+            doc,
+            CamDialog::Device,
+            Some(&model),
+            ControlId::Cam(DialogField::RotaryEnabled),
+            ControlValue::Toggle(true)
+        ),
         FormOutcome::Intent(UiIntent::SetCamField { value: DialogValue::Flag(true), .. })
     ));
-    assert_eq!(react(&h, doc, CamDialog::Device, None, id.clone(), ControlValue::Text("1".into())), FormOutcome::Nothing);
+    assert_eq!(
+        react(&h, doc, CamDialog::Device, None, id.clone(), ControlValue::Text("1".into())),
+        FormOutcome::Nothing
+    );
     // A row in error sends its text again, so a retry of the same text goes through; the reason is
     // under the row.
     h.send(UiIntent::SetCamField {
@@ -168,19 +186,45 @@ fn buttons_send_their_action_only_when_enabled_and_save_waits_for_a_path() {
     };
     assert_eq!(
         press(&h, CamDialog::Device, &device, DialogActionKind::Apply),
-        FormOutcome::Intent(UiIntent::CamDialogAction { document: doc, dialog: CamDialog::Device, action: DialogAction::Apply })
+        FormOutcome::Intent(UiIntent::CamDialogAction {
+            document: doc,
+            dialog: CamDialog::Device,
+            action: DialogAction::Apply
+        })
     );
-    assert_eq!(press(&h, CamDialog::Device, &device, DialogActionKind::ReturnToFlatbed), FormOutcome::Nothing, "no rotary to leave");
-    assert_eq!(press(&h, CamDialog::Device, &device, DialogActionKind::Generate), FormOutcome::Nothing, "not a Device button");
+    assert_eq!(
+        press(&h, CamDialog::Device, &device, DialogActionKind::ReturnToFlatbed),
+        FormOutcome::Nothing,
+        "no rotary to leave"
+    );
+    assert_eq!(
+        press(&h, CamDialog::Device, &device, DialogActionKind::Generate),
+        FormOutcome::Nothing,
+        "not a Device button"
+    );
     let focus = open(&mut h, doc, CamDialog::FocusTest);
-    assert_eq!(press(&h, CamDialog::FocusTest, &focus, DialogActionKind::Generate), FormOutcome::Nothing, "a focus test without Z does not start");
+    assert_eq!(
+        press(&h, CamDialog::FocusTest, &focus, DialogActionKind::Generate),
+        FormOutcome::Nothing,
+        "a focus test without Z does not start"
+    );
     // The generate button of a test is on the form, greyed when it cannot start.
     let f = form(&h, doc, CamDialog::FocusTest, &focus, Locale::En);
-    assert!(buttons(&f).iter().any(|(id, _, enabled)| *id == ControlId::CamAction(DialogActionKind::Generate) && !*enabled));
+    assert!(
+        buttons(&f).iter().any(|(id, _, enabled)| *id == ControlId::CamAction(DialogActionKind::Generate) && !*enabled)
+    );
 
     let material = open(&mut h, doc, CamDialog::MaterialTest);
-    assert_eq!(press(&h, CamDialog::MaterialTest, &material, DialogActionKind::ExportRd), FormOutcome::Nothing, "nothing to save yet");
-    h.send(UiIntent::CamDialogAction { document: doc, dialog: CamDialog::MaterialTest, action: DialogAction::Generate });
+    assert_eq!(
+        press(&h, CamDialog::MaterialTest, &material, DialogActionKind::ExportRd),
+        FormOutcome::Nothing,
+        "nothing to save yet"
+    );
+    h.send(UiIntent::CamDialogAction {
+        document: doc,
+        dialog: CamDialog::MaterialTest,
+        action: DialogAction::Generate,
+    });
     h.run_tasks();
     let material = h.controller().cam_dialog(doc, CamDialog::MaterialTest).unwrap();
     assert!(material.result.is_some());
@@ -216,10 +260,24 @@ fn the_order_levels_have_arrows_that_follow_the_row_and_move_the_level() {
     assert_eq!(arrow(OrderKey::Priority, false), Some(false), "the last cannot go down");
     assert_eq!(arrow(OrderKey::Layer, false), Some(true));
     assert_eq!(
-        react(&h, doc, CamDialog::Optimization, Some(&model), ControlId::CamMove(OrderKey::Layer, true), ControlValue::Press),
+        react(
+            &h,
+            doc,
+            CamDialog::Optimization,
+            Some(&model),
+            ControlId::CamMove(OrderKey::Layer, true),
+            ControlValue::Press
+        ),
         FormOutcome::Nothing
     );
-    let down = react(&h, doc, CamDialog::Optimization, Some(&model), ControlId::CamMove(OrderKey::Layer, false), ControlValue::Press);
+    let down = react(
+        &h,
+        doc,
+        CamDialog::Optimization,
+        Some(&model),
+        ControlId::CamMove(OrderKey::Layer, false),
+        ControlValue::Press,
+    );
     assert_eq!(
         down,
         FormOutcome::Intent(UiIntent::CamDialogAction {

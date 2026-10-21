@@ -113,7 +113,13 @@ fn the_list_has_one_line_per_layer_and_an_empty_note_before_the_first() {
     let st = PanelState::default();
     let empty = form(&h, doc, &st, Locale::Nl);
     assert!(list_items(&empty).is_empty());
-    assert!(empty.lines.iter().any(|l| matches!(l, FormLine::Text(t) if *t == host_text(HostText::NoOperations, Locale::Nl))), "an empty note");
+    assert!(
+        empty
+            .lines
+            .iter()
+            .any(|l| matches!(l, FormLine::Text(t) if *t == host_text(HostText::NoOperations, Locale::Nl))),
+        "an empty note"
+    );
     assign(&mut h, doc, 2);
     let f = form(&h, doc, &st, Locale::Nl);
     let items = list_items(&f);
@@ -198,9 +204,8 @@ fn the_output_and_visible_checks_become_their_own_intents_and_only_when_they_cha
     assign(&mut h, doc, 2);
     let op = h.document(doc).unwrap().operations[0].id;
     let st = PanelState { layer_row: Some(0), ..PanelState::default() };
-    let toggle = |h: &HeadlessEditorHarness, c, on| {
-        react(h, doc, &st, ControlId::LayerField(c), ControlValue::Toggle(on), &[])
-    };
+    let toggle =
+        |h: &HeadlessEditorHarness, c, on| react(h, doc, &st, ControlId::LayerField(c), ControlValue::Toggle(on), &[]);
     assert_eq!(
         toggle(&h, LayerColumn::Visible, false),
         FormOutcome::Intent(UiIntent::SetOperationVisible { document: doc, operation: op, visible: false })
@@ -235,10 +240,7 @@ fn double_click_and_the_button_open_cut_settings_of_the_layer() {
         FormOutcome::Nothing
     );
     let st = PanelState { layer_row: Some(0), ..PanelState::default() };
-    assert_eq!(
-        react(&h, doc, &st, ControlId::LayerCutSettings, ControlValue::Press, &[]),
-        FormOutcome::Intent(open)
-    );
+    assert_eq!(react(&h, doc, &st, ControlId::LayerCutSettings, ControlValue::Press, &[]), FormOutcome::Intent(open));
     assert_eq!(
         react(&h, doc, &PanelState::default(), ControlId::LayerCutSettings, ControlValue::Press, &[]),
         FormOutcome::Nothing,
@@ -270,5 +272,8 @@ fn the_add_row_sends_name_kind_speed_and_power_as_typed() {
     assert_eq!(h.document(doc).unwrap().operations.len(), 1);
     // A kind that is not on offer sends nothing.
     let bad = vec![(ControlId::LayerAddKind, ControlValue::Choice(9))];
-    assert_eq!(react(&h, doc, &PanelState::default(), ControlId::LayerAdd, ControlValue::Press, &bad), FormOutcome::Nothing);
+    assert_eq!(
+        react(&h, doc, &PanelState::default(), ControlId::LayerAdd, ControlValue::Press, &bad),
+        FormOutcome::Nothing
+    );
 }

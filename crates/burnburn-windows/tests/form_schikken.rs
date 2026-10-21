@@ -52,8 +52,12 @@ fn press(
         }
     }
     let vm = h.view();
-    let outcome =
-        schikken::react(&ControlId::Schikken(control), &value, &values, &FormContext { vm: &vm, document: doc, locale: Locale::En });
+    let outcome = schikken::react(
+        &ControlId::Schikken(control),
+        &value,
+        &values,
+        &FormContext { vm: &vm, document: doc, locale: Locale::En },
+    );
     match outcome {
         FormOutcome::Intent(i) => {
             h.send(i.clone());
@@ -109,7 +113,14 @@ fn a_dock_option_change_sends_the_options_with_that_change_and_a_wrong_gap_is_sa
     let (mut h, doc) = window();
     let Some(FormLine::Field { text, .. }) = line(&h, doc, C::PlaceGap) else { panic!("gap field") };
     assert_eq!(text, "0");
-    let sent = press(&mut h, doc, C::PlaceGap, ControlValue::Text("2,5".into()), &[(C::PlaceGap, ControlValue::Text("2,5".into()))]).unwrap();
+    let sent = press(
+        &mut h,
+        doc,
+        C::PlaceGap,
+        ControlValue::Text("2,5".into()),
+        &[(C::PlaceGap, ControlValue::Text("2,5".into()))],
+    )
+    .unwrap();
     assert_eq!(
         sent,
         UiIntent::Schikken(SchikkenIntent::SetPlaceOptions {
@@ -120,10 +131,17 @@ fn a_dock_option_change_sends_the_options_with_that_change_and_a_wrong_gap_is_sa
     let Some(FormLine::Field { text, .. }) = line(&h, doc, C::PlaceGap) else { panic!("gap field") };
     assert_eq!(text, "2,5");
     // A choice keeps the typed gap.
-    press(&mut h, doc, C::PlaceContact, ControlValue::Choice(1), &[(C::PlaceContact, ControlValue::Choice(1))]).unwrap();
+    press(&mut h, doc, C::PlaceContact, ControlValue::Choice(1), &[(C::PlaceContact, ControlValue::Choice(1))])
+        .unwrap();
     let options = h.document(doc).unwrap().schikken.place.input;
     assert_eq!((options.gap.as_str(), options.contact), ("2,5", burnburn_presentation::DockContactChoice::Outline));
-    press(&mut h, doc, C::PlaceGap, ControlValue::Text("abc".into()), &[(C::PlaceGap, ControlValue::Text("abc".into()))]);
+    press(
+        &mut h,
+        doc,
+        C::PlaceGap,
+        ControlValue::Text("abc".into()),
+        &[(C::PlaceGap, ControlValue::Text("abc".into()))],
+    );
     assert!(matches!(line(&h, doc, C::PlaceGap), Some(FormLine::Field { invalid: true, .. })));
     assert!(texts(&h, doc).iter().any(|t| t.contains("0 or more")), "{:?}", texts(&h, doc));
 }
@@ -154,7 +172,13 @@ fn the_slots_dialog_is_a_flow_and_ok_sends_every_field_as_typed() {
     // Rectangles have no slots of that width: the dialog stays and says so.
     assert!(texts(&h, doc).iter().any(|t| t.contains("Nothing would change")), "{:?}", texts(&h, doc));
     assert_eq!(
-        press(&mut h, doc, C::SlotsFrom, ControlValue::Text("4".into()), &[(C::SlotsFrom, ControlValue::Text("4".into()))]),
+        press(
+            &mut h,
+            doc,
+            C::SlotsFrom,
+            ControlValue::Text("4".into()),
+            &[(C::SlotsFrom, ControlValue::Text("4".into()))]
+        ),
         None,
         "typing alone sends nothing"
     );
@@ -166,9 +190,14 @@ fn the_slots_dialog_is_a_flow_and_ok_sends_every_field_as_typed() {
 fn the_nest_panel_shows_the_report_and_its_buttons_follow_the_run() {
     let (mut h, doc) = window();
     h.invoke(doc, CommandKey::QuickNest);
-    assert!(button_enabled(&h, doc, C::NestStart) && !button_enabled(&h, doc, C::NestStop) && !button_enabled(&h, doc, C::NestApply));
+    assert!(
+        button_enabled(&h, doc, C::NestStart)
+            && !button_enabled(&h, doc, C::NestStop)
+            && !button_enabled(&h, doc, C::NestApply)
+    );
     assert!(texts(&h, doc).iter().any(|t| t.contains("2 parts ready")), "{:?}", texts(&h, doc));
-    press(&mut h, doc, C::NestRotations, ControlValue::Choice(3), &[(C::NestRotations, ControlValue::Choice(3))]).unwrap();
+    press(&mut h, doc, C::NestRotations, ControlValue::Choice(3), &[(C::NestRotations, ControlValue::Choice(3))])
+        .unwrap();
     assert_eq!(h.document(doc).unwrap().schikken.nest.unwrap().input.rotations, NestRotations::Eighth);
     press(&mut h, doc, C::NestStart, ControlValue::Press, &[]).unwrap();
     assert!(button_enabled(&h, doc, C::NestStop) && !button_enabled(&h, doc, C::NestStart), "running");
@@ -258,7 +287,8 @@ fn warp_shows_its_hint_and_the_apply_button_waits_for_a_change() {
     assert!(matches!(&nl.lines[0], FormLine::Heading(t) if t == "Vervorm selectie (4 punten)"));
     assert!(!button_enabled(&h, doc, C::ReshapeApply));
     assert!(matches!(line(&h, doc, C::WarpBilinear), Some(FormLine::Check { on: false, .. })));
-    press(&mut h, doc, C::WarpBilinear, ControlValue::Toggle(true), &[(C::WarpBilinear, ControlValue::Toggle(true))]).unwrap();
+    press(&mut h, doc, C::WarpBilinear, ControlValue::Toggle(true), &[(C::WarpBilinear, ControlValue::Toggle(true))])
+        .unwrap();
     assert!(matches!(line(&h, doc, C::WarpBilinear), Some(FormLine::Check { on: true, .. })));
     h.drag(doc, (60.0, 10.0), (50.0, 25.0));
     assert!(button_enabled(&h, doc, C::ReshapeApply));

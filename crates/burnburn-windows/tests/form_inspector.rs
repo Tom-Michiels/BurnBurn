@@ -49,7 +49,9 @@ fn the_inspector_docks_right_and_shows_the_nine_fields_two_per_row_with_their_un
     let rows: Vec<Vec<ControlId>> = form
         .lines
         .iter()
-        .filter_map(|l| if let FormLine::Row(inner) = l { Some(inner.iter().flat_map(FormLine::ids).collect()) } else { None })
+        .filter_map(|l| {
+            if let FormLine::Row(inner) = l { Some(inner.iter().flat_map(FormLine::ids).collect()) } else { None }
+        })
         .collect();
     use FieldKey::*;
     assert_eq!(
@@ -111,7 +113,10 @@ fn a_field_commit_sends_the_raw_text_once_and_a_retry_after_an_error_still_goes(
         FormOutcome::Intent(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: "200 mm".into() })
     );
     // Enter and the following focus loss send the same text: only changed text is a commit.
-    assert_eq!(react(&h, doc, ControlId::Inspector(FieldKey::Width), ControlValue::Text("120".into())), FormOutcome::Nothing);
+    assert_eq!(
+        react(&h, doc, ControlId::Inspector(FieldKey::Width), ControlValue::Text("120".into())),
+        FormOutcome::Nothing
+    );
     // A refused text keeps what was typed, and typing it again is a retry.
     h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: "abc".into() });
     let form = form(&h, doc, Locale::En);
@@ -206,7 +211,8 @@ fn shape_and_tool_parameters_are_rows_below_the_fields_and_commit_as_typed() {
     // The star tool has options (points, ratio) before anything is drawn.
     h.send(UiIntent::SelectTool { document: Some(doc), id: "shape.star".into() });
     let form = form(&h, doc, Locale::En);
-    let tool_ids: Vec<ControlId> = form.ids().into_iter().filter(|i| matches!(i, ControlId::Param(ParamSection::Tool, _))).collect();
+    let tool_ids: Vec<ControlId> =
+        form.ids().into_iter().filter(|i| matches!(i, ControlId::Param(ParamSection::Tool, _))).collect();
     assert!(!tool_ids.is_empty(), "tool options are shown: {:?}", form.ids());
     let vm = h.view();
     let first = &vm.document(doc).unwrap().tool_options[0];

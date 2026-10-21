@@ -29,7 +29,12 @@ fn form(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Option<Fo
 fn press(h: &HeadlessEditorHarness, doc: DocumentId, id: ControlId, typed: &str) -> FormOutcome {
     let vm = h.view();
     let values = [(ControlId::GeometryValue, ControlValue::Text(typed.into()))];
-    shapes::dialog_react(&id, &ControlValue::Press, &values, &FormContext { vm: &vm, document: doc, locale: Locale::En })
+    shapes::dialog_react(
+        &id,
+        &ControlValue::Press,
+        &values,
+        &FormContext { vm: &vm, document: doc, locale: Locale::En },
+    )
 }
 
 #[test]
@@ -46,7 +51,9 @@ fn round_corners_opens_a_floating_value_dialog_in_the_window_language() {
     assert_eq!((en.kind, en.placement), (FormKind::GeometryDialog, Placement::Floating));
     let nl = form(&h, doc, Locale::Nl).unwrap();
     assert_ne!(en.title, nl.title, "the title follows the language");
-    assert!(matches!(&en.lines[0], FormLine::Field { id: ControlId::GeometryValue, text, invalid: false, .. } if !text.is_empty()));
+    assert!(
+        matches!(&en.lines[0], FormLine::Field { id: ControlId::GeometryValue, text, invalid: false, .. } if !text.is_empty())
+    );
     assert!(en.ids().contains(&ControlId::GeometryOk) && en.ids().contains(&ControlId::GeometryCancel));
 }
 

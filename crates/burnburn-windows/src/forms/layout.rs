@@ -126,14 +126,21 @@ fn place(line: &FormLine, x: i32, y: i32, w: i32, stacked: bool, m: &Metrics, ou
         }
         FormLine::Text(t) | FormLine::Problem(t) => {
             let h = m.text_height(t, w);
-            let item = if matches!(line, FormLine::Problem(_)) { Item::Problem(t.clone()) } else { Item::Text(t.clone()) };
+            let item =
+                if matches!(line, FormLine::Problem(_)) { Item::Problem(t.clone()) } else { Item::Text(t.clone()) };
             out.push(Placed { item, rect: rect(x, y, w, h), caption: None });
             h
         }
         FormLine::Field { id, caption, text, enabled, invalid, hint } => captioned(
             out,
             caption,
-            Item::Field { id: id.clone(), text: text.clone(), enabled: *enabled, invalid: *invalid, hint: hint.clone() },
+            Item::Field {
+                id: id.clone(),
+                text: text.clone(),
+                enabled: *enabled,
+                invalid: *invalid,
+                hint: hint.clone(),
+            },
         ),
         FormLine::Choice { id, caption, items, selected, enabled } => captioned(
             out,
@@ -153,7 +160,11 @@ fn place(line: &FormLine, x: i32, y: i32, w: i32, stacked: bool, m: &Metrics, ou
             let bw = (w - (n - 1) * m.gap) / n;
             for (i, b) in buttons.iter().enumerate() {
                 let i = i32::try_from(i).unwrap_or(0);
-                out.push(Placed { item: Item::Button(b.clone()), rect: rect(x + i * (bw + m.gap), y, bw, m.button), caption: None });
+                out.push(Placed {
+                    item: Item::Button(b.clone()),
+                    rect: rect(x + i * (bw + m.gap), y, bw, m.button),
+                    caption: None,
+                });
             }
             m.button
         }

@@ -110,7 +110,8 @@ pub struct StripLayout {
 /// row, panels are set apart by a wider gap. `scale` 1.0 = 96 dpi.
 pub fn strip_layout(panels: &[StripPanel], width: i32, scale: f64) -> StripLayout {
     let px = |v: f64| (v * scale).round().max(1.0) as i32;
-    let (margin, gap, panel_gap, row_h, char_w, pad, drop_w) = (px(4.0), px(3.0), px(12.0), px(26.0), px(7.0), px(16.0), px(14.0));
+    let (margin, gap, panel_gap, row_h, char_w, pad, drop_w) =
+        (px(4.0), px(3.0), px(12.0), px(26.0), px(7.0), px(16.0), px(14.0));
     let mut controls = Vec::new();
     let (mut x, mut y) = (margin, margin);
     let place = |x: &mut i32, y: &mut i32, w: i32, extra: i32| -> Rect {

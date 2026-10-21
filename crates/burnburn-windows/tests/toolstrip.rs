@@ -126,8 +126,7 @@ fn the_strip_flows_over_rows_without_overlap_and_a_group_gets_a_drop_down() {
     let faces: usize = panels.iter().map(|p| p.groups.len()).sum();
     assert_eq!(tools, faces);
     let drops = narrow.controls.iter().filter(|c| matches!(c.action, StripAction::Dropdown { .. })).count();
-    let with_variants: usize =
-        panels.iter().flat_map(|p| &p.groups).filter(|g| g.variants.len() > 1).count();
+    let with_variants: usize = panels.iter().flat_map(|p| &p.groups).filter(|g| g.variants.len() > 1).count();
     assert_eq!(drops, with_variants);
     // The DPI scales the rows.
     assert!(strip_layout(&panels, 800, 2.0).height > strip_layout(&panels, 800, 1.0).height);

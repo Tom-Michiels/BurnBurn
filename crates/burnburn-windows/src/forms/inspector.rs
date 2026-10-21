@@ -11,14 +11,13 @@ use super::{
 use crate::adapter::message_text;
 use crate::l10n::{HostText, host_text, message_or_key};
 use crate::panels::{
-    INSPECTOR_FLIP_BUTTONS, INSPECTOR_ROWS, cam_priority_hint, flip_intent, inspector_controls, field_unit_for,
+    INSPECTOR_FLIP_BUTTONS, INSPECTOR_ROWS, cam_priority_hint, field_unit_for, flip_intent, inspector_controls,
     reference_point_intent,
 };
 
 /// The glyphs of the reference-point buttons, row by row (`RefPoint::ALL` order).
-const REFERENCE_GLYPHS: [&str; 9] = [
-    "\u{2196}", "\u{2191}", "\u{2197}", "\u{2190}", "\u{25CF}", "\u{2192}", "\u{2199}", "\u{2193}", "\u{2198}",
-];
+const REFERENCE_GLYPHS: [&str; 9] =
+    ["\u{2196}", "\u{2191}", "\u{2197}", "\u{2190}", "\u{25CF}", "\u{2192}", "\u{2199}", "\u{2193}", "\u{2198}"];
 /// The glyphs of the flip buttons (the command names are their menu items).
 const FLIP_GLYPHS: [&str; 2] = ["\u{2194}", "\u{2195}"];
 
@@ -29,7 +28,8 @@ pub fn form(ctx: &FormContext<'_>) -> Option<Form> {
     let field_line = |key: FieldKey| {
         let model = doc.inspector.as_ref().and_then(|i| i.field(key));
         let unit = model.map_or(Unit::Millimeter, |f| f.unit);
-        let caption = format!("{} ({})", message_or_key(MessageKey::Field(key), locale), field_unit_for(key, unit, locale));
+        let caption =
+            format!("{} ({})", message_or_key(MessageKey::Field(key), locale), field_unit_for(key, unit, locale));
         FormLine::Field {
             id: ControlId::Inspector(key),
             caption,
@@ -108,8 +108,9 @@ pub fn react(id: &ControlId, value: &ControlValue, ctx: &FormContext<'_>) -> For
         (ControlId::RefPoint(n), ControlValue::Press) => {
             reference_point_intent(ctx.document, isize::try_from(*n).unwrap_or(-1))
         }
-        (ControlId::AspectLock, ControlValue::Toggle(on)) => (*on != doc.aspect_locked)
-            .then_some(UiIntent::SetAspectLock { document: ctx.document, locked: *on }),
+        (ControlId::AspectLock, ControlValue::Toggle(on)) => {
+            (*on != doc.aspect_locked).then_some(UiIntent::SetAspectLock { document: ctx.document, locked: *on })
+        }
         (ControlId::Flip(n), ControlValue::Press) => flip_intent(ctx.document, isize::try_from(*n).unwrap_or(-1)),
         (ControlId::Param(section, slot), value) => shapes::param_intent_of(ctx, *section, *slot, value),
         _ => None,

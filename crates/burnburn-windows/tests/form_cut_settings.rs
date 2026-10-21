@@ -87,10 +87,7 @@ fn set(values: &mut Vec<(ControlId, ControlValue)>, id: ControlId, value: Contro
 }
 
 fn option_fields(form: &Form) -> Vec<CutField> {
-    form.ids()
-        .into_iter()
-        .filter_map(|i| if let ControlId::CutOption(f) = i { Some(f) } else { None })
-        .collect()
+    form.ids().into_iter().filter_map(|i| if let ControlId::CutOption(f) = i { Some(f) } else { None }).collect()
 }
 
 fn enabled(form: &Form, id: &ControlId) -> bool {
@@ -222,7 +219,10 @@ fn what_the_profile_blocks_stays_listed_greyed_with_its_reason() {
         Some(FormLine::Choice { items, .. }) => {
             let offset: &ChoiceItem = &items[2];
             assert!(!offset.enabled, "a blocked mode cannot be picked");
-            assert!(offset.title.starts_with("Offsetvulling") && offset.title.to_lowercase().contains("ontbrekende capability"));
+            assert!(
+                offset.title.starts_with("Offsetvulling")
+                    && offset.title.to_lowercase().contains("ontbrekende capability")
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -234,7 +234,10 @@ fn what_the_profile_blocks_stays_listed_greyed_with_its_reason() {
     h.send(intent);
     let after = form(&h, doc, Locale::Nl, &[]).expect("still open after the refusal");
     assert!(
-        after.lines.iter().any(|l| matches!(l, FormLine::Problem(p) if p.to_lowercase().contains("ontbrekende capability"))),
+        after
+            .lines
+            .iter()
+            .any(|l| matches!(l, FormLine::Problem(p) if p.to_lowercase().contains("ontbrekende capability"))),
         "the reason is on the sheet"
     );
     assert_eq!(h.document(doc).unwrap().operations[0].kind, OperationKind::Line);

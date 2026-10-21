@@ -6,11 +6,11 @@
 //! DX12 canvas surface. Native code never mutates the document; it only produces intents.
 
 pub mod adapter;
+pub mod forms;
 /// The hosts' one NL/EN catalogue, compiled from the macOS host's source file so both hosts show
 /// the same strings (interim until it moves into `burnburn-presentation`, contracts-phase-c §IM20).
 #[path = "../../burnburn-macos/src/l10n.rs"]
 pub mod l10n;
-pub mod forms;
 pub mod menus;
 pub mod tasks;
 

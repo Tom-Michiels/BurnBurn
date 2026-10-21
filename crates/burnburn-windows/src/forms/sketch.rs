@@ -71,7 +71,11 @@ pub fn form(ctx: &FormContext<'_>) -> Option<Form> {
         FormLine::field(ControlId::SketchParamName, t(HostText::SketchParameterName), String::new()),
         FormLine::field(ControlId::SketchParamText, t(HostText::SketchParameterValue), String::new()),
     ]));
-    lines.push(FormLine::Buttons(vec![FormButton::new(ControlId::SketchParamSet, t(HostText::SketchParameterSet), true)]));
+    lines.push(FormLine::Buttons(vec![FormButton::new(
+        ControlId::SketchParamSet,
+        t(HostText::SketchParameterSet),
+        true,
+    )]));
     lines.push(FormLine::Text(p.hint.clone()));
     Some(Form { kind: FormKind::Sketch, title: p.title, placement: Placement::Floating, lines })
 }
@@ -88,12 +92,10 @@ pub fn react(id: &ControlId, value: &ControlValue, values: &FormValues, ctx: &Fo
             .and_then(|row| sketch_value_intent(vm, document, row, text)),
         (ControlId::SketchRole, ControlValue::Press) => sketch_role_intent(vm, document),
         (ControlId::SketchProblem, ControlValue::Press) => sketch_problem_intent(vm, document),
-        (ControlId::SketchRemove, ControlValue::Press) => {
-            mode.selected_constraints.first().map(|_| UiIntent::Invoke {
-                document: Some(document),
-                command: CommandKey::SketchRemoveConstraint,
-            })
-        }
+        (ControlId::SketchRemove, ControlValue::Press) => mode
+            .selected_constraints
+            .first()
+            .map(|_| UiIntent::Invoke { document: Some(document), command: CommandKey::SketchRemoveConstraint }),
         (ControlId::SketchParamSet, ControlValue::Press) => sketch_parameter_intent(
             vm,
             document,

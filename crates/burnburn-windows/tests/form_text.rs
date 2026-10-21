@@ -78,7 +78,10 @@ fn no_text_no_panels_and_a_selected_text_has_a_floating_toolbar() {
     assert_eq!(nl.title, "Tekst");
     match f.find(&ControlId::Text(Slot::Family)) {
         Some(FormLine::Choice { items, selected, .. }) => {
-            assert_eq!(items.iter().map(|i| i.title.as_str()).collect::<Vec<_>>(), ["BIZ UDPGothic", "Liberation Sans"]);
+            assert_eq!(
+                items.iter().map(|i| i.title.as_str()).collect::<Vec<_>>(),
+                ["BIZ UDPGothic", "Liberation Sans"]
+            );
             assert_eq!(*selected, 1);
         }
         other => panic!("{other:?}"),
@@ -90,7 +93,10 @@ fn no_text_no_panels_and_a_selected_text_has_a_floating_toolbar() {
         Some(FormLine::Field { text, .. }) => text.clone(),
         other => panic!("{other:?}"),
     };
-    assert_eq!((fields(Slot::HSpace).as_str(), fields(Slot::VSpace).as_str(), fields(Slot::Height).as_str()), ("0", "0", "10"));
+    assert_eq!(
+        (fields(Slot::HSpace).as_str(), fields(Slot::VSpace).as_str(), fields(Slot::Height).as_str()),
+        ("0", "0", "10")
+    );
 }
 
 #[test]
@@ -126,7 +132,9 @@ fn the_text_on_path_sheet_opens_with_the_command_and_forwards_its_choices() {
     h.invoke(doc, CommandKey::TextOnPath);
     let f = form(&h, doc, FormKind::TextPath).expect("open");
     assert_eq!(f.placement, Placement::Floating);
-    assert!(matches!(f.find(&ControlId::Text(Slot::PathDistort)), Some(FormLine::Choice { selected: 0, items, .. }) if items.len() == 2));
+    assert!(
+        matches!(f.find(&ControlId::Text(Slot::PathDistort)), Some(FormLine::Choice { selected: 0, items, .. }) if items.len() == 2)
+    );
     let path = |e: TextPathEdit| Some(UiIntent::TextPath { document: doc, edit: e });
     assert_eq!(intent(&h, doc, Slot::PathDistort, ControlValue::Choice(1)), path(TextPathEdit::Distort(Distort::Warp)));
     assert_eq!(intent(&h, doc, Slot::PathStart, typed("12,5")), path(TextPathEdit::Start("12,5".into())));
@@ -137,7 +145,9 @@ fn the_text_on_path_sheet_opens_with_the_command_and_forwards_its_choices() {
     let first: Vec<_> = h.document(doc).unwrap().objects.iter().take(1).map(|o| o.id).collect();
     h.send(UiIntent::Select { document: doc, ids: first, mode: SelectMode::Replace });
     let f = form(&h, doc, FormKind::TextPath).unwrap();
-    assert!(f.lines.iter().any(|l| matches!(l, FormLine::Text(t) | FormLine::Problem(t) if t.to_lowercase().contains("one text and one"))));
+    assert!(f.lines.iter().any(
+        |l| matches!(l, FormLine::Text(t) | FormLine::Problem(t) if t.to_lowercase().contains("one text and one"))
+    ));
     let apply = f
         .lines
         .iter()
@@ -159,7 +169,10 @@ fn the_variable_panel_shows_serial_csv_and_the_preview_and_its_controls_send_var
         other => panic!("{other:?}"),
     };
     assert_eq!(cur, "1");
-    assert!(f.lines.iter().any(|l| matches!(l, FormLine::Problem(p) if p.to_lowercase().contains("data"))), "no data yet");
+    assert!(
+        f.lines.iter().any(|l| matches!(l, FormLine::Problem(p) if p.to_lowercase().contains("data"))),
+        "no data yet"
+    );
     let var = |e: VariableEdit| Some(UiIntent::Variable { document: doc, edit: e });
     assert_eq!(intent(&h, doc, Slot::SerialEnd, typed("99")), var(VariableEdit::Serial(SerialField::End, "99".into())));
     assert_eq!(intent(&h, doc, Slot::SerialStart, typed("1")), None, "the value it shows");
@@ -172,12 +185,22 @@ fn the_variable_panel_shows_serial_csv_and_the_preview_and_its_controls_send_var
     assert_eq!(text::file_chosen(None, &ctx), FormOutcome::Nothing);
     let bytes = b"naam;nummer\nJansen;7\n".to_vec();
     let outcome = text::file_chosen(Some(("k.csv".into(), bytes.clone())), &ctx);
-    assert_eq!(outcome, FormOutcome::Intent(UiIntent::Variable { document: doc, edit: VariableEdit::LoadCsv { name: "k.csv".into(), bytes } }));
+    assert_eq!(
+        outcome,
+        FormOutcome::Intent(UiIntent::Variable {
+            document: doc,
+            edit: VariableEdit::LoadCsv { name: "k.csv".into(), bytes }
+        })
+    );
     if let FormOutcome::Intent(i) = outcome {
         h.send(i);
     }
     let f = form(&h, doc, FormKind::Variable).unwrap();
-    assert!(f.lines.iter().any(|l| matches!(l, FormLine::Text(t) if t.contains("Jansen #0001") || t.contains("Jansen #1"))), "{:?}", f.lines);
+    assert!(
+        f.lines.iter().any(|l| matches!(l, FormLine::Text(t) if t.contains("Jansen #0001") || t.contains("Jansen #1"))),
+        "{:?}",
+        f.lines
+    );
 }
 
 fn open_barcode() -> (HeadlessEditorHarness, DocumentId) {
@@ -218,7 +241,12 @@ fn the_barcode_dialog_lists_the_types_with_unsupported_ones_greyed_and_only_the_
     let grid = Symbology::ALL.iter().position(|s| *s == Symbology::GridMatrix).unwrap();
     assert_eq!(intent(&h, doc, Slot::BcType, ControlValue::Choice(grid)), None, "a greyed type does nothing");
     assert_eq!(
-        intent(&h, doc, Slot::BcType, ControlValue::Choice(Symbology::ALL.iter().position(|s| *s == Symbology::QrCode).unwrap())),
+        intent(
+            &h,
+            doc,
+            Slot::BcType,
+            ControlValue::Choice(Symbology::ALL.iter().position(|s| *s == Symbology::QrCode).unwrap())
+        ),
         bc(BarcodeEdit::Symbology(Symbology::QrCode))
     );
 }
