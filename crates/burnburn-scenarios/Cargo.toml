@@ -14,6 +14,7 @@ workspace = true
 [dev-dependencies]
 burnburn-cam = { workspace = true }
 burnburn-document = { workspace = true }
+burnburn-editor = { workspace = true }
 burnburn-generators = { workspace = true }
 burnburn-geometry = { workspace = true }
 burnburn-image = { workspace = true }
