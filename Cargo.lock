@@ -394,16 +394,21 @@ version = "0.1.0"
 dependencies = [
  "burnburn-cam",
  "burnburn-document",
+ "burnburn-editor",
  "burnburn-generators",
  "burnburn-geometry",
  "burnburn-image",
  "burnburn-io",
  "burnburn-job",
+ "burnburn-machine",
+ "burnburn-presentation",
  "burnburn-ruida",
  "burnburn-sketch",
  "burnburn-test-support",
+ "burnburn-text",
  "burnburn-trace",
  "burnburn-types",
+ "proptest",
  "serde_json",
 ]
 
