@@ -381,6 +381,15 @@ pub enum NativeEvent {
     SketchProblemClicked {
         document: DocumentId,
     },
+    /// The sketch panel's "Herstel laatste geldige" button.
+    SketchRestoreRequested {
+        document: DocumentId,
+    },
+    /// The sketch panel's "Verwijder parameter" button with the selected parameter row.
+    SketchParameterRemoveRequested {
+        document: DocumentId,
+        row: usize,
+    },
     /// A parameter set in the sketch panel: name and expression as typed.
     SketchParameterCommitted {
         document: DocumentId,
@@ -817,6 +826,16 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             Some(i) => i,
             None => return Reaction::Nothing,
         },
+        E::SketchRestoreRequested { document } => match crate::panels::sketch_restore_intent(vm, document) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::SketchParameterRemoveRequested { document, row } => {
+            match crate::panels::sketch_parameter_remove_intent(vm, document, row) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
         E::SketchParameterCommitted { document, name, text } => {
             match crate::panels::sketch_parameter_intent(vm, document, &name, &text) {
                 Some(i) => i,

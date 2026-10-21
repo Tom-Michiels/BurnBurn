@@ -117,6 +117,13 @@ pub enum UiIntent {
         name: String,
         text: String,
     },
+    /// Remove a parameter of the sketch (S02, one history entry). A parameter that a dimension or
+    /// another parameter still uses is not removed; the panel says so.
+    RemoveSketchParameter {
+        document: DocumentId,
+        sketch: SketchId,
+        name: String,
+    },
     /// Constraint panel (S01/S03): add a relation or dimension (one history entry).
     AddSketchConstraint {
         document: DocumentId,
@@ -161,6 +168,12 @@ pub enum UiIntent {
     /// The conflict message was clicked: select the constraints involved (S04).
     SelectSketchProblem {
         document: DocumentId,
+    },
+    /// "Herstel laatste geldige" (S04): undo the failed edits of this sketch until it solves
+    /// again. They stay available as redo. Refused (with a message) when no earlier state solved.
+    RestoreLastValidSketch {
+        document: DocumentId,
+        sketch: SketchId,
     },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {

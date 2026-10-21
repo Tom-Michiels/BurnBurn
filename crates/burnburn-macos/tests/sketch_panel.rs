@@ -209,8 +209,9 @@ fn a_parameter_is_set_with_its_raw_expression() {
         UiIntent::SetSketchParameter { document: doc, sketch, name: "dikte".into(), text: "3,1 mm".into() },
         "the expression is not parsed here"
     );
+    // W4-UI-gaten (S02): presentation reads the decimal comma and stores the unambiguous text.
     let panel = sketch_panel(&h.view(), doc, Locale::Nl).unwrap();
-    assert!(panel.parameters.contains(&("dikte".to_owned(), "3,1 mm".to_owned())));
+    assert!(panel.parameters.contains(&("dikte".to_owned(), "3.1 mm".to_owned())));
     assert_eq!(
         intent(&h, NativeEvent::SketchParameterCommitted { document: doc, name: "  ".into(), text: "3 mm".into() }),
         None,
@@ -219,7 +220,7 @@ fn a_parameter_is_set_with_its_raw_expression() {
     assert_eq!(
         intent(
             &h,
-            NativeEvent::SketchParameterCommitted { document: doc, name: "dikte".into(), text: "3,1 mm".into() }
+            NativeEvent::SketchParameterCommitted { document: doc, name: "dikte".into(), text: "3.1 mm".into() }
         ),
         None,
         "unchanged"

@@ -251,6 +251,56 @@ pub(super) fn edit_selected(s: &mut Session, document: DocumentId) -> AppUpdate 
     }
 }
 
+fn status_of(s: &Session, id: SketchId) -> Option<SketchStatus> {
+    sketch_rows(&s.doc.snapshot()).into_iter().find(|r| r.id == id).map(|r| r.status)
+}
+
+/// "Herstel laatste geldige" (S04): undo step by step until the sketch solves again. The failed
+/// edits stay on the redo stack. When the history holds no solving state the steps are redone
+/// and the user is told (nothing is lost, nothing guessed).
+fn restore_last_valid(s: &mut Session, document: DocumentId, id: SketchId) -> AppUpdate {
+    if s.sketch.active != Some(id) || status_of(s, id) != Some(SketchStatus::Failed) {
+        return AppUpdate::default();
+    }
+    // A gesture in progress is cancelled first; it never reaches history (A4).
+    s.editor.cancel();
+    let mut undone = 0usize;
+    let mut last = None;
+    while status_of(s, id) == Some(SketchStatus::Failed) {
+        let expected = s.doc.revision();
+        match s.doc.undo(expected) {
+            Ok(outcome) => {
+                undone += 1;
+                last = Some(outcome);
+            }
+            Err(_) => break,
+        }
+    }
+    if status_of(s, id) == Some(SketchStatus::Valid) {
+        s.sketch.refused = None;
+        return match last {
+            Some(outcome) => after_change(s, document, Ok(outcome)),
+            None => AppUpdate::default(),
+        };
+    }
+    let mut back = None;
+    for _ in 0..undone {
+        let expected = s.doc.revision();
+        match s.doc.redo(expected) {
+            Ok(outcome) => back = Some(outcome),
+            Err(_) => break,
+        }
+    }
+    let mut update = match back {
+        Some(outcome) => after_change(s, document, Ok(outcome)),
+        None => AppUpdate::default(),
+    };
+    let refused = refuse(s, document, MessageKey::SketchNothingToRestore);
+    update.view_changed |= refused.view_changed;
+    update.scenes_changed.extend(refused.scenes_changed);
+    update
+}
+
 /// Schets ▸ Sluit schets.
 pub(super) fn finish(s: &mut Session, document: DocumentId) -> AppUpdate {
     if s.sketch.active.is_none() {
@@ -322,12 +372,52 @@ impl AppController {
         })
     }
 
+    /// A parameter field committed: the same text again is no history entry (Return and the end
+    /// of editing both deliver it).
+    pub(super) fn set_sketch_parameter(
+        &mut self,
+        document: DocumentId,
+        sketch: SketchId,
+        name: String,
+        text: String,
+    ) -> AppUpdate {
+        let unchanged = self
+            .sessions
+            .get(&document)
+            .and_then(|s| s.doc.snapshot().sketch(sketch).map(|def| def.parameters().get(&name) == Some(text.as_str())))
+            .unwrap_or(false);
+        if unchanged {
+            return AppUpdate::default();
+        }
+        self.sketch_edit(document, SketchCommand::SetParameter { sketch, name, text })
+    }
+
+    /// Parameter ▸ Verwijder (S02): refused while something still uses the parameter.
+    pub(super) fn remove_sketch_parameter(&mut self, document: DocumentId, sketch: SketchId, name: String) -> AppUpdate {
+        let request = self.next_id::<RequestId>();
+        self.with_session(document, |s| {
+            let snapshot = s.doc.snapshot();
+            let Some(def) = snapshot.sketch(sketch) else { return AppUpdate::default() };
+            if def.parameters().get(&name).is_none() || super::sketch_param::parameter_in_use(def, &name) {
+                return refuse(s, document, MessageKey::SketchParameterInUse);
+            }
+            s.sketch.refused = None;
+            apply_edit(s, document, CommandPayload::Sketch(SketchCommand::RemoveParameter { sketch, name }), request)
+        })
+    }
+
+    /// "Herstel laatste geldige" (S04).
+    pub(super) fn restore_last_valid_sketch(&mut self, document: DocumentId, sketch: SketchId) -> AppUpdate {
+        self.with_session(document, |s| restore_last_valid(s, document, sketch))
+    }
+
     pub(super) fn add_sketch_dimension(
         &mut self,
         document: DocumentId,
         kind: SketchDimensionKind,
         text: String,
     ) -> AppUpdate {
+        let text = super::sketch_param::normalise_decimal_commas(&text);
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| add_dimension(s, document, kind, &text, request))
     }
@@ -763,6 +853,7 @@ pub(super) fn mode_view(s: &Session, snapshot: &DocumentSnapshot) -> Option<Sket
         selected_entities: s.sketch.entities.iter().copied().collect(),
         selected_constraints: s.sketch.constraints.iter().copied().collect(),
         refused: s.sketch.refused,
+        can_restore: row.status == SketchStatus::Failed && s.doc.can_undo(),
     })
 }
 

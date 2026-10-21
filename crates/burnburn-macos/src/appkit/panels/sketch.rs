@@ -34,6 +34,9 @@ pub(crate) struct SketchSection {
     /// The relation, dimension and remove buttons, in [`SKETCH_BUTTONS`] order, then Sluit schets.
     pub(crate) buttons: Vec<(CommandKey, Retained<NSButton>)>,
     pub(crate) role: Retained<NSButton>,
+    /// "Herstel laatste geldige" (S04) and "Verwijder parameter" (S02).
+    pub(crate) restore: Retained<NSButton>,
+    pub(crate) param_delete: Retained<NSButton>,
     pub(crate) params_table: Retained<NSTableView>,
     /// New parameter: name and expression.
     pub(crate) param_inputs: [Retained<NSTextField>; 2],
@@ -89,9 +92,12 @@ pub(crate) fn sketch_section(mtm: MainThreadMarker, locale: Locale) -> SketchSec
     let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, WIDTH, HEIGHT));
     let inner = WIDTH - 24.0;
 
-    let freedom = label(mtm, "", rect(12.0, HEIGHT - 34.0, inner, 20.0));
+    let freedom = label(mtm, "", rect(12.0, HEIGHT - 34.0, inner - 190.0, 20.0));
     freedom.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     content.addSubview(&freedom);
+    let restore = push_button(mtm, t(HostText::SketchRestoreLast));
+    restore.setFrame(rect(12.0 + inner - 186.0, HEIGHT - 38.0, 186.0, 26.0));
+    content.addSubview(&restore);
     let problem = push_button(mtm, "");
     problem.setBordered(false);
     problem.setAlignment(objc2_app_kit::NSTextAlignment::Left);
@@ -130,9 +136,12 @@ pub(crate) fn sketch_section(mtm: MainThreadMarker, locale: Locale) -> SketchSec
     role.setFrame(rect(12.0 + 3.0 * (bw + 6.0), 180.0, bw, 28.0));
     content.addSubview(&role);
 
-    let params_title = label(mtm, t(HostText::SketchParametersTitle), rect(12.0, 150.0, inner, 18.0));
+    let params_title = label(mtm, t(HostText::SketchParametersTitle), rect(12.0, 150.0, inner - 164.0, 18.0));
     params_title.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
     content.addSubview(&params_title);
+    let param_delete = push_button(mtm, t(HostText::SketchParameterDelete));
+    param_delete.setFrame(rect(12.0 + inner - 160.0, 147.0, 160.0, 24.0));
+    content.addSubview(&param_delete);
     let params_table = table_in(
         mtm,
         &content,
@@ -180,6 +189,8 @@ pub(crate) fn sketch_section(mtm: MainThreadMarker, locale: Locale) -> SketchSec
         table,
         buttons,
         role,
+        restore,
+        param_delete,
         params_table,
         param_inputs: [name, expr],
         param_set,
@@ -220,6 +231,8 @@ impl DocWindow {
             b.setEnabled(enabled);
         }
         sk.role.setEnabled(p.role_enabled);
+        sk.restore.setEnabled(p.restore_enabled);
+        sk.param_delete.setEnabled(!p.parameters.is_empty());
         if self.controller.set_sketch_rows(p.rows.clone()) {
             let table = sk.table.clone();
             if let Err(e) = crate::appkit::objc_try("reloading the constraint table", || table.reloadData()) {

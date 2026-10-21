@@ -61,6 +61,7 @@ mod reshape;
 mod shapes;
 mod shortcuts;
 mod sketch;
+mod sketch_param;
 mod support;
 mod tasks;
 mod tests_gen;
@@ -544,6 +545,7 @@ impl AppController {
                 self.sketch_edit(document, SketchCommand::RemoveConstraint { sketch, constraint })
             }
             UiIntent::SetSketchDimension { document, sketch, constraint, text } => {
+                let text = sketch_param::normalise_decimal_commas(&text);
                 self.sketch_edit(document, SketchCommand::SetDimensionValue { sketch, constraint, text })
             }
             UiIntent::Import { document, path } => self.parse_import(document, path),
@@ -669,8 +671,13 @@ impl AppController {
                 self.sketch_edit(document, SketchCommand::SetDimensionRole { sketch, constraint, role })
             }
             UiIntent::SelectSketchProblem { document } => self.select_sketch_problem(document),
+            UiIntent::RestoreLastValidSketch { document, sketch } => self.restore_last_valid_sketch(document, sketch),
             UiIntent::SetSketchParameter { document, sketch, name, text } => {
-                self.sketch_edit(document, SketchCommand::SetParameter { sketch, name, text })
+                let text = sketch_param::normalise_decimal_commas(&text);
+                self.set_sketch_parameter(document, sketch, name, text)
+            }
+            UiIntent::RemoveSketchParameter { document, sketch, name } => {
+                self.remove_sketch_parameter(document, sketch, name)
             }
             UiIntent::ApplyGeometryDialog { document, text } => {
                 let request = self.next_id::<RequestId>();
@@ -847,10 +854,12 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetTraceForm { document, .. }
         | UiIntent::ApplyTracePreset { document, .. }
         | UiIntent::SetSketchParameter { document, .. }
+        | UiIntent::RemoveSketchParameter { document, .. }
         | UiIntent::SketchSelect { document, .. }
         | UiIntent::AddSketchDimension { document, .. }
         | UiIntent::SetSketchDimensionRole { document, .. }
         | UiIntent::SelectSketchProblem { document }
+        | UiIntent::RestoreLastValidSketch { document, .. }
         | UiIntent::ApplyGeometryDialog { document, .. }
         | UiIntent::CancelGeometryDialog { document }
         | UiIntent::SetToolOption { document, .. }

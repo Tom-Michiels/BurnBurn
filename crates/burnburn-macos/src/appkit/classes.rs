@@ -408,6 +408,26 @@ define_class!(
             });
         }
 
+        /// The sketch panel's "Herstel laatste geldige" button.
+        #[unsafe(method(sketchRestoreClicked:))]
+        fn sketch_restore_clicked(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("sketchRestoreClicked:", (), || {
+                self.send(NativeEvent::SketchRestoreRequested { document: self.ivars().document });
+            });
+        }
+
+        /// The sketch panel's "Verwijder parameter" button: the selected row of the parameter table.
+        #[unsafe(method(sketchParameterDelete:))]
+        fn sketch_parameter_delete(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("sketchParameterDelete:", (), || {
+                let ivars = self.ivars();
+                let rows = super::panels::widgets::selected_rows(&ivars.sketch_params_table);
+                if let Some(row) = rows.first() {
+                    self.send(NativeEvent::SketchParameterRemoveRequested { document: ivars.document, row: *row });
+                }
+            });
+        }
+
         /// The sketch panel's Zet parameter button: name and expression go unparsed.
         #[unsafe(method(sketchParameterSet:))]
         fn sketch_parameter_set(&self, _sender: Option<&AnyObject>) {

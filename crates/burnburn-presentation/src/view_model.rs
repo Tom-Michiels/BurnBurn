@@ -530,6 +530,8 @@ pub struct SketchModeViewModel {
     pub selected_constraints: Vec<ConstraintId>,
     /// Why the last sketch input did nothing (selection does not fit, shape unsupported, …).
     pub refused: Option<MessageKey>,
+    /// "Herstel laatste geldige" applies: the sketch failed and there is history to go back in.
+    pub can_restore: bool,
 }
 
 /// Evaluation state shown with symbol and text (not colour only, X03).
@@ -785,6 +787,10 @@ pub enum MessageKey {
     SketchSelectionDoesNotFit,
     /// Nothing is selected to relate.
     SketchNothingSelected,
+    /// "Herstel laatste geldige": no earlier state of this sketch solved.
+    SketchNothingToRestore,
+    /// A parameter that is still used by a dimension or another parameter is not removed.
+    SketchParameterInUse,
     /// Ellipses, free curves and the like cannot be drawn into a sketch yet.
     SketchShapeUnsupported,
     /// The selected objects contain curves other than full circles.

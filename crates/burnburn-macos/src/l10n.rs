@@ -160,6 +160,10 @@ pub enum HostText {
     SketchParameterName,
     SketchParameterValue,
     SketchParameterSet,
+    /// Sketch panel: "Herstel laatste geldige" (S04).
+    SketchRestoreLast,
+    /// Sketch panel: remove the selected parameter (S02).
+    SketchParameterDelete,
     SketchProblemHint,
     SketchHint,
     SketchPending,
@@ -379,6 +383,8 @@ impl HostText {
         HostText::SketchParameterName,
         HostText::SketchParameterValue,
         HostText::SketchParameterSet,
+        HostText::SketchRestoreLast,
+        HostText::SketchParameterDelete,
         HostText::SketchProblemHint,
         HostText::SketchHint,
         HostText::SketchPending,
@@ -620,6 +626,8 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::SketchFullyConstrained => ("Volledig bepaald", "Fully constrained"),
         T::SketchRemove => ("Verwijder relatie", "Remove Constraint"),
         T::SketchToggleRole => ("Meten/Sturen", "Measure/Drive"),
+        T::SketchRestoreLast => ("Herstel laatste geldige", "Restore last valid"),
+        T::SketchParameterDelete => ("Verwijder parameter", "Remove parameter"),
         T::SketchParametersTitle => ("Parameters", "Parameters"),
         T::SketchParameterName => ("Naam", "Name"),
         T::SketchParameterValue => (
@@ -1500,6 +1508,14 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             "This selection does not fit this constraint or dimension.",
         ),
         M::SketchNothingSelected => ("Selecteer eerst elementen van de schets.", "Select sketch elements first."),
+        M::SketchParameterInUse => (
+            "Deze parameter wordt nog gebruikt door een maat of een andere parameter.",
+            "A dimension or another parameter still uses this parameter.",
+        ),
+        M::SketchNothingToRestore => (
+            "Geen eerdere stand van deze schets was geldig; er is niets hersteld.",
+            "No earlier state of this sketch was valid; nothing was restored.",
+        ),
         M::SketchShapeUnsupported => (
             "Dit kan nog niet in een schets getekend worden (alleen lijn, polylijn, rechthoek en cirkel).",
             "This cannot be drawn into a sketch yet (only line, polyline, rectangle and circle).",
@@ -1781,6 +1797,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::SketchInvalidDefinition,
         MessageKey::SketchSelectionDoesNotFit,
         MessageKey::SketchNothingSelected,
+        MessageKey::SketchNothingToRestore,
+        MessageKey::SketchParameterInUse,
         MessageKey::SketchShapeUnsupported,
         MessageKey::SketchConversionImpossible,
         MessageKey::SketchEditRefused,
