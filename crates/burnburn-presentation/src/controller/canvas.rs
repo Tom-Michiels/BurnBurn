@@ -168,6 +168,7 @@ fn rejection_kind(r: &Rejection) -> ToolRejection {
         Rejection::NeedsSelection => ToolRejection::NeedsSelection,
         Rejection::InvalidSelection => ToolRejection::InvalidSelection,
         Rejection::NothingToConstrain => ToolRejection::NothingToConstrain,
+        Rejection::AmbiguousRelations => ToolRejection::AmbiguousRelations,
         Rejection::InvalidValue => ToolRejection::InvalidValue,
         Rejection::Corner(_) => ToolRejection::Corner,
         Rejection::Trim(_) => ToolRejection::Trim,

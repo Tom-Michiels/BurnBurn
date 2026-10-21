@@ -620,6 +620,8 @@ pub enum ToolRejection {
     NeedsSelection,
     InvalidSelection,
     NothingToConstrain,
+    /// Auto-constrain found only unclear relations and applied none (S08).
+    AmbiguousRelations,
     InvalidValue,
     Corner,
     Trim,
@@ -639,12 +641,13 @@ pub enum ToolRejection {
 }
 
 impl ToolRejection {
-    pub const ALL: [ToolRejection; 16] = [
+    pub const ALL: [ToolRejection; 17] = [
         ToolRejection::NothingPicked,
         ToolRejection::DerivedGeometry,
         ToolRejection::NeedsSelection,
         ToolRejection::InvalidSelection,
         ToolRejection::NothingToConstrain,
+        ToolRejection::AmbiguousRelations,
         ToolRejection::InvalidValue,
         ToolRejection::Corner,
         ToolRejection::Trim,

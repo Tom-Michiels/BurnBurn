@@ -105,6 +105,9 @@ pub enum Rejection {
     InvalidSelection,
     /// Auto-constrain found nothing it could add.
     NothingToConstrain,
+    /// Auto-constrain found relations that are not clear-cut (a line between "nearly horizontal"
+    /// and "freely sloped", a point near several others): nothing is applied (S08).
+    AmbiguousRelations,
     /// A typed value is not valid (zero or negative size, count out of range, ...).
     InvalidValue,
     Corner(CornerError),

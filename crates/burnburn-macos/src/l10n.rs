@@ -1389,6 +1389,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
                 ("Deze selectie past niet bij dit gereedschap.", "This selection does not fit the tool.")
             }
             ToolRejection::NothingToConstrain => ("Er is niets om te beperken.", "Nothing to constrain."),
+            ToolRejection::AmbiguousRelations => (
+                "Niet eenduidig: er is niets toegepast. Maak de lijn recht of beperk handmatig.",
+                "Ambiguous: nothing was applied. Straighten the line or constrain it by hand.",
+            ),
             ToolRejection::InvalidValue => ("Ongeldige waarde.", "Invalid value."),
             ToolRejection::Corner => ("Deze hoek kan niet worden bewerkt.", "This corner cannot be modified."),
             ToolRejection::Trim => ("Inkorten is hier niet mogelijk.", "Trimming is not possible here."),
