@@ -572,3 +572,78 @@ fn rd_diff_13_save_and_send_differ_in_envelope_but_not_in_payload() {
     assert_eq!(rebuilt, file, "the uploaded bytes are the saved bytes");
     assert_eq!(artifact.rd_hash(), burnburn_types::ContentHash::of(burnburn_types::HashDomain::Rd, &file));
 }
+
+// ---------------------------------------------------------------------------------------------
+// 8. images, 11. axes, 12. passes
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn rd_diff_08_a_dithered_image_is_read_back_from_the_file_as_the_same_burn_pattern() {
+    use burnburn_document::process::{DitherMode, ImageRender, ImageSettings};
+    use burnburn_image::SourceImage;
+    // 8 x 4 gradient, Atkinson: the pattern is the independent reference of burnburn-cam's image tests.
+    let px: Vec<u8> = (0..4).flat_map(|y| (0..8).map(move |x| 30 + 27 * x + 10 * y)).collect();
+    let source = SourceImage::from_gray8(8, 4, px).unwrap();
+    let settings = ImageSettings::new(
+        source.content_hash(),
+        acc_cam::mm(0.1),
+        acc_cam::mm(0.1),
+        ImageRender::Dither(DitherMode::Atkinson),
+    )
+    .unwrap();
+    let mut s = acc_cam::session();
+    let frame = acc_cam::rectangle(&mut s, 10.0, 10.0, 0.8, 0.4);
+    let draft = OperationDraft {
+        name: "Graveren".into(),
+        mode: OperationMode::Image(settings),
+        settings: acc_cam::settings(100.0, 60.0),
+        output_enabled: true,
+    };
+    acc_cam::add_op(&mut s, draft, vec![frame]);
+    let plan = burnburn_cam::compile_with(&s.snapshot(), &common::profile(), &common::options(), &vec![source], &never()).unwrap();
+    let Some(recs) = oracle(&rd_of(&plan), "image") else { return };
+    let got = read(&recs);
+    // Rebuild the pattern from the laser-on segments of the FILE (rows top to bottom, 0.1 mm dots).
+    let mut grid = vec![vec!['.'; 8]; 4];
+    for c in got.cuts() {
+        let row = 3 - (((c.from.1 - 10_000) as f64 / 100.0) - 0.5).round() as usize;
+        let (a, b) = (c.from.0.min(c.to.0), c.from.0.max(c.to.0));
+        for col in ((a - 10_000) / 100)..((b - 10_000) / 100) {
+            grid[row][col as usize] = '#';
+        }
+    }
+    let rows: Vec<String> = grid.into_iter().map(|r| r.into_iter().collect()).collect();
+    assert_eq!(rows, ["###.....", "####....", "##..##..", "##......"]);
+}
+
+#[test]
+fn rd_diff_11_a_focus_offset_is_refused_at_export_and_two_passes_repeat_the_motion() {
+    use burnburn_document::process::{AdvancedOptions, ZOffset};
+    // Z/U axes: the plan can carry a focus offset (with the capability), the RD lowering has no
+    // verified record for it and refuses with a typed error instead of dropping it silently.
+    let mut s = acc_cam::session();
+    let g = acc_cam::rectangle(&mut s, 100.0, 100.0, 20.0, 10.0);
+    let op = acc_cam::add_op(&mut s, acc_cam::line_op("Snijden", 20.0, 50.0), vec![g]);
+    let advanced = AdvancedOptions { z_offset: Some(ZOffset::new(acc_cam::mm(1.5)).unwrap()), ..Default::default() };
+    acc_cam::run(&mut s, CommandPayload::Process(ProcessCommand::SetAdvanced { operation: op, advanced }));
+    let z_profile = acc_cam::supporting(&[burnburn_job::Feature::ZStep]);
+    let plan = compile_with(&s, &z_profile, Placement::Absolute);
+    assert!(plan.events().iter().any(|e| matches!(e, PlanEvent::FocusOffset { .. })));
+    assert!(matches!(lowered(&plan), Err(burnburn_ruida::LowerError::Unsupported { what: "focus offset", .. })));
+
+    // Passes: two passes of one contour are the same four cuts twice in the file.
+    let mut s = acc_cam::session();
+    let g = acc_cam::rectangle(&mut s, 100.0, 100.0, 20.0, 10.0);
+    let draft = OperationDraft {
+        name: "Snijden".into(),
+        mode: OperationMode::Line { kerf: Kerf::NONE },
+        settings: ProcessSettings { passes: Passes::new(2).unwrap(), ..acc_cam::settings(20.0, 50.0) },
+        output_enabled: true,
+    };
+    acc_cam::add_op(&mut s, draft, vec![g]);
+    let plan = compile_with(&s, &common::profile(), Placement::Absolute);
+    let Some(got) = assert_rd_matches_plan(&plan, "two-passes") else { return };
+    let cuts = got.cuts();
+    assert_eq!(cuts.len(), 8, "2 passes x 4 sides");
+    assert_eq!(cuts[..4].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>(), cuts[4..].iter().map(|c| (c.from, c.to)).collect::<Vec<_>>());
+}

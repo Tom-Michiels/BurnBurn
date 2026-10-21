@@ -396,6 +396,9 @@ fn joined(gap: f64, tol: f64) -> burnburn_geometry::JoinOutcome {
 
 #[test]
 fn ge05_join_threshold_is_inclusive_and_the_same_for_every_pair() {
+    // 0.25 and 0.2500001 around an exactly representable gap/tolerance of 0.25 (10 and 10.25 are exact in f64).
+    let out = joined(0.25, 0.25);
+    assert_eq!(out.merged, 1, "a gap exactly equal to the tolerance joins (inclusive limit): {out:?}");
     for (gap, expect) in [(0.0999, true), (0.1, true), (0.1001, false)] {
         let out = joined(gap, 0.1);
         assert_eq!(out.merged == 1, expect, "gap {gap}: {out:?}");
