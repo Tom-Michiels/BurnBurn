@@ -1,6 +1,6 @@
 //! Lowering `JobPlan` -> G-code, checked against analytical fixtures and an independent
 //! interpreter (`tests/support/interp.rs`). See `tests/fixtures/README.md` for fixture origins.
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 mod support;
 

@@ -1,5 +1,5 @@
 //! Turning program text into stream-safe lines.
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 mod support;
 

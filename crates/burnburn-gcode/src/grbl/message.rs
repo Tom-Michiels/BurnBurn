@@ -50,7 +50,7 @@ pub enum Message {
     Ok,
     Error(u8),
     Alarm(u8),
-    Status(StatusReport),
+    Status(Box<StatusReport>),
     /// `Grbl 1.1h ['$' for help]`: the controller (re)started.
     Welcome {
         version: String,
@@ -101,7 +101,7 @@ pub fn parse_line(line: &str) -> Result<Message, ParseError> {
         return rest.trim().parse::<u8>().map(Message::Alarm).or_else(|_| bad("alarm code"));
     }
     if t.starts_with('<') {
-        return parse_status(t).map(Message::Status);
+        return parse_status(t).map(|r| Message::Status(Box::new(r)));
     }
     if let Some(rest) = t.strip_prefix("Grbl ") {
         let version = rest.split_whitespace().next().unwrap_or_default();

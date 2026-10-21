@@ -1,7 +1,7 @@
 //! GRBL 1.1 response line parser. Example lines follow the public GRBL 1.1 interface description
 //! (gnea/grbl `doc/markdown/interface.md`) as written down from memory: they are hand-written
 //! fixtures, **not** captures from a controller (`tests/fixtures/README.md`).
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 use burnburn_gcode::grbl::{MachineState, Message, ParseError, alarm_description, error_description, parse_line};
 

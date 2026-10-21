@@ -1,5 +1,5 @@
 //! The GRBL streaming session as a pure state machine (no IO, no clock).
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 use burnburn_gcode::grbl::{
     Command, CommandRefusal, GrblSession, JobFailure, JobState, JogTarget, MachineState, SessionConfig, SessionEvent,

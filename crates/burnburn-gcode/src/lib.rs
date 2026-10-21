@@ -11,10 +11,13 @@
 //! Nothing here contacts a machine. Whether a concrete GRBL controller behaves as modelled is
 //! **unverified** (`docs/hardware/evidence.md`).
 
+pub mod console;
 pub mod grbl;
 mod lower;
 mod number;
 mod profile;
+pub mod serial;
 
 pub use lower::{GcodeProgram, LowerError, Refusal, RefusalKind, check, lower};
 pub use profile::{GrblProfile, PowerMode, ProfileError, WorkCoordinate, grbl_capabilities};
+pub use serial::{DriverError, GrblDriver, SerialError, SerialPort};

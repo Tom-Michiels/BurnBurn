@@ -1,5 +1,5 @@
 //! The GRBL capability matrix: every `Feature` has an explicit, reviewed decision.
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 use burnburn_gcode::{GrblProfile, grbl_capabilities};
 use burnburn_job::{Feature, MachineCapabilities, Support};

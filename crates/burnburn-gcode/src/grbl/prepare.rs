@@ -52,7 +52,7 @@ impl fmt::Display for PrepareError {
 impl std::error::Error for PrepareError {}
 
 /// Removes `;` and `( ... )` comments, collapses whitespace runs to one space and trims.
-fn strip_comments(raw: &str) -> String {
+pub(crate) fn strip_comments(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut in_paren = false;
     for c in raw.chars() {

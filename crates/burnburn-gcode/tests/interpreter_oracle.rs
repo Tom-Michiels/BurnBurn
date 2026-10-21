@@ -1,6 +1,6 @@
 //! Sanity of the independent G-code interpreter itself (hand-computed programs), so the oracle
 //! used by the lowering tests is itself pinned to analytical values.
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 
 mod support;
 use support::interp::run;

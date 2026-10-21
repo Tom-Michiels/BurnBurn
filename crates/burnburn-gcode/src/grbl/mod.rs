@@ -10,6 +10,7 @@ mod session;
 
 pub use codes::{alarm_description, error_description};
 pub use message::{MachineState, Message, ParseError, Position, StatusReport, parse_line};
+pub(crate) use prepare::strip_comments;
 pub use prepare::{MAX_LINE_BYTES, PrepareError, PreparedJob, prepare_job};
 pub use session::{
     Command, CommandRefusal, GrblSession, JobFailure, JobProgress, JobState, JogTarget, REALTIME_HOLD,
