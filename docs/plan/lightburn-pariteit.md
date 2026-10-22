@@ -224,6 +224,18 @@ Stand na golf 6 (main 9335726): `cargo xtask verify` exit 0, 3946 tests geslaagd
 - **G8-refactor**: de 19 `#[path]`-gedeelde modellen staan in de nieuwe crate `burnburn-host-models` (ADR 0009); `xtask
   path-attrs` verbiedt `#[path]` buiten de eigen crate in `src/`. Verify op d63270f: 4690 geslaagd, 0 gefaald, 13 genegeerd.
 
+## Golf 9 (uitgevoerd)
+
+- **G9-cam-werk**: nerf onder een vrije hoek, `Packing::Tight` 4–8x sneller met dezelfde plaatsingen, herkenning gespiegeld,
+  met perspectief en deels buiten beeld, een expliciete onderdeelnaam voor orders, compile op 100k contouren 1,5 s → 0,2 s.
+- **G9-editor**: modifierstapel in de inspecteurkolom (plus lineaire reeks en reeks langs pad), bewerken midden in meerdere
+  teksten, gebonden tekst dwars verschuiven en de echte raaklijn volgen, functies in formules, vaste vormen met parameters,
+  verdelen én nesten, ellips-raak bij diepe overlap en boog-ellips, Bézier tot 30 parameterlengtes als kubiek.
+- **G9-trace-infra**: correctie opnieuw koppelen vanuit A/B, beschermde hoek na een andere drempel, Replace to Fit voor een
+  gedraaid kader, uitvullen met kashida, `.ttc` in de systeemfontlijst, testfixtures zonder `#[path]`, alle 16 fuzz-doelen 60 s.
+- **Integratie**: palet-klik neemt alleen de modifiers van de klik zelf (bugfix); stille modus laat echte gebruikersinvoer vallen
+  en maakt het testproces nooit actief. Verify op golf 9 (stil): 4863 geslaagd, 0 gefaald, 14 genegeerd.
+
 ## Wat overblijft
 
 - **Hardware (W1-HW, eigenaar B-2/B-3):** een geverifieerd Ruida-wire-dialect en het vrijgeven van `ScanAngle`, `GrayscaleModulation`,
