@@ -25,6 +25,7 @@ pub(super) fn items() -> Vec<MenuNode> {
         CommandKey::SelectContained,
         CommandKey::SelectSmaller,
         CommandKey::SelectCircles,
+        CommandKey::SelectSameType,
     ]));
     items.push(sep());
     items.push(cmd(CommandKey::DeleteDuplicates));

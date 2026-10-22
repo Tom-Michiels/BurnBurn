@@ -57,6 +57,7 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
         CommandKey::UnlockSelected,
         CommandKey::UnlockAll,
         CommandKey::HideSelected,
+        CommandKey::IsolateSelection,
         CommandKey::ShowAll,
     ]));
     items
