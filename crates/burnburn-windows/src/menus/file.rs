@@ -38,6 +38,8 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
             files_text(FilesText::MenuBundleSubmenu, locale),
             vec![host(Item::BundleExport), host(Item::BundleImport)],
         ),
+        // G5-grbl-ui: Exporteer G-code (on for a compiled plan of a GRBL machine), as on the Mac.
+        cmd(CommandKey::ExportGcode),
         sep(),
         cmd(CommandKey::Close),
         cmd(CommandKey::Save),

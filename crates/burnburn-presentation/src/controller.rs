@@ -43,6 +43,7 @@ mod device;
 mod document;
 mod fields;
 mod geometry;
+mod grbl;
 mod history_panel;
 mod image;
 mod import;
@@ -158,6 +159,16 @@ pub enum HostEffect {
         document: DocumentId,
         suggested_name: String,
     },
+    /// The GRBL macros changed: the host stores this text form (`GrblIntent::LoadMacros` reads it).
+    GrblMacrosChanged {
+        text: String,
+    },
+    /// Save panel for a G-code export (never the project file). The host answers with
+    /// `UiIntent::ExportGcode`.
+    ShowGcodeExportPanel {
+        document: DocumentId,
+        suggested_name: String,
+    },
     /// Start editing a sketch dimension's text in the constraint list (double-click on its label,
     /// or right after "Maat" added it). The host answers with `SetSketchDimension`.
     EditSketchDimension {
@@ -256,6 +267,7 @@ struct Session {
     /// Machine artefacts: never document data, never part of undo (AGENTS.md).
     compiled: Option<Compiled>,
     export: Option<ExportViewModel>,
+    gcode_export: Option<crate::GcodeExportViewModel>,
     tracer: Option<Tracer>,
     /// The plan a PrepareJob task is lowering, and the frozen job of this document (C1).
     preparing: Option<Arc<JobPlan>>,
@@ -342,6 +354,7 @@ impl Session {
             boolean_preview: None,
             compiled: None,
             export: None,
+            gcode_export: None,
             tracer: None,
             preparing: None,
             prepared: None,
@@ -453,6 +466,8 @@ pub struct AppController {
     opening_paths: BTreeMap<TaskId, PathBuf>,
     /// Device Settings: the draft of the machine profile dialog (app-wide, like the profile).
     device: device::DeviceState,
+    /// The GRBL window: driver over the host's serial port, console and macros (G5-grbl-ui).
+    grbl_panel: grbl::GrblPanel,
     /// Preferences, shortcuts, history, preview and support panels (W3-UI-app).
     app: app_panels::AppPanels,
 }
@@ -496,6 +511,7 @@ impl AppController {
             bundle_serial: 0,
             opening_paths: BTreeMap::new(),
             device: device::DeviceState::default(),
+            grbl_panel: grbl::GrblPanel::default(),
             app: app_panels::AppPanels::default(),
         }
     }
@@ -600,7 +616,17 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida });
+                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: None });
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            UiIntent::SetGrblMachineProfile { profile, grbl } => {
+                // Like `SetMachineProfile`: profile data only. The Ruida part is a neutral
+                // placeholder that the GRBL backend never reads.
+                let ruida = burnburn_ruida::RuidaProfile {
+                    magic: burnburn_ruida::Magic::FIXTURE_0X88,
+                    overscan: burnburn_ruida::OverscanPolicy::Reject,
+                };
+                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: Some(*grbl) });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),
@@ -611,6 +637,8 @@ impl AppController {
             UiIntent::RemoveCalibration { id } => self.hub_remove_calibration(id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
             UiIntent::ExportRd { document, path } => self.export_rd(document, path),
+            UiIntent::ExportGcode { document, path } => self.export_gcode(document, path),
+            UiIntent::Grbl(intent) => self.grbl_intent(intent),
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
             UiIntent::SetTraceRecipe { document, recipe } => self.set_trace_recipe(document, *recipe),
             UiIntent::Machine { document, action, seen } => self.machine_action(document, action, seen, None).0,
@@ -949,6 +977,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }
         | UiIntent::ExportRd { document, .. }
+        | UiIntent::ExportGcode { document, .. }
         | UiIntent::OpenTraceSource { document, .. }
         | UiIntent::SetTraceRecipe { document, .. }
         | UiIntent::SetImageDpi { document, .. }

@@ -46,6 +46,24 @@ pub(super) struct Compiled {
     pub(super) outdated: bool,
     /// The production record the plan's variable text was resolved against (W3-UI-tekst).
     pub(super) record: Option<burnburn_generators::ProductionRecord>,
+    /// What the GRBL backend refuses of this plan, with the GRBL settings it was computed for; a
+    /// different current GRBL profile makes the plan stale even when the machine profile's
+    /// revision did not change.
+    pub(super) grbl: Option<(burnburn_gcode::GrblProfile, Vec<crate::GrblFinding>)>,
+}
+
+impl Compiled {
+    /// Derives the GRBL findings of `plan` for the active machine (none on a Ruida machine, or
+    /// when the plan is not for the machine's current profile revision).
+    pub(super) fn grbl_for(
+        plan: &JobPlan,
+        machine: Option<&Machine>,
+    ) -> Option<(burnburn_gcode::GrblProfile, Vec<crate::GrblFinding>)> {
+        let m = machine?;
+        let grbl = m.grbl.as_ref()?;
+        (*m.profile.revision() == plan.source().machine_profile)
+            .then(|| (grbl.clone(), crate::grbl::findings(plan, grbl)))
+    }
 }
 
 impl AppController {
@@ -129,6 +147,16 @@ impl AppController {
     /// errors — with its RD bytes. The job never follows later edits.
     pub(super) fn submit_prepare(&mut self, document: DocumentId) -> AppUpdate {
         let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
+        if machine.grbl.is_some() {
+            // Upload and start stay refused for GRBL until a controller has proven them.
+            return error(
+                Some(document),
+                MessageKey::LaserRefused(crate::laser::LaserWhy::NotVerified {
+                    feature: crate::LiveFeature::FileUpload,
+                    needs: crate::grbl_panel::GRBL_START_NEEDS,
+                }),
+            );
+        }
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::PrepareFailed) };
         if self.placement_stale(document) {
             return error(Some(document), MessageKey::LaserRefused(crate::laser::LaserWhy::PlacementStale));
@@ -158,6 +186,9 @@ impl AppController {
     /// Writes exactly the current plan (the one the preview shows) as RD; the document is untouched.
     pub(super) fn export_rd(&mut self, document: DocumentId, path: PathBuf) -> AppUpdate {
         let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
+        if machine.grbl.is_some() {
+            return error(Some(document), MessageKey::RdNotForGrbl);
+        }
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::ExportFailed) };
         let (tasks, fs) = (Arc::clone(&self.ports.tasks), Arc::clone(&self.ports.fs));
         self.with_session(document, |s| {
@@ -172,6 +203,30 @@ impl AppController {
                 key: revision_key(TaskKind::ExportRd, document, source),
                 cancel: cancel.token(),
                 input: TaskInput::ExportRd { plan, ruida: machine.ruida, path, fs },
+            };
+            submit(s, &tasks, request, cancel, document)
+        })
+    }
+
+    /// Writes exactly the current plan (the one the preview shows) as G-code for the GRBL
+    /// machine; the document is untouched and a plan the backend refuses writes no file.
+    pub(super) fn export_gcode(&mut self, document: DocumentId, path: PathBuf) -> AppUpdate {
+        let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
+        let Some(grbl) = machine.grbl.clone() else { return error(Some(document), MessageKey::GcodeNotForRuida) };
+        let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::ExportFailed) };
+        let (tasks, fs) = (Arc::clone(&self.ports.tasks), Arc::clone(&self.ports.fs));
+        self.with_session(document, |s| {
+            let Some(compiled) = s.compiled.as_ref() else { return AppUpdate::default() };
+            let plan = Arc::clone(&compiled.plan);
+            let source = plan.source().document_revision;
+            let cancel = CancellationSource::new();
+            let request = TaskRequest {
+                id,
+                document,
+                source,
+                key: revision_key(TaskKind::ExportGcode, document, source),
+                cancel: cancel.token(),
+                input: TaskInput::ExportGcode { plan, grbl, path, fs },
             };
             submit(s, &tasks, request, cancel, document)
         })
@@ -315,15 +370,21 @@ pub(super) fn set_operation_field(
 pub(super) fn plan_view(c: &Compiled, s: &Session, machine: Option<&Machine>) -> PlanViewModel {
     let source = c.plan.source();
     let profile_changed = machine.is_none_or(|m| *m.profile.revision() != source.machine_profile);
-    let errors = c.report.findings.iter().filter(|f| f.severity() == Severity::Error).count();
+    let grbl: Vec<crate::GrblFinding> = c.grbl.as_ref().map(|(_, f)| f.clone()).unwrap_or_default();
+    // The findings are valid for the GRBL settings they were computed with.
+    let grbl_changed = c.grbl.as_ref().map(|(g, _)| g) != machine.and_then(|m| m.grbl.as_ref());
+    let profile_changed = profile_changed || grbl_changed;
+    let plan_errors = c.report.findings.iter().filter(|f| f.severity() == Severity::Error).count();
+    let errors = plan_errors + grbl.len();
     PlanViewModel {
         id: c.plan.id(),
         revision: source.document_revision,
         stale: source.document_revision != s.doc.revision() || profile_changed || c.outdated,
         preview: Arc::clone(&c.preview),
         findings: c.report.findings.clone(),
+        grbl,
         errors,
-        warnings: c.report.findings.len() - errors,
+        warnings: c.report.findings.len() - plan_errors,
     }
 }
 

@@ -74,6 +74,9 @@ pub enum TaskInput {
     },
     /// Lower exactly this plan to RD and write it atomically (M03). Never touches the document.
     ExportRd { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Lower exactly this plan to G-code for a GRBL machine and write it atomically (G5-grbl-ui).
+    /// Never touches the document; a refused plan writes nothing.
+    ExportGcode { plan: Arc<JobPlan>, grbl: burnburn_gcode::GrblProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Read and decode an image for the tracer (bounded by `DecodeLimits`).
     LoadImage { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Decode image bytes already in memory for the tracer (a trace's stored source, T02).
@@ -156,6 +159,9 @@ impl fmt::Debug for TaskInput {
                 write!(f, "Compile(revision {} for {})", snapshot.revision(), profile.revision().id)
             }
             TaskInput::ExportRd { plan, path, .. } => write!(f, "ExportRd({:?} to {})", plan.id(), path.display()),
+            TaskInput::ExportGcode { plan, path, .. } => {
+                write!(f, "ExportGcode({:?} to {})", plan.id(), path.display())
+            }
             TaskInput::LoadImage { path, .. } => write!(f, "LoadImage({})", path.display()),
             TaskInput::DecodeImage { bytes } => write!(f, "DecodeImage({} bytes)", bytes.len()),
             TaskInput::Trace(r) => write!(f, "Trace(task {})", r.task),
@@ -191,6 +197,7 @@ impl TaskInput {
             TaskInput::OffsetPreview { .. } => TaskKind::OffsetPreview,
             TaskInput::Compile { .. } | TaskInput::CompilePlaced { .. } => TaskKind::Compile,
             TaskInput::ExportRd { .. } => TaskKind::ExportRd,
+            TaskInput::ExportGcode { .. } => TaskKind::ExportGcode,
             TaskInput::LoadImage { .. } | TaskInput::DecodeImage { .. } => TaskKind::LoadImage,
             TaskInput::Trace(_) => TaskKind::Trace,
             TaskInput::PrepareJob { .. } => TaskKind::PrepareJob,
@@ -219,6 +226,8 @@ pub enum TaskKind {
     Boolean,
     Compile,
     ExportRd,
+    /// Writes G-code of one plan; like the RD export it finishes what it started.
+    ExportGcode,
     LoadImage,
     /// Freshness is checked by task identity and recipe key (DR-14), not by document revision:
     /// an unrelated edit keeps a trace valid.
@@ -328,6 +337,12 @@ pub enum TaskOutput {
         path: PathBuf,
         rd_hash: ContentHash,
         bytes: usize,
+    },
+    ExportedGcode {
+        plan: JobPlanId,
+        path: PathBuf,
+        bytes: usize,
+        lines: usize,
     },
     ImageLoaded {
         source: Arc<SourceImage>,
@@ -443,6 +458,8 @@ pub enum TaskError {
     /// The laser window's placement was refused (position unknown, off the bed, ...).
     Placement(crate::laser::LaserWhy),
     Lower(LowerError),
+    /// The GRBL backend refuses the plan (every reason, as the preflight names them).
+    GcodeLower(burnburn_gcode::LowerError),
     Encode(EncodeError),
     Write(FsError),
     Read(FsError),
@@ -475,6 +492,7 @@ impl fmt::Display for TaskError {
             TaskError::Compile(e) => write!(f, "compile failed: {e:?}"),
             TaskError::Placement(why) => write!(f, "placement refused: {why}"),
             TaskError::Lower(e) => write!(f, "RD lowering failed: {e:?}"),
+            TaskError::GcodeLower(e) => write!(f, "{e}"),
             TaskError::Encode(e) => write!(f, "RD encoding failed: {e:?}"),
             TaskError::Write(e) => write!(f, "writing failed: {e:?}"),
             TaskError::Read(e) => write!(f, "reading failed: {e:?}"),
@@ -584,6 +602,18 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
                 path,
                 rd_hash: ContentHash::of(HashDomain::Rd, &bytes),
                 bytes: bytes.len(),
+            })
+        }
+        TaskInput::ExportGcode { plan, grbl, path, fs } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let program = burnburn_gcode::lower(&plan, &grbl).map_err(TaskError::GcodeLower)?;
+            let text = program.to_text();
+            write_atomically(fs.as_ref(), &path, text.as_bytes()).map_err(TaskError::Write)?;
+            Ok(TaskOutput::ExportedGcode {
+                plan: program.plan(),
+                path,
+                bytes: text.len(),
+                lines: program.lines().len(),
             })
         }
         TaskInput::LoadImage { path, fs } => {
@@ -882,6 +912,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::Files => 43,
         TaskKind::OffsetPreview => 60,
         TaskKind::RepairPreview => 61,
+        TaskKind::ExportGcode => 44,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

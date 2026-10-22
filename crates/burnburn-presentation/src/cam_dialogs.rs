@@ -105,6 +105,21 @@ pub enum DialogField {
     StepsPerRotation,
     YStepsPerMm,
     RotaryMirror,
+    // Device Settings: backend and the GRBL fields (G5-grbl-ui)
+    /// Which controller dialect the profile compiles for (Ruida RD or GRBL G-code).
+    Backend,
+    /// `$30`: the spindle value that means 100 % power.
+    GrblMaxSpindle,
+    /// The machine runs with laser mode (`$32=1`); without it GRBL output is refused.
+    GrblLaserMode,
+    /// `M3` constant or `M4` dynamic power.
+    GrblPowerMode,
+    /// The machine has an air-assist output on `M8`/`M9`.
+    GrblAirAssist,
+    /// Work coordinate system selected in the program header (S70).
+    GrblWorkCoordinate,
+    /// Decimals of the coordinates (1 to 4).
+    GrblDecimals,
 }
 
 /// An entry of a pop-up field.
@@ -124,6 +139,18 @@ pub enum DialogChoice {
     OriginBottomRight,
     RotaryChuck,
     RotaryRoller,
+    BackendRuida,
+    BackendGrbl,
+    PowerConstantM3,
+    PowerDynamicM4,
+    /// Leave the controller's own work coordinate system.
+    WorkCoordNone,
+    WorkCoordG54,
+    WorkCoordG55,
+    WorkCoordG56,
+    WorkCoordG57,
+    WorkCoordG58,
+    WorkCoordG59,
 }
 
 const CELL_MODES: [DialogChoice; 2] = [DialogChoice::CellLine, DialogChoice::CellFill];
@@ -141,6 +168,17 @@ const ORIGINS: [DialogChoice; 4] = [
     DialogChoice::OriginBottomRight,
 ];
 const ROTARY_KINDS: [DialogChoice; 2] = [DialogChoice::RotaryChuck, DialogChoice::RotaryRoller];
+const BACKENDS: [DialogChoice; 2] = [DialogChoice::BackendRuida, DialogChoice::BackendGrbl];
+const POWER_MODES: [DialogChoice; 2] = [DialogChoice::PowerConstantM3, DialogChoice::PowerDynamicM4];
+const WORK_COORDINATES: [DialogChoice; 7] = [
+    DialogChoice::WorkCoordNone,
+    DialogChoice::WorkCoordG54,
+    DialogChoice::WorkCoordG55,
+    DialogChoice::WorkCoordG56,
+    DialogChoice::WorkCoordG57,
+    DialogChoice::WorkCoordG58,
+    DialogChoice::WorkCoordG59,
+];
 
 impl DialogField {
     /// The entries of a pop-up field (empty for the others).
@@ -150,6 +188,9 @@ impl DialogField {
             DialogField::ColumnParameter | DialogField::RowParameter => &PARAMETERS,
             DialogField::BedOrigin => &ORIGINS,
             DialogField::RotaryKind => &ROTARY_KINDS,
+            DialogField::Backend => &BACKENDS,
+            DialogField::GrblPowerMode => &POWER_MODES,
+            DialogField::GrblWorkCoordinate => &WORK_COORDINATES,
             _ => &[],
         }
     }
@@ -168,11 +209,16 @@ impl DialogField {
             | DialogField::LabelsEnabled
             | DialogField::BorderEnabled
             | DialogField::RotaryEnabled
+            | DialogField::GrblLaserMode
+            | DialogField::GrblAirAssist
             | DialogField::RotaryMirror => DialogControl::Flag,
             DialogField::CellMode
             | DialogField::ColumnParameter
             | DialogField::RowParameter
             | DialogField::BedOrigin
+            | DialogField::Backend
+            | DialogField::GrblPowerMode
+            | DialogField::GrblWorkCoordinate
             | DialogField::RotaryKind => DialogControl::Choice,
             _ => DialogControl::Text,
         }
@@ -257,6 +303,9 @@ pub enum DialogNote {
     NewProfile,
     /// Device: the Ruida dialect of this profile is not proven on a real machine.
     DialectUnverified,
+    /// Device: the GRBL backend is modelled and tested against a fake controller only; nothing
+    /// is proven on a real one (G5-grbl-ui).
+    GrblUnverified,
     /// Rotary: the Y scale (steps per rotation) has not been confirmed on a machine.
     RotaryUnconfirmed,
     /// The CLI's profile file knows no rotary; it is not saved there.

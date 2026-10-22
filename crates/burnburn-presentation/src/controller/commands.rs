@@ -161,6 +161,16 @@ impl AppController {
                 },
                 _ => AppUpdate::default(),
             },
+            CommandKey::ExportGcode => match self.sessions.get(&document) {
+                Some(s) if s.compiled.as_ref().is_some_and(|c| c.grbl.is_some()) => AppUpdate {
+                    effects: vec![HostEffect::ShowGcodeExportPanel {
+                        document,
+                        suggested_name: format!("{}.gcode", s.title),
+                    }],
+                    ..AppUpdate::default()
+                },
+                _ => AppUpdate::default(),
+            },
             CommandKey::CommitImport | CommandKey::CancelImport
                 if self.sessions.get(&document).is_some_and(|s| s.image.pending.is_some()) =>
             {

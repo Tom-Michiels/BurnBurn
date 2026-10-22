@@ -60,6 +60,7 @@ pub enum FilePurpose {
     TraceImage { document: DocumentId },
     SaveProcessedBitmap { document: DocumentId },
     ExportRd { document: DocumentId },
+    ExportGcode { document: DocumentId },
     ExportDrawing { document: DocumentId },
     TemplateSave { document: DocumentId, scope: burnburn_presentation::TemplateScope },
     TemplateOpen,

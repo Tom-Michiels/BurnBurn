@@ -34,6 +34,7 @@ mod app_host;
 mod cam_host;
 mod camera_host;
 mod files_host;
+mod grbl_host;
 mod hub_host;
 pub use app_host::{MenuKeyReport, app_user_dir};
 mod laser_host;
@@ -147,6 +148,8 @@ pub struct HostApp {
     cam_panels: RefCell<cam_host::CamPanels>,
     /// The camera window (W3-UI-camera), created on first use.
     camera_window: RefCell<Option<super::panels::camera_window::CameraWindow>>,
+    /// The GRBL laser window (G5-grbl-ui), created on first use.
+    grbl_window: RefCell<Option<super::panels::grbl_window::GrblWindow>>,
     /// The app-level panels (preferences, shortcuts, history, preview, RD) and their small state.
     app_panels: RefCell<super::app_panels::AppPanels>,
     /// The preferences the host last put into effect, the autosave tick that follows them, the
@@ -236,6 +239,7 @@ impl HostApp {
                 timers: RefCell::new(Vec::new()),
                 cam_panels: RefCell::new(cam_host::CamPanels::new()),
                 camera_window: RefCell::new(None),
+                grbl_window: RefCell::new(None),
                 app_panels: RefCell::new(super::app_panels::AppPanels::new(mtm, me.clone())),
                 applied_prefs: Cell::new(None),
                 autosave_timer: RefCell::new(None),
@@ -272,6 +276,8 @@ impl HostApp {
             app.rebuild_recent_menu(&app.recent_paths());
         }
         app.init_files();
+        app.load_grbl_macros();
+        app.start_timer(grbl_host::GRBL_TICK_S, HostApp::grbl_tick);
         if let Some(interval) = app.options.autosave_interval_s {
             app.set_autosave_interval(Some(interval));
         }
@@ -831,6 +837,10 @@ impl HostApp {
             HostEffect::ShowExportPanel { document, suggested_name } => {
                 self.show_save_panel(*document, suggested_name, SaveKind::Rd)
             }
+            HostEffect::ShowGcodeExportPanel { document, suggested_name } => {
+                self.show_save_panel(*document, suggested_name, SaveKind::Gcode)
+            }
+            HostEffect::GrblMacrosChanged { text } => self.store_grbl_macros(text),
             HostEffect::ConfirmClose { document } => self.show_close_alert(*document),
             HostEffect::ShowError { document, message } => {
                 let text = crate::adapter::message_text(*message, self.locale);
@@ -926,6 +936,7 @@ impl HostApp {
         }
         self.refresh_cam_panels();
         self.refresh_camera_window();
+        self.refresh_grbl_window();
         self.refresh_app_panels();
     }
 
@@ -960,6 +971,7 @@ impl HostApp {
                     app.native(match kind {
                         SaveKind::Project => NativeEvent::SavePanelFinished { document, path },
                         SaveKind::Rd => NativeEvent::ExportPanelFinished { document, path },
+                        SaveKind::Gcode => NativeEvent::GcodePanelFinished { document, path },
                     });
                 }
             });
@@ -970,7 +982,7 @@ impl HostApp {
         match begun {
             Ok(()) => match kind {
                 SaveKind::Project => w.save_panel = Some(panel),
-                SaveKind::Rd => w.export_panel = Some(panel),
+                SaveKind::Rd | SaveKind::Gcode => w.export_panel = Some(panel),
             },
             Err(e) => eprintln!("burnburn: {e}"),
         }
@@ -1244,6 +1256,7 @@ impl HostApp {
             files: w.files_parts(),
             import_pages: &w.import.pages,
             import_report: &w.import.report,
+            grbl_refusals: &w.grbl_refusals,
             canvas_view: w.canvas_view.as_view(),
             save_panel: w.save_panel.as_deref(),
             export_panel: w.export_panel.as_deref(),
@@ -1301,6 +1314,7 @@ enum ImageFilePanel {
 enum SaveKind {
     Project,
     Rd,
+    Gcode,
 }
 
 impl SaveKind {
@@ -1308,6 +1322,7 @@ impl SaveKind {
         match self {
             SaveKind::Project => "burnburn",
             SaveKind::Rd => "rd",
+            SaveKind::Gcode => "gcode",
         }
     }
 }
@@ -1417,6 +1432,8 @@ pub struct WindowParts<'a> {
     /// The import sheet's page pop-up (PDF/AI) and its full report.
     pub import_pages: &'a objc2_app_kit::NSPopUpButton,
     pub import_report: &'a objc2_app_kit::NSTextView,
+    /// The GRBL refusals at the plan (a pull-down; hidden when there are none).
+    pub grbl_refusals: &'a objc2_app_kit::NSPopUpButton,
     pub canvas_view: &'a objc2_app_kit::NSView,
     pub save_panel: Option<&'a NSSavePanel>,
     pub export_panel: Option<&'a NSSavePanel>,
@@ -1591,6 +1608,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
                 files_t(crate::l10n_files::FilesText::MenuExportSubmenu),
                 vec![plain(CommandKey::ExportSvg), plain(CommandKey::ExportDxf)],
             ),
+            plain(CommandKey::ExportGcode),
             submenu(
                 files_t(crate::l10n_files::FilesText::MenuBundleSubmenu),
                 vec![plain(CommandKey::ExportBundle), plain(CommandKey::ImportBundle)],

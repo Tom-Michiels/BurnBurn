@@ -294,6 +294,11 @@ pub enum NativeEvent {
         document: DocumentId,
         path: Option<PathBuf>,
     },
+    /// The G-code export save sheet closed: a path on OK, `None` on cancel.
+    GcodePanelFinished {
+        document: DocumentId,
+        path: Option<PathBuf>,
+    },
     /// Final text from the canvas's input route (`insertText:` or accepted composition).
     TextCommitted {
         document: DocumentId,
@@ -719,6 +724,10 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         }
         // Cancelling the export changes nothing (there is no export dialog state in presentation).
         E::ExportPanelFinished { .. } => return Reaction::Nothing,
+        E::GcodePanelFinished { document, path: Some(path) } if open(document) => {
+            UiIntent::ExportGcode { document, path }
+        }
+        E::GcodePanelFinished { .. } => return Reaction::Nothing,
         // Final text only (composition stays in the host): one commit is one text command.
         E::TextCommitted { document, text } if open(document) && !text.is_empty() => {
             UiIntent::InsertText { document, text }

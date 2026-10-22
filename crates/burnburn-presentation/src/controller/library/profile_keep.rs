@@ -61,7 +61,9 @@ impl AppController {
                 RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
                 |m| m.ruida,
             );
-        self.replace_active_machine(Machine { profile, ruida });
+        // The profile library keeps machine profiles only, no GRBL dialect settings: a chosen
+        // library profile is driven as Ruida until GRBL settings are given again (open, G5).
+        self.replace_active_machine(Machine { profile, ruida, grbl: None });
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
 }

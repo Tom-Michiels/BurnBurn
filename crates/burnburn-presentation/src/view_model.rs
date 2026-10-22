@@ -88,6 +88,8 @@ pub struct DocumentViewModel {
     pub plan: Option<PlanViewModel>,
     /// The last RD export of this document.
     pub export: Option<ExportViewModel>,
+    /// The last G-code export (GRBL machines).
+    pub gcode_export: Option<crate::GcodeExportViewModel>,
     /// The open tracer panel, if any (B9).
     pub tracer: Option<TracerViewModel>,
     /// The prepared (frozen) job of this document, if any (C1, W01).
@@ -432,6 +434,9 @@ pub struct PlanViewModel {
     pub stale: bool,
     pub preview: Arc<PlanPreview>,
     pub findings: Vec<Finding>,
+    /// What the GRBL backend refuses of this plan (empty on a Ruida machine); each one is also
+    /// counted in `errors`.
+    pub grbl: Vec<crate::GrblFinding>,
     pub errors: usize,
     pub warnings: usize,
 }
@@ -744,6 +749,12 @@ pub enum MessageKey {
     NoMachineProfile,
     CompileFailed,
     ExportFailed,
+    /// The GRBL backend refuses the plan: no G-code was written (the preflight names why).
+    GcodeRefused,
+    /// RD files are for Ruida machines; the active machine is a GRBL machine.
+    RdNotForGrbl,
+    /// G-code files are for GRBL machines; the active machine is a Ruida machine.
+    GcodeNotForRuida,
     ImageFailed,
     TraceFailed,
     /// Saved, but the OS did not confirm durability (directory sync failed). Not an error dialog.

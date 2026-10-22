@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use burnburn_gcode::{GrblProfile, PowerMode, WorkCoordinate, grbl_capabilities};
 use burnburn_job::{
     Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, RotaryConfig, RotaryKind,
     Support,
@@ -73,8 +74,36 @@ fn origin_of(choice: Option<DialogChoice>) -> OriginCorner {
     }
 }
 
+const WORK_COORDINATES: [(DialogChoice, Option<WorkCoordinate>); 7] = [
+    (DialogChoice::WorkCoordNone, None),
+    (DialogChoice::WorkCoordG54, Some(WorkCoordinate::G54)),
+    (DialogChoice::WorkCoordG55, Some(WorkCoordinate::G55)),
+    (DialogChoice::WorkCoordG56, Some(WorkCoordinate::G56)),
+    (DialogChoice::WorkCoordG57, Some(WorkCoordinate::G57)),
+    (DialogChoice::WorkCoordG58, Some(WorkCoordinate::G58)),
+    (DialogChoice::WorkCoordG59, Some(WorkCoordinate::G59)),
+];
+
+fn work_coordinate_choice(wc: Option<WorkCoordinate>) -> DialogChoice {
+    WORK_COORDINATES.iter().find(|(_, w)| *w == wc).map_or(DialogChoice::WorkCoordNone, |(c, _)| *c)
+}
+
+fn work_coordinate_of(choice: Option<DialogChoice>) -> Option<WorkCoordinate> {
+    WORK_COORDINATES.iter().find(|(c, _)| Some(*c) == choice).and_then(|(_, w)| *w)
+}
+
+/// The fields that only count for the GRBL backend.
+const GRBL_FIELDS: [DialogField; 6] = [
+    DialogField::GrblMaxSpindle,
+    DialogField::GrblLaserMode,
+    DialogField::GrblPowerMode,
+    DialogField::GrblAirAssist,
+    DialogField::GrblWorkCoordinate,
+    DialogField::GrblDecimals,
+];
+
 impl DeviceDraft {
-    fn of(profile: Option<&MachineProfile>) -> Self {
+    fn of(profile: Option<&MachineProfile>, grbl: Option<&GrblProfile>) -> Self {
         let mut v: BTreeMap<DialogField, DialogValue> = BTreeMap::new();
         match profile {
             Some(p) => {
@@ -114,7 +143,83 @@ impl DeviceDraft {
         );
         v.insert(DialogField::YStepsPerMm, text(rotary.map_or(String::new(), |r| format_mm(r.y_steps_per_mm()))));
         v.insert(DialogField::RotaryMirror, DialogValue::Flag(rotary.is_some_and(RotaryConfig::mirror)));
+        // The GRBL fields start with the stock laser configuration until the profile has its own.
+        let stock = GrblProfile::grbl_1_1_laser();
+        let g = grbl.unwrap_or(&stock);
+        v.insert(
+            DialogField::Backend,
+            choice(
+                DialogField::Backend,
+                if grbl.is_some() { DialogChoice::BackendGrbl } else { DialogChoice::BackendRuida },
+            ),
+        );
+        v.insert(DialogField::GrblMaxSpindle, text(g.max_spindle.to_string()));
+        v.insert(DialogField::GrblLaserMode, DialogValue::Flag(g.laser_mode));
+        v.insert(
+            DialogField::GrblPowerMode,
+            choice(
+                DialogField::GrblPowerMode,
+                match g.power_mode {
+                    PowerMode::Constant => DialogChoice::PowerConstantM3,
+                    PowerMode::Dynamic => DialogChoice::PowerDynamicM4,
+                },
+            ),
+        );
+        v.insert(DialogField::GrblAirAssist, DialogValue::Flag(g.air_assist));
+        v.insert(
+            DialogField::GrblWorkCoordinate,
+            choice(DialogField::GrblWorkCoordinate, work_coordinate_choice(g.work_coordinate)),
+        );
+        v.insert(DialogField::GrblDecimals, text(g.decimals.to_string()));
         DeviceDraft { opened: v.clone(), values: v, errors: BTreeMap::new() }
+    }
+
+    fn is_grbl(&self) -> bool {
+        self.values.get(&DialogField::Backend).and_then(|v| v.choice(DialogField::Backend))
+            == Some(DialogChoice::BackendGrbl)
+    }
+
+    /// The GRBL settings the draft describes; every unusable field gets its error.
+    fn grbl(&self, errors: &mut BTreeMap<DialogField, DialogError>) -> Option<GrblProfile> {
+        let mut whole = |field: DialogField, min: f64, max: f64| -> Option<u32> {
+            match parse_number(self.text(field), &[]) {
+                Ok(v) if v.fract() != 0.0 => {
+                    errors.insert(field, DialogError::NotWhole);
+                    None
+                }
+                Ok(v) if (min..=max).contains(&v) => Some(v as u32),
+                Ok(_) => {
+                    errors.insert(field, DialogError::OutOfRange);
+                    None
+                }
+                Err(_) => {
+                    errors.insert(field, DialogError::Invalid);
+                    None
+                }
+            }
+        };
+        let max_spindle = whole(DialogField::GrblMaxSpindle, 1.0, f64::from(u32::MAX));
+        let decimals = whole(DialogField::GrblDecimals, 1.0, 4.0);
+        let (max_spindle, decimals) = (max_spindle?, decimals?);
+        let power_mode =
+            match self.values.get(&DialogField::GrblPowerMode).and_then(|v| v.choice(DialogField::GrblPowerMode)) {
+                Some(DialogChoice::PowerConstantM3) => PowerMode::Constant,
+                _ => PowerMode::Dynamic,
+            };
+        let profile = GrblProfile {
+            max_spindle,
+            laser_mode: self.flag(DialogField::GrblLaserMode),
+            power_mode,
+            air_assist: self.flag(DialogField::GrblAirAssist),
+            work_coordinate: work_coordinate_of(
+                self.values
+                    .get(&DialogField::GrblWorkCoordinate)
+                    .and_then(|v| v.choice(DialogField::GrblWorkCoordinate)),
+            ),
+            decimals: decimals as u8,
+        };
+        profile.validate().ok()?;
+        Some(profile)
     }
 
     fn text(&self, field: DialogField) -> &str {
@@ -134,8 +239,9 @@ impl DeviceDraft {
     fn build(
         &self,
         base: Option<&MachineProfile>,
+        base_is_grbl: bool,
         counter: u32,
-    ) -> Result<MachineProfile, BTreeMap<DialogField, DialogError>> {
+    ) -> Result<(MachineProfile, Option<GrblProfile>), BTreeMap<DialogField, DialogError>> {
         let mut errors = BTreeMap::new();
         // A field the user did not touch keeps the profile's own number.
         let keep = |field: DialogField, own: Option<f64>| own.filter(|_| self.untouched(field));
@@ -194,6 +300,7 @@ impl DeviceDraft {
             errors.insert(DialogField::MinPower, DialogError::OutOfRange);
         }
         let rotary = if self.flag(DialogField::RotaryEnabled) { self.rotary(base, &mut errors) } else { None };
+        let grbl = if self.is_grbl() { self.grbl(&mut errors) } else { None };
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -218,12 +325,18 @@ impl DeviceDraft {
             ratio(max_power, DialogField::MaxPower)?,
         )
         .map_err(|_| refused(DialogField::MaxSpeed))?
-        .with_capabilities(base.map_or(MachineCapabilities::conservative(), |p| p.capabilities().clone()))
+        .with_capabilities(match (&grbl, base) {
+            // The GRBL matrix is the backend's own; a Ruida profile keeps the one it had, and a
+            // profile that leaves GRBL starts conservative again (support needs evidence).
+            (Some(g), _) => grbl_capabilities(g),
+            (None, Some(p)) if !base_is_grbl => p.capabilities().clone(),
+            (None, _) => MachineCapabilities::conservative(),
+        })
         .map_err(|_| refused(DialogField::MaxSpeed))?;
         if let Some(config) = rotary {
             profile = profile.with_rotary(config).map_err(|_| refused(DialogField::RotaryDiameter))?;
         }
-        Ok(profile)
+        Ok((profile, grbl))
     }
 
     fn rotary(
@@ -304,12 +417,19 @@ impl AppController {
         self.machine.as_ref().map(|m| &*m.profile)
     }
 
+    /// The GRBL configuration when the active machine is a GRBL machine (G5-grbl-ui).
+    pub fn grbl_profile(&self) -> Option<&burnburn_gcode::GrblProfile> {
+        self.machine.as_ref().and_then(|m| m.grbl.as_ref())
+    }
+
     pub(super) fn device_view(&self) -> Option<DialogViewModel> {
         let draft = self.device.draft.as_ref()?;
         let profile = self.machine_profile();
         let rotary_on = draft.flag(DialogField::RotaryEnabled);
+        let grbl_on = draft.is_grbl();
         let mut rows = Vec::new();
         for field in [
+            DialogField::Backend,
             DialogField::BedWidth,
             DialogField::BedHeight,
             DialogField::BedOrigin,
@@ -323,28 +443,42 @@ impl AppController {
             DialogField::StepsPerRotation,
             DialogField::YStepsPerMm,
             DialogField::RotaryMirror,
+            DialogField::GrblMaxSpindle,
+            DialogField::GrblLaserMode,
+            DialogField::GrblPowerMode,
+            DialogField::GrblAirAssist,
+            DialogField::GrblWorkCoordinate,
+            DialogField::GrblDecimals,
         ] {
-            let rotary_field = !matches!(
-                field,
-                DialogField::BedWidth
-                    | DialogField::BedHeight
-                    | DialogField::BedOrigin
-                    | DialogField::MaxSpeed
-                    | DialogField::TravelSpeed
-                    | DialogField::MinPower
-                    | DialogField::MaxPower
-                    | DialogField::RotaryEnabled
-            );
+            let grbl_field = GRBL_FIELDS.contains(&field);
+            let rotary_field = !grbl_field
+                && !matches!(
+                    field,
+                    DialogField::Backend
+                        | DialogField::BedWidth
+                        | DialogField::BedHeight
+                        | DialogField::BedOrigin
+                        | DialogField::MaxSpeed
+                        | DialogField::TravelSpeed
+                        | DialogField::MinPower
+                        | DialogField::MaxPower
+                        | DialogField::RotaryEnabled
+                );
             rows.push(DialogRow {
                 field,
                 value: draft.values.get(&field).cloned().unwrap_or(DialogValue::Text(String::new())),
-                state: if rotary_field && !rotary_on { FieldState::Disabled(None) } else { FieldState::Editable },
+                state: if (rotary_field && !rotary_on) || (grbl_field && !grbl_on) {
+                    FieldState::Disabled(None)
+                } else {
+                    FieldState::Editable
+                },
                 error: draft.errors.get(&field).copied(),
                 blocked_choices: Vec::new(),
                 reorder: None,
             });
         }
-        let mut notes = vec![DialogNote::ProfileChangeMakesPlansStale, DialogNote::DialectUnverified];
+        let dialect = if grbl_on { DialogNote::GrblUnverified } else { DialogNote::DialectUnverified };
+        let mut notes = vec![DialogNote::ProfileChangeMakesPlansStale, dialect];
         if profile.is_none() {
             notes.insert(0, DialogNote::NewProfile);
         }
@@ -385,13 +519,17 @@ impl AppController {
     }
 
     pub(super) fn device_open(&mut self) -> AppUpdate {
-        self.device.draft = Some(DeviceDraft::of(self.machine_profile()));
+        self.device.draft = Some(DeviceDraft::of(self.machine_profile(), self.grbl_profile()));
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
 
     pub(super) fn device_set(&mut self, field: DialogField, value: DialogValue) -> AppUpdate {
         let Some(draft) = self.device.draft.as_mut() else { return AppUpdate::default() };
         draft.errors.remove(&field);
+        // Another backend changes which fields count: the old GRBL errors go.
+        if field == DialogField::Backend {
+            draft.errors.retain(|f, _| !GRBL_FIELDS.contains(f));
+        }
         // Switching the rotary off or on changes which fields count: their old errors go.
         if field == DialogField::RotaryEnabled {
             draft.errors.retain(|f, _| {
@@ -426,21 +564,23 @@ impl AppController {
         draft.errors.clear();
         let base = self.machine.as_ref().map(|m| Arc::clone(&m.profile));
         let counter = base.as_ref().map_or(1, |p| p.revision().revision.saturating_add(1));
-        let profile = match draft.build(base.as_deref(), counter) {
-            Ok(profile) => profile,
+        let base_grbl = self.machine.as_ref().and_then(|m| m.grbl.clone());
+        let (profile, grbl) = match draft.build(base.as_deref(), base_grbl.is_some(), counter) {
+            Ok(built) => built,
             Err(errors) => {
                 draft.errors = errors;
                 return AppUpdate { view_changed: true, ..AppUpdate::default() };
             }
         };
-        let unchanged = base.as_ref().is_some_and(|b| b.revision().content == profile.revision().content);
+        let unchanged =
+            base.as_ref().is_some_and(|b| b.revision().content == profile.revision().content) && base_grbl == grbl;
         self.device.draft = None;
         if !unchanged {
             let ruida = self.machine.as_ref().map_or(
                 RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
                 |m| m.ruida,
             );
-            self.replace_active_machine(Machine { profile: Arc::new(profile), ruida });
+            self.replace_active_machine(Machine { profile: Arc::new(profile), ruida, grbl });
         }
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }

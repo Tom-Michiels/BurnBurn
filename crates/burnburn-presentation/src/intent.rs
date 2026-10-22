@@ -112,6 +112,12 @@ pub enum UiIntent {
     RemoveCalibration {
         id: u64,
     },
+    /// The same for a GRBL machine (G5-grbl-ui): the profile carries the GRBL capability matrix
+    /// and `grbl` the dialect settings. It replaces the active machine, Ruida or GRBL.
+    SetGrblMachineProfile {
+        profile: Box<MachineProfile>,
+        grbl: Box<burnburn_gcode::GrblProfile>,
+    },
     /// Process-layer panel (B10, C01): a new operation for the selected objects.
     AddOperation {
         document: DocumentId,
@@ -119,6 +125,13 @@ pub enum UiIntent {
     },
     /// Location chosen in the export save panel (B12, M03).
     ExportRd {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// A control of the GRBL laser window (G5-grbl-ui): console, macros, jog, home, unlock.
+    Grbl(crate::grbl_panel::GrblIntent),
+    /// Location chosen in the G-code save panel (G5-grbl-ui).
+    ExportGcode {
         document: DocumentId,
         path: PathBuf,
     },
@@ -812,6 +825,8 @@ pub enum CommandKey {
     Compile,
     /// Write the current plan as an RD file (asks for a location first).
     ExportRd,
+    /// Write the current plan as G-code for a GRBL machine (asks for a location first).
+    ExportGcode,
     /// Apply the current trace result (one history entry).
     ApplyTrace,
     /// Apply the current contour trace as a *trace* of the document (T02): source, recipe and
@@ -1055,6 +1070,7 @@ impl CommandKey {
         CommandKey::Measure,
         CommandKey::Compile,
         CommandKey::ExportRd,
+        CommandKey::ExportGcode,
         CommandKey::ApplyTrace,
         CommandKey::ApplyTraceLinked,
         CommandKey::TraceEdit,

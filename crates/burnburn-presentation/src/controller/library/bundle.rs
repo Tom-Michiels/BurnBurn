@@ -400,8 +400,8 @@ impl AppController {
                 // The active machine: existing plans become stale, exactly as when the profile is
                 // chosen; the revision that is replaced stays in the profile library (P07).
                 Some(active) => {
-                    let ruida = active.ruida;
-                    self.replace_active_machine(super::super::machine::Machine { profile: p, ruida });
+                    let (ruida, grbl) = (active.ruida, active.grbl.clone());
+                    self.replace_active_machine(super::super::machine::Machine { profile: p, ruida, grbl });
                 }
                 None => {
                     match self.libs.profiles.iter_mut().find(|k| k.revision().id == id) {

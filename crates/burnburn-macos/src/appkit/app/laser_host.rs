@@ -64,6 +64,11 @@ impl HostApp {
 
     /// Laser ▸ Laservenster: shows or hides the active window's laser panel.
     pub(crate) fn toggle_laser_panel(&self) {
+        // A GRBL machine has its own laser window (console, macros, jog); the Ruida one stays off.
+        if self.controller.try_borrow().ok().and_then(|c| c.grbl_view()).is_some() {
+            self.toggle_grbl_window();
+            return;
+        }
         let Some(document) = self.view().active else { return };
         let shown = match self.windows.try_borrow_mut() {
             Ok(mut windows) => windows.get_mut(&document).map(|w| w.toggle_laser()),

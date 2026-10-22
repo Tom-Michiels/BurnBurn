@@ -15,6 +15,9 @@ pub(crate) mod files;
 pub(crate) mod files_ui;
 #[allow(unsafe_code)]
 pub(crate) mod hub;
+// `define_class!` and `msg_send!` need unsafe (the GRBL window has its own small target object).
+#[allow(unsafe_code)]
+pub(crate) mod grbl_window;
 pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;
