@@ -48,6 +48,7 @@ fn pref_caption(key: PrefKey) -> AppText {
         PrefKey::NudgeNormal => AppText::PrefNudgeNormal,
         PrefKey::NudgeLarge => AppText::PrefNudgeLarge,
         PrefKey::Quality => AppText::PrefQuality,
+        PrefKey::DesktopAutomation => AppText::PrefDesktopAutomation,
     }
 }
 

@@ -65,6 +65,7 @@ app_texts! {
     PrefNudgeNormal => ("Pijltje (normaal)", "Arrow (normal)"),
     PrefNudgeLarge => ("Pijltje met Shift (groot)", "Shift+arrow (large)"),
     PrefQuality => ("Weergavekwaliteit", "Display quality"),
+    PrefDesktopAutomation => ("Desktop-automatisering (alleen deze computer)", "Desktop automation (this computer only)"),
     UnitMm => ("Millimeter", "Millimetres"),
     UnitInch => ("Inch", "Inches"),
     LangSystem => ("Volg het systeem", "Follow the system"),
