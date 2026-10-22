@@ -14,6 +14,7 @@ pub(super) enum PickKind {
     Line,
     Circle,
     Arc,
+    Ellipse,
 }
 
 impl PickKind {
@@ -95,6 +96,12 @@ pub(super) fn pick_entity(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: 
                         .zip(point_of(sketch, end))
                         .map(|((c, s), e)| arc_distance(c, s, e, clockwise, at)),
                     PickKind::Arc,
+                ),
+                Entity::Ellipse { center, major, minor } => (
+                    point_of(sketch, center)
+                        .zip(point_of(sketch, major))
+                        .and_then(|(c, m)| crate::sketch::ellipse_distance(c, m, minor, at)),
+                    PickKind::Ellipse,
                 ),
                 _ => continue,
             };

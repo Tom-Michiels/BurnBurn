@@ -126,6 +126,7 @@ pub fn sketch_overlays(view: &SketchView<'_>) -> SketchOverlays {
         let path = match e.entity {
             Entity::Line { .. } => geometry.line(id).and_then(|(a, b)| Path::line(a, b).ok()),
             Entity::Circle { .. } => geometry.circle(id).and_then(|(c, r)| circle_path(c, r)),
+            Entity::Ellipse { .. } => geometry.ellipse(id).and_then(|(c, m, minor)| ellipse_path(c, m, minor)),
             _ => None,
         };
         if let Some(path) = path {
@@ -201,6 +202,12 @@ fn circle_path(center: Point, radius: f64) -> Option<Path> {
     PathBuilder::new().move_to(arc.start_point()).arc(arc).close().build().ok()
 }
 
+fn ellipse_path(center: Point, major: Point, minor: f64) -> Option<Path> {
+    let axis = major - center;
+    let rotation = Angle::from_radians(axis.y.atan2(axis.x)).ok()?;
+    Path::ellipse(center, axis.length(), minor, rotation).ok()
+}
+
 /// Number text with the prefix or suffix of its kind: `R5`, `Ø10`, `30°`.
 fn decorate(kind: DimensionKind, value: &str) -> String {
     match kind {
@@ -224,6 +231,10 @@ fn entity_anchor(g: &SketchGeometry<'_>, id: EntityId) -> Option<(Point, Vector)
     if let Some((a, b)) = g.line(id) {
         let d = unit(b - a).unwrap_or(Vector::new(1.0, 0.0));
         return Some((a.lerp(b, 0.5), Vector::new(-d.y, d.x)));
+    }
+    if let Some((c, m, _)) = g.ellipse(id) {
+        let d = unit(m - c).unwrap_or(Vector::new(1.0, 0.0));
+        return Some((c.lerp(m, 0.5), Vector::new(-d.y, d.x)));
     }
     let (c, r) = g.circle(id)?;
     Some((
@@ -298,6 +309,15 @@ fn dimension_shape(g: &SketchGeometry<'_>, kind: DimensionKind, mpp: f64) -> Opt
                     linear(pa, pb, Vector::new(-dir.y, dir.x) * d)
                 }
             })
+        }
+        DimensionKind::Radius { curve } | DimensionKind::Diameter { curve } if g.ellipse(curve).is_some() => {
+            // An ellipse is measured along its major axis.
+            let (c, m, _) = g.ellipse(curve)?;
+            let dir = unit(m - c)?;
+            let r = c.distance(m);
+            let diameter = matches!(kind, DimensionKind::Diameter { .. });
+            let from = if diameter { c - dir * r } else { c };
+            Some(DimensionShape { lines: vec![[from, m]], label_at: m + dir * (12.0 * mpp) })
         }
         DimensionKind::Radius { curve } | DimensionKind::Diameter { curve } => {
             let (c, r) = g.circle(curve)?;
@@ -418,6 +438,37 @@ mod tests {
             o.overlays.iter().any(|x| matches!(x, Overlay::SketchEntity { mark: SketchMark::Conflict, .. })),
             "the line itself is highlighted"
         );
+    }
+
+    /// S01: a selected ellipse is highlighted along its own outline, and the relation on its major
+    /// axis shows a glyph beside that axis; a diameter dimension runs along the axis.
+    #[test]
+    fn an_ellipse_is_highlighted_on_its_outline_and_its_axis_relation_has_a_glyph() {
+        let mut s = Sketch::new("t");
+        let (c, m) = (s.point(20.0, 20.0).unwrap(), s.point(30.0, 20.0).unwrap());
+        let e = s.ellipse(c, m, 4.0).unwrap();
+        let relation = s.relate(Relation::Horizontal(e)).unwrap();
+        let dim = s.dimension(DimensionKind::Diameter { curve: e }, "20 mm", DimensionRole::Driving).unwrap();
+        let parts = Parts { entities: [e].into(), constraints: [relation].into(), ..Parts::default() };
+        let o = build(&s, &parts);
+        let path = o
+            .overlays
+            .iter()
+            .find_map(|x| match x {
+                Overlay::SketchEntity { path, mark: SketchMark::Selected } => Some(path.clone()),
+                _ => None,
+            })
+            .expect("the ellipse is highlighted");
+        let b = path.bounds().unwrap();
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+        assert!(near(b.min().x, 10.0) && near(b.max().x, 30.0) && near(b.min().y, 16.0) && near(b.max().y, 24.0));
+        let g = glyphs(&o);
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].0, SketchGlyph::Horizontal);
+        assert!(near(g[0].2.x, 25.0), "centred along the major axis: {:?}", g[0].2);
+        let dims = dimensions(&o);
+        assert_eq!(dims.len(), 1, "{dim:?}");
+        assert!(dims[0].0.iter().all(|l| near(l[0].y, 20.0) && near(l[1].y, 20.0)), "along the axis: {:?}", dims[0].0);
     }
 
     #[test]

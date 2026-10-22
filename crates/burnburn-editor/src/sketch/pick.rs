@@ -21,6 +21,10 @@ pub fn pick_entity(geometry: &SketchGeometry<'_>, at: Point, tol_mm: f64) -> Opt
         .filter_map(|(id, e)| match e.entity {
             Entity::Line { .. } => geometry.line(id).map(|(a, b)| (id, distance_to_segment(at, a, b))),
             Entity::Circle { .. } => geometry.circle(id).map(|(c, r)| (id, (c.distance(at) - r).abs())),
+            Entity::Ellipse { .. } => {
+                let (c, m, minor) = geometry.ellipse(id)?;
+                super::geometry::ellipse_distance(c, m, minor, at).map(|d| (id, d))
+            }
             Entity::Arc { start, end, clockwise, .. } => {
                 let (c, r) = geometry.circle(id)?;
                 let on_arc = on_arc_range(c, geometry.point(start)?, geometry.point(end)?, clockwise, at);
@@ -100,6 +104,20 @@ mod tests {
         assert_eq!(pick_entity(&g, Point::new(35.0, 0.3), 0.5), Some(circle));
         assert_eq!(pick_entity(&g, Point::new(32.0, 0.0), 0.5), None, "inside, away from the rim and the centre");
         assert_eq!(pick_entity(&g, Point::new(30.1, 0.0), 0.5), Some(c), "the centre point wins");
+    }
+
+    #[test]
+    fn an_ellipse_is_picked_on_its_outline_not_in_its_middle() {
+        let mut s = Sketch::new("t");
+        let (c, m) = (s.point(0.0, 0.0).unwrap(), s.point(10.0, 0.0).unwrap());
+        let ellipse = s.ellipse(c, m, 4.0).unwrap();
+        let g = SketchGeometry::new(&s);
+        assert_eq!(pick_entity(&g, Point::new(0.0, 4.2), 0.5), Some(ellipse), "near the minor vertex");
+        // (5, 4 * sqrt(3) / 2) lies exactly on x^2/100 + y^2/16 = 1.
+        assert_eq!(pick_entity(&g, Point::new(5.0, 3.464), 0.5), Some(ellipse));
+        assert_eq!(pick_entity(&g, Point::new(5.0, 0.0), 0.5), None, "inside, far from the outline");
+        assert_eq!(pick_entity(&g, Point::new(0.0, 5.5), 0.5), None, "outside the tolerance");
+        assert_eq!(pick_entity(&g, Point::new(0.1, 0.0), 0.5), Some(c), "the centre point wins");
     }
 
     #[test]

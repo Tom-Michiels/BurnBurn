@@ -402,19 +402,11 @@ impl Sketch {
         // An ellipse is no circular curve: nothing can lie on it, be tangent to it or equal to a
         // circle (its major axis and centre take part in the other relations).
         let is_ellipse = |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Ellipse { .. }, .. }));
-        let is_round = |e: &EntityId| {
-            matches!(
-                self.entities.get(e),
-                Some(SketchEntity { entity: Entity::Circle { .. } | Entity::Arc { .. }, .. })
-            )
-        };
         if let SketchConstraint::Relation(r) = c {
             let bad = match *r {
                 Relation::PointOn { curve, .. } if is_ellipse(&curve) => Some(curve),
                 Relation::Tangent(a, b) => [a, b].into_iter().find(|e| is_ellipse(e)),
-                Relation::Equal(a, b) if (is_ellipse(&a) && is_round(&b)) || (is_ellipse(&b) && is_round(&a)) => {
-                    Some(if is_ellipse(&a) { a } else { b })
-                }
+                Relation::Equal(a, b) if is_ellipse(&a) || is_ellipse(&b) => Some(if is_ellipse(&a) { a } else { b }),
                 _ => None,
             };
             if let Some(e) = bad {

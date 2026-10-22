@@ -555,6 +555,9 @@ pub struct SketchModeViewModel {
     pub refused: Option<MessageKey>,
     /// "Herstel laatste geldige" applies: the sketch failed and there is history to go back in.
     pub can_restore: bool,
+    /// How many curves ended on another geometric branch than the one drawn (the other side of a
+    /// tangent, the other sweep of an arc): reported, never silent (S05).
+    pub branch_flips: usize,
 }
 
 /// Evaluation state shown with symbol and text (not colour only, X03).

@@ -67,6 +67,10 @@ impl DimensionAction {
                 let Some((c, s)) = point_of(sketch, center).zip(point_of(sketch, start)) else { return invalid() };
                 Some(commit(pick.sketch, DimensionKind::Radius { curve: pick.entity }, c.distance(s)))
             }
+            (PickKind::Ellipse, Entity::Ellipse { center, major, .. }) => {
+                let Some((c, m)) = point_of(sketch, center).zip(point_of(sketch, major)) else { return invalid() };
+                Some(commit(pick.sketch, DimensionKind::Diameter { curve: pick.entity }, 2.0 * c.distance(m)))
+            }
             _ => None,
         }
     }
@@ -177,6 +181,17 @@ mod tests {
         let mut ed = editor(ToolKind::Dimension);
         let steps = click(&mut ed, &f, 35.0, 0.2);
         assert_eq!(only(&steps), dimension(DimensionKind::Diameter { curve: EntityId::from_raw(4) }, "10 mm"));
+    }
+
+    #[test]
+    fn clicking_an_ellipse_dimensions_its_major_axis_as_a_diameter() {
+        let mut s = sketch();
+        let (c, m) = (s.point(0.0, 40.0).unwrap(), s.point(8.0, 40.0).unwrap());
+        let ellipse = s.ellipse(c, m, 3.0).unwrap();
+        let f = with_sketch(vec![], s);
+        let mut ed = editor(ToolKind::Dimension);
+        let steps = click(&mut ed, &f, 0.1, 43.0);
+        assert_eq!(only(&steps), dimension(DimensionKind::Diameter { curve: ellipse }, "16 mm"));
     }
 
     #[test]

@@ -415,8 +415,10 @@ pub fn evaluate_sketch(
             .map(|((id, e), s)| {
                 let entity = match (e.entity, s) {
                     (DocEntity::Point { .. }, solver::Solved::Point(p)) => DocEntity::Point { at: *p },
+                    // A negative solved radius is the same circle seen from the other side of a
+                    // tangent (a reported flip): the geometry has the positive radius.
                     (DocEntity::Circle { center, .. }, solver::Solved::Circle { radius }) => {
-                        DocEntity::Circle { center, radius: *radius }
+                        DocEntity::Circle { center, radius: radius.abs() }
                     }
                     (other, _) => other,
                 };

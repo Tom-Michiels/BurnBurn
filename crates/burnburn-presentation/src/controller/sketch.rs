@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use burnburn_document::sketch::{
     Along, ConstraintId, DimensionKind, DimensionRole, Entity, EntityId, Relation, Sketch, SketchCommand,
-    SketchConstraint, SketchId, SketchStep,
+    SketchConstraint, SketchId, SketchSolution, SketchStep,
 };
 use burnburn_document::{
     CommandError, CommandOutcome, CommandPayload, DerivedOwner, DocumentCommand, DocumentSnapshot, EvalDiagnosis,
@@ -66,9 +66,41 @@ pub(super) struct Analysis {
     /// Each dimension's value on the solved geometry (mm, or degrees for an angle).
     values: BTreeMap<ConstraintId, String>,
     health: BTreeMap<ConstraintId, ConstraintHealth>,
+    /// Curves that ended on another geometric branch than the previous revision had them (S05).
+    branch_flips: usize,
+    /// The sketch's stored solution at this revision: the next revision is judged against it.
+    solution: Option<SketchSolution>,
 }
 
-fn analyse(sketch: &Sketch) -> Analysis {
+/// `sketch` as it was solved before: its definition with `previous`' positions as the starting
+/// point (entries for entities that are gone or changed kind are dropped).
+fn seeded(sketch: &Sketch, previous: &SketchSolution) -> Option<Sketch> {
+    let is = |id: &EntityId, want: fn(&Entity) -> bool| sketch.entity(*id).is_some_and(|e| want(&e.entity));
+    let solution = SketchSolution {
+        points: previous.points.iter().filter(|(id, _)| is(id, |e| matches!(e, Entity::Point { .. }))).map(|(i, p)| (*i, *p)).collect(),
+        radii: previous.radii.iter().filter(|(id, _)| is(id, |e| matches!(e, Entity::Circle { .. }))).map(|(i, r)| (*i, *r)).collect(),
+        dof: previous.dof,
+    };
+    Sketch::from_parts(
+        sketch.name().to_owned(),
+        sketch.entities().map(|(i, e)| (i, *e)).collect(),
+        sketch.constraints().map(|(i, c)| (i, c.clone())).collect(),
+        sketch.parameters().clone(),
+        sketch.next_entity_id().raw(),
+        sketch.next_constraint_id().raw(),
+        Some(solution),
+    )
+    .ok()
+}
+
+/// How many curves the current definition moves to another geometric branch when it is solved
+/// from the previous revision's solution: the S05 notice, so a jump is never silent.
+fn count_branch_flips(sketch: &Sketch, previous: Option<&SketchSolution>) -> usize {
+    let Some(start) = previous.and_then(|p| seeded(sketch, p)) else { return 0 };
+    evaluate_sketch(&start, &SketchSolverAdapter, &CancellationToken::never()).map_or(0, |ev| ev.flipped.len())
+}
+
+fn analyse(sketch: &Sketch, previous: Option<&SketchSolution>) -> Analysis {
     let Ok(ev) = evaluate_sketch(sketch, &SketchSolverAdapter, &CancellationToken::never()) else {
         return Analysis::default();
     };
@@ -110,7 +142,13 @@ fn analyse(sketch: &Sketch) -> Analysis {
             (*id, h)
         })
         .collect();
-    Analysis { free_points, values, health }
+    Analysis {
+        free_points,
+        values,
+        health,
+        branch_flips: count_branch_flips(sketch, previous),
+        solution: sketch.solution().cloned(),
+    }
 }
 
 /// The analysis of the open sketch at the current revision (cached).
@@ -125,7 +163,9 @@ fn analysis(s: &Session) -> Option<(SketchId, Arc<Analysis>)> {
     {
         return Some((id, Arc::clone(a)));
     }
-    let a = Arc::new(analyse(sketch));
+    // The previous revision of this sketch (when it was analysed) is what a jump is judged against.
+    let previous = cache.as_ref().filter(|(_, cached, _)| *cached == id).and_then(|(_, _, a)| a.solution.clone());
+    let a = Arc::new(analyse(sketch, previous.as_ref()));
     *cache = Some((snapshot.revision(), id, Arc::clone(&a)));
     Some((id, a))
 }
@@ -521,6 +561,7 @@ enum Kind {
     Line,
     Circle,
     Arc,
+    Ellipse,
 }
 
 fn kind_of(sketch: &Sketch, id: EntityId) -> Option<Kind> {
@@ -529,12 +570,14 @@ fn kind_of(sketch: &Sketch, id: EntityId) -> Option<Kind> {
         Entity::Line { .. } => Kind::Line,
         Entity::Circle { .. } => Kind::Circle,
         Entity::Arc { .. } => Kind::Arc,
+        Entity::Ellipse { .. } => Kind::Ellipse,
         _ => return None,
     })
 }
 
+/// Radius and diameter dimensions apply to round curves and, along the major axis, to ellipses.
 fn is_curve(k: Kind) -> bool {
-    matches!(k, Kind::Circle | Kind::Arc)
+    matches!(k, Kind::Circle | Kind::Arc | Kind::Ellipse)
 }
 
 /// The constraint a Schets-menu / panel relation command adds.
@@ -647,6 +690,14 @@ fn dimension_for(kind: SketchDimensionKind, sketch: &Sketch, selected: &BTreeSet
     }
 }
 
+/// Radius of a circle or arc; of an ellipse its semi-major radius (what the solver drives).
+fn radius_of_curve(g: &SketchGeometry<'_>, curve: EntityId) -> Option<f64> {
+    match g.circle(curve) {
+        Some((_, r)) => Some(r),
+        None => g.ellipse(curve).map(|(c, m, _)| c.distance(m)),
+    }
+}
+
 /// The dimension's value as drawn, as expression text (`40.05 mm`, `30 deg`).
 fn measured_text(kind: DimensionKind, g: &SketchGeometry<'_>) -> Option<String> {
     let mm = |v: f64| Some(format!("{} mm", format_mm(v)));
@@ -663,8 +714,8 @@ fn measured_text(kind: DimensionKind, g: &SketchGeometry<'_>) -> Option<String> 
                 _ => mm(pa.distance(pb)),
             }
         }
-        DimensionKind::Radius { curve } => mm(g.circle(curve)?.1),
-        DimensionKind::Diameter { curve } => mm(2.0 * g.circle(curve)?.1),
+        DimensionKind::Radius { curve } => mm(radius_of_curve(g, curve)?),
+        DimensionKind::Diameter { curve } => mm(2.0 * radius_of_curve(g, curve)?),
         DimensionKind::Angle { from, to } => {
             let ((a0, a1), (b0, b1)) = (g.line(from)?, g.line(to)?);
             let ta = (a1.y - a0.y).atan2(a1.x - a0.x);
@@ -859,6 +910,7 @@ pub(super) fn mode_view(s: &Session, snapshot: &DocumentSnapshot) -> Option<Sket
         selected_constraints: s.sketch.constraints.iter().copied().collect(),
         refused: s.sketch.refused,
         can_restore: row.status == SketchStatus::Failed && s.doc.can_undo(),
+        branch_flips: analysis.branch_flips,
     })
 }
 

@@ -145,6 +145,11 @@ pub fn sketch_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
         (SketchStatus::Pending, _) => host_text(HostText::SketchPending, locale).to_owned(),
         _ => String::new(),
     };
+    let freedom = if m.branch_flips > 0 && m.status == SketchStatus::Valid {
+        format!("{freedom}; {}: {}", host_text(HostText::SketchBranchFlipped, locale), m.branch_flips)
+    } else {
+        freedom
+    };
     let problem = m.problem.map(|k| message_or_key(k, locale)).unwrap_or_default();
     Some(SketchPanel {
         sketch: m.sketch,
