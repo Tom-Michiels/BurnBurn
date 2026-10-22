@@ -85,7 +85,7 @@ pub use files::{
     MaterialRow, TemplateScope,
 };
 pub use notes::NotesViewModel;
-pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel};
+pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,

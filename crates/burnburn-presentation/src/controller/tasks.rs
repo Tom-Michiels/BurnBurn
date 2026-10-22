@@ -122,6 +122,15 @@ impl AppController {
                 update.scenes_changed.push(document);
                 update.effects.push(HostEffect::Redraw { document });
             }
+            Ok(TaskOutput::RepairPreview { result, closes, stays_open }) => {
+                super::repair_preview::arrived(s, outcome.source, result, closes, stays_open);
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Err(TaskError::Repair(_)) => {
+                super::repair_preview::failed(s, outcome.source);
+                update.scenes_changed.push(document);
+            }
             Err(TaskError::Offset(_)) => {
                 super::offset_preview::failed(s, outcome.source);
                 update.scenes_changed.push(document);

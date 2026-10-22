@@ -119,6 +119,8 @@ pub struct DocumentViewModel {
     pub schikken: crate::schikken::SchikkenViewModel,
     /// Offset options and the preview of the open offset (E05).
     pub offset: crate::offset::OffsetViewModel,
+    /// The before/after of the repair being considered (E09).
+    pub repair_preview: Option<crate::offset::RepairPreviewViewModel>,
     /// The project notes panel while it is open (P04).
     pub notes: Option<crate::notes::NotesViewModel>,
     /// The text toolbar while exactly one text object is selected (W3-UI-tekst).

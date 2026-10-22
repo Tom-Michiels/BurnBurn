@@ -33,3 +33,13 @@ pub struct OffsetViewModel {
     pub options: OffsetOptions,
     pub preview: Option<OffsetPreviewViewModel>,
 }
+
+/// The before/after of repairing one problem (E09): how many open gaps close at the typed
+/// tolerance and how many stay open. The repaired outlines are drawn as a scene overlay.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairPreviewViewModel {
+    /// Index into `DocumentViewModel.issues`.
+    pub issue: usize,
+    pub closes: usize,
+    pub stays_open: usize,
+}

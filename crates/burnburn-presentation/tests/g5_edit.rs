@@ -224,3 +224,129 @@ fn applying_an_offset_uses_the_chosen_options() {
     let area = h.scene(doc).unwrap().items.iter().find(|i| i.source == new.id).map(|i| i.path.signed_area().abs()).unwrap();
     assert!((area - 336.0).abs() < 0.01, "mitred: {area}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// E09: voor/na bij repareren
+// ---------------------------------------------------------------------------------------------
+
+fn opened_with(paths: Vec<burnburn_geometry::Path>) -> (HeadlessEditorHarness, DocumentId, Vec<GeometryId>) {
+    use burnburn_document::{DocumentSnapshot, GeometryObject, GeometrySource, ObjectKind};
+    use burnburn_io::{Project, ProjectUuid, save_project};
+    use burnburn_types::StableId;
+    let mut h = HeadlessEditorHarness::new();
+    h.fs().create_dir_all_for_test(std::path::Path::new("/work"));
+    let objects: Vec<_> = paths
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let id = GeometryId::from_raw(i as u64 + 1);
+            GeometryObject::new(id, format!("Pad {}", i + 1), ObjectKind::Path, GeometrySource::Drawn, p)
+        })
+        .collect();
+    let next = objects.len() as u64 + 1;
+    let snapshot = DocumentSnapshot::from_parts(objects, next).unwrap();
+    let path = std::path::PathBuf::from("/work/fixture.burnburn");
+    save_project(h.fs(), &path, &Project::new(ProjectUuid::from_bytes([7; 16]), snapshot)).unwrap();
+    h.send(UiIntent::Open { path });
+    let doc = h
+        .run_tasks()
+        .iter()
+        .flat_map(|u| u.effects.clone())
+        .find_map(|e| match e {
+            burnburn_presentation::HostEffect::OpenWindow { document } => Some(document),
+            _ => None,
+        })
+        .expect("opened");
+    let ids = vm(&h, doc).objects.iter().map(|o| o.id).collect();
+    (h, doc, ids)
+}
+
+fn open_path(x: f64, gap: f64) -> burnburn_geometry::Path {
+    use burnburn_geometry::{PathBuilder, Point};
+    PathBuilder::new()
+        .move_to(Point::new(x, 0.0))
+        .line_to(Point::new(x + 10.0, 0.0))
+        .line_to(Point::new(x + 10.0, 10.0))
+        .line_to(Point::new(x, gap))
+        .build()
+        .unwrap()
+}
+
+/// The repair preview shows the repaired outlines as an overlay next to the problem marks, says how
+/// many gaps close and how many stay, and leaves the document alone. The seam (0,05 mm) closes at
+/// 0,1 mm; the intended slot (0,15 mm) does not.
+#[test]
+fn the_repair_preview_shows_what_closes_and_what_stays_without_changing_the_document() {
+    let (mut h, doc, ids) = opened_with(vec![open_path(0.0, 0.05), open_path(20.0, 0.15)]);
+    let issues = vm(&h, doc).issues;
+    let seam = issues.iter().position(|i| i.objects == vec![ids[0]]).unwrap();
+    let slot = issues.iter().position(|i| i.objects == vec![ids[1]]).unwrap();
+    let (revision, undo) = (vm(&h, doc).revision, vm(&h, doc).undo);
+
+    h.send(UiIntent::PreviewRepair { document: doc, issue: seam, tolerance: "0,1 mm".into() });
+    assert!(vm(&h, doc).repair_preview.is_none(), "nothing until the worker has answered");
+    h.run_tasks();
+    let preview = vm(&h, doc).repair_preview.expect("preview");
+    assert_eq!((preview.issue, preview.closes, preview.stays_open), (seam, 1, 0));
+    let scene = h.scene(doc).unwrap();
+    let after = scene
+        .overlays
+        .iter()
+        .find_map(|o| match o {
+            burnburn_editor::Overlay::ResultPreview { path } => Some(path),
+            _ => None,
+        })
+        .expect("the repaired outline is an overlay");
+    assert!(after.subpaths().iter().all(|s| s.is_closed()), "after: closed");
+    assert!(
+        scene.items.iter().filter(|i| i.source == ids[0]).all(|i| i.path.subpaths().iter().all(|s| !s.is_closed())),
+        "before: the object itself is still open"
+    );
+    assert_eq!((vm(&h, doc).revision, vm(&h, doc).undo), (revision, undo));
+
+    // The slot stays open at this tolerance: the preview says so instead of promising a repair.
+    h.send(UiIntent::PreviewRepair { document: doc, issue: slot, tolerance: "0,1 mm".into() });
+    h.run_tasks();
+    let preview = vm(&h, doc).repair_preview.expect("preview");
+    assert_eq!((preview.issue, preview.closes, preview.stays_open), (slot, 0, 1));
+
+    // Applying the repair clears the preview (the revision moved on).
+    h.send(UiIntent::RepairIssue { document: doc, issue: seam, tolerance: "0,1 mm".into() });
+    assert!(vm(&h, doc).repair_preview.is_none());
+}
+
+/// A bad tolerance text is a field error and starts no task.
+#[test]
+fn a_bad_tolerance_starts_no_repair_preview() {
+    let (mut h, doc, _) = opened_with(vec![open_path(0.0, 0.05)]);
+    h.send(UiIntent::PreviewRepair { document: doc, issue: 0, tolerance: "abc".into() });
+    assert!(h.take_task_requests().is_empty());
+    assert_eq!(vm(&h, doc).problem.map(|p| p.message), Some(burnburn_presentation::MessageKey::InvalidLength(burnburn_presentation::FieldError::NotANumber)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// X03: taal en eenheid veranderen de fysieke waarde niet
+// ---------------------------------------------------------------------------------------------
+
+/// The same physical width typed three ways (decimal comma in mm, decimal point in mm, inches
+/// with the inch display unit) gives byte-identical projects.
+#[test]
+fn locale_does_not_change_physical_value() {
+    use burnburn_presentation::{AppIntent, FieldKey, PrefKey};
+    let save = |unit: &str, text: &str| -> Vec<u8> {
+        let (mut h, doc, [a, _]) = two_rects();
+        h.send(UiIntent::App(AppIntent::SetPreference { key: PrefKey::Units, text: unit.into() }));
+        select(&mut h, doc, &[a]);
+        h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: text.into() });
+        h.fs().create_dir_all_for_test(std::path::Path::new("/work"));
+        let path = std::path::PathBuf::from("/work/x03.burnburn");
+        h.send(UiIntent::Save { document: doc, path: Some(path.clone()) });
+        h.run_tasks();
+        burnburn_io::fs::FileSystem::read(h.fs(), &path, u64::MAX).unwrap()
+    };
+    let comma = save("mm", "50,8");
+    assert_eq!(comma, save("mm", "50.8"), "decimal comma and point");
+    assert_eq!(comma, save("inch", "2"), "2 in is 50.8 mm");
+    assert_eq!(comma, save("mm", "2 in"), "an explicit unit wins over the display unit");
+    assert_ne!(comma, save("mm", "50,9"), "the check itself can tell a different value");
+}

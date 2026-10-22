@@ -266,6 +266,13 @@ pub enum UiIntent {
         document: DocumentId,
         options: crate::offset::OffsetOptions,
     },
+    /// Repair preview (E09): what closing the gaps of problem `issue` at this tolerance would do,
+    /// computed on a worker; the document does not change.
+    PreviewRepair {
+        document: DocumentId,
+        issue: usize,
+        tolerance: String,
+    },
     /// Problem list (E09): close the gaps of problem `issue` (index into `DocumentViewModel.issues`)
     /// with the tolerance as typed. Gaps above the tolerance stay open.
     RepairIssue {
