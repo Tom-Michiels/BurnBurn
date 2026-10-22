@@ -51,5 +51,8 @@ fn a_value_that_is_not_on_or_off_is_refused_and_changes_nothing() {
     let mut h = started(Arc::new(MemoryFileSystem::new()));
     set(&mut h, "maybe");
     assert!(!h.controller().preferences().desktop_automation);
-    assert_eq!(h.controller().prefs_view().error.map(|e| (e.key, e.problem)), Some((PrefKey::DesktopAutomation, PrefProblem::UnknownChoice)));
+    assert_eq!(
+        h.controller().prefs_view().error.map(|e| (e.key, e.problem)),
+        Some((PrefKey::DesktopAutomation, PrefProblem::UnknownChoice))
+    );
 }

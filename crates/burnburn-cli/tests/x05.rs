@@ -7,8 +7,8 @@ mod common;
 
 use std::sync::atomic::Ordering;
 
-use burnburn_io::fs::FileSystem;
 use burnburn_cli::{CliError, profile_file::parse_profile};
+use burnburn_io::fs::FileSystem;
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, UiIntent};
 use common::*;
 
@@ -80,16 +80,15 @@ fn upload_line(job: &str, extra: &str) -> String {
 fn an_upload_without_a_named_target_machine_or_intent_contacts_nothing() {
     let r = rig();
     let job = compiled_job(&r);
-    for line in [
-        upload_line(&job, ""),
-        upload_line(&job, "--machine ruida-bench-1"),
-        upload_line(&job, "--intent upload"),
-    ] {
+    for line in
+        [upload_line(&job, ""), upload_line(&job, "--machine ruida-bench-1"), upload_line(&job, "--intent upload")]
+    {
         let e = r.run(&line).unwrap_err();
         assert!(matches!(e, CliError::Usage(_)), "{line}: {e:?}");
         assert_eq!(e.exit_code(), 2);
     }
-    let start = "start --history /h --execution 1 --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact";
+    let start =
+        "start --history /h --execution 1 --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact";
     for extra in ["", "--machine ruida-bench-1", "--intent start"] {
         let e = r.run(&format!("{start} {extra}")).unwrap_err();
         assert!(matches!(e, CliError::Usage(_)), "{extra}: {e:?}");
@@ -144,9 +143,7 @@ fn an_unknown_option_is_refused_and_writes_nothing() {
 fn the_variant_option_is_refused_with_the_reason_instead_of_being_ignored() {
     let r = rig();
     with_project(&r);
-    let e = r
-        .run("compile /work/plaat.burnburn --profile /work/bench.json --out /work/x.rd --variant A")
-        .unwrap_err();
+    let e = r.run("compile /work/plaat.burnburn --profile /work/bench.json --out /work/x.rd --variant A").unwrap_err();
     match &e {
         CliError::Usage(m) => assert!(m.contains("--variant") && m.contains("not available"), "{m}"),
         other => panic!("{other:?}"),

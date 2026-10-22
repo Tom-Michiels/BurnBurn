@@ -145,9 +145,11 @@ fn import_needs_an_open_document() {
 
 #[test]
 fn host_failures_are_distinct_replies() {
-    for (error, reply) in
-        [(HostError::NotFound, "ERR:NOTFOUND"), (HostError::Unsupported, "ERR:FORMAT"), (HostError::Failed, "ERR:FAILED")]
-    {
+    for (error, reply) in [
+        (HostError::NotFound, "ERR:NOTFOUND"),
+        (HostError::Unsupported, "ERR:FORMAT"),
+        (HostError::Failed, "ERR:FAILED"),
+    ] {
         let mut host = FakeHost::clean();
         host.result = Err(error);
         assert_eq!(ask(&mut service(host), "LOADFILE:/a/b.burnburn"), reply);
@@ -280,7 +282,9 @@ fn an_endpoint_refuses_a_socket_that_is_not_bound_to_loopback() {
 fn exactly_one_reply_goes_back_to_the_sender_and_foreign_senders_are_dropped() {
     let mut socket = FakeSocket::on(loopback(19850));
     socket.incoming.push_back((b"PING".to_vec(), loopback(50001)));
-    socket.incoming.push_back((b"LOADFILE:/a/b.burnburn".to_vec(), SocketAddr::new(Ipv4Addr::new(10, 0, 0, 7).into(), 4000)));
+    socket
+        .incoming
+        .push_back((b"LOADFILE:/a/b.burnburn".to_vec(), SocketAddr::new(Ipv4Addr::new(10, 0, 0, 7).into(), 4000)));
     socket.incoming.push_back((b"STATUS".to_vec(), loopback(50002)));
     let mut endpoint = AutomationEndpoint::new(socket, service(FakeHost::clean())).unwrap();
     assert_eq!(endpoint.serve_one().unwrap(), Served::Replied);
