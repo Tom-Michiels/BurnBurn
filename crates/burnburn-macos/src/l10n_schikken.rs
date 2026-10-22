@@ -111,10 +111,11 @@ fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
     }
 }
 
-const NEST_FAILURES: [NestFailure; 8] = [
+const NEST_FAILURES: [NestFailure; 9] = [
     NestFailure::InvalidField(NestField::Padding),
     NestFailure::InvalidField(NestField::EdgeBuffer),
     NestFailure::InvalidField(NestField::Step),
+    NestFailure::InvalidField(NestField::Sheets),
     NestFailure::NothingToNest,
     NestFailure::GridTooLarge,
     NestFailure::Geometry,
@@ -134,6 +135,10 @@ fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
         NestFailure::InvalidField(NestField::Step) => {
             ("De rasterstap moet een getal groter dan 0 zijn.", "The grid step must be a number greater than 0.")
         }
+        NestFailure::InvalidField(NestField::Sheets) => (
+            "Het aantal platen moet een geheel getal van 1 tot en met 20 zijn.",
+            "The number of sheets must be a whole number from 1 to 20.",
+        ),
         NestFailure::NothingToNest => (
             "Er is niets om te nesten: kies gesloten, niet-vergrendelde vormen.",
             "There is nothing to nest: choose closed, unlocked shapes.",

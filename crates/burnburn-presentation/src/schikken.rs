@@ -197,6 +197,19 @@ pub struct NestInput {
     /// Grid step of the search (mm); finer packs tighter and takes longer.
     pub step: String,
     pub rotations: NestRotations,
+    /// Whether a part may be placed as its mirror image (C12). Forbidden unless chosen.
+    pub mirror: NestMirror,
+    /// How many identical sheets the parts may go on (whole number, at least 1).
+    pub sheets: String,
+}
+
+/// Whether the nest may mirror a part. Mirroring changes what a cut part is, so it is a choice that
+/// is off by default and never used to get a better score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestMirror {
+    #[default]
+    Forbidden,
+    Allowed,
 }
 
 impl Default for NestInput {
@@ -206,6 +219,8 @@ impl Default for NestInput {
             edge_buffer: "1".to_owned(),
             step: "1".to_owned(),
             rotations: NestRotations::default(),
+            mirror: NestMirror::default(),
+            sheets: "1".to_owned(),
         }
     }
 }
@@ -215,6 +230,7 @@ pub enum NestField {
     Padding,
     EdgeBuffer,
     Step,
+    Sheets,
 }
 
 /// Why a nest did not run or gave nothing.
@@ -296,6 +312,30 @@ pub struct NestReportViewModel {
     pub skipped: Vec<NestSkippedRow>,
     /// Share of the sheet the placed parts cover, 0…1.
     pub utilisation: f64,
+    /// Parts placed as their mirror image (always 0 unless mirroring was allowed).
+    pub mirrored: usize,
+    /// Per sheet: how much is used and how much is left (C12).
+    pub sheets: Vec<NestSheetUseRow>,
+    /// Per part: ordered and placed (C12). One row per part; a group is one part.
+    pub parts: Vec<NestPartStatusRow>,
+    /// Complete sets placed: a set is one of every part.
+    pub complete_sets: u32,
+}
+
+/// What is used and left of one sheet, in mm².
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NestSheetUseRow {
+    pub net_mm2: f64,
+    pub placed_mm2: f64,
+    pub free_mm2: f64,
+}
+
+/// How much of one part's order was placed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestPartStatusRow {
+    pub objects: Vec<burnburn_types::GeometryId>,
+    pub ordered: u32,
+    pub placed: u32,
 }
 
 /// The nest panel (Quick Nest, Nest Selected) while it is open.

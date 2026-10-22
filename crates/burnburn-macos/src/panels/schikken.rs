@@ -8,7 +8,7 @@
 use burnburn_editor::ToolKind;
 use burnburn_presentation::{
     AppViewModel, CenterFinderIntent, CenterFinderViewModel, CommandKey, DockContactChoice, DockReference,
-    DocumentViewModel, NestInput, NestPanelViewModel, NestRotations, NestRun, NestScope, PlaceOptionsInput,
+    DocumentViewModel, NestInput, NestMirror, NestPanelViewModel, NestRotations, NestRun, NestScope, PlaceOptionsInput,
     PrintAndCutIntent, PrintAndCutViewModel, PrintCutScale, SchikkenIntent, SlotChoice, SlotsDialogViewModel,
     SlotsInput, TangentViewModel, TogetherAnchorChoice, UiIntent,
 };
@@ -40,6 +40,8 @@ pub enum SchikkenControl {
     NestEdge,
     NestStep,
     NestRotations,
+    NestMirror,
+    NestSheets,
     NestStart,
     NestStop,
     NestApply,
@@ -163,6 +165,12 @@ pub enum SchikkenText {
     NestEdge,
     NestStep,
     NestRotations,
+    NestMirror,
+    NestSheets,
+    NestSheetUse,
+    NestMirroredRow,
+    NestSetsRow,
+    NestOrderRow,
     RotationsFixed,
     RotationsHalf,
     RotationsQuarter,
@@ -260,6 +268,12 @@ impl SchikkenText {
             T::NestEdge,
             T::NestStep,
             T::NestRotations,
+            T::NestMirror,
+            T::NestSheets,
+            T::NestSheetUse,
+            T::NestMirroredRow,
+            T::NestSetsRow,
+            T::NestOrderRow,
             T::RotationsFixed,
             T::RotationsHalf,
             T::RotationsQuarter,
@@ -363,6 +377,19 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestEdge => ("Randmarge (mm)", "Edge buffer (mm)"),
         T::NestStep => ("Rasterstap (mm)", "Grid step (mm)"),
         T::NestRotations => ("Draaiingen", "Rotations"),
+        T::NestMirror => ("Spiegelen toestaan", "Allow mirroring"),
+        T::NestSheets => ("Aantal platen", "Number of sheets"),
+        T::NestSheetUse => {
+            ("Plaat {n}: {used} cm² gebruikt, {free} cm² rest", "Sheet {n}: {used} cm² used, {free} cm² left")
+        }
+        T::NestMirroredRow => ("{count} gespiegeld geplaatst", "{count} placed mirrored"),
+        T::NestSetsRow => (
+            "Complete sets: {sets}. Onderdelen volledig: {complete} van {total}.",
+            "Complete sets: {sets}. Parts complete: {complete} of {total}.",
+        ),
+        T::NestOrderRow => {
+            ("Onderdeel {n}: {placed} van {ordered} geplaatst", "Part {n}: {placed} of {ordered} placed")
+        }
         T::RotationsFixed => ("Geen", "None"),
         T::RotationsHalf => ("0° en 180°", "0° and 180°"),
         T::RotationsQuarter => ("Kwartslagen", "Quarter turns"),
@@ -693,6 +720,17 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
             NestRotations::Eighth => 3,
         },
     });
+    lines.push(SchikkenLine::Check {
+        control: SchikkenControl::NestMirror,
+        caption: t(SchikkenText::NestMirror),
+        on: n.input.mirror == NestMirror::Allowed,
+    });
+    lines.push(SchikkenLine::Field {
+        control: SchikkenControl::NestSheets,
+        caption: t(SchikkenText::NestSheets),
+        text: n.input.sheets.clone(),
+        invalid: invalid(NestField::Sheets),
+    });
     if let Some(e) = n.error {
         lines.push(SchikkenLine::Problem(message_or_key(burnburn_presentation::MessageKey::Schikken(e), locale)));
     }
@@ -719,6 +757,45 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
         lines.push(SchikkenLine::Text(t(SchikkenText::NestApplied)));
     }
     if let Some(r) = &n.report {
+        if r.mirrored > 0 {
+            lines.push(SchikkenLine::Text(fill(
+                SchikkenText::NestMirroredRow,
+                locale,
+                &[("count", r.mirrored.to_string())],
+            )));
+        }
+        for (i, sheet) in r.sheets.iter().enumerate() {
+            lines.push(SchikkenLine::Text(fill(
+                SchikkenText::NestSheetUse,
+                locale,
+                &[
+                    ("n", (i + 1).to_string()),
+                    ("used", mm(sheet.placed_mm2 / 100.0, locale)),
+                    ("free", mm(sheet.free_mm2 / 100.0, locale)),
+                ],
+            )));
+        }
+        let complete = r.parts.iter().filter(|p| p.placed >= p.ordered).count();
+        lines.push(SchikkenLine::Text(fill(
+            SchikkenText::NestSetsRow,
+            locale,
+            &[
+                ("sets", r.complete_sets.to_string()),
+                ("complete", complete.to_string()),
+                ("total", r.parts.len().to_string()),
+            ],
+        )));
+        for (i, part) in r.parts.iter().enumerate().filter(|(_, p)| p.placed < p.ordered) {
+            lines.push(SchikkenLine::Problem(fill(
+                SchikkenText::NestOrderRow,
+                locale,
+                &[
+                    ("n", (i + 1).to_string()),
+                    ("placed", part.placed.to_string()),
+                    ("ordered", part.ordered.to_string()),
+                ],
+            )));
+        }
         for row in &r.unplaced {
             lines.push(SchikkenLine::Problem(fill(
                 SchikkenText::NestUnplacedRow,
@@ -1054,6 +1131,10 @@ pub fn schikken_intent(
                 _ => NestRotations::Quarter,
             };
         }),
+        SchikkenControl::NestMirror => nest(&|i| {
+            i.mirror = if value(values, control) == "1" { NestMirror::Allowed } else { NestMirror::Forbidden };
+        }),
+        SchikkenControl::NestSheets => nest(&|i| i.sheets = value(values, control).to_owned()),
         SchikkenControl::NestStart => send(SchikkenIntent::StartNest { document }),
         SchikkenControl::NestStop => send(SchikkenIntent::CancelNest { document }),
         SchikkenControl::NestApply => send(SchikkenIntent::ApplyNest { document }),

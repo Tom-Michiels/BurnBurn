@@ -21,6 +21,9 @@ use crate::view_model::MessageKey;
 use super::machine::Machine;
 use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_selection, error, submit};
 
+/// Most sheets one nest may use.
+const MAX_SHEETS: u32 = 20;
+
 /// The panel while it is open.
 #[derive(Debug, Clone)]
 struct Panel {
@@ -71,6 +74,14 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         edge_buffer_mm: non_negative(&input.edge_buffer, NestField::EdgeBuffer)?,
         step_mm: parse_length(&input.step).map(|l| l.mm()).map_err(|_| NestField::Step)?,
         rotations: input.rotations,
+        mirror: input.mirror,
+        sheets: input
+            .sheets
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|n| (1..=MAX_SHEETS).contains(n))
+            .ok_or(NestField::Sheets)?,
     })
 }
 
@@ -302,6 +313,10 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         unplaced: d.output.unplaced.clone(),
         skipped: d.output.skipped.clone(),
         utilisation: d.output.utilisation,
+        mirrored: d.output.mirrored,
+        sheets: d.output.sheets.clone(),
+        parts: d.output.parts.clone(),
+        complete_sets: d.output.complete_sets,
     });
     Some(NestPanelViewModel {
         scope: panel.scope,
