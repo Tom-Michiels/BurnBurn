@@ -154,8 +154,8 @@ pub use task::{
     TaskRequest, run_task,
 };
 pub use text_panel::{
-    Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
-    TextToolbarViewModel, VAlign,
+    Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextMixed, TextOnPathViewModel, TextPathEdit,
+    TextToggle, TextToolbarViewModel, VAlign,
 };
 pub use trace_prep::*;
 pub use variable_panel::{

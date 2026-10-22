@@ -15,6 +15,8 @@ pub enum CompoundLabel {
     MaskImage,
     /// A LightBurn project: shapes, layer operations and bitmaps in one step (P04).
     ImportProject,
+    /// One text edit applied to several text objects at once (G7-editor, E07).
+    EditTexts,
 }
 
 /// One step of a compound command.

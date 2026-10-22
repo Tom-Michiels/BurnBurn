@@ -292,3 +292,67 @@ mod plates_parts {
         );
     }
 }
+
+// --- E07: several texts in the text toolbar form ---------------------------------------------------------
+
+mod several_texts {
+    use std::sync::Arc;
+
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, SelectMode, TextEdit, UiIntent};
+    use burnburn_test_support::fixtures::read_fixture;
+    use burnburn_text::{FontData, FontRef, FontStyle, MemoryFontSource};
+    use burnburn_types::DocumentId;
+    use burnburn_windows::forms::{ControlId, ControlValue, FormContext, FormKind, FormLine, FormOutcome, text};
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::Slot;
+
+    fn fonts() -> (Arc<MemoryFontSource>, FontRef) {
+        let mut src = MemoryFontSource::new();
+        let data =
+            Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
+        let regular = src.insert("Liberation Sans", FontStyle::Regular, data.clone());
+        src.insert("Liberation Sans", FontStyle::Bold, data);
+        (Arc::new(src), regular)
+    }
+
+    fn window() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        let (src, font) = fonts();
+        h.controller().attach_fonts(src, font);
+        h.send(UiIntent::InsertText { document: doc, text: "eerste".into() });
+        h.invoke(doc, CommandKey::ToolSelect);
+        h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
+        h.send(UiIntent::InsertText { document: doc, text: "tweede".into() });
+        h.send(UiIntent::Text { document: doc, edit: TextEdit::Height("20".into()) });
+        let all: Vec<_> = h.document(doc).unwrap().objects.iter().map(|o| o.id).collect();
+        h.send(UiIntent::Select { document: doc, ids: all, mode: SelectMode::Replace });
+        (h, doc)
+    }
+
+    #[test]
+    fn the_toolbar_form_shows_an_empty_field_for_a_differing_value_and_says_how_many_texts() {
+        let (h, doc) = window();
+        let vm = h.view();
+        let forms = text::forms(&FormContext { vm: &vm, document: doc, locale: Locale::En });
+        let bar = forms.into_iter().find(|f| f.kind == FormKind::TextToolbar).expect("the toolbar form");
+        assert!(
+            matches!(bar.find(&ControlId::Text(Slot::Height)), Some(FormLine::Field { text, .. }) if text.is_empty())
+        );
+        assert!(matches!(bar.find(&ControlId::Text(Slot::HSpace)), Some(FormLine::Field { text, .. }) if text == "0"));
+        assert!(bar.lines.iter().any(|l| matches!(l, FormLine::Problem(t) if t.starts_with("2 texts selected"))));
+    }
+
+    #[test]
+    fn a_typed_height_goes_to_all_and_an_empty_one_is_nothing() {
+        let (h, doc) = window();
+        let vm = h.view();
+        let ctx = FormContext { vm: &vm, document: doc, locale: Locale::En };
+        let id = ControlId::Text(Slot::Height);
+        assert_eq!(text::react(&id, &ControlValue::Text(String::new()), &ctx), FormOutcome::Nothing);
+        assert_eq!(
+            text::react(&id, &ControlValue::Text("15".into()), &ctx),
+            FormOutcome::Intent(UiIntent::Text { document: doc, edit: TextEdit::Height("15".into()) })
+        );
+    }
+}

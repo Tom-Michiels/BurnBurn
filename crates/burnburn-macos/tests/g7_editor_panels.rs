@@ -401,3 +401,91 @@ fn the_new_refusals_are_said_in_both_languages() {
         assert!(!nl.contains("Structure"), "{p:?}: {nl}");
     }
 }
+
+// --- E07: several texts in the text toolbar ------------------------------------------------------------
+
+mod several_texts {
+    use std::sync::Arc;
+
+    use burnburn_macos::adapter::{NativeEvent, Reaction, translate};
+    use burnburn_macos::l10n::Locale;
+    use burnburn_macos::panels::{Slot, SlotValue, text_panels};
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, SelectMode, TextEdit, UiIntent};
+    use burnburn_test_support::fixtures::read_fixture;
+    use burnburn_text::{FontData, FontRef, FontStyle, MemoryFontSource};
+    use burnburn_types::DocumentId;
+
+    fn fonts() -> (Arc<MemoryFontSource>, FontRef) {
+        let mut src = MemoryFontSource::new();
+        let data =
+            Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
+        let regular = src.insert("Liberation Sans", FontStyle::Regular, data.clone());
+        src.insert("Liberation Sans", FontStyle::Bold, data);
+        let biz = Arc::new(FontData::from_bytes(read_fixture("fonts", "BIZUDPGothic-Regular.ttf").unwrap()).unwrap());
+        src.insert("BIZ UDPGothic", FontStyle::Regular, biz);
+        (Arc::new(src), regular)
+    }
+
+    /// Two texts; the second is 20 mm high, the first 10; both selected.
+    fn window() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        let (src, font) = fonts();
+        h.controller().attach_fonts(src, font);
+        h.send(UiIntent::InsertText { document: doc, text: "eerste".into() });
+        h.invoke(doc, CommandKey::ToolSelect);
+        h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
+        h.send(UiIntent::InsertText { document: doc, text: "tweede".into() });
+        h.send(UiIntent::Text { document: doc, edit: TextEdit::Height("20".into()) });
+        let all: Vec<_> = h.document(doc).unwrap().objects.iter().map(|o| o.id).collect();
+        h.send(UiIntent::Select { document: doc, ids: all, mode: SelectMode::Replace });
+        (h, doc)
+    }
+
+    fn intent(h: &HeadlessEditorHarness, doc: DocumentId, slot: Slot, value: SlotValue) -> Option<UiIntent> {
+        match translate(NativeEvent::TextPanel { document: doc, slot, value }, &h.view()) {
+            Reaction::Intent(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn the_toolbar_counts_the_texts_and_marks_the_values_that_differ() {
+        let (h, doc) = window();
+        let bar = text_panels(&h.view(), doc, Locale::En).toolbar.expect("a toolbar");
+        assert_eq!(bar.count, 2);
+        assert_eq!(bar.mixed, [Slot::Height]);
+        assert_eq!(bar.height, "", "a value that differs shows no value");
+        assert_eq!(bar.h_space, "0", "a shared value is shown");
+        assert!(bar.note.starts_with("2 texts"), "{}", bar.note);
+        let nl = text_panels(&h.view(), doc, Locale::Nl).toolbar.unwrap();
+        assert!(nl.note.starts_with("2 teksten"), "{}", nl.note);
+    }
+
+    #[test]
+    fn a_mixed_field_takes_a_typed_value_for_all_and_an_empty_one_is_nothing() {
+        let (h, doc) = window();
+        assert_eq!(intent(&h, doc, Slot::Height, SlotValue::Text(String::new())), None);
+        assert_eq!(
+            intent(&h, doc, Slot::Height, SlotValue::Text("15".into())),
+            Some(UiIntent::Text { document: doc, edit: TextEdit::Height("15".into()) })
+        );
+        // The shared letter spacing still sends nothing when it is only shown again.
+        assert_eq!(intent(&h, doc, Slot::HSpace, SlotValue::Text("0".into())), None);
+    }
+
+    #[test]
+    fn a_mixed_choice_applies_even_when_it_is_the_first_texts_value() {
+        let (mut h, doc) = window();
+        // Make the families differ: the second text gets the other family.
+        let ids: Vec<_> = h.document(doc).unwrap().objects.iter().map(|o| o.id).collect();
+        h.send(UiIntent::Select { document: doc, ids: vec![ids[1]], mode: SelectMode::Replace });
+        h.send(UiIntent::Text { document: doc, edit: TextEdit::Family("BIZ UDPGothic".into()) });
+        h.send(UiIntent::Select { document: doc, ids, mode: SelectMode::Replace });
+        let bar = text_panels(&h.view(), doc, Locale::En).toolbar.unwrap();
+        assert!(bar.mixed.contains(&Slot::Family));
+        let first = bar.family;
+        let sent = intent(&h, doc, Slot::Family, SlotValue::Choice(first)).expect("the pick goes to all");
+        assert!(matches!(sent, UiIntent::Text { edit: TextEdit::Family(ref f), .. } if f == &bar.families[first]));
+    }
+}

@@ -166,6 +166,52 @@ pub fn g7_fmt(text: G7Text, locale: Locale, values: &[&str]) -> String {
     s
 }
 
+/// The structure edits the golf-7 editor lane made reachable from a panel, for the undo menu.
+pub const STRUCTURE_LABELS: [burnburn_document::structure::StructureLabel; 14] = {
+    use burnburn_document::structure::StructureLabel as L;
+    [
+        L::ToggleModifierStep,
+        L::EditModifier,
+        L::RemoveModifier,
+        L::BakeModifier,
+        L::CreatePlate,
+        L::EditPlate,
+        L::RemovePlate,
+        L::AssignToPlate,
+        L::EditInstance,
+        L::EditPart,
+        L::RenameVariant,
+        L::DefinePart,
+        L::PlaceInstance,
+        L::RemoveInstance,
+    ]
+};
+
+/// Undo/redo words of a structure edit, or `None` when the label has none (yet).
+pub fn structure_undo_pair(
+    label: burnburn_document::structure::StructureLabel,
+) -> Option<(&'static str, &'static str)> {
+    use burnburn_document::structure::StructureLabel as L;
+    Some(match label {
+        L::CreateModifier => ("Patroon maken", "Create Pattern"),
+        L::ToggleModifierStep => ("Modifierstap schakelen", "Toggle Modifier Step"),
+        L::EditModifier => ("Modifierketen wijzigen", "Edit Modifier Chain"),
+        L::RemoveModifier => ("Modifierketen verwijderen", "Remove Modifier Chain"),
+        L::BakeModifier => ("Modifierketen toepassen", "Apply Modifier Chain"),
+        L::CreatePlate => ("Plaat maken", "Make Plate"),
+        L::EditPlate => ("Plaat wijzigen", "Edit Plate"),
+        L::RemovePlate => ("Plaat verwijderen", "Remove Plate"),
+        L::AssignToPlate => ("Aan plaat toewijzen", "Assign to Plate"),
+        L::EditInstance => ("Exemplaar wijzigen", "Edit Instance"),
+        L::EditPart => ("Onderdeel wijzigen", "Edit Part"),
+        L::RenameVariant => ("Variant hernoemen", "Rename Variant"),
+        L::DefinePart => ("Onderdeel maken", "Define Part"),
+        L::PlaceInstance => ("Exemplaar plaatsen", "Place Instance"),
+        L::RemoveInstance => ("Exemplaar verwijderen", "Remove Instance"),
+        _ => return None,
+    })
+}
+
 /// The words for a refused structure edit of the golf-7 editor lane, or `None` for the older ones.
 pub fn structure_problem_text(problem: burnburn_presentation::StructureProblem, locale: Locale) -> Option<String> {
     use burnburn_presentation::StructureProblem as P;

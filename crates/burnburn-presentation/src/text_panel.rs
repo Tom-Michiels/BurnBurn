@@ -61,10 +61,31 @@ pub struct TextToggle {
     pub why_off: Option<TextIssue>,
 }
 
-/// The toolbar for the one selected text object. Values of the text source, formatted for the
+/// For each toolbar value: the selected texts do not all have it (G7-editor, E07). The toolbar then
+/// shows the value of the first text and the host marks the control as mixed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextMixed {
+    pub family: bool,
+    pub bold: bool,
+    pub italic: bool,
+    pub uppercase: bool,
+    pub align: bool,
+    pub valign: bool,
+    pub h_space: bool,
+    pub v_space: bool,
+    pub height: bool,
+    pub welded: bool,
+    pub single_line: bool,
+}
+
+/// The toolbar for the selected text object(s): one text, or several at once. Values of the text source, formatted for the
 /// fields (millimetres); `None` in the document view model when no single text is selected.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextToolbarViewModel {
+    /// How many text objects the toolbar edits (1 for a single text).
+    pub count: usize,
+    /// Which values differ between those texts.
+    pub mixed: TextMixed,
     /// Font families the source lists, sorted; at least the current one.
     pub families: Arc<[String]>,
     pub family: String,

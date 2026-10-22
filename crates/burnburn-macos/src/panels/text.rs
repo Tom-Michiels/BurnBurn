@@ -200,6 +200,11 @@ pub struct ToolbarPanel {
     /// The reason of the last refusal, missing characters or a missing font; empty when fine.
     pub note: String,
     pub convert_enabled: bool,
+    /// How many text objects the toolbar edits (G7-editor, E07).
+    pub count: usize,
+    /// The controls whose value differs between those texts: they show no value (empty field,
+    /// no choice) until one is picked, and then the pick goes to all of them.
+    pub mixed: Vec<Slot>,
 }
 
 /// The text-on-path sheet.
@@ -530,9 +535,38 @@ fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
             Locale::Nl => format!("{} teken(s) ontbreken in het lettertype", t.missing_glyphs),
             Locale::En => format!("{} character(s) missing from the font", t.missing_glyphs),
         }
+    } else if t.count > 1 {
+        match locale {
+            Locale::Nl => format!(
+                "{} teksten geselecteerd; een leeg veld betekent verschillende waarden, een keuze geldt voor alle",
+                t.count
+            ),
+            Locale::En => format!(
+                "{} texts selected; an empty field means different values, a choice applies to all of them",
+                t.count
+            ),
+        }
     } else {
         String::new()
     };
+    let m = t.mixed;
+    let mixed: Vec<Slot> = [
+        (m.family, Slot::Family),
+        (m.bold, Slot::Bold),
+        (m.italic, Slot::Italic),
+        (m.uppercase, Slot::Uppercase),
+        (m.welded, Slot::Welded),
+        (m.single_line, Slot::SingleLine),
+        (m.align, Slot::Align),
+        (m.valign, Slot::VAlign),
+        (m.h_space, Slot::HSpace),
+        (m.v_space, Slot::VSpace),
+        (m.height, Slot::Height),
+    ]
+    .into_iter()
+    .filter_map(|(is_mixed, slot)| is_mixed.then_some(slot))
+    .collect();
+    let shown = |is_mixed: bool, value: &String| if is_mixed { String::new() } else { value.clone() };
     let bold_tip = tr("Dit lettertype heeft geen vette variant", "This font has no bold face", locale);
     let italic_tip = tr("Dit lettertype heeft geen cursieve variant", "This font has no italic face", locale);
     ToolbarPanel {
@@ -545,11 +579,13 @@ fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
         single_line: t.single_line,
         align: ALIGNS.iter().position(|a| *a == t.align).unwrap_or(0),
         valign: VALIGNS.iter().position(|a| *a == t.valign).unwrap_or(0),
-        h_space: t.h_space.clone(),
-        v_space: t.v_space.clone(),
-        height: t.height.clone(),
+        h_space: shown(m.h_space, &t.h_space),
+        v_space: shown(m.v_space, &t.v_space),
+        height: shown(m.height, &t.height),
         note,
         convert_enabled: t.can_convert,
+        count: t.count,
+        mixed,
     }
 }
 
@@ -872,7 +908,7 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         (Slot::Family, SlotValue::Choice(i)) => {
             let bar = doc.text_toolbar.as_ref()?;
             let name = bar.families.get(i)?;
-            (*name != bar.family).then(|| text(TextEdit::Family(name.clone())))
+            (*name != bar.family || bar.mixed.family).then(|| text(TextEdit::Family(name.clone())))
         }
         (Slot::Bold, SlotValue::Toggle(on)) => {
             (on != doc.text_toolbar.as_ref()?.bold.on).then(|| text(TextEdit::Bold(on)))
@@ -891,23 +927,28 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         }
         (Slot::Align, SlotValue::Choice(i)) => {
             let align = *ALIGNS.get(i)?;
-            (align != doc.text_toolbar.as_ref()?.align).then(|| text(TextEdit::Align(align)))
+            let bar = doc.text_toolbar.as_ref()?;
+            (align != bar.align || bar.mixed.align).then(|| text(TextEdit::Align(align)))
         }
         (Slot::VAlign, SlotValue::Choice(i)) => {
             let valign = *VALIGNS.get(i)?;
-            (valign != doc.text_toolbar.as_ref()?.valign).then(|| text(TextEdit::VAlign(valign)))
+            let bar = doc.text_toolbar.as_ref()?;
+            (valign != bar.valign || bar.mixed.valign).then(|| text(TextEdit::VAlign(valign)))
         }
         (Slot::HSpace, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.h_space, &t, bar.issue.is_some()).then(|| text(TextEdit::HSpace(t)))
+            (changed(&bar.h_space, &t, bar.issue.is_some()) && !(bar.mixed.h_space && t.trim().is_empty()))
+                .then(|| text(TextEdit::HSpace(t)))
         }
         (Slot::VSpace, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.v_space, &t, bar.issue.is_some()).then(|| text(TextEdit::VSpace(t)))
+            (changed(&bar.v_space, &t, bar.issue.is_some()) && !(bar.mixed.v_space && t.trim().is_empty()))
+                .then(|| text(TextEdit::VSpace(t)))
         }
         (Slot::Height, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.height, &t, bar.issue.is_some()).then(|| text(TextEdit::Height(t)))
+            (changed(&bar.height, &t, bar.issue.is_some()) && !(bar.mixed.height && t.trim().is_empty()))
+                .then(|| text(TextEdit::Height(t)))
         }
         (Slot::Convert, SlotValue::Press) => {
             doc.text_toolbar.as_ref()?;

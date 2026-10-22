@@ -4,7 +4,10 @@ use burnburn_geometry::{Affine, Path, ProductionTolerance, Vector};
 use std::sync::Arc;
 
 use burnburn_document::text::{TextCommand, TextId, TextMode, TextObject};
-use burnburn_document::{CommandPayload, DerivedOwner, DocumentSnapshot, GeometryCommand, GeometrySource};
+use burnburn_document::{
+    CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, DocumentSnapshot, GeometryCommand,
+    GeometrySource,
+};
 use burnburn_generators::{GenError, PathTextParams, text_on_path};
 use burnburn_types::{DocumentId, Length, RequestId};
 
@@ -12,7 +15,8 @@ use burnburn_text::{FontData, FontError, FontRef, FontSize, FontSource, FontStyl
 
 use crate::field::{FieldError, format_mm, parse_length, parse_position};
 use crate::text_panel::{
-    Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle, TextToolbarViewModel,
+    Distort, TextEdit, TextField, TextIssue, TextMixed, TextOnPathViewModel, TextPathEdit, TextToggle,
+    TextToolbarViewModel,
 };
 use crate::view_model::MessageKey;
 
@@ -67,6 +71,21 @@ pub(super) fn single_text(s: &Session, snapshot: &DocumentSnapshot) -> Option<Te
         }
         found = Some(t);
     }
+    found
+}
+
+/// Every distinct text object the selection is made of, in id order (a text of several lines has
+/// several outlines but counts once); empty for no selection, or when anything else than text
+/// outlines is selected (G7-editor, E07).
+pub(super) fn selected_texts(s: &Session, snapshot: &DocumentSnapshot) -> Vec<TextId> {
+    let mut found: Vec<TextId> = Vec::new();
+    for id in s.selection.ids() {
+        let Some(t) = text_of(snapshot, *id) else { return Vec::new() };
+        if !found.contains(&t) {
+            found.push(t);
+        }
+    }
+    found.sort();
     found
 }
 
@@ -147,7 +166,9 @@ fn set_style(next: &mut TextObject, fonts: Option<&SharedFonts>, style: FontStyl
     Ok(())
 }
 
-/// One toolbar edit of the selected text: one `TextCommand::Set`, or a reason in the toolbar.
+/// One toolbar edit of the selected text(s): one `TextCommand::Set` for one text that changes, one
+/// compound (one undo step) for several, or a reason in the toolbar. When any of the texts cannot
+/// take the edit, none of them changes.
 pub(super) fn edit(
     s: &mut Session,
     document: DocumentId,
@@ -156,18 +177,38 @@ pub(super) fn edit(
     request: Option<RequestId>,
 ) -> AppUpdate {
     let snapshot = s.doc.snapshot();
-    let Some(id) = single_text(s, &snapshot) else { return AppUpdate::default() };
-    let Some(current) = snapshot.text(id) else { return AppUpdate::default() };
-    let mut next = current.clone();
-    if let Err(issue) = apply(&mut next, fonts, edit) {
-        s.text.issue = Some((id, issue));
-        return AppUpdate { view_changed: true, ..AppUpdate::default() };
+    let ids = selected_texts(s, &snapshot);
+    let Some(first) = ids.first().copied() else { return AppUpdate::default() };
+    let mut changes: Vec<(TextId, TextObject)> = Vec::new();
+    for id in &ids {
+        let Some(current) = snapshot.text(*id) else { return AppUpdate::default() };
+        let mut next = current.clone();
+        if let Err(issue) = apply(&mut next, fonts, edit.clone()) {
+            s.text.issue = Some((first, issue));
+            return AppUpdate { view_changed: true, ..AppUpdate::default() };
+        }
+        if next != *current {
+            changes.push((*id, next));
+        }
     }
     let had_issue = s.text.issue.take().is_some();
-    if next == *current {
-        return AppUpdate { view_changed: had_issue, ..AppUpdate::default() };
-    }
-    apply_edit(s, document, CommandPayload::Text(TextCommand::Set { text: id, source: Box::new(next) }), request)
+    let payload = match changes.len() {
+        0 => return AppUpdate { view_changed: had_issue, ..AppUpdate::default() },
+        1 => {
+            let (id, next) = changes.remove(0);
+            CommandPayload::Text(TextCommand::Set { text: id, source: Box::new(next) })
+        }
+        _ => CommandPayload::Compound(CompoundCommand {
+            label: CompoundLabel::EditTexts,
+            steps: changes
+                .into_iter()
+                .map(|(id, next)| {
+                    CompoundStep::Run(CommandPayload::Text(TextCommand::Set { text: id, source: Box::new(next) }))
+                })
+                .collect(),
+        }),
+    };
+    apply_edit(s, document, payload, request)
 }
 
 /// Whether Convert to Path can act: one text with outlines is selected.
@@ -183,9 +224,61 @@ pub(super) fn convert(s: &mut Session, document: DocumentId, request: Option<Req
     apply_edit(s, document, CommandPayload::Text(TextCommand::ConvertToPath { text: id }), request)
 }
 
+/// The toolbar for the selected text(s): the first text's values, with the differing ones marked.
 pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
     let snapshot = s.doc.snapshot();
-    let id = single_text(s, &snapshot)?;
+    let ids = selected_texts(s, &snapshot);
+    let views: Vec<TextToolbarViewModel> = ids.iter().filter_map(|id| toolbar_of(s, &snapshot, *id)).collect();
+    let (first, rest) = views.split_first()?;
+    let mut out = first.clone();
+    out.count = views.len();
+    let mut m = TextMixed::default();
+    for v in rest {
+        m.family |= v.family != first.family;
+        m.bold |= v.bold.on != first.bold.on;
+        m.italic |= v.italic.on != first.italic.on;
+        m.uppercase |= v.uppercase != first.uppercase;
+        m.align |= v.align != first.align;
+        m.valign |= v.valign != first.valign;
+        m.h_space |= v.h_space != first.h_space;
+        m.v_space |= v.v_space != first.v_space;
+        m.height |= v.height != first.height;
+        m.welded |= v.welded.on != first.welded.on;
+        m.single_line |= v.single_line != first.single_line;
+        for (mine, theirs) in [(&mut out.bold, &v.bold), (&mut out.italic, &v.italic), (&mut out.welded, &v.welded)] {
+            if !theirs.enabled && mine.enabled {
+                mine.enabled = false;
+                mine.why_off = theirs.why_off;
+            }
+        }
+        out.missing_glyphs += v.missing_glyphs;
+        out.font_missing |= v.font_missing;
+        if out.missing_font.is_none() {
+            out.missing_font.clone_from(&v.missing_font);
+        }
+        out.variable |= v.variable;
+        out.can_convert &= v.can_convert;
+        if out.issue.is_none() {
+            out.issue = v.issue;
+        }
+    }
+    out.bold.on = views.iter().all(|v| v.bold.on);
+    out.italic.on = views.iter().all(|v| v.italic.on);
+    out.welded.on = views.iter().all(|v| v.welded.on);
+    out.uppercase = views.iter().all(|v| v.uppercase);
+    out.single_line = views.iter().all(|v| v.single_line);
+    out.mixed = m;
+    let mut families: Vec<String> = views.iter().flat_map(|v| v.families.iter().cloned()).collect();
+    families.sort();
+    families.dedup();
+    out.families = families.into();
+    // The toolbar speaks for all of them: a refusal belongs to the selection, not to the first text.
+    out.issue = s.text.issue.filter(|(t, _)| ids.contains(t)).map(|(_, i)| i);
+    Some(out)
+}
+
+/// The toolbar of one text object.
+fn toolbar_of(s: &Session, snapshot: &DocumentSnapshot, id: TextId) -> Option<TextToolbarViewModel> {
     let t = snapshot.text(id)?;
     let styles = s.fonts.as_ref().map(|f| f.available_styles(&t.font.family)).unwrap_or_default();
     let toggle = |on: bool, target: FontStyle| {
@@ -211,6 +304,8 @@ pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
             })
         );
     Some(TextToolbarViewModel {
+        count: 1,
+        mixed: TextMixed::default(),
         families: families.into(),
         family: t.font.family.clone(),
         bold: toggle(bold, FontStyle::from_flags(!bold, italic)),

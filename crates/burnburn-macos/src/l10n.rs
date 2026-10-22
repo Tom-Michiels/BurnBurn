@@ -995,6 +995,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
             CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
             CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
+            CompoundLabel::EditTexts => ("Teksten wijzigen", "Edit Texts"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1038,7 +1039,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ShapeLabel::ConvertToPath => ("Omzetten naar pad", "Convert to Path"),
             _ => return None,
         },
-        UndoLabel::Structure(StructureLabel::CreateModifier) => ("Patroon maken", "Create Pattern"),
+        UndoLabel::Structure(l) => return crate::l10n_g7_editor::structure_undo_pair(l),
         UndoLabel::Generator(l) => match l {
             GeneratorLabel::Create => ("Generator maken", "Create Generator"),
             GeneratorLabel::Edit => ("Generator wijzigen", "Edit Generator"),
@@ -1776,9 +1777,11 @@ pub fn known_message_keys() -> Vec<MessageKey> {
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
     undo.extend(
-        [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
+        [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject, CompoundLabel::EditTexts]
+            .map(UndoLabel::Compound),
     );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
+    undo.extend(crate::l10n_g7_editor::STRUCTURE_LABELS.map(UndoLabel::Structure));
     undo.extend([GeneratorLabel::Create, GeneratorLabel::Edit, GeneratorLabel::Delete].map(UndoLabel::Generator));
     undo.extend(
         [
