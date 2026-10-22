@@ -36,6 +36,15 @@ pub struct SceneItem {
     pub role: StyleRole,
 }
 
+/// Which variant of an A/B comparison an outline belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareSide {
+    /// The recipe in force.
+    A,
+    /// The recipe it is compared with.
+    B,
+}
+
 /// Window-local decorations drawn above the items (the grid below them).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -98,6 +107,12 @@ pub enum Overlay {
     /// A computed result not yet applied (boolean preview); drawn distinct from document items.
     ResultPreview {
         path: Arc<Path>,
+    },
+    /// One variant of the tracer's A/B comparison, laid on the sheet where applying it would put
+    /// it (G8-trace, T10). A window aid; never document data.
+    CompareOutline {
+        path: Arc<Path>,
+        side: CompareSide,
     },
     /// A sketch point in sketch mode, with how free it still is.
     SketchPoint {

@@ -17,8 +17,8 @@ use burnburn_types::{CancellationSource, DocumentId, TaskId};
 use crate::image_panel::TraceMode;
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::trace_recipes::{
-    BatchProblemView, BatchRowView, BatchViewModel, CompareViewModel, RecipeChoice, RecipeIssue, SavedRecipeRow,
-    TraceRecipeIntent, TraceRecipesViewModel, VariantSummary,
+    BatchProblemView, BatchRowView, BatchViewModel, CompareCorrectionsView, CompareViewModel, RecipeChoice,
+    RecipeIssue, SavedRecipeRow, TraceRecipeIntent, TraceRecipesViewModel, VariantSummary,
 };
 use crate::trace_study::{FileOutcome, FileProblem, StudyJob, StudyOutput};
 
@@ -56,6 +56,13 @@ pub(super) struct StudyState {
     issue: Option<RecipeIssue>,
     compare: Option<CompareState>,
     batch: Option<BatchState>,
+}
+
+impl StudyState {
+    /// The comparison once both variants are traced.
+    pub(super) fn compare_result(&self) -> Option<&Arc<RecipeComparison>> {
+        self.compare.as_ref().and_then(|c| c.result.as_ref())
+    }
 }
 
 /// What belongs to the kind of picture and is saved: everything but what belongs to one picture
@@ -256,8 +263,13 @@ impl AppController {
                 }
             };
             t.study.issue = None;
-            let job =
-                StudyJob::Compare { task: id, source: Arc::clone(&t.source), a: Box::new(a), b: Box::new(b.clone()) };
+            let job = StudyJob::Compare {
+                task: id,
+                source: Arc::clone(&t.source),
+                a: Box::new(a),
+                b: Box::new(b.clone()),
+                corrections: t.corrections.clone(),
+            };
             t.study.compare = Some(CompareState { choice: with, b, latest: id, result: None });
             let kind = TaskKind::TraceStudy;
             let cancel = CancellationSource::new();
@@ -478,6 +490,12 @@ pub(super) fn view(s: &Session, app: &AppPanels) -> Option<TraceRecipesViewModel
         saved,
         issue: t.study.issue,
         compare: t.study.compare.as_ref().map(|c| CompareViewModel {
+            corrections: c
+                .result
+                .as_ref()
+                .map(|r| r.corrections)
+                .filter(|k| k.stored > 0)
+                .map(|k| CompareCorrectionsView { stored: k.stored, a_applied: k.a_applied, b_applied: k.b_applied }),
             b_choice: c.choice.clone(),
             computing: c.result.is_none(),
             a: c.result.as_ref().map(|r| summary_of(&r.a)),

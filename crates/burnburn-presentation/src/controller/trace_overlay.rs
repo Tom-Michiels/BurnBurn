@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use burnburn_editor::{BedPicture, BedQuad, Overlay, SnapKind};
+use burnburn_editor::{BedPicture, BedQuad, CompareSide, Overlay, SnapKind};
 use burnburn_geometry::{Path, Segment, Subpath};
 use burnburn_types::{ContentHash, HashDomain};
 
@@ -22,6 +22,13 @@ pub(super) fn overlays(s: &Session) -> Vec<Overlay> {
         && let Some(c) = t.centerline.as_ref()
     {
         out.push(Overlay::ResultPreview { path: Arc::clone(&c.preview) });
+    }
+    // Both variants of the A/B comparison, once they are traced: contour traces only.
+    if t.form.mode == TraceMode::Contour
+        && let Some(result) = t.study.compare_result()
+    {
+        out.push(Overlay::CompareOutline { path: Arc::new(result.a_result.path()), side: CompareSide::A });
+        out.push(Overlay::CompareOutline { path: Arc::new(result.b_result.path()), side: CompareSide::B });
     }
     if let Some(scene) = pick_scene(t) {
         let rgba: Vec<u8> = scene.picture.gray8.iter().flat_map(|g| [*g, *g, *g, 255]).collect();

@@ -134,6 +134,14 @@ texts! {
     ),
     CompareSame => ("A en B geven precies dezelfde geometrie.", "A and B give exactly the same geometry."),
     CompareDiffer => ("A en B geven verschillende geometrie (zwart = A, rood = B, zelfde schaal).", "A and B give different geometry (black = A, red = B, same scale)."),
+    CompareOnSheet => (
+        "De omtrekken van A en B liggen ook op het blad, waar toepassen ze zou zetten.",
+        "The outlines of A and B are also on the sheet, where applying would put them."
+    ),
+    CompareCorrections => (
+        "Lokale correcties: {0} bewaard; A past er {1} toe, B past er {2} toe (een correctie die op de contouren van B niet meer past, wordt daar niet toegepast).",
+        "Local corrections: {0} kept; A applies {1}, B applies {2} (a correction that no longer fits the contours of B is not applied there)."
+    ),
     CompareAdopt => ("Neem B over als huidig recept", "Take B as the current recipe"),
     CompareClear => ("Sluit de vergelijking", "Close the comparison"),
     // --- Batch (T10).

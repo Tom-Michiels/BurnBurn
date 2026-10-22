@@ -346,6 +346,16 @@ fn compare_lines(c: &CompareViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     if c.a.is_some() {
         out.push(G5Line::Text(t(if c.same_geometry { G7Text::CompareSame } else { G7Text::CompareDiffer }, locale)));
     }
+    if let Some(k) = &c.corrections {
+        out.push(G5Line::Text(g7_fmt(
+            G7Text::CompareCorrections,
+            locale,
+            &[&k.stored.to_string(), &k.a_applied.to_string(), &k.b_applied.to_string()],
+        )));
+    }
+    if c.a_outline.is_some() && c.b_outline.is_some() {
+        out.push(G5Line::Text(t(G7Text::CompareOnSheet, locale)));
+    }
     if let (Some(a), Some(b)) = (&c.a_outline, &c.b_outline)
         && let Some(image) = compare_bitmap(a, b, COMPARE_PX)
     {

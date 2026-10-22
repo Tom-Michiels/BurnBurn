@@ -5,7 +5,7 @@
 //! used for CAM). The camera origin is subtracted in `f64` before narrowing to `f32` (ADR 0003).
 //! Colours and widths are a theme decision; the scene only carries semantic roles.
 
-use burnburn_editor::{Overlay, SceneSnapshot, StyleRole, Viewport};
+use burnburn_editor::{CompareSide, Overlay, SceneSnapshot, StyleRole, Viewport};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
@@ -84,6 +84,10 @@ pub struct Theme {
     pub selection: Rgba,
     pub selection_width_pt: f64,
     pub preview: Rgba,
+    /// The outlines of the two variants of the tracer's A/B comparison: A the recipe in force, B the
+    /// one it is compared with (also told apart by line weight, not by colour alone).
+    pub compare_a: Rgba,
+    pub compare_b: Rgba,
     pub rubber_band_fill: Rgba,
     pub handle_size_pt: f64,
     pub snap: Rgba,
@@ -114,6 +118,8 @@ impl Theme {
             selection: accent,
             selection_width_pt: 1.0,
             preview: Rgba::new(0.0, 0.48, 1.0, 0.8),
+            compare_a: Rgba::new(0.1, 0.1, 0.1, 1.0),
+            compare_b: Rgba::new(0.9, 0.1, 0.1, 1.0),
             rubber_band_fill: Rgba::new(0.0, 0.48, 1.0, 0.12),
             handle_size_pt: 6.0,
             snap: Rgba::new(0.85, 0.0, 0.6, 1.0),
@@ -376,6 +382,21 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::DragPreview { path, transform } => {
                 let style = RoleStyle { fill: None, stroke: Some(theme.preview), stroke_width_pt: 1.0 };
                 draw_path(&mut out, flatten(path, transform, &proj), style, proj.scale);
+            }
+            // A result not applied yet (centre lines, boolean preview): an outline in the preview colour.
+            Overlay::ResultPreview { path } => {
+                let style = RoleStyle { fill: None, stroke: Some(theme.preview), stroke_width_pt: 1.5 };
+                draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
+            }
+            // The two variants of an A/B comparison: A broad and dark underneath, B thin and red on top,
+            // so where they coincide both can still be seen.
+            Overlay::CompareOutline { path, side } => {
+                let (color, width_pt) = match side {
+                    CompareSide::A => (theme.compare_a, 2.5),
+                    CompareSide::B => (theme.compare_b, 1.0),
+                };
+                let style = RoleStyle { fill: None, stroke: Some(color), stroke_width_pt: width_pt };
+                draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
             }
             Overlay::Handle { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt, theme.background, theme.selection, &proj);
