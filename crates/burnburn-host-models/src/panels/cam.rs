@@ -389,9 +389,11 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
         ),
         DialogNote::ArrayExtent { copies, width_um, height_um } => {
             let (w, h) = (width_um as f64 / 1000.0, height_um as f64 / 1000.0);
+            let count = crate::format::format_count(copies as usize, crate::format::Noun::Copy, locale);
+            let size = crate::format::format_size(w, h, crate::format::LengthPreference::Millimeters, locale);
             return match locale {
-                Locale::Nl => format!("{copies} kopieën (met het origineel), samen {w:.3} × {h:.3} mm."),
-                Locale::En => format!("{copies} copies (with the original), together {w:.3} × {h:.3} mm."),
+                Locale::Nl => format!("{count} (met het origineel), samen {size}."),
+                Locale::En => format!("{count} (with the original), together {size}."),
             };
         }
         _ => ("", ""),

@@ -168,18 +168,8 @@ pub fn calibration_lines(applied: &[burnburn_presentation::AppliedCalibration], 
 }
 
 fn findings_text(errors: usize, warnings: usize, locale: Locale) -> String {
-    match locale {
-        Locale::Nl => format!(
-            "{errors} {}, {warnings} {}",
-            if errors == 1 { "fout" } else { "fouten" },
-            if warnings == 1 { "waarschuwing" } else { "waarschuwingen" }
-        ),
-        Locale::En => format!(
-            "{errors} {}, {warnings} {}",
-            if errors == 1 { "error" } else { "errors" },
-            if warnings == 1 { "warning" } else { "warnings" }
-        ),
-    }
+    use crate::format::{Noun, format_count};
+    format!("{}, {}", format_count(errors, Noun::Error, locale), format_count(warnings, Noun::Warning, locale))
 }
 
 /// The plan's constant-velocity time estimate, always labelled as an estimate (it is not a

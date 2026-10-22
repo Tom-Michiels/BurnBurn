@@ -103,7 +103,7 @@ fn every_label_note_and_error_of_the_new_dialogs_has_words() {
         }
     }
     let extent = cam_note(DialogNote::ArrayExtent { copies: 8, width_um: 85_000, height_um: 28_000 }, Locale::En);
-    assert!(extent.contains("8 copies") && extent.contains("85.000") && extent.contains("28.000"), "{extent}");
+    assert!(extent.contains("8 copies") && extent.contains("85 × 28 mm"), "{extent}");
 }
 
 #[test]
