@@ -201,9 +201,10 @@ impl DocWindow {
         state.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         let findings = col.add_label("", 18.0);
         // The measured values the plan used and the proofs they come from (W09).
-        let plan_calibration = col.add_label("", 30.0);
+        // One short line (the full text is its tooltip): the column has little room left under the plan.
+        let plan_calibration = col.add_label("", 14.0);
         plan_calibration.setFont(Some(&NSFont::systemFontOfSize(10.0)));
-        plan_calibration.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
+        plan_calibration.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
         // The GRBL refusals share the plan-identity row: that label truncates in the middle anyway.
         let popup_width = 104.0;
         let id_frame = plan_id.frame();
@@ -533,7 +534,8 @@ impl DocWindow {
         {
             set_text(label, text);
         }
-        set_text(&self.plan_calibration, &panel.calibration.join("\n"));
+        set_text(&self.plan_calibration, &panel.calibration.join("; "));
+        self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);
         let enabled = |k: CommandKey| vm.active == Some(document) && vm.commands.get(&k).is_some_and(|c| c.enabled);
         self.compile_button.setEnabled(enabled(CommandKey::Compile));
