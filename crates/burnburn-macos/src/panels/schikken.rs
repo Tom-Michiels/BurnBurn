@@ -62,6 +62,8 @@ pub enum SchikkenControl {
     /// The previous / next page of the part list.
     NestPartsPrev,
     NestPartsNext,
+    /// Take the quantity of order number `n` of the list as the copies of its parts (W07).
+    NestOrder(usize),
     /// Whether an inner contour is a hole of its part (C10).
     NestHoles,
     /// Exact, tight packing (C10).
@@ -200,6 +202,10 @@ pub enum SchikkenText {
     NestPartsPrev,
     NestPartsNext,
     NestPartGrain,
+    NestOrdersHeading,
+    NestOrderLineOne,
+    NestOrderLineMany,
+    NestOrderTake,
     GrainAlong,
     GrainAcross,
     GrainFree,
@@ -320,6 +326,10 @@ impl SchikkenText {
             T::NestPartsPrev,
             T::NestPartsNext,
             T::NestPartGrain,
+            T::NestOrdersHeading,
+            T::NestOrderLineOne,
+            T::NestOrderLineMany,
+            T::NestOrderTake,
             T::GrainAlong,
             T::GrainAcross,
             T::GrainFree,
@@ -446,6 +456,16 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestPartsPrev => ("Vorige onderdelen", "Previous parts"),
         T::NestPartsNext => ("Volgende onderdelen", "Next parts"),
         T::NestPartGrain => ("Onderdeel {n}: {name}, nerf", "Part {n}: {name}, grain"),
+        T::NestOrdersHeading => ("Aantal van een order overnemen", "Take the quantity of an order"),
+        T::NestOrderLineOne => (
+            "{name}: nog {left} te maken, 1 onderdeel van de nest heeft deze naam",
+            "{name}: {left} still to make, 1 part of the nest has this name",
+        ),
+        T::NestOrderLineMany => (
+            "{name}: nog {left} te maken, {parts} onderdelen van de nest hebben deze naam",
+            "{name}: {left} still to make, {parts} parts of the nest have this name",
+        ),
+        T::NestOrderTake => ("Neem het aantal van {name} over", "Use the quantity of {name}"),
         T::GrainAlong => ("Volgt de plaat (X langs de nerf)", "Follows the sheet (X along the grain)"),
         T::GrainAcross => ("Dwars (Y langs de nerf)", "Across (Y along the grain)"),
         T::GrainFree => ("Vrij draaien", "Turns freely"),
@@ -897,6 +917,31 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
                     burnburn_presentation::NestPartGrain::Across => 1,
                     burnburn_presentation::NestPartGrain::Free => 2,
                 },
+            });
+        }
+    }
+    // The orders whose quantity can become the copies of their parts (W07).
+    if !n.orders.is_empty() {
+        lines.push(SchikkenLine::Heading(t(SchikkenText::NestOrdersHeading)));
+        for (i, order) in n.orders.iter().enumerate() {
+            let which = if order.matching_parts == 1 {
+                SchikkenText::NestOrderLineOne
+            } else {
+                SchikkenText::NestOrderLineMany
+            };
+            lines.push(SchikkenLine::Text(fill(
+                which,
+                locale,
+                &[
+                    ("name", order.name.clone()),
+                    ("left", order.remaining.to_string()),
+                    ("parts", order.matching_parts.to_string()),
+                ],
+            )));
+            lines.push(SchikkenLine::Button {
+                control: SchikkenControl::NestOrder(i),
+                title: fill(SchikkenText::NestOrderTake, locale, &[("name", order.name.clone())]),
+                enabled: order.matching_parts > 0 && order.remaining > 0,
             });
         }
     }
@@ -1353,6 +1398,10 @@ pub fn schikken_intent(
                     i.part_grain.push((object, rule));
                 }
             })
+        }
+        SchikkenControl::NestOrder(row) => {
+            let order = s.nest.as_ref()?.orders.get(row)?.id;
+            send(SchikkenIntent::TakeOrderQuantities { document, order })
         }
         SchikkenControl::NestPartsPrev | SchikkenControl::NestPartsNext => {
             let parts = s.nest.as_ref()?.part_rows.len();

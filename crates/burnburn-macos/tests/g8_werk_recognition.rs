@@ -114,7 +114,10 @@ fn rotation_and_scale_are_two_choices_that_start_off_and_send_the_pair_of_choice
     let mut r = rig();
     show(&mut r, &[(60.0, 60.0, 0.0)]);
     let nl = texts(&r, Locale::Nl);
-    assert!(nl.contains("( ) Gedraaide producten herkennen") && nl.contains("( ) Grotere en kleinere producten herkennen"), "{nl}");
+    assert!(
+        nl.contains("( ) Gedraaide producten herkennen") && nl.contains("( ) Grotere en kleinere producten herkennen"),
+        "{nl}"
+    );
     let en = texts(&r, Locale::En);
     assert!(en.contains("( ) Find turned products") && en.contains("( ) Find larger and smaller products"), "{en}");
 

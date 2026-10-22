@@ -82,6 +82,7 @@ impl AppController {
             | SchikkenIntent::CancelNest { .. }
             | SchikkenIntent::ApplyNest { .. }
             | SchikkenIntent::SelectNestUnplaced { .. }
+            | SchikkenIntent::TakeOrderQuantities { .. }
             | SchikkenIntent::CloseNest { .. }) => self.nest_intent(intent),
             SchikkenIntent::SetWarpKind { document, bilinear } => {
                 self.with_session(document, |s| super::reshape::set_warp_kind(s, document, bilinear))

@@ -111,7 +111,7 @@ fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
     }
 }
 
-const NEST_FAILURES: [NestFailure; 13] = [
+const NEST_FAILURES: [NestFailure; 16] = [
     NestFailure::InvalidField(NestField::Padding),
     NestFailure::InvalidField(NestField::EdgeBuffer),
     NestFailure::InvalidField(NestField::Step),
@@ -125,6 +125,9 @@ const NEST_FAILURES: [NestFailure; 13] = [
     NestFailure::Geometry,
     NestFailure::Stale,
     NestFailure::Refused,
+    NestFailure::UnknownOrder,
+    NestFailure::OrderMatchesNothing,
+    NestFailure::OrderDone,
 ];
 
 fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
@@ -178,6 +181,15 @@ fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
         NestFailure::Refused => (
             "Het resultaat kon niet worden toegepast; er is niets gewijzigd.",
             "The result could not be applied; nothing changed.",
+        ),
+        NestFailure::UnknownOrder => ("Deze order bestaat niet (meer).", "This order does not exist (any more)."),
+        NestFailure::OrderMatchesNothing => (
+            "Geen enkel onderdeel van de nest heeft de naam van het onderdeel van deze order.",
+            "No part of the nest has the name of the part of this order.",
+        ),
+        NestFailure::OrderDone => (
+            "Alle stuks van deze order zijn al gemaakt: er is niets meer te nesten.",
+            "Every piece of this order is already made: nothing is left to nest.",
         ),
     }
 }
