@@ -41,8 +41,8 @@ enum PixelFormatDto {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ConfigDto {
-    device: String,
+pub(crate) struct ConfigDto {
+    pub(crate) device: String,
     width: u32,
     height: u32,
     pixel_format: PixelFormatDto,
@@ -135,7 +135,7 @@ fn invalid(path: String, reason: &str) -> LoadError {
 
 // --- domain -> DTO -------------------------------------------------------------------------------
 
-fn config_dto(c: &CameraConfigKey) -> ConfigDto {
+pub(crate) fn config_dto(c: &CameraConfigKey) -> ConfigDto {
     ConfigDto {
         device: c.device.0.clone(),
         width: c.mode.width,
@@ -202,7 +202,7 @@ fn finite(path: &str, values: &[f64]) -> Result<(), LoadError> {
     if values.iter().all(|v| v.is_finite()) { Ok(()) } else { Err(invalid(path.to_owned(), "a number is not finite")) }
 }
 
-fn config_of(path: &str, c: ConfigDto) -> Result<CameraConfigKey, LoadError> {
+pub(crate) fn config_of(path: &str, c: ConfigDto) -> Result<CameraConfigKey, LoadError> {
     if c.device.trim().is_empty() {
         return Err(invalid(format!("{path}.device"), "a calibration belongs to a camera"));
     }

@@ -330,6 +330,8 @@ pub struct TaskOutcome {
 pub enum TaskOutput {
     /// The places a template was found in a camera frame (W06).
     Located(Vec<burnburn_image::locate::LocateMatch>),
+    /// The matches of a search that also looks for rotation and scale.
+    LocatedPoses(Vec<burnburn_image::locate_pose::PoseMatch>),
     Measured(DocumentMeasure),
     Saved {
         path: PathBuf,
@@ -740,6 +742,14 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             Ok(TaskOutput::ImportParsed { path, bytes: Arc::from(bytes), parsed })
         }
         TaskInput::Files(task) => crate::files_task::run(task, cancel).map(TaskOutput::Files),
+        TaskInput::Locate(job) if job.pose.is_some() => {
+            let pose = job.pose.clone().unwrap_or_default();
+            match job.locator.locate_pose(&job.frame, &job.template, &pose, cancel) {
+                Ok(found) => Ok(TaskOutput::LocatedPoses(found)),
+                Err(burnburn_image::locate::LocateError::Cancelled) => Err(TaskError::Cancelled),
+                Err(e) => Err(TaskError::Locate(e)),
+            }
+        }
         TaskInput::Locate(job) => match job.locator.locate(&job.frame, &job.template, &job.params, cancel) {
             Ok(found) => Ok(TaskOutput::Located(found)),
             Err(burnburn_image::locate::LocateError::Cancelled) => Err(TaskError::Cancelled),

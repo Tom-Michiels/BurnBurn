@@ -83,6 +83,9 @@ pub struct RecordingHistory {
     pub orders: Mutex<StoredOrders>,
     /// Jobs the designer released (W01): kept like the journal keeps them, rebuilt without inputs.
     pub approvals: Mutex<Vec<Arc<burnburn_presentation::PreparedJob>>>,
+    /// The names of the parts of the project of each released job, kept like the journal keeps the
+    /// project blob (W01/W02, G8).
+    pub parts: Mutex<Vec<(burnburn_job::JobPlanId, Vec<String>)>>,
 }
 
 impl RecordingHistory {
@@ -189,12 +192,26 @@ impl HistoryStore for RecordingHistory {
         let mut approvals = self.approvals.lock().unwrap();
         if !approvals.iter().any(|a| a.plan == job.plan) {
             approvals.push(Arc::new(burnburn_presentation::PreparedJob { inputs: None, ..job.clone() }));
+            if let Some(inputs) = job.inputs.as_ref() {
+                let snapshot = &inputs.project.document;
+                let names = snapshot
+                    .draw_order()
+                    .into_iter()
+                    .filter_map(|id| snapshot.object(id))
+                    .map(|o| o.name().to_owned())
+                    .collect();
+                self.parts.lock().unwrap().push((job.plan, names));
+            }
         }
         Ok(())
     }
 
     fn approved_jobs(&self) -> Result<Vec<Arc<burnburn_presentation::PreparedJob>>, HistoryStoreError> {
         Ok(self.approvals.lock().unwrap().clone())
+    }
+
+    fn job_parts(&self, plan: burnburn_job::JobPlanId) -> Vec<String> {
+        self.parts.lock().unwrap().iter().find(|(p, _)| *p == plan).map(|(_, n)| n.clone()).unwrap_or_default()
     }
 
     fn record_order(&self, order: &StoredOrder) -> Result<(), HistoryStoreError> {
@@ -272,6 +289,7 @@ pub fn history(peer: &Peer) -> Arc<RecordingHistory> {
         outcomes: Mutex::new(Vec::new()),
         orders: Mutex::new(StoredOrders::default()),
         approvals: Mutex::new(Vec::new()),
+        parts: Mutex::new(Vec::new()),
     })
 }
 

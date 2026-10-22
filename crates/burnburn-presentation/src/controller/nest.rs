@@ -2,6 +2,7 @@
 //! the application of a finished result. The result belongs to one revision of one set of options:
 //! an edit or other options make it stale, and a stale result is never applied.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use burnburn_document::{ArrangeCommand, CommandPayload, DocumentCommand, GeometryCommand, NestCopy, PlaceCommand};
@@ -11,9 +12,10 @@ use burnburn_types::{CancellationSource, DocumentId, GeometryId, RequestId, Revi
 use crate::field::{parse_length, parse_position};
 use crate::intent::CommandKey;
 use crate::nest_task::{NestOutput, NestSettings, build_job, classify, failure_of, sheet_of};
+use crate::production::OrderId;
 use crate::schikken::{
-    NestFailure, NestField, NestInput, NestPanelViewModel, NestPartRow, NestReportViewModel, NestRun, NestScope,
-    SchikkenIntent, SchikkenMessage,
+    NestFailure, NestField, NestInput, NestOrderRow, NestPanelViewModel, NestPartRow, NestReportViewModel, NestRun,
+    NestScope, SchikkenIntent, SchikkenMessage,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -79,6 +81,7 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         .map(|(object, text)| Ok((GeometryId::from_raw(*object), copies(text)?)))
         .collect::<Result<Vec<_>, NestField>>()?;
     Ok(NestSettings {
+        part_grain: input.part_grain.iter().map(|(object, rule)| (GeometryId::from_raw(*object), *rule)).collect(),
         copies: copies(&input.copies)?,
         part_copies,
         holes: input.holes,
@@ -105,6 +108,13 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
     })
 }
 
+/// Does a member of the part carry the name an order asks for (compared without case and spaces)?
+fn body_is_part(snapshot: &burnburn_document::DocumentSnapshot, body: &[GeometryId], wanted: &str) -> bool {
+    let wanted = wanted.trim().to_lowercase();
+    !wanted.is_empty()
+        && body.iter().filter_map(|id| snapshot.object(*id)).any(|o| o.name().trim().to_lowercase() == wanted)
+}
+
 fn failure(f: NestFailure) -> Option<SchikkenMessage> {
     Some(SchikkenMessage::Nest(f))
 }
@@ -129,6 +139,7 @@ impl AppController {
                 self.with_session(document, |s| set_options(s, document, *input))
             }
             SchikkenIntent::StartNest { document } => self.start_nest(document),
+            SchikkenIntent::TakeOrderQuantities { document, order } => self.take_order_quantities(document, order),
             SchikkenIntent::CancelNest { document } => self.with_session(document, |s| {
                 cancel_running(s);
                 AppUpdate::redraw(document)
@@ -157,6 +168,69 @@ impl AppController {
             }),
             _ => AppUpdate::default(),
         }
+    }
+
+    /// The pieces of an order still to make: its quantity less the executions with Completed evidence.
+    fn order_remaining(&self, order: &super::Order) -> u32 {
+        let status = self.machine_port.as_ref().map(|p| p.status());
+        let made = self.order_view(order, status.as_ref()).completed;
+        order.draft.quantity.saturating_sub(made)
+    }
+
+    /// The orders the panel of `s` can take the quantity of, with what is left of each.
+    pub(super) fn nest_order_rows(&self, s: &Session) -> Vec<NestOrderRow> {
+        let Some(panel) = s.nest.panel.as_ref() else { return Vec::new() };
+        let snapshot = s.doc.snapshot();
+        let bodies = classify(&snapshot, panel.scope, s.selection.ids(), panel.settings.holes).movable;
+        self.orders
+            .iter()
+            .map(|o| NestOrderRow {
+                id: o.id,
+                name: o.draft.name.clone(),
+                part: o.draft.part.clone(),
+                remaining: self.order_remaining(o),
+                matching_parts: bodies.iter().filter(|b| body_is_part(&snapshot, b, &o.draft.part)).count(),
+            })
+            .collect()
+    }
+
+    /// The pieces still to make of an order become the number of copies of the parts of the nest that
+    /// carry the order's part name; the other parts keep theirs (W07).
+    fn take_order_quantities(&mut self, document: DocumentId, order: OrderId) -> AppUpdate {
+        let found = self.orders.iter().find(|o| o.id == order).cloned();
+        let remaining = found.as_ref().map(|o| self.order_remaining(o));
+        self.with_session(document, |s| {
+            let Some(panel) = s.nest.panel.as_mut() else { return AppUpdate::default() };
+            let (Some(order), Some(remaining)) = (found, remaining) else {
+                panel.error = failure(NestFailure::UnknownOrder);
+                return AppUpdate::redraw(document);
+            };
+            let snapshot = s.doc.snapshot();
+            let bodies = classify(&snapshot, panel.scope, s.selection.ids(), panel.settings.holes).movable;
+            let firsts: Vec<GeometryId> = bodies
+                .iter()
+                .filter(|b| body_is_part(&snapshot, b, &order.draft.part))
+                .filter_map(|b| b.first().copied())
+                .collect();
+            if firsts.is_empty() {
+                panel.error = failure(NestFailure::OrderMatchesNothing);
+                return AppUpdate::redraw(document);
+            }
+            if remaining == 0 {
+                panel.error = failure(NestFailure::OrderDone);
+                return AppUpdate::redraw(document);
+            }
+            let text = remaining.min(MAX_COPIES).to_string();
+            let mut input = panel.input.clone();
+            for first in firsts {
+                input.part_copies.retain(|(o, _)| *o != first.raw());
+                // The number every part has: the part just follows the panel.
+                if text != input.copies.trim() {
+                    input.part_copies.push((first.raw(), text.clone()));
+                }
+            }
+            set_options(s, document, input)
+        })
     }
 
     /// Builds the job on the current revision and hands it to the worker.
@@ -251,10 +325,15 @@ fn apply(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> A
     let payload = if extra.is_empty() {
         CommandPayload::Edit(GeometryCommand::Place(PlaceCommand::Nest { moves }))
     } else {
-        let copies = extra
-            .iter()
-            .map(|p| NestCopy { items: super::clipboard::items_of(s, &p.objects), transform: p.transform })
+        // Names already in the drawing, and those given to copies on the way.
+        let mut taken: BTreeSet<String> = snapshot
+            .draw_order()
+            .into_iter()
+            .filter_map(|id| snapshot.object(id))
+            .map(|o| o.name().to_owned())
             .collect();
+        let copies =
+            extra.iter().map(|p| NestCopy { items: named_copy(s, &mut taken, p), transform: p.transform }).collect();
         CommandPayload::Arrange(ArrangeCommand::NestCopies { moves, copies })
     };
     let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
@@ -377,12 +456,38 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
                     name: snapshot.object(first).map(|o| o.name().to_owned()).unwrap_or_default(),
                     copies: own.clone().unwrap_or_else(|| panel.input.copies.clone()),
                     own: own.is_some(),
+                    grain: panel.settings.grain_of(first),
                 })
             })
             .collect(),
+        orders: Vec::new(),
         report,
         can_apply: run == NestRun::Done && s.nest.done.as_ref().is_some_and(|d| !d.output.placements.is_empty()),
     })
+}
+
+/// The objects of an extra copy, each named after its source with the number of the copy
+/// ("Pad 1 (2)"), and a name that is taken is skipped, so no two objects share a name.
+fn named_copy(
+    s: &Session,
+    taken: &mut BTreeSet<String>,
+    placement: &crate::nest_task::PartPlacement,
+) -> Vec<burnburn_document::PasteItem> {
+    let mut items = super::clipboard::items_of(s, &placement.objects);
+    for item in &mut items {
+        let base = item.name.clone();
+        let mut number = placement.copy + 1;
+        let name = loop {
+            let candidate = format!("{base} ({number})");
+            if !taken.contains(&candidate) {
+                break candidate;
+            }
+            number += 1;
+        };
+        taken.insert(name.clone());
+        item.name = name;
+    }
+    items
 }
 
 /// The finished nest drawn on the canvas before it is applied: every part where it would go.

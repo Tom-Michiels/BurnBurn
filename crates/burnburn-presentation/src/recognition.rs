@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 use burnburn_image::GrayImage;
 use burnburn_image::locate::{LocateError, LocateMatch, LocateParams, locate};
+use burnburn_image::locate_pose::locate_pose;
+pub use burnburn_image::locate_pose::{PoseMatch, PoseParams};
 use burnburn_types::CancellationToken;
 
 use crate::camera::CameraDeviceId;
@@ -29,6 +31,29 @@ pub trait TemplateLocator: Send + Sync + fmt::Debug {
         params: &LocateParams,
         cancel: &CancellationToken,
     ) -> Result<Vec<LocateMatch>, LocateError>;
+
+    /// The same with a product that may be turned and larger or smaller. The default looks without
+    /// rotation or scale (every match at angle 0 and scale 1), so an algorithm that knows only
+    /// translation keeps working behind the port.
+    fn locate_pose(
+        &self,
+        frame: &GrayImage,
+        template: &GrayImage,
+        params: &PoseParams,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<PoseMatch>, LocateError> {
+        let plain = LocateParams {
+            min_score: params.min_score,
+            max_matches: params.max_matches,
+            min_separation_px: params.min_separation_px,
+            coarse_factor: None,
+        };
+        Ok(self
+            .locate(frame, template, &plain, cancel)?
+            .into_iter()
+            .map(|m| PoseMatch { x_px: m.x_px, y_px: m.y_px, angle_deg: 0.0, scale: 1.0, score: m.score })
+            .collect())
+    }
 }
 
 /// The algorithm of `burnburn-image::locate`: zero-mean normalised cross-correlation.
@@ -45,6 +70,16 @@ impl TemplateLocator for NccLocator {
     ) -> Result<Vec<LocateMatch>, LocateError> {
         locate(frame, template, params, cancel)
     }
+
+    fn locate_pose(
+        &self,
+        frame: &GrayImage,
+        template: &GrayImage,
+        params: &PoseParams,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<PoseMatch>, LocateError> {
+        locate_pose(frame, template, params, cancel)
+    }
 }
 
 /// One search handed to a worker.
@@ -54,6 +89,9 @@ pub struct LocateJob {
     pub frame: Arc<GrayImage>,
     pub template: Arc<GrayImage>,
     pub params: LocateParams,
+    /// Look for a turned and/or scaled product (`min_score` and `max_matches` of `params` still
+    /// apply); `None`: translation only.
+    pub pose: Option<PoseParams>,
 }
 
 impl fmt::Debug for LocateJob {
@@ -79,6 +117,17 @@ pub enum RecognitionIntent {
     Find { min_percent: String },
     /// Stop a search that is running; what it would have found is dropped.
     CancelFind,
+    /// What a search also looks for: a product that is turned, one that is larger or smaller.
+    SetSearch { rotation: bool, scale: bool },
+    /// Learn the template by pointing at two opposite corners of its box in the camera picture on
+    /// the sheet (the canvas pointer); the second corner learns it under `name`.
+    PointBox { device: CameraDeviceId, name: String },
+    /// Stop pointing; the corner clicked so far is dropped.
+    EndPoint,
+    /// Take a saved template back into use.
+    Use { id: u64 },
+    /// Remove a saved template.
+    Delete { id: u64 },
     /// The operator's decision about one candidate.
     Decide { index: usize, decision: CandidateDecision },
     /// Put a copy of the selection (the cut geometry) at every accepted candidate.
@@ -124,6 +173,12 @@ pub enum RecognitionProblem {
     NotCalibrated,
     /// The search itself failed.
     SearchFailed,
+    /// No saved template has this id.
+    UnknownTemplate,
+    /// The library of templates is not read yet.
+    LibraryNotReady,
+    /// The library file could not be read: it is kept as it is, and nothing is saved in it.
+    LibraryUnreadable,
 }
 
 /// Always shown with the results: what the score is and is not.
@@ -138,6 +193,35 @@ pub struct TemplateView {
     pub width_px: u32,
     pub height_px: u32,
     pub device: CameraDeviceId,
+    /// Kept in the library of templates (a template with a name is).
+    pub saved: bool,
+}
+
+/// A template kept in the library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedTemplateView {
+    pub id: u64,
+    pub name: String,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub device: CameraDeviceId,
+    /// It is the template in use.
+    pub in_use: bool,
+}
+
+/// What a search also looks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SearchChoice {
+    pub rotation: bool,
+    pub scale: bool,
+}
+
+/// Pointing at the box of a template in the camera picture on the sheet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointingView {
+    /// The first corner clicked, in pixels of the camera frame.
+    pub first: Option<[f64; 2]>,
+    pub frame_px: (u32, u32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +232,11 @@ pub struct CandidateView {
     /// The centre in the camera frame (pixel-edge coordinates).
     pub x_px: f64,
     pub y_px: f64,
+    /// How far the product is turned relative to the template (degrees, clockwise in the picture;
+    /// 0 for a search without rotation).
+    pub angle_deg: f64,
+    /// How large the product is relative to the template (1 for a search without scale).
+    pub scale: f64,
     /// The place on the bed, from the camera calibration; `None` without one.
     pub bed_mm: Option<[f64; 2]>,
     pub decision: CandidateDecision,
@@ -181,6 +270,12 @@ pub struct RecognitionViewModel {
     pub can_place: bool,
     pub problem: Option<RecognitionProblem>,
     pub note: RecognitionNote,
+    pub search: SearchChoice,
+    /// The templates in the library, oldest first.
+    pub saved: Vec<SavedTemplateView>,
+    pub pointing: Option<PointingView>,
+    /// The file with the saved templates could not be read: it is kept as it is and nothing is saved in it.
+    pub library_unreadable: bool,
 }
 
 impl Default for RecognitionViewModel {
@@ -195,6 +290,10 @@ impl Default for RecognitionViewModel {
             can_place: false,
             problem: None,
             note: RecognitionNote::SimilarityIsNotAccuracy,
+            search: SearchChoice::default(),
+            saved: Vec::new(),
+            pointing: None,
+            library_unreadable: false,
         }
     }
 }

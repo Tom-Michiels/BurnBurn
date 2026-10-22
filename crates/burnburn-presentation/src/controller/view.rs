@@ -37,6 +37,9 @@ impl AppController {
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref(), self.app.prefs.units);
+                if let Some(nest) = vm.schikken.nest.as_mut() {
+                    nest.orders = self.nest_order_rows(s);
+                }
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
                 vm.operator.clone_from(&operator);
                 vm.trace_recipes = super::trace_recipes::view(s, &self.app);
@@ -126,6 +129,7 @@ impl AppController {
         });
         layers::style_scene(s, &snapshot, &mut scene);
         scene.overlays.extend(self.camera_overlays());
+        scene.overlays.extend(self.recognition_overlays());
         scene.overlays.extend(super::image::preview_overlay(s));
         scene.overlays.extend(super::trace_overlay::overlays(s));
         Some(Arc::new(scene))

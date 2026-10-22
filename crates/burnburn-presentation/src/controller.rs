@@ -456,6 +456,9 @@ pub struct AppController {
     approved_plans: std::collections::BTreeSet<burnburn_types::ContentHash>,
     /// The released jobs the history holds, rebuilt from their frozen blobs (no window of their own).
     released_jobs: Vec<Arc<crate::production::PreparedJob>>,
+    /// The names of the parts in the project of each released job, by plan hash: a job of the
+    /// history has no project in memory, an order still finds it by the name of a part (W01/W02).
+    job_parts: std::collections::BTreeMap<burnburn_types::ContentHash, Vec<String>>,
     /// Machine hub state: a repeat in preparation and the calibration measurements (G5).
     hub: machine_hub::HubState,
     role: Role,
@@ -526,6 +529,7 @@ impl AppController {
             recognition: recognition::RecognitionState::default(),
             approved_plans: std::collections::BTreeSet::new(),
             released_jobs: Vec::new(),
+            job_parts: std::collections::BTreeMap::new(),
             hub: machine_hub::HubState::default(),
             role: Role::Designer,
             orders: Vec::new(),

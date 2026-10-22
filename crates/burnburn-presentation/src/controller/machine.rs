@@ -32,6 +32,14 @@ pub(super) struct Prepared {
     pub(super) record: Option<burnburn_generators::ProductionRecord>,
 }
 
+/// The names of the parts (the drawn objects) of the project a job was prepared from; none for a job
+/// without its project in memory.
+fn part_names(job: &PreparedJob) -> Vec<String> {
+    let Some(inputs) = job.inputs.as_ref() else { return Vec::new() };
+    let snapshot = &inputs.project.document;
+    snapshot.draw_order().into_iter().filter_map(|id| snapshot.object(id)).map(|o| o.name().to_owned()).collect()
+}
+
 /// An order (IM31) with the explicitly chosen job, if any.
 #[derive(Clone)]
 pub(super) struct Order {
@@ -117,6 +125,7 @@ impl AppController {
         self.order_executions = stored.executions.into_iter().collect();
         self.released_jobs = history.approved_jobs()?;
         self.approved_plans = self.released_jobs.iter().map(|j| j.plan.hash()).collect();
+        self.job_parts = self.released_jobs.iter().map(|j| (j.plan.hash(), history.job_parts(j.plan))).collect();
         self.history = Some(history);
         Ok(())
     }
@@ -145,6 +154,7 @@ impl AppController {
             return error(Some(document), MessageKey::IntentNotRecorded);
         }
         self.approved_plans.insert(job.plan.hash());
+        self.job_parts.insert(job.plan.hash(), part_names(&job));
         if !self.released_jobs.iter().any(|j| j.plan == job.plan) {
             self.released_jobs.push(Arc::clone(&job));
         }
@@ -220,12 +230,40 @@ impl AppController {
         }
     }
 
-    /// Approved prepared jobs whose name is the order's part, one per plan: the jobs of the open
-    /// windows first, then the released jobs only the history holds (no window needed, W01/W02).
+    /// Does the job hold the part an order names? The file name of the project is the job's name; the
+    /// names of the drawn objects in it are its parts, compared without case and surrounding spaces.
+    fn holds_part(&self, job: &PreparedJob, part: &str) -> bool {
+        if job.name == part {
+            return true;
+        }
+        let wanted = part.trim().to_lowercase();
+        if wanted.is_empty() {
+            return false;
+        }
+        let from_inputs;
+        let names = if job.inputs.is_some() {
+            from_inputs = part_names(job);
+            &from_inputs
+        } else {
+            match self.job_parts.get(&job.plan.hash()) {
+                Some(names) => names,
+                None => return false,
+            }
+        };
+        names.iter().any(|n| n.trim().to_lowercase() == wanted)
+    }
+
+    /// Approved prepared jobs that are the order's part (by the file name or the name of a part in
+    /// them), one per plan: the jobs of the open windows first, then the released jobs only the
+    /// history holds (no window needed, W01/W02).
     pub(super) fn candidates(&self, part: &str) -> Vec<Prepared> {
         let mut out: Vec<Prepared> = Vec::new();
-        let released = self.stored_released().filter(|p| p.job.name == part);
-        for p in self.sessions.values().filter_map(|s| s.prepared.as_ref()).filter(|p| p.approved && p.job.name == part)
+        let released = self.stored_released().filter(|p| self.holds_part(&p.job, part));
+        for p in self
+            .sessions
+            .values()
+            .filter_map(|s| s.prepared.as_ref())
+            .filter(|p| p.approved && self.holds_part(&p.job, part))
         {
             if !out.iter().any(|q| q.job.plan == p.job.plan) {
                 out.push(p.clone());

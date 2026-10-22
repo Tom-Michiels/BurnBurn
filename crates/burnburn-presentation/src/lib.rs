@@ -151,8 +151,9 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use recognition::{
-    CandidateDecision, CandidateView, LocateJob, NccLocator, RecognitionIntent, RecognitionNote, RecognitionPhase,
-    RecognitionProblem, RecognitionViewModel, RunningCamera, TemplateLocator, TemplateView,
+    CandidateDecision, CandidateView, LocateJob, NccLocator, PointingView, PoseMatch, PoseParams, RecognitionIntent,
+    RecognitionNote, RecognitionPhase, RecognitionProblem, RecognitionViewModel, RunningCamera, SavedTemplateView,
+    SearchChoice, TemplateLocator, TemplateView,
 };
 pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use schikken::*;

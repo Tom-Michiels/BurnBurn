@@ -208,6 +208,11 @@ pub struct NestInput {
     pub copies: String,
     /// The parts that have their own number of copies: the first object of the part and the text.
     pub part_copies: Vec<(u64, String)>,
+    /// The parts with a grain rule of their own: the first object of the part and the rule. A part
+    /// that is not listed follows the sheet (its X axis along the grain).
+    pub part_grain: Vec<(u64, NestPartGrain)>,
+    /// The page of the part list the panel shows (counted from 0; the panel keeps it in range).
+    pub part_page: usize,
     /// Whether an object inside another one is a hole of that part (C10).
     pub holes: NestHoles,
     /// Grain direction of the sheet in degrees (blank: none). With a grain every part keeps its
@@ -218,6 +223,18 @@ pub struct NestInput {
     pub common_line: bool,
     /// Slide every placement against its neighbours with exact geometry (slower, packs tighter).
     pub tight: bool,
+}
+
+/// How one part relates to the grain of the sheet (C10). Only used when the sheet has a grain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestPartGrain {
+    /// The part's X axis runs along the grain.
+    #[default]
+    Along,
+    /// The part's Y axis runs along the grain (the part is drawn across it).
+    Across,
+    /// The part has no grain rule and turns freely.
+    Free,
 }
 
 /// What an object that lies inside another object is for the nest.
@@ -251,6 +268,8 @@ impl Default for NestInput {
             sheets: "1".to_owned(),
             copies: "1".to_owned(),
             part_copies: Vec::new(),
+            part_grain: Vec::new(),
+            part_page: 0,
             holes: NestHoles::default(),
             grain: String::new(),
             common_line: false,
@@ -288,6 +307,12 @@ pub enum NestFailure {
     /// The chosen sheet is not in the drawing any more, or is not a closed contour.
     SheetGone,
     Refused,
+    /// The order is not (any more) one of the orders.
+    UnknownOrder,
+    /// No part of the nest has the name of the order's part.
+    OrderMatchesNothing,
+    /// Every piece of the order is made: nothing is left to nest.
+    OrderDone,
 }
 
 /// Where the nest stands.
@@ -404,6 +429,21 @@ pub struct NestPartRow {
     pub copies: String,
     /// The part has its own number.
     pub own: bool,
+    /// How the part relates to the grain of the sheet.
+    pub grain: NestPartGrain,
+}
+
+/// An order the nest panel can take the quantity of: the pieces still to make, and how many parts of
+/// the nest carry the order's part name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestOrderRow {
+    pub id: crate::production::OrderId,
+    pub name: String,
+    pub part: String,
+    /// Quantity of the order less the pieces with Completed evidence.
+    pub remaining: u32,
+    /// Parts of the nest whose name is the order's part.
+    pub matching_parts: usize,
 }
 
 /// The nest panel (Quick Nest, Nest Selected) while it is open.
@@ -421,6 +461,8 @@ pub struct NestPanelViewModel {
     pub sheet_choices: Vec<NestSheetChoice>,
     /// The parts with the number of copies each will get (C12).
     pub part_rows: Vec<NestPartRow>,
+    /// The orders whose quantity can be taken over as the copies of their parts (W07, G8).
+    pub orders: Vec<NestOrderRow>,
     pub report: Option<NestReportViewModel>,
     /// Apply is available: a fresh result with at least one placement.
     pub can_apply: bool,
@@ -757,6 +799,12 @@ pub enum SchikkenIntent {
     CloseNest {
         document: burnburn_types::DocumentId,
     },
+    /// Take the pieces still to make of an order as the number of copies of the parts of the nest
+    /// that carry the order's part name (W07). Other parts keep their numbers.
+    TakeOrderQuantities {
+        document: burnburn_types::DocumentId,
+        order: crate::production::OrderId,
+    },
     PrintAndCut(PrintAndCutIntent),
     CenterFinder(CenterFinderIntent),
 }
@@ -774,6 +822,7 @@ impl SchikkenIntent {
             | SchikkenIntent::CancelNest { document }
             | SchikkenIntent::ApplyNest { document }
             | SchikkenIntent::SelectNestUnplaced { document }
+            | SchikkenIntent::TakeOrderQuantities { document, .. }
             | SchikkenIntent::CloseNest { document } => *document,
             SchikkenIntent::PrintAndCut(i) => match i {
                 PrintAndCutIntent::PickTarget { document, .. }
