@@ -19,9 +19,10 @@ use burnburn_types::{DocumentId, GeometryId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length, parse_position};
 use crate::structure_panel::{
-    BooleanKind, BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
-    ModifierValueKind, NewModifierStep, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
-    ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
+    BooleanKind, BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus,
+    ModifierStepRow, ModifierValueKind, NewModifierStep, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField,
+    PlateIssueRow, PlateRow, ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem,
+    StructureViewModel, VariantRow,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
 
@@ -158,9 +159,9 @@ fn operands_of(
         .copied()
         .filter(|id| *id != source)
         .filter(|id| {
-            snapshot
-                .object(*id)
-                .is_some_and(|o| !matches!((o.source(), own), (GeometrySource::Derived(k), Some(owner)) if k.owner == owner))
+            snapshot.object(*id).is_some_and(
+                |o| !matches!((o.source(), own), (GeometrySource::Derived(k), Some(owner)) if k.owner == owner),
+            )
         })
         .collect()
 }
@@ -210,11 +211,10 @@ fn new_step(
                 .ok()
                 .filter(|v| v.is_finite() && *v != 0.0 && v.abs() <= 360.0)
                 .ok_or(problem(StructureProblem::InvalidSweep))?;
-            let reference = snapshot
-                .object(source)
-                .and_then(|o| o.path().bounds())
-                .map_or(Point::new(0.0, 0.0), |b| b.center());
-            let circular = burnburn_geometry::array::CircularArray { count, center, sweep_deg, rotate_items: true, reference };
+            let reference =
+                snapshot.object(source).and_then(|o| o.path().bounds()).map_or(Point::new(0.0, 0.0), |b| b.center());
+            let circular =
+                burnburn_geometry::array::CircularArray { count, center, sweep_deg, rotate_items: true, reference };
             burnburn_geometry::array::circular_array(&circular).map_err(array_error)?;
             Ok(Modifier::CircularArray(circular))
         }

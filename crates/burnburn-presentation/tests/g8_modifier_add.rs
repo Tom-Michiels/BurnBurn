@@ -53,10 +53,7 @@ fn world() -> World {
         source,
         steps: vec![
             ModifierStep { modifier: Modifier::Offset { distance: mm(1.0), join: OffsetJoin::Round }, enabled: true },
-            ModifierStep {
-                modifier: Modifier::LinearArray { count: 3, step: Vector::new(20.0, 0.0) },
-                enabled: true,
-            },
+            ModifierStep { modifier: Modifier::LinearArray { count: 3, step: Vector::new(20.0, 0.0) }, enabled: true },
         ],
         tolerance: ProductionTolerance::new(mm(0.01)).unwrap(),
         mode: EvalMode::Inline,
@@ -223,15 +220,30 @@ fn bad_numbers_and_unknown_chains_are_refused_and_change_nothing() {
         (grid("2", "2.5", "30", "40"), StructureProblem::InvalidCount),
         (grid("100000", "100000", "30", "40"), StructureProblem::InvalidCount),
         (
-            NewModifierStep::Circle { count: "0".into(), center_x: "0".into(), center_y: "0".into(), sweep: "360".into() },
+            NewModifierStep::Circle {
+                count: "0".into(),
+                center_x: "0".into(),
+                center_y: "0".into(),
+                sweep: "360".into(),
+            },
             StructureProblem::InvalidCount,
         ),
         (
-            NewModifierStep::Circle { count: "3".into(), center_x: "0".into(), center_y: "0".into(), sweep: "0".into() },
+            NewModifierStep::Circle {
+                count: "3".into(),
+                center_x: "0".into(),
+                center_y: "0".into(),
+                sweep: "0".into(),
+            },
             StructureProblem::InvalidSweep,
         ),
         (
-            NewModifierStep::Circle { count: "3".into(), center_x: "0".into(), center_y: "0".into(), sweep: "400".into() },
+            NewModifierStep::Circle {
+                count: "3".into(),
+                center_x: "0".into(),
+                center_y: "0".into(),
+                sweep: "400".into(),
+            },
             StructureProblem::InvalidSweep,
         ),
     ];
@@ -256,21 +268,23 @@ fn a_chain_is_made_on_the_selection_with_any_first_step() {
     assert_eq!(w.problem(), None);
     let rows = w.vm().structure.modifiers;
     assert_eq!(rows.len(), 2);
-    assert_eq!((rows[1].source, rows[1].steps.len(), rows[1].steps[0].kind), (w.other.raw(), 1, ModifierKind::GridArray));
+    assert_eq!(
+        (rows[1].source, rows[1].steps.len(), rows[1].steps[0].kind),
+        (w.other.raw(), 1, ModifierKind::GridArray)
+    );
     assert_eq!(w.vm().undo, Some(UndoLabel::Structure(StructureLabel::CreateModifier)));
     w.undo();
     assert_eq!(w.vm().structure.modifiers.len(), 1);
 
     // A boolean chain: the first selected object is the source, the others are the operands.
     w.select(&[w.source, w.other]);
-    w.edit(StructureEdit::CreateModifierChain {
-        step: NewModifierStep::Boolean { op: BooleanKind::Difference },
-    });
+    w.edit(StructureEdit::CreateModifierChain { step: NewModifierStep::Boolean { op: BooleanKind::Difference } });
     assert_eq!(w.problem(), None);
     let rows = w.vm().structure.modifiers;
     assert_eq!((rows[1].source, rows[1].steps[0].kind), (w.source.raw(), ModifierKind::Boolean));
     // 10 mm square with a 2 mm hole: two contours, extent still 10 mm.
-    let new_output = w.h.scene(w.doc).unwrap().items.iter().map(|i| i.source).find(|id| ![w.source, w.other, w.output].contains(id));
+    let new_output =
+        w.h.scene(w.doc).unwrap().items.iter().map(|i| i.source).find(|id| ![w.source, w.other, w.output].contains(id));
     let (subpaths, width, _) = w.item(new_output.unwrap()).unwrap();
     assert_eq!(subpaths, 2);
     assert!((width - 10.0).abs() < 1e-3);

@@ -240,12 +240,26 @@ pub enum BooleanKind {
 #[non_exhaustive]
 pub enum NewModifierStep {
     /// Positive grows the area.
-    Offset { distance: String },
-    Boolean { op: BooleanKind },
+    Offset {
+        distance: String,
+    },
+    Boolean {
+        op: BooleanKind,
+    },
     /// Columns × rows copies, `pitch_x` / `pitch_y` apart.
-    Grid { columns: String, rows: String, pitch_x: String, pitch_y: String },
+    Grid {
+        columns: String,
+        rows: String,
+        pitch_x: String,
+        pitch_y: String,
+    },
     /// `count` copies around a centre over `sweep` degrees; the copies turn with their position.
-    Circle { count: String, center_x: String, center_y: String, sweep: String },
+    Circle {
+        count: String,
+        center_x: String,
+        center_y: String,
+        sweep: String,
+    },
 }
 
 /// Everything the structure panel shows; empty lists for a document without structure.
