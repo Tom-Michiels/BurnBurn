@@ -405,7 +405,7 @@ fn pair(text: TextText) -> (&'static str, &'static str) {
         T::PathOffset => ("Afstand tot pad (mm)", "Distance from the path (mm)"),
         T::PathReverse => ("Pad omkeren", "Reverse the path"),
         T::PathLive => ("Tekst blijft het pad volgen", "Keep the text following the path"),
-        T::Apply => ("Toepassen", "Apply"),
+        T::Apply => ("Pas toe", "Apply"),
         T::Cancel => ("Annuleer", "Cancel"),
         T::VariableTitle => ("Variabele tekst", "Variable text"),
         T::Kind => ("Type", "Type"),

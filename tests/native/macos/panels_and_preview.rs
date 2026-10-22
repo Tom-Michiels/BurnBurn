@@ -105,7 +105,10 @@ fn scenario() -> Result<(), String> {
         .with_window(doc, |w| w.plan_labels.iter().map(|l| l.stringValue().to_string()).collect())
         .unwrap_or_default();
     expect(|| format!("labels {labels:?}"), labels.first().map(String::as_str) == Some("Voorbeeld van het plan"))?;
-    expect(|| format!("plan id {labels:?} vs {}", plan.id), labels.get(1) == Some(&plan.id.to_string()))?;
+    // The hash is not the visible text (LF3 Q4); the title carries it as a tooltip.
+    expect(|| format!("plan id row {labels:?}"), labels.get(1).is_some_and(String::is_empty))?;
+    let tooltip = s.app.with_window(doc, |w| w.plan_labels[0].toolTip().map(|t| t.to_string())).flatten();
+    expect(|| format!("tooltip {tooltip:?} vs {}", plan.id), tooltip == Some(format!("Plan-id: {}", plan.id)))?;
     expect(|| format!("estimate {labels:?}"), labels.get(2).is_some_and(|e| e.ends_with("(schatting)")))?;
     expect(|| format!("state {labels:?}"), labels.get(3).map(String::as_str) == Some("Actueel"))?;
     // AppKit widgets are captured even while the screen is locked; the Metal canvas only when

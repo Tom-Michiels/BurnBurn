@@ -82,11 +82,11 @@ app_texts! {
     SuffixSeconds => ("s", "s"),
     PrefsReset => ("Standaardwaarden herstellen", "Restore Defaults"),
     PrefsNote => (
-        "Instellingen staan in uw gebruikersmap, nooit in een project. De taal geldt vanaf de volgende start; snapping geldt voor nieuwe vensters.",
+        "Instellingen staan in je gebruikersmap, nooit in een project. De taal geldt vanaf de volgende start; snapping geldt voor nieuwe vensters.",
         "Settings live in your user folder, never in a project. The language applies from the next start; snapping applies to new windows."
     ),
     PrefsLoadProblem => (
-        "Het voorkeurenbestand kon niet (volledig) gelezen worden; waar nodig zijn standaardwaarden actief. Het bestand blijft ongewijzigd tot u iets verandert.",
+        "Het voorkeurenbestand kon niet (volledig) gelezen worden; waar nodig zijn standaardwaarden actief. Het bestand blijft ongewijzigd tot je iets verandert.",
         "The preferences file could not be read (completely); defaults are used where needed. The file stays as it is until you change something."
     ),
     PrefsSaveFailed => (
@@ -165,7 +165,7 @@ app_texts! {
     // Support data
     SupportTitle => ("Supportgegevens", "Support Data"),
     SupportMessage => (
-        "Het rapport bevat de versie, het platform, uw voorkeuren, per venster alleen aantallen en de journaalweergave van de machine. Documentinhoud komt er nooit in. U ziet het rapport voordat u het bewaart.",
+        "Het rapport bevat de versie, het platform, je voorkeuren, per venster alleen aantallen en de journaalweergave van de machine. Documentinhoud komt er nooit in. Je ziet het rapport voordat je het bewaart.",
         "The report holds the version, the platform, your preferences, per window only counts, and the machine journal replay. Document content is never in it. You see the report before you save it."
     ),
     SupportPaths => ("Projectnamen en -paden opnemen", "Include project names and paths"),

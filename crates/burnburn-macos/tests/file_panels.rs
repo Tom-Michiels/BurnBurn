@@ -155,9 +155,9 @@ fn a_plotter_file_shows_its_pens_as_proposed_layers() {
     let panel = import_panel(&h.view(), doc, Locale::En).unwrap();
     assert!(!panel.show_units && panel.pages.items.is_empty());
     assert_eq!(panel.unit_prompt, "Plotter units (0.025 mm per step)");
-    assert!(panel.report.contains("Proposed layers:\n  Pen 1: 1 objects\n  Pen 2: 1 objects"), "{}", panel.report);
+    assert!(panel.report.contains("Proposed layers:\n  Pen 1: 1 object\n  Pen 2: 1 object"), "{}", panel.report);
     let nl = import_panel(&h.view(), doc, Locale::Nl).unwrap();
-    assert!(nl.report.contains("Voorgestelde lagen:\n  Pen 1: 1 objecten"), "{}", nl.report);
+    assert!(nl.report.contains("Voorgestelde lagen:\n  Pen 1: 1 object"), "{}", nl.report);
 }
 
 #[test]

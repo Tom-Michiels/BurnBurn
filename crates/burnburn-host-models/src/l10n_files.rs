@@ -102,7 +102,7 @@ texts! {
     NoEntries => ("Geen instellingen gevonden", "No settings found"),
     LabelLayer => ("Laag:", "Layer:"),
     NoLayers => ("Geen lagen in dit project", "No layers in this project"),
-    ButtonApply => ("Toepassen", "Apply"),
+    ButtonApply => ("Pas toe", "Apply"),
     ButtonUpdate => ("Recept bijwerken", "Update recipe"),
     ButtonUpdateApply => ("Bijwerken en toepassen", "Update and apply"),
     ButtonRemove => ("Verwijder", "Remove"),
@@ -113,7 +113,7 @@ texts! {
     ButtonClose => ("Sluit", "Close"),
     EntryItem => ("{0} — {1} {2} mm (r{3})", "{0} — {1} {2} mm (r{3})"),
     EntryDetail => (
-        "{0} · {1} mm/s · {2} % · {3} pass(es)",
+        "{0} · {1} mm/s · {2} % · {3} doorgang(en)",
         "{0} · {1} mm/s · {2} % · {3} pass(es)"
     ),
     ModeLine => ("Lijn", "Line"),

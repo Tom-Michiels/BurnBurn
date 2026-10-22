@@ -301,7 +301,7 @@ fn the_barcode_sheet_button_says_apply_when_a_generated_barcode_is_changed() {
     assert!(panels(&h, doc, Locale::Nl).barcode.is_none(), "created: the sheet is gone");
     h.invoke(doc, CommandKey::GeneratorEdit);
     let nl = panels(&h, doc, Locale::Nl).barcode.expect("opened again");
-    assert_eq!((nl.create_title.as_str(), nl.payload.as_str()), ("Toepassen", "HALLO"));
+    assert_eq!((nl.create_title.as_str(), nl.payload.as_str()), ("Pas toe", "HALLO"));
     assert_eq!(panels(&h, doc, Locale::En).barcode.unwrap().create_title, "Apply");
 }
 
