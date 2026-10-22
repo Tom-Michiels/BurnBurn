@@ -220,22 +220,30 @@ impl AppController {
         }
     }
 
-    /// Approved prepared jobs whose name is the order's part, one per plan.
-    pub(super) fn candidates(&self, part: &str) -> Vec<&Prepared> {
-        let mut out: Vec<&Prepared> = Vec::new();
-        for p in self.sessions.values().filter_map(|s| s.prepared.as_ref()) {
-            if p.approved && p.job.name == part && !out.iter().any(|q| q.job.plan == p.job.plan) {
+    /// Approved prepared jobs whose name is the order's part, one per plan: the jobs of the open
+    /// windows first, then the released jobs only the history holds (no window needed, W01/W02).
+    pub(super) fn candidates(&self, part: &str) -> Vec<Prepared> {
+        let mut out: Vec<Prepared> = Vec::new();
+        let released = self.stored_released().filter(|p| p.job.name == part);
+        for p in self.sessions.values().filter_map(|s| s.prepared.as_ref()).filter(|p| p.approved && p.job.name == part)
+        {
+            if !out.iter().any(|q| q.job.plan == p.job.plan) {
+                out.push(p.clone());
+            }
+        }
+        for p in released {
+            if !out.iter().any(|q| q.job.plan == p.job.plan) {
                 out.push(p);
             }
         }
         out
     }
 
-    pub(super) fn order_job(&self, order: &Order) -> Option<&Prepared> {
+    pub(super) fn order_job(&self, order: &Order) -> Option<Prepared> {
         let candidates = self.candidates(&order.draft.part);
-        match (order.chosen, candidates.as_slice()) {
+        match (order.chosen, candidates.len()) {
             (Some(plan), _) => candidates.into_iter().find(|p| p.job.plan.hash() == plan),
-            (None, [only]) => Some(*only),
+            (None, 1) => candidates.into_iter().next(),
             _ => None,
         }
     }
@@ -256,10 +264,10 @@ impl AppController {
             quantity: o.draft.quantity,
             completed: u32::try_from(completed).unwrap_or(u32::MAX),
             remnant: o.draft.remnant.clone(),
-            job: job.map(|p| p.job.plan),
+            job: job.as_ref().map(|p| p.job.plan),
             needs_choice: job.is_none() && candidates.len() > 1,
             candidates,
-            upload: job.zip(status).map(|(p, st)| self.upload_button(st, p)),
+            upload: job.as_ref().zip(status).map(|(p, st)| self.upload_button(st, p)),
         }
     }
 
