@@ -136,9 +136,9 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
             vec![Relation::Tangent(e[0], e[1])]
         }
         (ConstraintKind::Tangent, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Tangent(e[0], e[1])],
-        // An ellipse touches a circle or another ellipse (G8-editor, S01); an arc is not allowed.
-        (ConstraintKind::Tangent, [Ellipse, PickKind::Circle | Ellipse])
-        | (ConstraintKind::Tangent, [PickKind::Circle, Ellipse]) => {
+        // An ellipse touches a circle, an arc or another ellipse (G8, G9-editor, S01).
+        (ConstraintKind::Tangent, [Ellipse, PickKind::Circle | PickKind::Arc | Ellipse])
+        | (ConstraintKind::Tangent, [PickKind::Circle | PickKind::Arc, Ellipse]) => {
             vec![Relation::Tangent(e[0], e[1])]
         }
         _ => return None,
@@ -621,7 +621,13 @@ mod tests {
         );
         assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), Some(vec![Relation::Tangent(l1, ellipse)]));
         assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, l1]), Some(vec![Relation::Tangent(ellipse, l1)]));
-        // Since G8 an ellipse also touches a circle or another ellipse; an arc stays out.
+        // Since G8 an ellipse also touches a circle or another ellipse; since G9 an arc as well.
+        let (ac, a1, a2) = (s.point(40.0, 30.0).unwrap(), s.point(45.0, 30.0).unwrap(), s.point(40.0, 35.0).unwrap());
+        let arc = s.arc(ac, a1, a2, false).unwrap();
+        let ask = |kind, entities: &[EntityId]| constraint_relations(kind, &s, entities);
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, arc]), Some(vec![Relation::Tangent(ellipse, arc)]));
+        assert_eq!(ask(ConstraintKind::Tangent, &[arc, ellipse]), Some(vec![Relation::Tangent(arc, ellipse)]));
+        assert_eq!(ask(ConstraintKind::Equal, &[ellipse, arc]), None, "an ellipse is never equal to an arc");
         assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, circle]), Some(vec![Relation::Tangent(ellipse, circle)]));
         assert_eq!(ask(ConstraintKind::Tangent, &[circle, ellipse]), Some(vec![Relation::Tangent(circle, ellipse)]));
         assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, other]), Some(vec![Relation::Tangent(ellipse, other)]));
