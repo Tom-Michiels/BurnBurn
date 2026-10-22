@@ -35,10 +35,7 @@ struct Rig {
 /// One "run of the app" on the shared disk: the library folder is set before the camera port is
 /// attached, as the hosts do at startup; the file jobs have run when this returns.
 fn start(fs: &Arc<MemoryFileSystem>) -> Rig {
-    let cam = FakeCam::new(&[
-        (A, &[mode(640, 360), mode(1280, 720)]),
-        (B, &[mode(640, 360)]),
-    ]);
+    let cam = FakeCam::new(&[(A, &[mode(640, 360), mode(1280, 720)]), (B, &[mode(640, 360)])]);
     cam.authorize();
     let mut h = HeadlessEditorHarness::with_fs(Arc::clone(fs));
     h.fs().create_dir_all_for_test(FsPath::new("/lib"));
@@ -167,7 +164,12 @@ fn an_accepted_lens_calibration_is_kept_too() {
     use_camera(&mut first, A, mode(640, 360));
     go(
         &mut first,
-        I::StartLensCalibration { device: dev(A), cols: BOARD_COLS as u32, rows: BOARD_ROWS as u32, pitch_mm: "30".into() },
+        I::StartLensCalibration {
+            device: dev(A),
+            cols: BOARD_COLS as u32,
+            rows: BOARD_ROWS as u32,
+            pitch_mm: "30".into(),
+        },
     );
     for pose in 0..3 {
         first.cam.show(A, mode(640, 360), photo_of_board(&POSES[pose], -0.12));
@@ -193,5 +195,9 @@ fn a_damaged_calibration_file_is_left_alone_while_the_session_still_works() {
     use_camera(&mut h, A, mode(640, 360));
     calibrate_alignment(&mut h, "0");
     assert_eq!(h.h.controller().calibrations().alignment_count(), 1, "usable in this session");
-    assert_eq!(fs.read(FsPath::new(FILE), 1 << 20).unwrap(), b"{ not json".to_vec(), "the damaged file is not overwritten");
+    assert_eq!(
+        fs.read(FsPath::new(FILE), 1 << 20).unwrap(),
+        b"{ not json".to_vec(),
+        "the damaged file is not overwritten"
+    );
 }

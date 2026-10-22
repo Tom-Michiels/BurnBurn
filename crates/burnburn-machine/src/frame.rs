@@ -104,6 +104,25 @@ pub fn frame_plan(plan: &JobPlan, options: &FrameOptions) -> Result<FramePlan, F
 }
 
 pub fn frame_plan_shaped(plan: &JobPlan, options: &FrameOptions, shape: FrameShape) -> Result<FramePlan, FrameError> {
+    frame_plan_aimed(plan, options, shape, None)
+}
+
+/// Like [`frame_plan_shaped`], but for a red-dot pointer that sits `dot_offset_mm` (machine frame,
+/// dot minus beam) away from the beam: the head travels the outline shifted by minus the offset, so
+/// that the dot, not the beam, runs along the outline of the job. `None` is the plain frame. An
+/// offset that is not a number, or an outline the head cannot reach on the bed, is an error: the
+/// frame is never clamped.
+pub fn frame_plan_aimed(
+    plan: &JobPlan,
+    options: &FrameOptions,
+    shape: FrameShape,
+    dot_offset_mm: Option<(f64, f64)>,
+) -> Result<FramePlan, FrameError> {
+    let (dx, dy) = match dot_offset_mm {
+        Some((dx, dy)) if dx.is_finite() && dy.is_finite() => (dx, dy),
+        Some(_) => return Err(PlanError::OutOfRange("pointer offset").into()),
+        None => (0.0, 0.0),
+    };
     let bounds = plan.bounds().ok_or(FrameError::NoMotion)?;
     let (lo, hi) = (bounds.min(), bounds.max());
     let source = PlanSource { compiler_version: FRAME_GENERATOR_VERSION.to_owned(), ..plan.source().clone() };
@@ -124,7 +143,11 @@ pub fn frame_plan_shaped(plan: &JobPlan, options: &FrameOptions, shape: FrameSha
         FrameShape::RubberBand => closed_loop(convex_hull(reached_points(plan))),
     };
     for (x, y) in corners {
-        b.push(PlanEvent::Travel { to: MachinePoint::new(x, y)? })?;
+        let to = MachinePoint::new(x - dx, y - dy)?;
+        if dot_offset_mm.is_some() && !plan.frame().contains(to) {
+            return Err(PlanError::OutOfRange("frame outside the bed").into());
+        }
+        b.push(PlanEvent::Travel { to })?;
     }
     Ok(FramePlan { source: plan.id(), plan: b.finish()? })
 }

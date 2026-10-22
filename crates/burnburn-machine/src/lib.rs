@@ -30,7 +30,7 @@ pub use controller_files::{
 };
 pub use frame::{
     FRAME_GENERATOR_VERSION, FrameError, FrameOptions, FramePlan, FrameShape, frame_operation, frame_plan,
-    frame_plan_shaped,
+    frame_plan_aimed, frame_plan_shaped,
 };
 pub use ids::{ControllerIdentity, ExecutionId, MachineId, MachineIdentity};
 pub use laser::{LaserAction, LaserContext, LaserRefusal, OriginTarget, UserOrigin, plan_action};
