@@ -125,7 +125,7 @@ define_class!(
 );
 
 fn is_check(control: G5Control) -> bool {
-    matches!(control, G5Control::OffsetKeepSources)
+    matches!(control, G5Control::OffsetKeepSources | G5Control::Editor(crate::panels::EditorControl::ModStepOn { .. }))
 }
 
 /// Every value-carrying control's value now.

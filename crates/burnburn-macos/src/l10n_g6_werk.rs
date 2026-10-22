@@ -236,6 +236,9 @@ pub fn g6_fmt(text: G6Text, locale: Locale, values: &[&str]) -> String {
 /// The words for a refused structure edit.
 pub fn structure_problem_text(problem: burnburn_presentation::StructureProblem, locale: Locale) -> String {
     use burnburn_presentation::StructureProblem as P;
+    if let Some(words) = crate::l10n_g7_editor::structure_problem_text(problem, locale) {
+        return words;
+    }
     let text = match problem {
         P::NeedsSelection => G6Text::ProblemNeedsSelection,
         P::NeedsName => G6Text::ProblemNeedsName,

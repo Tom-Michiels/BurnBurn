@@ -49,3 +49,101 @@ fn the_distance_angle_chamfer_has_two_rows() {
     assert!(form.find(&ControlId::Param(ParamSection::Tool, 1)).is_some());
     assert!(form.find(&ControlId::Param(ParamSection::Tool, 2)).is_none());
 }
+
+// --- E06: the modifier stack in the structure form ---------------------------------------------------
+
+mod stack {
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, StructureEdit, UiIntent};
+    use burnburn_types::DocumentId;
+    use burnburn_windows::forms::g5;
+    use burnburn_windows::forms::{
+        ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState,
+    };
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::{EditorControl as E, G5Control as C, G5Panel as P};
+
+    fn shown() -> PanelState {
+        PanelState { g5_shown: vec![P::Structure], ..PanelState::default() }
+    }
+
+    fn window_with_chain() -> (HeadlessEditorHarness, DocumentId, u64) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::ToolRectangle);
+        h.drag(doc, (100.0, 50.0), (130.0, 70.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        h.invoke(doc, CommandKey::SelectAll);
+        h.send(UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::CreateOffsetModifier { distance: "2".into() },
+        });
+        let id = h.document(doc).unwrap().structure.modifiers[0].id;
+        (h, doc, id)
+    }
+
+    fn form(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Form {
+        let vm = h.view();
+        g5::forms(&FormContext { vm: &vm, document: doc, locale }, &shown(), &Vec::new())
+            .into_iter()
+            .find(|f| f.kind == FormKind::G5(P::Structure))
+            .expect("the structure form")
+    }
+
+    fn react(h: &HeadlessEditorHarness, doc: DocumentId, c: E, values: Vec<(ControlId, ControlValue)>) -> FormOutcome {
+        let vm = h.view();
+        g5::react(
+            P::Structure,
+            &ControlId::G5(C::Editor(c)),
+            &values,
+            &FormContext { vm: &vm, document: doc, locale: Locale::En },
+        )
+    }
+
+    #[test]
+    fn the_form_has_the_check_the_number_and_the_buttons_of_the_mac_panel() {
+        let (h, doc, m) = window_with_chain();
+        let f = form(&h, doc, Locale::En);
+        assert!(matches!(
+            f.find(&ControlId::G5(C::Editor(E::ModStepOn { modifier: m, step: 0 }))),
+            Some(FormLine::Check { caption, on: true, .. }) if caption == "Step 1: Offset on"
+        ));
+        assert!(matches!(
+            f.find(&ControlId::G5(C::Editor(E::ModStepValue { modifier: m, step: 0 }))),
+            Some(FormLine::Field { text, .. }) if text == "2"
+        ));
+        for c in [E::ModBake { modifier: m }, E::ModRemove { modifier: m }, E::ModOffsetMake] {
+            assert!(f.find(&ControlId::G5(C::Editor(c))).is_some(), "{c:?}");
+        }
+        let nl = form(&h, doc, Locale::Nl);
+        assert!(matches!(
+            nl.find(&ControlId::G5(C::Editor(E::ModStepOn { modifier: m, step: 0 }))),
+            Some(FormLine::Check { caption, .. }) if caption == "Stap 1: Offset actief"
+        ));
+    }
+
+    #[test]
+    fn a_check_and_a_button_send_the_same_intents_as_the_mac_panel() {
+        let (mut h, doc, m) = window_with_chain();
+        let on = ControlId::G5(C::Editor(E::ModStepOn { modifier: m, step: 0 }));
+        let off = react(&h, doc, E::ModStepOn { modifier: m, step: 0 }, vec![(on, ControlValue::Toggle(false))]);
+        assert_eq!(
+            off,
+            FormOutcome::Intent(UiIntent::Structure {
+                document: doc,
+                edit: StructureEdit::ToggleModifierStep { modifier: m, step: 0, enabled: false }
+            })
+        );
+        let bake = react(&h, doc, E::ModBake { modifier: m }, Vec::new());
+        assert_eq!(
+            bake,
+            FormOutcome::Intent(UiIntent::Structure {
+                document: doc,
+                edit: StructureEdit::BakeModifier { modifier: m }
+            })
+        );
+        if let FormOutcome::Intent(i) = bake {
+            h.send(i);
+        }
+        assert!(h.document(doc).unwrap().structure.modifiers.is_empty());
+    }
+}

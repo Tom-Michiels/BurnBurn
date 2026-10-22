@@ -588,9 +588,16 @@ impl Txn {
                     },
                 )
                 .map_err(CommandError::Structure)?;
-                if let StructureEffect::RemoveOwner(owner) = effect {
-                    self.remove_outputs(owner, &[]);
-                    self.structure.derived.remove(&owner);
+                match effect {
+                    StructureEffect::None => {}
+                    StructureEffect::RemoveOwner(owner) => {
+                        self.remove_outputs(owner, &[]);
+                        self.structure.derived.remove(&owner);
+                    }
+                    StructureEffect::Detach(owner) => {
+                        self.detach_owner_outputs(owner);
+                        self.structure.derived.remove(&owner);
+                    }
                 }
                 Ok(())
             }
@@ -925,16 +932,22 @@ impl Txn {
     /// Convert to Path: the derived objects of text `id` become drawn objects (same ids, same
     /// outlines); nothing is left that could re-evaluate them.
     fn detach_outputs(&mut self, id: crate::text::TextId) -> Result<(), CommandError> {
-        let owner = DerivedOwner::Text(id);
+        if self.detach_owner_outputs(DerivedOwner::Text(id)) == 0 {
+            return Err(CommandError::Text(crate::text::TextError::NothingToConvert(id)));
+        }
+        Ok(())
+    }
+
+    /// The derived objects of `owner` become drawn objects (same ids, same outlines); returns how
+    /// many. Nothing is left that could re-evaluate them.
+    fn detach_owner_outputs(&mut self, owner: DerivedOwner) -> usize {
         let derived: Vec<GeometryId> = self
             .objects
             .iter()
             .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
             .map(|(gid, _)| *gid)
             .collect();
-        if derived.is_empty() {
-            return Err(CommandError::Text(crate::text::TextError::NothingToConvert(id)));
-        }
+        let count = derived.len();
         for gid in derived {
             if let Some(obj) = self.objects.get(&gid).cloned() {
                 if let GeometrySource::Derived(key) = obj.source() {
@@ -944,7 +957,7 @@ impl Txn {
                 self.changes.modified.push(gid);
             }
         }
-        Ok(())
+        count
     }
 
     /// Removes `owner`'s derived objects whose key is not in `keep`.

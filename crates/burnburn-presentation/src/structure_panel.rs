@@ -117,6 +117,62 @@ pub enum PlateIssueRow {
     Blocked { object: u64 },
 }
 
+/// The kind of one step of a modifier chain (G7-editor, E06).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ModifierKind {
+    Offset,
+    Boolean,
+    LinearArray,
+    GridArray,
+    CircularArray,
+    PathArray,
+}
+
+/// What the one editable number of a step means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ModifierValueKind {
+    /// Copies including the original.
+    Count,
+    /// Offset distance in mm (positive grows).
+    Distance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModifierStepRow {
+    pub index: usize,
+    pub kind: ModifierKind,
+    /// The step's main number as text (`None`: the step has no single number to edit).
+    pub value: Option<(ModifierValueKind, String)>,
+    pub enabled: bool,
+    /// This step is the one the chain could not compute.
+    pub failed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModifierStatus {
+    Valid,
+    /// Its outputs are the last valid ones, blocked for production; `step` names the offending step.
+    Failed {
+        step: Option<usize>,
+    },
+    Pending,
+}
+
+/// One non-destructive chain: a source that stays editable, steps in order, derived outputs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModifierRow {
+    pub id: u64,
+    pub name: String,
+    pub source: u64,
+    pub source_name: Option<String>,
+    pub steps: Vec<ModifierStepRow>,
+    pub status: ModifierStatus,
+    /// Derived objects the chain currently makes.
+    pub outputs: usize,
+}
+
 /// Everything the structure panel shows; empty lists for a document without structure.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StructureViewModel {
@@ -134,6 +190,8 @@ pub struct StructureViewModel {
     /// The edges of the selected object when exactly one is selected; empty otherwise.
     pub edges: Vec<EdgeRow>,
     pub edge_object: Option<u64>,
+    /// The modifier chains of the document, in creation order (G7-editor, E06).
+    pub modifiers: Vec<ModifierRow>,
 }
 
 /// An edit of one instance, each one undo step.
@@ -201,6 +259,41 @@ pub enum StructureEdit {
     RemoveReference {
         reference: u64,
     },
+    /// One step of a modifier chain on or off; source and other steps are untouched (E06).
+    ToggleModifierStep {
+        modifier: u64,
+        step: usize,
+        enabled: bool,
+    },
+    /// The step one place earlier (`up`) or later in the chain; the order changes the result.
+    MoveModifierStep {
+        modifier: u64,
+        step: usize,
+        up: bool,
+    },
+    /// Takes one step out of the chain (the last step stays: remove the chain instead).
+    RemoveModifierStep {
+        modifier: u64,
+        step: usize,
+    },
+    /// The main number of a step as typed (copies, or an offset distance with its unit).
+    SetModifierStepValue {
+        modifier: u64,
+        step: usize,
+        text: String,
+    },
+    /// Removes the chain and its outputs.
+    RemoveModifier {
+        modifier: u64,
+    },
+    /// Applies the chain: its outputs become ordinary objects, the chain is gone, the source stays.
+    BakeModifier {
+        modifier: u64,
+    },
+    /// A chain with one offset step on the selected object; the distance as typed.
+    CreateOffsetModifier {
+        distance: String,
+    },
 }
 
 /// Why a structure edit was refused (G6-werk). Nothing changed.
@@ -225,4 +318,16 @@ pub enum StructureProblem {
     /// Only an ambiguous reference is rebound, by choosing one of its candidates.
     NotAmbiguous,
     NoCandidate,
+    /// The chain does not exist (any more).
+    UnknownModifier,
+    /// The chain has no such step.
+    UnknownStep,
+    /// The step is already first / last.
+    CannotMoveStep,
+    /// The last step of a chain stays; remove the chain instead.
+    LastStep,
+    /// The step has no single number to edit (a boolean or a grid).
+    StepHasNoValue,
+    /// A number of copies must be a whole number of at least one.
+    InvalidCount,
 }

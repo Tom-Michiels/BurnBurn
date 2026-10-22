@@ -192,6 +192,8 @@ pub enum G5Control {
     OperatorOrderUpload {
         index: usize,
     },
+    // --- The golf-7 editor sections (G7-editor): modifier stack, plates and variants.
+    Editor(super::g7_editor::EditorControl),
 }
 
 /// One line of a panel.
@@ -607,6 +609,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
         });
         lines.extend(super::g6_werk::reference_edit_lines(r, locale));
     }
+    lines.extend(super::g7_editor::modifier_lines(s, locale));
     lines
 }
 
@@ -669,6 +672,7 @@ pub fn g5_intent(
         | G5Control::RefCandidate { .. }
         | G5Control::RefRebind { .. }
         | G5Control::RefRemove { .. } => super::g6_werk::structure_edit_intent(doc, document, control, values),
+        G5Control::Editor(editor) => super::g7_editor::editor_intent(doc, document, editor, values),
         G5Control::NotesSave => {
             let text = typed(G5Control::NotesText)?;
             let max = doc.notes.as_ref()?.max_chars;

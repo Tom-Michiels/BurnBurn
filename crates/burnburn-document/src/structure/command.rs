@@ -33,6 +33,12 @@ pub enum StructureCommand {
     RemoveModifier {
         modifier: ModifierId,
     },
+    /// Applies the chain (G7-editor, E06): its outputs become ordinary drawn objects with the same
+    /// ids and outlines, the chain is gone and the source is untouched. One undo step brings the
+    /// chain and its derived outputs back.
+    BakeModifier {
+        modifier: ModifierId,
+    },
     /// The target must be bound when the reference is made.
     AddReference {
         reference: AssocReference,
@@ -105,6 +111,7 @@ pub enum StructureLabel {
     EditModifier,
     ToggleModifierStep,
     RemoveModifier,
+    BakeModifier,
     AddReference,
     RebindReference,
     RemoveReference,
@@ -132,6 +139,7 @@ impl StructureCommand {
             C::SetModifier { .. } => L::EditModifier,
             C::SetStepEnabled { .. } => L::ToggleModifierStep,
             C::RemoveModifier { .. } => L::RemoveModifier,
+            C::BakeModifier { .. } => L::BakeModifier,
             C::AddReference { .. } => L::AddReference,
             C::RebindReference { .. } => L::RebindReference,
             C::RemoveReference { .. } => L::RemoveReference,
@@ -248,6 +256,8 @@ pub(crate) enum StructureEffect {
     None,
     /// The owner is gone: remove its derived outputs and records.
     RemoveOwner(DerivedOwner),
+    /// The owner is gone but its outputs stay as ordinary drawn objects (baking).
+    Detach(DerivedOwner),
 }
 
 fn positive(v: f64, field: &'static str) -> Result<(), StructureError> {
@@ -449,6 +459,11 @@ pub(crate) fn apply(cmd: StructureCommand, t: StructureTxn<'_>) -> Result<Struct
             layer.modifiers.remove(&modifier).ok_or(StructureError::UnknownModifier(modifier))?;
             changed.push(StructureChange::Modifier(modifier));
             return Ok(StructureEffect::RemoveOwner(DerivedOwner::Modifier(modifier)));
+        }
+        C::BakeModifier { modifier } => {
+            layer.modifiers.remove(&modifier).ok_or(StructureError::UnknownModifier(modifier))?;
+            changed.push(StructureChange::Modifier(modifier));
+            return Ok(StructureEffect::Detach(DerivedOwner::Modifier(modifier)));
         }
         C::AddReference { reference } => {
             let status = resolve_in(layer, &lookup, &reference.target);
