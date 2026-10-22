@@ -11,7 +11,7 @@ use burnburn_types::DocumentId;
 use crate::l10n::Locale;
 use crate::l10n_g7_werk::{G7Text, g7_fmt, g7_text};
 
-use super::g5::{G5Control, G5Line, index_of, value_of};
+use super::g5::{G5Control, G5Line, flag_of, index_of, value_of};
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
 fn num(value: f64, decimals: usize, locale: Locale) -> String {
@@ -268,6 +268,9 @@ fn recog_problem_text(problem: RecognitionProblem, locale: Locale) -> String {
         RecognitionProblem::NothingAccepted => G7Text::RecogProblemNothingAccepted,
         RecognitionProblem::NothingSelected => G7Text::RecogProblemNothingSelected,
         RecognitionProblem::NotCalibrated => G7Text::RecogProblemNotCalibrated,
+        RecognitionProblem::UnknownTemplate => G7Text::RecogProblemUnknownTemplate,
+        RecognitionProblem::LibraryNotReady => G7Text::RecogProblemLibraryNotReady,
+        RecognitionProblem::LibraryUnreadable => G7Text::RecogProblemLibraryUnreadable,
         // A problem this build has no words for is still a problem, not a success.
         _ => G7Text::RecogProblemSearchFailed,
     };
@@ -301,6 +304,13 @@ pub(super) fn recognition_lines(
             &[&template.name, &template.width_px.to_string(), &template.height_px.to_string(), &template.device.0],
         ))),
     }
+    if let Some(template) = &r.template {
+        let kept = if template.saved { G7Text::RecogKept } else { G7Text::RecogNotKept };
+        lines.push(G5Line::Text(t(kept, locale)));
+    }
+    if r.library_unreadable {
+        lines.push(G5Line::Problem(t(G7Text::RecogLibraryUnreadable, locale)));
+    }
     if r.cameras.is_empty() {
         lines.push(G5Line::Problem(t(G7Text::RecogNoCamera, locale)));
     } else {
@@ -321,6 +331,50 @@ pub(super) fn recognition_lines(
     lines.push(recog_field(G5Control::RecogHeight, G7Text::RecogHeight, locale));
     lines.push(recog_field(G5Control::RecogName, G7Text::RecogName, locale));
     lines.push(recog_button(G5Control::RecogLearn, t(G7Text::RecogLearn, locale), !r.cameras.is_empty()));
+    // The box can also be pointed at in the camera picture on the sheet (two corners, or a drag).
+    lines.push(recog_button(G5Control::RecogPoint, t(G7Text::RecogPoint, locale), !r.cameras.is_empty()));
+    if let Some(pointing) = &r.pointing {
+        lines.push(G5Line::Text(t(G7Text::RecogPointing, locale)));
+        if let Some([x, y]) = pointing.first {
+            lines.push(G5Line::Text(g7_fmt(
+                G7Text::RecogPointingFirst,
+                locale,
+                &[&num(x, 0, locale), &num(y, 0, locale)],
+            )));
+        }
+        lines.push(recog_button(G5Control::RecogEndPoint, t(G7Text::RecogEndPoint, locale), true));
+    }
+    lines.push(G5Line::Check {
+        control: G5Control::RecogRotation,
+        caption: t(G7Text::RecogRotation, locale),
+        on: r.search.rotation,
+    });
+    lines.push(G5Line::Check {
+        control: G5Control::RecogScale,
+        caption: t(G7Text::RecogScale, locale),
+        on: r.search.scale,
+    });
+    if !r.saved.is_empty() {
+        lines.push(G5Line::Heading(t(G7Text::RecogSavedHeading, locale)));
+        for (index, saved) in r.saved.iter().enumerate() {
+            let in_use = if saved.in_use { t(G7Text::RecogInUse, locale) } else { String::new() };
+            lines.push(G5Line::Text(g7_fmt(
+                G7Text::RecogSavedLine,
+                locale,
+                &[&saved.name, &saved.width_px.to_string(), &saved.height_px.to_string(), &in_use],
+            )));
+            lines.push(recog_button(
+                G5Control::RecogUse { index },
+                g7_fmt(G7Text::RecogUse, locale, &[&saved.name]),
+                !saved.in_use,
+            ));
+            lines.push(recog_button(
+                G5Control::RecogDelete { index },
+                g7_fmt(G7Text::RecogDelete, locale, &[&saved.name]),
+                true,
+            ));
+        }
+    }
     if r.template.is_some() {
         lines.push(recog_button(G5Control::RecogForget, t(G7Text::RecogForget, locale), true));
         lines.push(recog_field(G5Control::RecogMinPercent, G7Text::RecogMinPercent, locale));
@@ -359,6 +413,13 @@ pub(super) fn recognition_lines(
                     g7_text(decision, locale),
                 ],
             )));
+            if c.angle_deg != 0.0 || c.scale != 1.0 {
+                lines.push(G5Line::Text(g7_fmt(
+                    G7Text::RecogPoseLine,
+                    locale,
+                    &[&n, &num(c.angle_deg, 1, locale), &num(c.scale * 100.0, 0, locale)],
+                )));
+            }
             lines.push(recog_button(
                 G5Control::RecogAccept { index: c.index },
                 g7_fmt(G7Text::RecogAccept, locale, &[&n]),
@@ -414,6 +475,26 @@ pub(super) fn recognition_intent(
             Some(UiIntent::Recognition(RecognitionIntent::Decide { index, decision: CandidateDecision::Rejected }))
         }
         G5Control::RecogPlace => Some(UiIntent::Recognition(RecognitionIntent::Place { document })),
+        G5Control::RecogRotation | G5Control::RecogScale => {
+            // The one that was switched reports its new state; the other is as it stands.
+            let flag = |c: G5Control, now: bool| flag_of(values, c).unwrap_or(now);
+            Some(UiIntent::Recognition(RecognitionIntent::SetSearch {
+                rotation: flag(G5Control::RecogRotation, r.search.rotation),
+                scale: flag(G5Control::RecogScale, r.search.scale),
+            }))
+        }
+        G5Control::RecogPoint => {
+            let chosen = index_of(values, G5Control::RecogCamera).unwrap_or(0);
+            let device = r.cameras.get(chosen).or_else(|| r.cameras.first())?.device.clone();
+            Some(UiIntent::Recognition(RecognitionIntent::PointBox { device, name: typed(G5Control::RecogName) }))
+        }
+        G5Control::RecogEndPoint => Some(UiIntent::Recognition(RecognitionIntent::EndPoint)),
+        G5Control::RecogUse { index } => {
+            Some(UiIntent::Recognition(RecognitionIntent::Use { id: r.saved.get(index)?.id }))
+        }
+        G5Control::RecogDelete { index } => {
+            Some(UiIntent::Recognition(RecognitionIntent::Delete { id: r.saved.get(index)?.id }))
+        }
         _ => None,
     }
 }

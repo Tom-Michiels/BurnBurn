@@ -287,6 +287,17 @@ pub enum G5Control {
         index: usize,
     },
     RecogPlace,
+    // --- Recognition with rotation and scale, saved templates and pointing (G8-cam-werk, W06).
+    RecogRotation,
+    RecogScale,
+    RecogPoint,
+    RecogEndPoint,
+    RecogUse {
+        index: usize,
+    },
+    RecogDelete {
+        index: usize,
+    },
     // --- The golf-7 editor sections (G7-editor): modifier stack, plates and variants.
     Editor(super::g7_editor::EditorControl),
 }
@@ -831,6 +842,12 @@ pub fn g5_intent(
         | G5Control::RecogCancel
         | G5Control::RecogAccept { .. }
         | G5Control::RecogReject { .. }
+        | G5Control::RecogRotation
+        | G5Control::RecogScale
+        | G5Control::RecogPoint
+        | G5Control::RecogEndPoint
+        | G5Control::RecogUse { .. }
+        | G5Control::RecogDelete { .. }
         | G5Control::RecogPlace => super::g7_werk::recognition_intent(doc, document, control, values),
         G5Control::StructDefineName
         | G5Control::StructDefine

@@ -184,6 +184,46 @@ texts! {
         "The camera is not calibrated for this setting and height: picture points do not become millimetres by themselves."
     ),
     RecogProblemSearchFailed => ("Het zoeken is mislukt.", "The search failed."),
+    RecogProblemUnknownTemplate => ("Dit bewaarde sjabloon bestaat niet.", "This saved template does not exist."),
+    RecogProblemLibraryNotReady => (
+        "De bibliotheek met sjablonen is nog niet gelezen.",
+        "The library of templates has not been read yet."
+    ),
+    RecogProblemLibraryUnreadable => (
+        "Het bestand met bewaarde sjablonen is niet te lezen; het blijft zoals het is en er wordt niets in bewaard.",
+        "The file of saved templates cannot be read; it stays as it is and nothing is saved in it."
+    ),
+    // --- Recognition with rotation and scale, saved templates, pointing (G8-cam-werk).
+    RecogRotation => ("Gedraaide producten herkennen", "Find turned products"),
+    RecogScale => ("Grotere en kleinere producten herkennen", "Find larger and smaller products"),
+    RecogPoint => ("Wijs het vak in het beeld", "Point at the box in the picture"),
+    RecogPointing => (
+        "Klik op twee tegenoverliggende hoeken van het vak in het camerabeeld op het blad (of sleep). Escape stopt.",
+        "Click two opposite corners of the box in the camera picture on the sheet (or drag). Escape stops."
+    ),
+    RecogPointingFirst => (
+        "Eerste hoek staat ({0}; {1}) px. Klik de tegenoverliggende hoek.",
+        "First corner is at ({0}; {1}) px. Click the opposite corner."
+    ),
+    RecogEndPoint => ("Stop met wijzen", "Stop pointing"),
+    RecogPoseLine => (
+        "Treffer {0}: gedraaid {1}°, schaal {2} %",
+        "Match {0}: turned {1}°, scale {2} %"
+    ),
+    RecogKept => ("Bewaard in de bibliotheek.", "Kept in the library."),
+    RecogNotKept => (
+        "Niet bewaard in de bibliotheek: geef het een naam om het te bewaren.",
+        "Not kept in the library: give it a name to keep it."
+    ),
+    RecogSavedHeading => ("Bewaarde sjablonen", "Saved templates"),
+    RecogSavedLine => ("{0}: {1} × {2} px{3}", "{0}: {1} × {2} px{3}"),
+    RecogInUse => (" (in gebruik)", " (in use)"),
+    RecogUse => ("Gebruik sjabloon {0}", "Use template {0}"),
+    RecogDelete => ("Verwijder sjabloon {0}", "Delete template {0}"),
+    RecogLibraryUnreadable => (
+        "Het bestand met bewaarde sjablonen is niet te lezen; het blijft zoals het is.",
+        "The file of saved templates cannot be read; it stays as it is."
+    ),
     OrderLinkNote => (
         "Een koppeling verandert geen aantallen: alleen geregistreerde uitvoeringen tellen.",
         "A link changes no counts: only recorded executions count."
