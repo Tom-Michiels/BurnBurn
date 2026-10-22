@@ -56,3 +56,9 @@ cargo +nightly fuzz run ruida_rd_file -- -max_total_time=60
 Zonder nightly draaien de propertytests in `crates/burnburn-test-support/tests/untrusted_bytes.rs` dezelfde
 functies met willekeurige en gemuteerde fixturebytes binnen `cargo test --workspace` ("paniekt nooit" plus
 contractinvarianten). Dat is geen vervanging van coverage-gestuurd fuzzen, wel een vaste ondergrens.
+
+## Laatste run (G9-trace-infra, 22-10-2026)
+
+Alle 16 doelen 60 s met `-max_total_time=60 -max_len=1048576` (nightly en cargo-fuzz stonden al op de machine): geen crash, timeout of OOM.
+Commando's, runs en dekking per doel: `docs/dev-notes/G9-trace-infra.md`. Bouw met een eigen `CARGO_TARGET_DIR` buiten de repo.
+

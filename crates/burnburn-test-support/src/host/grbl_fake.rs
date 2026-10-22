@@ -28,6 +28,12 @@ pub struct Inner {
 #[derive(Clone)]
 pub struct FakeGrbl(pub Rc<RefCell<Inner>>);
 
+impl Default for FakeGrbl {
+    fn default() -> Self {
+        FakeGrbl::new()
+    }
+}
+
 impl FakeGrbl {
     pub fn new() -> FakeGrbl {
         FakeGrbl(Rc::new(RefCell::new(Inner { state: "Idle".into(), ..Inner::default() })))

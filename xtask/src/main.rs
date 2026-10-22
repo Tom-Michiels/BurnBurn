@@ -181,7 +181,10 @@ fn check_path_attrs() -> Result<(), String> {
     violations.extend(found);
     files += n;
     if violations.is_empty() {
-        println!("path-attrs: {} crates, {files} source files, no #[path] leaves its own crate (src, tests)", packages.len());
+        println!(
+            "path-attrs: {} crates, {files} source files, no #[path] leaves its own crate (src, tests)",
+            packages.len()
+        );
         return Ok(());
     }
     for v in &violations {

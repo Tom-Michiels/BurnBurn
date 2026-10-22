@@ -56,8 +56,8 @@ fn every_line_but_the_last_is_stretched_to_the_widest_line() {
     let widest = natural.lines.iter().map(|l| l.width_mm).fold(0.0, f64::max);
     let justified = shaped(LATIN, Align::Justify);
     let edges = right_edges(&justified);
-    for line in 0..3 {
-        assert!((edges[line] - widest).abs() < 1e-6, "line {line}: right edge {} for {widest}", edges[line]);
+    for (line, edge) in edges.iter().enumerate().take(3) {
+        assert!((edge - widest).abs() < 1e-6, "line {line}: right edge {edge} for {widest}");
         assert!((justified.lines[line].width_mm - widest).abs() < 1e-6);
         assert_eq!(justified.lines[line].start_x, 0.0);
     }
