@@ -93,6 +93,9 @@ pub mod v1 {
         /// Cut priorities (W2-L3): only shapes with a non-default priority. Omitted when empty.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub priorities: Vec<Priority>,
+        /// Project notes (G5-UI-gaten, P04). Omitted when empty; absent in older files.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pub notes: String,
         /// Parametric sketches (IM11). Omitted when empty, so sketch-free files are unchanged.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub sketches: Vec<crate::sketch_dto::Sketch>,

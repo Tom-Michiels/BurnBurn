@@ -1026,6 +1026,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ProcessLabel::ApplyRecipe => ("Recept toepassen", "Apply Recipe"),
             ProcessLabel::SetOptimization => ("Optimalisatie-instellingen wijzigen", "Change Optimization Settings"),
             ProcessLabel::SetPriority => ("Prioriteit wijzigen", "Change Cut Priority"),
+            ProcessLabel::SetNotes => ("Notities wijzigen", "Change Notes"),
             _ => return None,
         },
         UndoLabel::Sketch(s) => match s {
@@ -1716,6 +1717,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             ProcessLabel::ApplyRecipe,
             ProcessLabel::SetOptimization,
             ProcessLabel::SetPriority,
+            ProcessLabel::SetNotes,
         ]
         .map(UndoLabel::Process),
     );
