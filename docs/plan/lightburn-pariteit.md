@@ -4,7 +4,7 @@ Doel: elke functie uit het LightBurn-dossier (`research/lightburn/01-menu-invent
 `03-instellingen.md`, `06-dialoogcatalogus.md`) is in BurnBurn **bedienbaar in het venster**, getest volgens AGENTS.md,
 op macOS en (later) Windows. Bovenop LightBurn blijven de BurnBurn-extra's (sketches/constraints, varianten, historie).
 
-Uitgangssituatie (`docs/user-flows/story-coverage.md`): 74 stories, 0 volledig, 33 deels, 30 alleen domein, 11 gepland.
+Uitgangssituatie op 18-10-2026 (`docs/user-flows/story-coverage.md`): 74 stories, 0 volledig, 33 deels, 30 alleen domein, 11 gepland. Stand op 22-10-2026 na golf 6: 43 groen (software), 30 deels, 1 domein, 0 gepland (zie de sectie "Golf 6 (uitgevoerd)" en "Wat overblijft").
 De kern heeft al veel algoritmen; **de flessenhals is de UI-route** (presentation-viewmodel + intent + native paneel) en
 **machinebewijs** (geen geverifieerd Ruida-wire-dialect: upload/start worden geweigerd).
 
@@ -142,6 +142,73 @@ Colors), Cuttle, OS-diensten (M002–M013) — voorstel: buiten golf 2, in golf 
 bewerken — typecheck + headless adaptertests; echte Windows-run handmatig), G-code-backend (GRBL) met eigen
 capability-matrix, acceptatieplan `research/lightburn/05-acceptatieplan.md` als scenario-tests, prestaties (100k
 objecten, X04), installer/bundle en updatecontract (X07). Galvo pas na beslissing van de gebruiker.
+
+## Golf 4 (uitgevoerd)
+
+Per lane één regel resultaat (dev-notes in `docs/dev-notes/`). Windows is in deze golf alleen type-gecheckt en door clippy gehaald.
+
+- **W4-L8a** (Windows-host deel A, `IM08-W4`): menubalk als data, formulieren voor inspecteur, lagen, Cut Settings, CAM, Schikken, tekst,
+  vormen, schets en toolstrip; paneelmodellen gedeeld met macOS via `#[path]`; `menus.rs` bewijst pariteit met het Mac-menu. Geen Windows-run.
+- **W4-L8b** (Windows-host deel B, `IM08-W4b`): laservenster, beeld, bestanden, camera en app-panelen op Windows met dezelfde intents
+  (command-ids 6000–7999); camera-poort `UnavailableCameraPort`. Geen Windows-run.
+- **W4-L4** (G-code/GRBL, `W4-L4-gcode`): crate `burnburn-gcode` met lowering, capabilitymatrix, statusparser, sessie met
+  character-counting, driver, console, macro's en CLI-uitbreiding, bewezen tegen een onafhankelijke interpreter en een fake
+  controller. Geen GRBL-controller gecontacteerd, geen seriële adapter, upload/start geweigerd.
+- **W4-acceptatie** (`W4-acceptatie`): het acceptatieplan als scenario-tests (`docs/user-flows/acceptatie.md`); één echte bug
+  gevonden en opgelost (IM03: Vernieuw laadde na Vervang+Undo het vervangende bestand).
+- **W4-prestaties** (`W4-prestaties`): 100k-fixtures F100K-A/B/C; selectie, verplaatsen en scène sterk versneld; geschiedenisbudget
+  (de melding in de UI kwam in golf 5); annulering midden in compile en nest getest; de kwadratische compile werd gemeten en doorgegeven.
+- **W4-UI-machine** (`W4-UI-machine`): samengestelde commando's (beeld importeren/maskeren = één undo-stap), beeldvoorbeeld op het
+  canvas (`Overlay::ImagePreview`), de verouderde laser-wachtrijregels opgeruimd en bevestigd.
+- **W4-UI-gaten** (`W4-UI-gaten`): S08 dubbelzinnige auto-constrain, S04 "Herstel laatste geldige", S02 decimale komma en parameter
+  verwijderen, S01 bogen, P03 BMP/TIFF, T01, T02 "Pas toe als trace", P01 melding nieuwer schema, E07/E08/E03/E04/E01, P07 profielbibliotheek.
+- **W4-release** (`W4-release`, X07): reproduceerbare zip/dmg (ad-hoc ondertekend), MSIX-layout, CI-workflows, updatepoort
+  (`decide_update`) en vorige versie bewaren; notarisatie en alles op Windows handmatig, workflows nooit gedraaid.
+
+## Golf 5 (uitgevoerd)
+
+- **G5-cam** (`G5-cam`): compile-schaal (genest index; F100K-C ~92 s → 1,45 s), pad-arrays en Reeks-dialoog (AR02), toollagen T1/T2 (LY01),
+  sublagen, preflight-paneel, snijvolgorde, Z per doorgang, laagkleur in het projectbestand, kerf op het canvas, feeder-planning
+  (RD/GRBL geweigerd), productienesting (domein), en een echte annuleer-fout in de nest opgelost.
+- **G5-UI-gaten** (`G5-UI-gaten`): P02 selectie in undo-records, P04 notities en LBRN2 als één stap, T04 centerline als `TraceCommand`,
+  E11 tellers in het projectbestand, E05 offsetvoorbeeld, E09 voor/na repareren, S06/S07/P06 structuurpaneel en plaatkeuze, X03.
+- **G5-tekst-api** (`G5-tekst-api`): bidi/RTL (Hebreeuws, TX01 groen), desktop-automatisering over UDP op loopback (API01, 16 tests),
+  CLI-machineacties alleen met naam en intent (X05), plugincontract (X06).
+- **G5-windows** (`G5-windows`): opstartargument, recente lijsten op schijf, menu's op de juiste plek, toetsenbord/mnemonics/tooltips,
+  Media Foundation-camera (alleen type-check). Geen Windows-run.
+- **G5-native** (`G5-native`): offset/reparatie, centerline-beslissingen, structuurpaneel, notities en API01 bedienbaar in beide hosts
+  via één headless paneelmodel; macOS native getest, Windows alleen formulier/headless.
+- **G5-grbl-ui** (`G5-grbl-ui`): Device Settings met Ruida/GRBL, Exporteer G-code, GRBL-preflight en een GRBL-venster met console en
+  macro's — alles tegen een nagebootste controller.
+- **G5-UI-machine / machine-rest** (`G5-UI-machine`): opslaan met vorige versie, updatepoort bij afsluiten (macOS), `HistoryTrimmed`,
+  actief profiel kiezen en bewaren, machinehub (M01/M02/M04/W02/W03/W09) op macOS; Windows-venster ontbreekt.
+
+## Golf 6 (uitgevoerd)
+
+- **G6-editor** (`G6-editor`): ellips in een schets (S01), vertakkingswissel zichtbaar (S05, met een echte bug opgelost), doos/scharnier en
+  barcode als generatorobject (E10), zoeken in projecten (P08), X01 offline-bewakers, LOADFILE vervangt het schone venster.
+- **G6-werk** (`G6-werk`): beeld voorbereiden (T03), correcties en centerline-beslissingen in het recept (T04/T05), afwijkingsrapport (T06),
+  onderdelen en referenties (S06/S07), productienesting in het Schikken-paneel (C12), nesten op een restplaat (W07), operatorweergave (W08).
+- **G6-machine** (`G6-machine`): profielbibliotheek bewaart de GRBL-dialect en een host opent een profielbestand, model/firmware als
+  gebruikersopgave (M01), goedkeuring duurzaam (W01), kalibratiebewijzen in de compiler voor kerf en scanoffset (W09), startpunt/richting per vorm
+  vergrendelen (C06), grayscale-golden en pass-through-waarschuwing (C05).
+
+Stand na golf 6 (main 9335726): `cargo xtask verify` exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd; stories: 43 groen (software),
+30 deels, 1 domein, 0 gepland (`docs/user-flows/story-coverage.md`). Niets is op echte hardware of op Windows bewezen.
+
+## Wat overblijft
+
+- **Hardware (W1-HW, eigenaar B-2/B-3):** een geverifieerd Ruida-wire-dialect en het vrijgeven van `ScanAngle`, `GrayscaleModulation`,
+  `CommonLine`, `ZStep`; Tab Cut Power, feeder, Y-scan en Z-offset in RD; GRBL op een echte controller met een seriële adapter; echte
+  camerabron, lens- en uitlijnwizard op een machine; rotary Y-schaal; scanoffset- en kerfmetingen.
+- **Windows:** de hele Win32-laag draaien (nooit gedraaid), het machinehub-venster en de updatepoort, Media Foundation-camera, MSIX,
+  de Windows-job in CI; B-1 (Win32 of WinUI 3) pas na een echte run.
+- **Release:** notarisatie, installatie op een schone Mac, Gatekeeper; CI en `release.yml` daadwerkelijk draaien; fuzz-doelen draaien (B-10).
+- **Software:** zie "Nog open na golf 6" in `integratie-wachtrij.md`: o.a. kalibraties bewaren (W04), herkenning (W06), restenbibliotheek (W07),
+  extend/fillet-UI, modifierstapel, platen aanmaken (S07/P06), wijzen in het beeld (T03), plug-inloader (X06, B-5), benchmarks als regressiedrempel.
+- **Handmatig:** het uiterlijk van alle panelen uit golf 4–6, OS-dialogen, RTL-weergave, barcode-leesproef, pasteboard tussen apps.
+- **Eigenaarsbeslissingen:** `docs/design/open-beslissingen.md` (B-1..B-12), gedrag van Dock/Move Together en Auto-Advance in LightBurn,
+  tweede laser, OMTech Polar, Trocen PPI, Print-opties, Cuttle, galvo.
 
 ## Volgen
 
