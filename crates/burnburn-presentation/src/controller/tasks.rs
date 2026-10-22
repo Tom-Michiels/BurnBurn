@@ -117,6 +117,15 @@ impl AppController {
                 update.scenes_changed.push(document);
                 update.effects.push(HostEffect::Redraw { document });
             }
+            Ok(TaskOutput::OffsetPreview { distance, join, result }) => {
+                super::offset_preview::arrived(s, outcome.source, distance, join, result);
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Err(TaskError::Offset(_)) => {
+                super::offset_preview::failed(s, outcome.source);
+                update.scenes_changed.push(document);
+            }
             Err(TaskError::Boolean(_) | TaskError::UnknownObject(_)) => {
                 s.messages.push(StatusMessage { key: MessageKey::BooleanFailed });
             }

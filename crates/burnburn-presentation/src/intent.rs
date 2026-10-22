@@ -255,6 +255,17 @@ pub enum UiIntent {
         document: DocumentId,
         distance: String,
     },
+    /// Offset preview (E05): computes the result on a worker for the selected objects and shows its
+    /// size; the document does not change. A newer preview or any edit replaces/clears it.
+    PreviewOffset {
+        document: DocumentId,
+        distance: String,
+    },
+    /// Corner shape and keep-sources choice of the next offset; an open preview is recomputed.
+    SetOffsetOptions {
+        document: DocumentId,
+        options: crate::offset::OffsetOptions,
+    },
     /// Problem list (E09): close the gaps of problem `issue` (index into `DocumentViewModel.issues`)
     /// with the tolerance as typed. Gaps above the tolerance stay open.
     RepairIssue {

@@ -52,6 +52,7 @@ mod library;
 mod machine;
 mod nest;
 mod notes;
+mod offset_preview;
 mod prefs;
 mod preview;
 mod process;
@@ -205,6 +206,8 @@ struct Session {
     doc: DocumentSession,
     /// Palette colours and canvas visibility of the operations (window state, see `layers`).
     layers: layers::LayerState,
+    /// Offset options and the open preview (E05; window state).
+    offset: offset_preview::OffsetState,
     /// The project notes panel is open (P04; window state).
     notes_open: bool,
     /// Text evaluator input (from `AppController::attach_fonts`).
@@ -299,6 +302,7 @@ impl Session {
             doc,
             layers: layers::LayerState::default(),
             notes_open: false,
+            offset: offset_preview::OffsetState::default(),
             editor: Editor::new(),
             selection: Selection::default(),
             camera,
@@ -528,6 +532,8 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| notes::set(s, document, text, request))
             }
+            UiIntent::PreviewOffset { document, distance } => self.preview_offset(document, distance),
+            UiIntent::SetOffsetOptions { document, options } => self.set_offset_options(document, options),
             UiIntent::CloseNotes { document } => self.with_session(document, |s| notes::close(s, document)),
             UiIntent::SelectByKind { document, kind, mode } => {
                 self.with_session(document, |s| arrange::select_by_kind(s, document, kind, mode))
@@ -885,6 +891,8 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Select { document, .. }
         | UiIntent::SelectByKind { document, .. }
         | UiIntent::SetNotes { document, .. }
+        | UiIntent::PreviewOffset { document, .. }
+        | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }
         | UiIntent::CommitToolSize { document, .. }

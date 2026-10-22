@@ -144,3 +144,83 @@ fn a_lbrn2_import_with_a_bitmap_is_one_undo_step() {
     assert_eq!(vm(&h, doc).objects.len(), 1);
     assert_eq!(vm(&h, doc).operations.len(), 1);
 }
+
+// ---------------------------------------------------------------------------------------------
+// E05: offsetvoorbeeld als taak en offsetopties
+// ---------------------------------------------------------------------------------------------
+
+/// The preview of an offset is computed by a task on the current revision; it never changes the
+/// document and shows the size of the result before anything is applied. Round corners cut a
+/// little area off the mitred ones: 20 x 10 grown by 2 mm is 336 mm2 mitred and 200 + 120 + 4 pi
+/// = 332.57 mm2 rounded.
+#[test]
+fn the_offset_preview_is_a_task_that_never_changes_the_document() {
+    let (mut h, doc, [a, _]) = two_rects();
+    select(&mut h, doc, &[a]);
+    let (revision, undo) = (vm(&h, doc).revision, vm(&h, doc).undo);
+    h.send(UiIntent::PreviewOffset { document: doc, distance: "2 mm".into() });
+    assert!(vm(&h, doc).offset.preview.is_none(), "nothing until the worker has answered");
+    h.run_tasks();
+    let preview = vm(&h, doc).offset.preview.expect("the preview arrived");
+    assert_eq!((preview.width.as_str(), preview.height.as_str()), ("24", "14"));
+    assert!((preview.area_mm2 - 332.57).abs() < 0.5, "round corners: {}", preview.area_mm2);
+    assert_eq!((vm(&h, doc).revision, vm(&h, doc).undo), (revision, undo), "the document is untouched");
+
+    // A changed join recomputes the open preview.
+    h.send(UiIntent::SetOffsetOptions {
+        document: doc,
+        options: burnburn_presentation::OffsetOptions { join: burnburn_presentation::OffsetJoin::Miter, keep_sources: true },
+    });
+    h.run_tasks();
+    let mitred = vm(&h, doc).offset.preview.expect("recomputed");
+    assert!((mitred.area_mm2 - 336.0).abs() < 0.01, "mitred corners: {}", mitred.area_mm2);
+}
+
+/// A preview made for an older revision is never shown, also when the worker was too late to be
+/// cancelled.
+#[test]
+fn an_offset_preview_of_an_older_revision_is_dropped() {
+    let (mut h, doc, [a, _]) = two_rects();
+    select(&mut h, doc, &[a]);
+    h.send(UiIntent::PreviewOffset { document: doc, distance: "2 mm".into() });
+    let late = h.take_task_requests();
+    h.invoke(doc, CommandKey::Duplicate);
+    for r in late {
+        h.complete_despite_cancel(r);
+    }
+    assert!(vm(&h, doc).offset.preview.is_none());
+}
+
+/// A preview that cannot be made says where and why, like applying it would.
+#[test]
+fn an_impossible_offset_preview_names_the_problem_and_shows_nothing() {
+    let (mut h, doc, [a, _]) = two_rects();
+    select(&mut h, doc, &[a]);
+    h.send(UiIntent::PreviewOffset { document: doc, distance: "-6 mm".into() });
+    h.run_tasks();
+    let v = vm(&h, doc);
+    assert!(v.offset.preview.is_none());
+    assert_eq!(v.problem.map(|p| p.message), Some(burnburn_presentation::MessageKey::OffsetImpossible));
+}
+
+/// The chosen join and the "keep sources" choice decide what Offset applies; the preview closes
+/// once it is applied.
+#[test]
+fn applying_an_offset_uses_the_chosen_options() {
+    let (mut h, doc, [a, _]) = two_rects();
+    select(&mut h, doc, &[a]);
+    h.send(UiIntent::SetOffsetOptions {
+        document: doc,
+        options: burnburn_presentation::OffsetOptions { join: burnburn_presentation::OffsetJoin::Miter, keep_sources: false },
+    });
+    h.send(UiIntent::PreviewOffset { document: doc, distance: "2 mm".into() });
+    h.run_tasks();
+    assert!(vm(&h, doc).offset.preview.is_some());
+    h.send(UiIntent::Offset { document: doc, distance: "2 mm".into() });
+    let v = vm(&h, doc);
+    assert_eq!(v.objects.len(), 2, "the source was replaced by its offset: two objects remain");
+    assert!(v.offset.preview.is_none(), "applied: the preview is gone");
+    let new = v.objects.iter().find(|o| o.selected).expect("the result is selected");
+    let area = h.scene(doc).unwrap().items.iter().find(|i| i.source == new.id).map(|i| i.path.signed_area().abs()).unwrap();
+    assert!((area - 336.0).abs() < 0.01, "mitred: {area}");
+}

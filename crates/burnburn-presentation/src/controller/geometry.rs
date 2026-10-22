@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use burnburn_document::{CommandError, CommandPayload, DocumentCommand, DocumentSession, EditError, GeometryCommand};
 use burnburn_editor::{CLICK_TOLERANCE_PT, PointerEvent, PointerPhase, boolean_operands, hit_test};
-use burnburn_geometry::{BooleanOp, DiagnosticTolerance, OffsetJoin, Point, ProductionTolerance};
+use burnburn_geometry::{BooleanOp, DiagnosticTolerance, Point, ProductionTolerance};
 use burnburn_types::{CancellationSource, DocumentId, GeometryId, Length, RequestId, TaskId};
 
 use crate::field::{parse_length, parse_position};
@@ -129,9 +129,9 @@ pub(super) fn offset_selection(
         CommandPayload::Edit(GeometryCommand::Offset {
             targets,
             distance,
-            join: OffsetJoin::Round,
+            join: s.offset.options.join,
             tolerance,
-            keep_sources: true,
+            keep_sources: s.offset.options.keep_sources,
         })
     };
     let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };

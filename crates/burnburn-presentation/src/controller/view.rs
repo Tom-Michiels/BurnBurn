@@ -90,8 +90,9 @@ impl AppController {
         let s = self.sessions.get(&document)?;
         let snapshot = s.doc.snapshot();
         let preview = s.editor.preview();
-        let result_preview =
-            s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result));
+        let result_preview = super::offset_preview::current_result(s).or_else(|| {
+            s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result))
+        });
         let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         sketch_overlays.extend(super::nest::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
@@ -223,6 +224,7 @@ pub(super) fn document_view(
         text_toolbar: super::text::toolbar_view(s),
         text_on_path: super::text::path_view(s),
         notes: super::notes::view(s),
+        offset: super::offset_preview::view(s),
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
         barcode_scale_warning: super::barcode::scale_warning(s),
