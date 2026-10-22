@@ -79,6 +79,7 @@ fn item(snapshot: &DocumentSnapshot, f: &Finding) -> Option<Item> {
             error,
         },
         Finding::PassThroughResampled { geometry, .. } => on_geometry(FindingKind::PassThroughResampled, *geometry),
+        Finding::BlockedGeometry { geometry, .. } => on_geometry(FindingKind::BlockedGeometry, *geometry),
         _ => return None,
     })
 }

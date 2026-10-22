@@ -195,6 +195,10 @@ pub fn finding_text(kind: FindingKind, locale: Locale) -> &'static str {
                 "Vaste pixelschaal valt ongelijk uiteen (pixels dubbel of overgeslagen):",
                 "Fixed pixel scale lands unevenly (pixels duplicated or skipped):",
             ),
+            K::BlockedGeometry => (
+                "Bron rekent niet meer uit (laatste omtrek), wordt niet gemaakt:",
+                "Source no longer evaluates (last outline), not produced:",
+            ),
             _ => ("Melding:", "Finding:"),
         },
         locale,

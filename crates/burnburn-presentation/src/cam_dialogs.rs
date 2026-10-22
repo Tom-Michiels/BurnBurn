@@ -462,6 +462,9 @@ pub enum FindingKind {
     SharedBoundaryCutOnce,
     /// A pass-through image lands on an uneven grid of dots (C05).
     PassThroughResampled,
+    /// Derived geometry whose source no longer evaluates (failed generator, missing font, sketch
+    /// that does not solve): its last outline never reaches a job.
+    BlockedGeometry,
 }
 
 /// One entry of a document-dependent pop-up: an optional localised phrase and the data (names).

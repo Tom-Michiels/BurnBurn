@@ -57,6 +57,10 @@ pub enum Finding {
         /// Width and height of the grid of dots it is burnt on.
         dots: (u32, u32),
     },
+    /// `geometry` is derived output whose owner's last evaluation is not valid (a failed generator,
+    /// a text whose font is missing, a sketch that does not solve): the outline on the canvas is the
+    /// last valid one, not the current definition, and must never reach a job.
+    BlockedGeometry { operation: OperationId, geometry: GeometryId },
 }
 
 impl Finding {
@@ -69,7 +73,8 @@ impl Finding {
             | Finding::PowerOutsideMachineRange { .. }
             | Finding::StalePlan
             | Finding::InvalidTabs { .. }
-            | Finding::UnsupportedFeature { .. } => Severity::Error,
+            | Finding::UnsupportedFeature { .. }
+            | Finding::BlockedGeometry { .. } => Severity::Error,
             Finding::DuplicateCut { .. }
             | Finding::EmptyOperation { .. }
             | Finding::UnassignedGeometry { .. }
@@ -207,6 +212,9 @@ pub fn preflight_with(
         }
         for &g in op.targets() {
             used.insert(g);
+            if snapshot.production_blocked(g) {
+                add(Finding::BlockedGeometry { operation: id, geometry: g });
+            }
             match op.mode() {
                 OperationMode::Fill(_) | OperationMode::OffsetFill(_) => {
                     let open = snapshot.object(g).is_some_and(|o| o.path().subpaths().iter().any(|sp| !sp.is_closed()));
