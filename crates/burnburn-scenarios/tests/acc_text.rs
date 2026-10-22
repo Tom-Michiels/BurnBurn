@@ -208,10 +208,8 @@ fn tx01_the_derived_outlines_are_valid_and_a_missing_glyph_is_not_a_failed_evalu
     assert_eq!(record.status, EvalStatus::Valid, "outlines of the drawable characters are current");
 }
 
-/// Bidirectional reordering is not part of v1 (`burnburn-text/src/shape.rs`): Hebrew is shaped
-/// left to right, so the first letter of a right-to-left word lands on the wrong side.
+/// Bidirectional layout (UAX #9): the first letter of a right-to-left word sits on the right.
 #[test]
-#[ignore = "gap: RTL (bidi) reordering is not implemented in burnburn-text v1; see docs/user-flows/acceptatie.md TX01"]
 fn tx01_right_to_left_text_is_laid_out_from_the_right() {
     let (src, lib, _) = fonts();
     // "שלום": the logical first letter (shin) is the right-most glyph in correct visual order.

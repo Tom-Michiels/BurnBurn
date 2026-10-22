@@ -62,6 +62,7 @@ skrifa = { version = "0.48.0", default-features = false, features = ["std"] }
 tempfile = "3"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 toml = "1.1"
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["std", "hardcoded-data"] }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows = { version = "0.62.2", default-features = false }
 zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
