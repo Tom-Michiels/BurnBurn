@@ -891,7 +891,9 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             let (id, _) = chain_of(layer, modifier)?;
             Ok(StructureCommand::BakeModifier { modifier: id })
         }
-        StructureEdit::RotateInstance { .. } | StructureEdit::DistributeOverPlates { .. } => {
+        StructureEdit::RotateInstance { .. }
+        | StructureEdit::DistributeOverPlates { .. }
+        | StructureEdit::DistributeAndNestOverPlates { .. } => {
             Err(MessageKey::CommandRejected)
         }
         StructureEdit::AddModifierStep { modifier, step } => {
@@ -1001,17 +1003,23 @@ fn rotate_instance(
     )
 }
 
-/// Puts every instance that is on no plate on a plate where it fits (G8-editor, P06): one undo
-/// step for all of them, or a refusal that changes nothing.
-fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<RequestId>) -> AppUpdate {
+/// The plan of a distribution over the plates: the gap and which instance goes to which plate.
+pub(super) struct DistributionPlan {
+    pub gap: f64,
+    pub assigned: Vec<(PartInstanceId, PlateId)>,
+}
+
+/// Plans the distribution of the instances that are on no plate (G8-editor, P06), or says why
+/// there is none: no plates, nothing to do, a bad gap, or an instance without room.
+pub(super) fn plan_distribution(s: &Session, gap: &str) -> Result<DistributionPlan, MessageKey> {
     use burnburn_document::structure::{Footprint, PlateRoom, distribute_over_plates};
     let gap = if gap.trim().is_empty() {
         0.0
     } else {
         match parse_position(gap) {
             Ok(v) if v.mm() >= 0.0 => v.mm(),
-            Ok(_) => return refused(s, document, MessageKey::InvalidLength(crate::field::FieldError::NotPositive)),
-            Err(e) => return refused(s, document, MessageKey::InvalidLength(e)),
+            Ok(_) => return Err(MessageKey::InvalidLength(crate::field::FieldError::NotPositive)),
+            Err(e) => return Err(MessageKey::InvalidLength(e)),
         }
     };
     let snapshot = s.doc.snapshot();
@@ -1019,10 +1027,10 @@ fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<
     let plates: Vec<PlateRoom> =
         layer.plates().map(|(id, p)| PlateRoom { id, width: p.width.mm(), height: p.height.mm() }).collect();
     if plates.is_empty() {
-        return refused(s, document, problem(StructureProblem::NoPlates));
+        return Err(problem(StructureProblem::NoPlates));
     }
     if layer.instances().all(|(_, i)| i.plate.is_some()) {
-        return refused(s, document, problem(StructureProblem::NothingToDistribute));
+        return Err(problem(StructureProblem::NothingToDistribute));
     }
     let items: Vec<Footprint> = layer
         .instances()
@@ -1033,8 +1041,20 @@ fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<
         .collect();
     let plan = distribute_over_plates(&plates, &items, gap);
     if !plan.unplaced.is_empty() {
-        return refused(s, document, problem(StructureProblem::NoRoomOnPlates));
+        return Err(problem(StructureProblem::NoRoomOnPlates));
     }
+    Ok(DistributionPlan { gap, assigned: plan.assigned })
+}
+
+/// Puts every instance that is on no plate on a plate where it fits (G8-editor, P06): one undo
+/// step for all of them, or a refusal that changes nothing.
+fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<RequestId>) -> AppUpdate {
+    let plan = match plan_distribution(s, gap) {
+        Ok(plan) => plan,
+        Err(message) => return refused(s, document, message),
+    };
+    let snapshot = s.doc.snapshot();
+    let layer = snapshot.structure();
     let steps: Vec<CompoundStep> = plan
         .assigned
         .iter()

@@ -110,6 +110,11 @@ texts! {
     ),
     DistributeGap => ("Tussenruimte (mm)", "Space between parts (mm)"),
     DistributeButton => ("Verdeel exemplaren zonder plaat", "Distribute instances without a plate"),
+    DistributeNestButton => ("Verdeel en nest", "Distribute and nest"),
+    DistributeNestHint => (
+        "Verdeel en nest kiest de plaat net zo en laat het nesten daarna bepalen waar elk exemplaar op de plaat ligt (ook gedraaid). De platen liggen naast elkaar vanaf de oorsprong van het document, 10 mm uit elkaar. Het nesten loopt op de achtergrond.",
+        "Distribute and nest picks the plate the same way and then lets the nest decide where each instance lies on its plate (also turned). The plates lie side by side from the origin of the document, 10 mm apart. The nest runs in the background."
+    ),
     ProblemBadFormula => (
         "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel (+ - * /, haakjes en min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; scheid argumenten met ; of ,).",
         "That is no number, parameter name or formula over the parameters of the part (+ - * /, brackets and min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; separate arguments with ; or ,)."

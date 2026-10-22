@@ -455,6 +455,13 @@ pub enum StructureEdit {
     DistributeOverPlates {
         gap: String,
     },
+    /// Like `DistributeOverPlates`, and then the nest decides where each instance lies on its plate
+    /// (G9-editor). The plates lie side by side from the origin of the document, in the order of the
+    /// plates, 10 mm apart. Runs in the background; one undo step when the answer is applied; an
+    /// answer of an older revision is dropped.
+    DistributeAndNestOverPlates {
+        gap: String,
+    },
     /// A chain with one offset step on the selected object; the distance as typed.
     CreateOffsetModifier {
         distance: String,

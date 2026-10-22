@@ -63,6 +63,7 @@ mod notes;
 mod offset_preview;
 mod order_dialog;
 mod path_lock;
+mod plate_nest;
 mod preflight_dialog;
 mod prefs;
 mod preview;
@@ -319,6 +320,8 @@ struct Session {
     cam: process::CamState,
     /// The nest panel (Quick Nest, Nest Selected) and its result (window state).
     nest: nest::NestState,
+    /// A distribute-and-nest run over the plates that awaits its answer (G9-editor).
+    plate_nest: Option<plate_nest::PlateRun>,
     /// The Print and Cut and Center Finder panels (window state).
     registration: registration::RegState,
     /// Text toolbar refusals and the text-on-path dialog (window state).
@@ -398,6 +401,7 @@ impl Session {
             arrange: arrange::ArrangeState::default(),
             cam: process::CamState::default(),
             nest: nest::NestState::default(),
+            plate_nest: None,
             registration: registration::RegState::default(),
             text: text::TextState::default(),
             variable: variable::VariableState::default(),
@@ -627,6 +631,9 @@ impl AppController {
             }
             UiIntent::ChoosePlate { document, plate } => {
                 self.with_session(document, |s| structure::choose_plate(s, document, plate))
+            }
+            UiIntent::Structure { document, edit: crate::StructureEdit::DistributeAndNestOverPlates { gap } } => {
+                self.distribute_and_nest(document, gap)
             }
             UiIntent::Structure { document, edit } => {
                 let request = self.next_id::<RequestId>();

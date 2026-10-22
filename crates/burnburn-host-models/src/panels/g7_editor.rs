@@ -78,6 +78,8 @@ pub enum EditorControl {
     /// The space between parts for the automatic distribution, and the button that distributes.
     PlatesGap,
     PlatesDistribute,
+    /// Distributes and lets the nest lay the instances on their plates (G9-editor).
+    PlatesDistributeNest,
     /// A new chain on the selection with the step as its first.
     ModNewChain,
     // --- Plates (P06).
@@ -235,6 +237,8 @@ fn plate_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
     lines.push(G5Line::Text(t(G7Text::DistributeHint, locale)));
     lines.push(field(EditorControl::PlatesGap, t(G7Text::DistributeGap, locale), "5".to_owned()));
     lines.push(button(EditorControl::PlatesDistribute, t(G7Text::DistributeButton, locale), true));
+    lines.push(G5Line::Text(t(G7Text::DistributeNestHint, locale)));
+    lines.push(button(EditorControl::PlatesDistributeNest, t(G7Text::DistributeNestButton, locale), true));
 
     if s.parts.iter().any(|p| !p.instances.is_empty()) {
         lines.push(G5Line::Heading(t(G7Text::InstancePlatesHeading, locale)));
@@ -730,6 +734,10 @@ pub(super) fn editor_intent(
         EditorControl::PlatesDistribute => structure(
             document,
             StructureEdit::DistributeOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
+        ),
+        EditorControl::PlatesDistributeNest => structure(
+            document,
+            StructureEdit::DistributeAndNestOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
         ),
         EditorControl::ModAddStep { modifier } => {
             chain(modifier)?;
