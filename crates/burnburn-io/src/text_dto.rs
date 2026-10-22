@@ -28,7 +28,21 @@ pub struct Text {
     /// Variable text: the object's own serial offset. Absent = literal text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variable_offset: Option<i64>,
+    /// Text on a path as a live binding to a guide object (G7-editor). Absent = not bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_binding: Option<PathBinding>,
     pub evaluation: Option<Evaluation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PathBinding {
+    /// Id of the guide object. It need not exist: a missing guide is an evaluation state.
+    pub guide: u64,
+    pub start_mm: Num,
+    pub offset_mm: Num,
+    pub reverse: bool,
+    pub warp: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

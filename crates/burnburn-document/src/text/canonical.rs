@@ -61,5 +61,13 @@ impl CanonicalEncode for TextObject {
             out.tag("variable-text");
             out.u64(u64::from_le_bytes(v.offset.to_le_bytes()));
         }
+        if let Some(p) = self.path {
+            out.tag("path-binding");
+            out.u64(burnburn_types::StableId::raw(p.guide));
+            out.f64(p.start_mm);
+            out.f64(p.offset_mm);
+            out.bool(p.reverse);
+            out.bool(p.warp);
+        }
     }
 }

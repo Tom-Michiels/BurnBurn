@@ -2,11 +2,12 @@
 //! `TextLayer::from_parts` / `DocumentSnapshot::with_texts`.
 
 use burnburn_document::text::{
-    Align, FontRef, FontSize, FontStyle, TextId, TextLayer, TextLayout, TextMode, TextObject, VAlign, VariableText,
+    Align, FontRef, FontSize, FontStyle, PathBinding, TextId, TextLayer, TextLayout, TextMode, TextObject, VAlign,
+    VariableText,
 };
 use burnburn_document::{DerivedOwner, DerivedRecord, DocumentSnapshot, EvalDiagnosis, EvalStatus};
 use burnburn_geometry::Affine;
-use burnburn_types::{ContentHash, Length, StableId};
+use burnburn_types::{ContentHash, GeometryId, Length, StableId};
 
 use crate::LoadError;
 use crate::dto::v1::Num;
@@ -102,6 +103,13 @@ pub(crate) fn texts_to_dto(doc: &DocumentSnapshot) -> Vec<d::Text> {
                 },
                 options: options_to(&t.layout),
                 variable_offset: t.variable.map(|v| v.offset),
+                path_binding: t.path.map(|b| d::PathBinding {
+                    guide: b.guide.raw(),
+                    start_mm: Num(b.start_mm),
+                    offset_mm: Num(b.offset_mm),
+                    reverse: b.reverse,
+                    warp: b.warp,
+                }),
                 evaluation: layer
                     .record(DerivedOwner::Text(id))
                     .map(|r| d::Evaluation { inputs: r.inputs.map(|h| h.to_hex()), status: status_to(&r.status) }),
@@ -165,6 +173,22 @@ fn text_from(ti: usize, t: &d::Text) -> Result<TextObject, LoadError> {
     obj.layout = layout;
     obj.placement = placement;
     obj.variable = t.variable_offset.map(|offset| VariableText { offset });
+    obj.path = match &t.path_binding {
+        None => None,
+        Some(b) => {
+            let start_mm = finite(p("path_binding.start_mm"), b.start_mm)?;
+            if start_mm < 0.0 {
+                return Err(invalid(p("path_binding.start_mm"), "must not be negative"));
+            }
+            Some(PathBinding {
+                guide: GeometryId::from_raw(b.guide),
+                start_mm,
+                offset_mm: finite(p("path_binding.offset_mm"), b.offset_mm)?,
+                reverse: b.reverse,
+                warp: b.warp,
+            })
+        }
+    };
     obj.mode = match t.mode {
         d::Mode::Outline => TextMode::Outline,
         d::Mode::SingleLine => TextMode::SingleLine,

@@ -57,6 +57,8 @@ pub enum TextError {
     IdsExhausted,
     /// Convert to Path on a text that has no outlines (empty text, or never evaluated).
     NothingToConvert(TextId),
+    /// A text cannot follow its own outline as its guide (G7-editor, E08).
+    GuideIsOwnOutput(TextId),
 }
 
 impl fmt::Display for TextError {
@@ -67,6 +69,7 @@ impl fmt::Display for TextError {
             TextError::InvalidRecord => f.write_str("text evaluation record does not match a text object"),
             TextError::IdsExhausted => f.write_str("text ids exhausted"),
             TextError::NothingToConvert(t) => write!(f, "text {t} has no outlines to convert"),
+            TextError::GuideIsOwnOutput(t) => write!(f, "text {t} cannot follow its own outline"),
         }
     }
 }
@@ -83,6 +86,11 @@ pub struct TextLayer {
 }
 
 fn check(obj: &TextObject) -> Result<(), TextError> {
+    if let Some(p) = &obj.path
+        && !(p.start_mm.is_finite() && p.start_mm >= 0.0 && p.offset_mm.is_finite())
+    {
+        return Err(TextError::InvalidLayout);
+    }
     let l = &obj.layout;
     if l.line_spacing.is_finite() && l.line_spacing > 0.0 && l.letter_spacing_mm.is_finite() && l.v_space_mm.is_finite()
     {
@@ -151,6 +159,8 @@ pub(crate) struct TextTxn<'a> {
     pub layer: &'a mut TextLayer,
     pub ids: &'a mut IdAllocator,
     pub changed: &'a mut Vec<TextId>,
+    /// The objects of the transaction, to see whether a guide is the text's own outline.
+    pub objects: &'a BTreeMap<burnburn_types::GeometryId, Arc<crate::GeometryObject>>,
 }
 
 /// What the session must do after a text command.
@@ -163,7 +173,7 @@ pub(crate) enum TextEffect {
 }
 
 pub(crate) fn apply(cmd: TextCommand, txn: TextTxn<'_>) -> Result<TextEffect, TextError> {
-    let TextTxn { layer, ids, changed } = txn;
+    let TextTxn { layer, ids, changed, objects } = txn;
     match cmd {
         TextCommand::Create { text } => {
             check(&text)?;
@@ -174,6 +184,12 @@ pub(crate) fn apply(cmd: TextCommand, txn: TextTxn<'_>) -> Result<TextEffect, Te
         }
         TextCommand::Set { text, source } => {
             check(&source)?;
+            if let Some(p) = &source.path
+                && let Some(guide) = objects.get(&p.guide)
+                && matches!(guide.source(), crate::GeometrySource::Derived(k) if k.owner == DerivedOwner::Text(text))
+            {
+                return Err(TextError::GuideIsOwnOutput(text));
+            }
             let slot = layer.texts.get_mut(&text).ok_or(TextError::UnknownText(text))?;
             *slot = Arc::from(source);
             if !changed.contains(&text) {

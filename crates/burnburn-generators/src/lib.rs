@@ -5,6 +5,7 @@
 //! (`OperationSettings`). A generator's `fit` is design clearance (pasvorm), a separate meaning.
 
 mod barcode;
+mod bound_text;
 mod boxes;
 mod error;
 mod evaluator;
@@ -20,6 +21,7 @@ mod symbology;
 mod variable;
 
 pub use barcode::{Barcode, Code128Params, code128, code128_patterns, code128_symbols};
+pub use bound_text::BoundTextEvaluator;
 pub use boxes::{BoxParams, Lid, Panel, PanelRole, finger_box};
 pub use error::GenError;
 pub use evaluator::{GENERATOR_ENGINE, GeneratorEvaluator};

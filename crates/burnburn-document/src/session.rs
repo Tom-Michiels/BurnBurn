@@ -230,7 +230,9 @@ impl DocumentSession {
             txn.arrange.retain_existing(|id| objects.contains_key(&id));
         }
         txn.evaluate(revision, evaluators)?;
+        let mark = (txn.changes.created.len(), txn.changes.modified.len(), txn.changes.deleted.len());
         txn.evaluate_structure()?;
+        txn.evaluate_following_texts(revision, evaluators, mark)?;
         // Keep sharing the process layer when the command did not touch it.
         let process = if txn.process == *self.current.process {
             Arc::clone(&self.current.process)
@@ -604,7 +606,12 @@ impl Txn {
             CommandPayload::Text(cmd) => {
                 let effect = text::apply(
                     cmd,
-                    TextTxn { layer: &mut self.texts, ids: &mut self.ids, changed: &mut self.changes.texts },
+                    TextTxn {
+                        layer: &mut self.texts,
+                        ids: &mut self.ids,
+                        changed: &mut self.changes.texts,
+                        objects: &self.objects,
+                    },
                 )
                 .map_err(CommandError::Text)?;
                 match effect {
@@ -753,21 +760,14 @@ impl Txn {
                 }
             }
         }
-        for id in self.changes.texts.clone() {
-            let owner = DerivedOwner::Text(id);
-            if self.texts.text(id).is_none() {
-                continue; // deleted in this transaction
+        let mut texts = self.changes.texts.clone();
+        for id in self.texts_following(&self.changes.created, &self.changes.modified, &self.changes.deleted) {
+            if !texts.contains(&id) {
+                texts.push(id);
             }
-            match evaluators.iter().find(|e| e.owner_kind() == owner.kind()) {
-                Some(ev) => {
-                    let patch = ev.evaluate(&self.snapshot_at(revision), owner);
-                    self.apply_text_patch(patch)?;
-                }
-                None => {
-                    let inputs = self.texts.derived.get(&owner).and_then(|r| r.inputs);
-                    self.texts.derived.insert(owner, DerivedRecord { inputs, status: EvalStatus::Pending });
-                }
-            }
+        }
+        for id in texts {
+            self.evaluate_text(id, revision, evaluators)?;
         }
         for id in self.changes.generators.clone() {
             let owner = DerivedOwner::Generator(id);
@@ -787,6 +787,47 @@ impl Txn {
                     self.engines.derived.insert(owner, DerivedRecord { inputs, status: EvalStatus::Pending });
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Evaluates one text again (not when it is gone): its outlines follow in this transaction.
+    fn evaluate_text(&mut self, id: crate::text::TextId, revision: RevisionId, evaluators: &[&dyn Evaluator]) -> Result<(), CommandError> {
+        let owner = DerivedOwner::Text(id);
+        if self.texts.text(id).is_none() {
+            return Ok(()); // deleted in this transaction
+        }
+        match evaluators.iter().find(|e| e.owner_kind() == owner.kind()) {
+            Some(ev) => {
+                let patch = ev.evaluate(&self.snapshot_at(revision), owner);
+                self.apply_text_patch(patch)?;
+            }
+            None => {
+                let inputs = self.texts.derived.get(&owner).and_then(|r| r.inputs);
+                self.texts.derived.insert(owner, DerivedRecord { inputs, status: EvalStatus::Pending });
+            }
+        }
+        Ok(())
+    }
+
+    /// The texts bound to a guide that appears in any of the three lists (G7-editor, E08).
+    fn texts_following(&self, created: &[GeometryId], modified: &[GeometryId], deleted: &[GeometryId]) -> Vec<crate::text::TextId> {
+        let touched = |g: GeometryId| created.contains(&g) || modified.contains(&g) || deleted.contains(&g);
+        self.texts.texts().filter(|(_, t)| t.path.is_some_and(|p| touched(p.guide))).map(|(id, _)| id).collect()
+    }
+
+    /// Texts whose guide the structure evaluation (modifier chains, part instances) changed after
+    /// the texts were evaluated: they follow the recomputed guide in the same transaction.
+    fn evaluate_following_texts(
+        &mut self,
+        revision: RevisionId,
+        evaluators: &[&dyn Evaluator],
+        mark: (usize, usize, usize),
+    ) -> Result<(), CommandError> {
+        let c = &self.changes;
+        let followers = self.texts_following(&c.created[mark.0..], &c.modified[mark.1..], &c.deleted[mark.2..]);
+        for id in followers {
+            self.evaluate_text(id, revision, evaluators)?;
         }
         Ok(())
     }
