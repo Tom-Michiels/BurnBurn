@@ -21,6 +21,7 @@ use burnburn_types::{DocumentId, GeometryId, Length, OperationId, RequestId};
 use super::cut_options;
 use super::process::{parse_speed, refused};
 use super::{AppUpdate, DEFAULT_FILL_INTERVAL_MM, Session, apply_edit};
+use crate::cut_options::CutField;
 use crate::field::{format_mm, parse_number, parse_position};
 use crate::intent::{CutSettingsInput, OperationField, OperationKind};
 use crate::view_model::{
@@ -184,7 +185,14 @@ pub(super) fn cut_settings_view(s: &Session, caps: Option<&MachineCapabilities>)
         visible: row.visible,
         error,
         extras: cut_options::extras_of(op),
-        gates: cut_options::gates_of(row.kind, caps),
+        gates: {
+            let mut gates = cut_options::gates_of(row.kind, caps);
+            // Tabs that no longer fit are said at the tab field, before a compile fails on them.
+            if !burnburn_cam::invalid_tab_geometries(&snapshot, op).is_empty() {
+                gates.advisory.insert(CutField::TabsValue, MessageKey::TabsDoNotFit);
+            }
+            gates
+        },
     })
 }
 

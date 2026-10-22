@@ -17,10 +17,11 @@ fn main() -> ExitCode {
 
 #[cfg(target_os = "macos")]
 fn main() -> ExitCode {
-    let steps: [(&str, fn() -> Result<(), String>); 3] = [
+    let steps: [(&str, fn() -> Result<(), String>); 4] = [
         ("array_dialog_previews_and_makes_one_modifier", array),
         ("order_dialog_lists_the_layers_and_adds_a_constraint", order),
         ("preflight_dialog_lists_findings_and_selects_the_cause", preflight),
+        ("sublayers_dialog_adds_edits_and_orders_sub_layers", sublayers),
     ];
     for (name, scenario) in steps {
         let code = common::report(name, scenario());
@@ -255,5 +256,41 @@ fn preflight() -> Result<(), String> {
     let selection = s.doc(doc).ok_or("no document")?.selection;
     expect(|| format!("Show source selects the cause: {selection:?}"), selection == vec![ids[1]])?;
     let _ = press(&s, doc, PRE, DialogActionKind::Close);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn sublayers() -> Result<(), String> {
+    use burnburn_macos::adapter::MenuItem;
+    use burnburn_presentation::{CamDialog, DialogActionKind, DialogField, UiIntent};
+    use common::expect;
+    const SUB: CamDialog = CamDialog::Sublayers;
+    let s = common::start()?;
+    let doc = s.new_document()?;
+    s.draw_rectangle(doc, (10.0, 10.0), (30.0, 30.0))?;
+    let id = s.doc(doc).ok_or("no document")?.objects[0].id;
+    select(&s, doc, vec![id]);
+    s.app.dispatch(UiIntent::AssignLayer { document: doc, slot: 1, add: false });
+    s.menu(MenuItem::CamDialog(SUB))?;
+    s.pump(0.3);
+    let none = popup_titles(&s, doc, SUB, DialogField::SubIndex).ok_or("no pop-up")?;
+    expect(|| format!("no sub-layers yet: {none:?}"), none.is_empty())?;
+    press(&s, doc, SUB, DialogActionKind::AddRow)?;
+    press(&s, doc, SUB, DialogActionKind::AddRow)?;
+    let two = popup_titles(&s, doc, SUB, DialogField::SubIndex).ok_or("no pop-up")?;
+    expect(|| format!("two sub-layers: {two:?}"), two == vec!["1".to_owned(), "2".to_owned()])?;
+    act(&s, doc, SUB, DialogField::SubSpeed, |c| {
+        type_text(c, "40");
+        Ok(())
+    })?;
+    let speed = s
+        .app
+        .with_cam_panel(doc, SUB, |p| p.rows.iter().find(|r| r.0 == DialogField::SubSpeed).map(|r| r.1.stringValue().to_string()))
+        .flatten()
+        .ok_or("no speed field")?;
+    expect(|| format!("the typed speed is in force: {speed:?}"), speed == "40")?;
+    expect(|| "the later sub-layer cannot move later".into(), press(&s, doc, SUB, DialogActionKind::MoveRowDown).is_err())?;
+    press(&s, doc, SUB, DialogActionKind::MoveRowUp)?;
+    let _ = press(&s, doc, SUB, DialogActionKind::Close);
     Ok(())
 }

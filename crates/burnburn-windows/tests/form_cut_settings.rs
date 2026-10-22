@@ -166,7 +166,7 @@ fn choosing_fill_swaps_the_option_rows_greys_kerf_and_asks_for_a_redraw() {
         use burnburn_presentation::CutSection;
         CutField::ALL.into_iter().filter(|c| c.section() == CutSection::Fill).collect()
     };
-    expected.push(CutField::ZOffset);
+    expected.extend([CutField::ZOffset, CutField::ZStep]);
     assert_eq!(option_fields(&fill), expected);
     assert!(!enabled(&fill, &ControlId::CutKerf), "kerf is for Line only");
     assert!(matches!(fill.find(&ControlId::CutMode), Some(FormLine::Choice { selected: 1, .. })));

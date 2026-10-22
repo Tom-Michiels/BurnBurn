@@ -784,6 +784,8 @@ pub enum MessageKey {
     SelectObjectsFirst,
     /// A tool layer (T1/T2) is never output; its output cannot be switched on.
     ToolLayerNoOutput,
+    /// The tabs of a Line layer no longer fit a shape of the layer (said at the tab field).
+    TabsDoNotFit,
     /// The machine profile does not support (or has not validated) this feature (C05, M02).
     MissingCapability(burnburn_job::Feature),
     /// The kind of a constraint in the constraint list.

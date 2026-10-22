@@ -32,6 +32,7 @@ pub(super) fn items() -> Vec<MenuNode> {
     items.push(sep());
     items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Optimization)));
     items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Order)));
+    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Sublayers)));
     items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Device)));
     items
 }

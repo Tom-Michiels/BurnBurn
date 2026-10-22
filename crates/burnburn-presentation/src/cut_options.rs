@@ -72,6 +72,8 @@ pub enum CutField {
     ScreenAngle,
     /// Focus (Z) offset of the whole operation in mm; `0` or empty = none (needs the Z axis).
     ZOffset,
+    /// Focus change per pass after the first in mm; `0` or empty = none (needs the Z axis).
+    ZStep,
 }
 
 /// The kind of control a field needs.
@@ -127,7 +129,7 @@ pub const IMAGE_MODES: [CutChoice; 11] = [
 
 impl CutField {
     /// Every field, in sheet order.
-    pub const ALL: [CutField; 40] = [
+    pub const ALL: [CutField; 41] = [
         CutField::TabsEnabled,
         CutField::TabsMode,
         CutField::TabsValue,
@@ -168,6 +170,7 @@ impl CutField {
         CutField::ScreenCell,
         CutField::ScreenAngle,
         CutField::ZOffset,
+        CutField::ZStep,
     ];
 }
 
@@ -268,7 +271,7 @@ impl CutField {
     /// Whether the sheet shows this field for an operation of `kind`, given the values on the sheet.
     pub fn applies(self, kind: OperationKind, extras: &CutExtras) -> bool {
         // The focus offset belongs to the operation, whatever its mode.
-        if self == CutField::ZOffset {
+        if matches!(self, CutField::ZOffset | CutField::ZStep) {
             return matches!(kind, OperationKind::Line | OperationKind::Fill | OperationKind::Image);
         }
         let section = match kind {

@@ -121,7 +121,7 @@ fn a_line_sheet_has_the_line_rows_with_the_right_controls_and_greys_what_is_off(
     let fill = option_rows(&sheet, OperationKind::Fill, &sheet.extras, Locale::En);
     // The Z offset belongs to the operation, whatever its mode: it closes every sheet's rows.
     let mut expected: Vec<CutField> = CutField::ALL.into_iter().filter(|f| f.section() == CutSection::Fill).collect();
-    expected.push(CutField::ZOffset);
+    expected.extend([CutField::ZOffset, CutField::ZStep]);
     assert_eq!(fields(&fill), expected);
     assert_eq!(row(&fill, CutField::FillInterval).control, RowControl::Text("0.1".into()));
     assert_eq!(row(&fill, CutField::FillBidirectional).control, RowControl::Check(true));

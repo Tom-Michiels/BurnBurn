@@ -424,6 +424,7 @@ pub(super) struct CamState {
     /// The Preflight and Cutting order dialogs (C09, C06).
     pub(super) preflight: super::preflight_dialog::PreflightState,
     pub(super) order: super::order_dialog::OrderState,
+    pub(super) sublayers: super::sublayers_dialog::SublayersState,
 }
 
 /// Every `Order by` level, in LightBurn's order.
@@ -560,6 +561,7 @@ impl AppController {
             CamDialog::Feeder => super::feeder_dialog::view(s),
             CamDialog::Preflight => super::preflight_dialog::view(s, self.machine.as_ref()),
             CamDialog::Order => super::order_dialog::view(s),
+            CamDialog::Sublayers => super::sublayers_dialog::view(s),
             CamDialog::MaterialTest | CamDialog::IntervalTest | CamDialog::FocusTest => {
                 super::tests_gen::view(s, dialog, self.machine.as_ref())
             }
@@ -582,6 +584,7 @@ impl AppController {
             CamDialog::Feeder => self.with_session(document, super::feeder_dialog::open),
             CamDialog::Preflight => self.with_session(document, super::preflight_dialog::open),
             CamDialog::Order => self.with_session(document, super::order_dialog::open),
+            CamDialog::Sublayers => self.with_session(document, super::sublayers_dialog::open),
             CamDialog::MaterialTest | CamDialog::IntervalTest | CamDialog::FocusTest => {
                 self.with_session(document, |s| super::tests_gen::open(s, dialog))
             }
@@ -606,6 +609,10 @@ impl AppController {
             CamDialog::Feeder => self.with_session(document, |s| super::feeder_dialog::set(s, field, value)),
             CamDialog::Preflight => self.with_session(document, |s| super::preflight_dialog::set(s, field, value)),
             CamDialog::Order => self.with_session(document, |s| super::order_dialog::set(s, field, value)),
+            CamDialog::Sublayers => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| super::sublayers_dialog::set(s, document, field, value, request))
+            }
             CamDialog::MaterialTest | CamDialog::IntervalTest | CamDialog::FocusTest => {
                 self.with_session(document, |s| super::tests_gen::set(s, dialog, field, value))
             }
@@ -631,6 +638,10 @@ impl AppController {
             CamDialog::Order => {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| super::order_dialog::action(s, document, action, request))
+            }
+            CamDialog::Sublayers => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| super::sublayers_dialog::action(s, document, action, request))
             }
             CamDialog::MaterialTest | CamDialog::IntervalTest | CamDialog::FocusTest => {
                 self.tests_action(document, dialog, action)

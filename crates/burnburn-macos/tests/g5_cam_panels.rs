@@ -38,7 +38,7 @@ fn open(h: &mut HeadlessEditorHarness, doc: DocumentId, dialog: CamDialog) -> Di
 
 #[test]
 fn the_new_dialogs_are_menu_items_with_titles_in_both_languages() {
-    for dialog in [CamDialog::Array, CamDialog::Feeder, CamDialog::Preflight, CamDialog::Order] {
+    for dialog in [CamDialog::Array, CamDialog::Feeder, CamDialog::Preflight, CamDialog::Order, CamDialog::Sublayers] {
         assert!(menu_items().contains(&MenuItem::CamDialog(dialog)), "{dialog:?}");
         assert!(LOCALES.iter().all(|l| !cam_title(dialog, *l).is_empty()));
     }
@@ -75,16 +75,30 @@ fn every_label_note_and_error_of_the_new_dialogs_has_words() {
             DialogNote::OrderCycle,
             DialogNote::OrderSameLayer,
             DialogNote::OrderDuplicate,
+            DialogNote::SublayersNone,
+            DialogNote::SublayersFull,
         ] {
             assert!(!cam_note(note, locale).is_empty(), "{note:?} {locale:?}");
         }
         for e in [DialogError::TooManyCopies, DialogError::NoPath] {
             assert!(!cam_error(e, locale).is_empty());
         }
-        for c in [DialogChoice::ArrayGrid, DialogChoice::ArrayCircular, DialogChoice::ArrayPath] {
+        for c in [
+            DialogChoice::ArrayGrid,
+            DialogChoice::ArrayCircular,
+            DialogChoice::ArrayPath,
+            DialogChoice::SubLine,
+            DialogChoice::SubFill,
+        ] {
             assert!(!cam_choice_label(c, locale).is_empty());
         }
-        for kind in [DialogActionKind::ShowSource, DialogActionKind::AddRow, DialogActionKind::RemoveRow] {
+        for kind in [
+            DialogActionKind::ShowSource,
+            DialogActionKind::AddRow,
+            DialogActionKind::RemoveRow,
+            DialogActionKind::MoveRowUp,
+            DialogActionKind::MoveRowDown,
+        ] {
             assert!(!cam_action_title(kind, CamDialog::Order, locale).is_empty());
         }
     }

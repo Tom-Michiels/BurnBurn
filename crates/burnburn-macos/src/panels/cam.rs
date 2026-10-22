@@ -33,6 +33,7 @@ pub fn cam_title(dialog: CamDialog, locale: Locale) -> &'static str {
             CamDialog::Feeder => ("Feeder", "Feeder"),
             CamDialog::Preflight => ("Preflight", "Preflight"),
             CamDialog::Order => ("Snijvolgorde", "Cutting order"),
+            CamDialog::Sublayers => ("Sublagen", "Sub-layers"),
         },
         locale,
     )
@@ -140,6 +141,13 @@ pub fn cam_caption(field: DialogField, vm: &DialogViewModel, locale: Locale) -> 
             F::OrderBefore => ("Eerst deze laag", "This layer first"),
             F::OrderAfter => ("Dan pas deze laag", "Only then this layer"),
             F::OrderExisting => ("Bestaande volgorde", "Existing order"),
+            F::SubLayer => ("Laag", "Layer"),
+            F::SubIndex => ("Sublaag (in volgorde van uitvoeren)", "Sub-layer (in the order they run)"),
+            F::SubMode => ("Modus", "Mode"),
+            F::SubSpeed => ("Snelheid (mm/s)", "Speed (mm/s)"),
+            F::SubPower => ("Vermogen (%)", "Power (%)"),
+            F::SubPasses => ("Doorgangen", "Passes"),
+            F::SubInterval => ("Lijnafstand vulling (mm)", "Fill line interval (mm)"),
             F::FeederRepeat => ("Herhalingen", "Repeats"),
             F::FeederFeedBefore => ("Voeden voor elke run (mm)", "Feed before each run (mm)"),
             F::FeederFeedAfter => ("Voeden na elke run (mm)", "Feed after each run (mm)"),
@@ -210,6 +218,8 @@ pub fn cam_choice_label(choice: DialogChoice, locale: Locale) -> &'static str {
             C::ArrayGrid => ("Raster (kolommen en rijen)", "Grid (columns and rows)"),
             C::ArrayCircular => ("Cirkel", "Circular"),
             C::ArrayPath => ("Langs een pad", "Along a path"),
+            C::SubLine => ("Lijn", "Line"),
+            C::SubFill => ("Vulling", "Fill"),
             _ => ("", ""),
         },
         locale,
@@ -329,6 +339,13 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
             "That would make a cycle: the layers below already have to follow each other. Nothing changed.",
         ),
         DialogNote::OrderSameLayer => ("Een laag kan niet vóór zichzelf komen.", "A layer cannot come before itself."),
+        DialogNote::SublayersNone => (
+            "Deze laag heeft geen sublagen. Voeg toe maakt een kopie van de laag die direct erna wordt uitgevoerd.",
+            "This layer has no sub-layers. Add makes a copy of the layer that runs right after it.",
+        ),
+        DialogNote::SublayersFull => {
+            ("Een laag kan hoogstens 16 sublagen hebben.", "A layer can have at most 16 sub-layers.")
+        }
         DialogNote::OrderDuplicate => ("Deze volgorde bestaat al.", "This order exists already."),
         DialogNote::FeederHasNoRdForm => (
             "Voeden en pauzeren hebben nog geen bewezen RD-vorm: het plan is alleen een voorbeeld, opslaan als RD en verzenden worden geweigerd.",
@@ -357,6 +374,8 @@ pub fn cam_action_title(kind: DialogActionKind, dialog: CamDialog, locale: Local
             (DialogActionKind::ShowSource, _) => ("Toon bron", "Show source"),
             (DialogActionKind::AddRow, _) => ("Voeg toe", "Add"),
             (DialogActionKind::RemoveRow, _) => ("Verwijder", "Remove"),
+            (DialogActionKind::MoveRowUp, _) => ("Eerder", "Earlier"),
+            (DialogActionKind::MoveRowDown, _) => ("Later", "Later"),
             (DialogActionKind::Apply, CamDialog::Array) => ("Reeks maken", "Make array"),
             (DialogActionKind::Apply, _) => ("Toepassen", "Apply"),
             (DialogActionKind::Close, _) => ("Sluiten", "Close"),
@@ -508,6 +527,8 @@ pub fn cam_action_intent(
         DialogActionKind::ShowSource => DialogAction::ShowSource,
         DialogActionKind::AddRow => DialogAction::AddRow,
         DialogActionKind::RemoveRow => DialogAction::RemoveRow,
+        DialogActionKind::MoveRowUp => DialogAction::MoveRowUp,
+        DialogActionKind::MoveRowDown => DialogAction::MoveRowDown,
         DialogActionKind::ExportRd => DialogAction::ExportRd(path?),
     };
     Some(UiIntent::CamDialogAction { document, dialog, action })

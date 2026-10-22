@@ -33,11 +33,13 @@ pub enum CamDialog {
     Preflight,
     /// Edit ▸ Cutting order: hard "this layer completely before that one" constraints (C06).
     Order,
+    /// Edit ▸ Sub-layers: the sub-layers of a layer and the order they run in (C11).
+    Sublayers,
 }
 
 impl CamDialog {
     /// The order is the order of the command ids of the hosts: new dialogs are appended.
-    pub const ALL: [CamDialog; 9] = [
+    pub const ALL: [CamDialog; 10] = [
         CamDialog::Optimization,
         CamDialog::MaterialTest,
         CamDialog::IntervalTest,
@@ -47,6 +49,7 @@ impl CamDialog {
         CamDialog::Feeder,
         CamDialog::Preflight,
         CamDialog::Order,
+        CamDialog::Sublayers,
     ];
 
     /// The three generators; their result is a private test job.
@@ -152,6 +155,18 @@ pub enum DialogField {
     OrderAfter,
     /// The stored constraints, to pick one to remove.
     OrderExisting,
+    // Sub-layers
+    /// The layer whose sub-layers are edited.
+    SubLayer,
+    /// The sub-layer the fields below show.
+    SubIndex,
+    SubMode,
+    SubSpeed,
+    /// Power in percent (a sub-layer has one power, minimum = maximum).
+    SubPower,
+    SubPasses,
+    /// Fill line interval in mm (Fill sub-layers only).
+    SubInterval,
 }
 
 /// An entry of a pop-up field.
@@ -174,6 +189,8 @@ pub enum DialogChoice {
     ArrayGrid,
     ArrayCircular,
     ArrayPath,
+    SubLine,
+    SubFill,
 }
 
 const CELL_MODES: [DialogChoice; 2] = [DialogChoice::CellLine, DialogChoice::CellFill];
@@ -191,6 +208,7 @@ const ORIGINS: [DialogChoice; 4] = [
     DialogChoice::OriginBottomRight,
 ];
 const ROTARY_KINDS: [DialogChoice; 2] = [DialogChoice::RotaryChuck, DialogChoice::RotaryRoller];
+const SUB_MODES: [DialogChoice; 2] = [DialogChoice::SubLine, DialogChoice::SubFill];
 const ARRAY_KINDS: [DialogChoice; 3] = [DialogChoice::ArrayGrid, DialogChoice::ArrayCircular, DialogChoice::ArrayPath];
 
 impl DialogField {
@@ -202,6 +220,7 @@ impl DialogField {
             DialogField::BedOrigin => &ORIGINS,
             DialogField::RotaryKind => &ROTARY_KINDS,
             DialogField::ArrayKind => &ARRAY_KINDS,
+            DialogField::SubMode => &SUB_MODES,
             _ => &[],
         }
     }
@@ -233,7 +252,10 @@ impl DialogField {
             | DialogField::PreflightPick
             | DialogField::OrderBefore
             | DialogField::OrderAfter
-            | DialogField::OrderExisting => DialogControl::Choice,
+            | DialogField::OrderExisting
+            | DialogField::SubLayer
+            | DialogField::SubIndex
+            | DialogField::SubMode => DialogControl::Choice,
             _ => DialogControl::Text,
         }
     }
@@ -362,6 +384,10 @@ pub enum DialogNote {
     OrderSameLayer,
     /// Order: this constraint exists already.
     OrderDuplicate,
+    /// Sub-layers: the layer has none yet.
+    SublayersNone,
+    /// Sub-layers: the most a layer can have are there.
+    SublayersFull,
 }
 
 /// The kind of a preflight finding, without the identities (the entry's text names the object).
@@ -474,6 +500,9 @@ pub enum DialogAction {
     AddRow,
     /// Order: remove the chosen constraint.
     RemoveRow,
+    /// Sub-layers: move the chosen sub-layer earlier / later in the list.
+    MoveRowUp,
+    MoveRowDown,
 }
 
 /// A button of the dialog.
@@ -496,6 +525,8 @@ pub enum DialogActionKind {
     ShowSource,
     AddRow,
     RemoveRow,
+    MoveRowUp,
+    MoveRowDown,
 }
 
 /// How a machine profile supports one feature, for the capability list of Device Settings.

@@ -1597,6 +1597,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             sep(),
             item(MenuItem::CamDialog(CamDialog::Optimization), "", false),
             item(MenuItem::CamDialog(CamDialog::Order), "", false),
+            item(MenuItem::CamDialog(CamDialog::Sublayers), "", false),
             item(MenuItem::CamDialog(CamDialog::Device), "", false),
         ],
     ));

@@ -43,10 +43,12 @@ const BUTTON_BAR_H: f64 = 46.0;
 const MAX_SCROLL_H: f64 = 560.0;
 const ORDER_KEYS: [OrderKey; 3] = [OrderKey::Layer, OrderKey::Group, OrderKey::Priority];
 /// Buttons in the order of the bar, left to right.
-const ACTION_KINDS: [DialogActionKind; 8] = [
+const ACTION_KINDS: [DialogActionKind; 10] = [
     DialogActionKind::ShowSource,
     DialogActionKind::AddRow,
     DialogActionKind::RemoveRow,
+    DialogActionKind::MoveRowUp,
+    DialogActionKind::MoveRowDown,
     DialogActionKind::ReturnToFlatbed,
     DialogActionKind::Generate,
     DialogActionKind::ExportRd,
