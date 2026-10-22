@@ -5,9 +5,7 @@
 
 use std::path::PathBuf;
 
-use burnburn_presentation::{
-    CommandKey, HeadlessEditorHarness, HostEffect, SelectMode, TOOL_SLOT_T2, UiIntent,
-};
+use burnburn_presentation::{CommandKey, HeadlessEditorHarness, HostEffect, SelectMode, TOOL_SLOT_T2, UiIntent};
 use burnburn_types::DocumentId;
 
 fn draw_on(h: &mut HeadlessEditorHarness, doc: DocumentId, x: f64, slot: u8) {

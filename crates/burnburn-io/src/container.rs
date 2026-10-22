@@ -93,8 +93,11 @@ pub fn encode_container(project: &Project) -> Result<Vec<u8>, SaveError> {
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
     if !project.layer_slots.is_empty() {
-        let dtos: Vec<SlotDto> =
-            project.layer_slots.iter().map(|(operation, slot)| SlotDto { operation: *operation, slot: *slot }).collect();
+        let dtos: Vec<SlotDto> = project
+            .layer_slots
+            .iter()
+            .map(|(operation, slot)| SlotDto { operation: *operation, slot: *slot })
+            .collect();
         zip.start_file(LAYER_SLOTS, json).map_err(|e| enc(&e))?;
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
@@ -207,8 +210,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let dto: v1::Document = serde_json::from_slice(&document_bytes).map_err(|e| json_error(DOCUMENT, &e))?;
     let schema = u32::try_from(schema).unwrap_or(u32::MAX);
     let document = document_from_dto(&dto, schema, &|h| assets.get(h).is_some())?;
-    let mut project =
-        Project {
+    let mut project = Project {
         uuid,
         document,
         assets,
@@ -251,7 +253,8 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             return Err(LoadError::InvalidValue { path: "layer-slots".into(), reason: "empty or too long".into() });
         }
         for d in dtos {
-            let known = project.document.process().operations().any(|o| burnburn_types::StableId::raw(o.id()) == d.operation);
+            let known =
+                project.document.process().operations().any(|o| burnburn_types::StableId::raw(o.id()) == d.operation);
             let twice = project.layer_slots.iter().any(|(op, _)| *op == d.operation);
             if !known || twice || d.slot > MAX_LAYER_SLOT {
                 return Err(LoadError::InvalidValue {

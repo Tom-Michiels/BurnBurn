@@ -143,7 +143,7 @@ impl AppController {
             let mut project = Project::new(s.uuid, (*snapshot).clone());
             project.assets = s.assets.clone();
             project.library_links = s.library_links.clone();
-        project.layer_slots = super::layers::export(s);
+            project.layer_slots = super::layers::export(s);
             project.layer_slots = super::layers::export(s);
             let cancel = CancellationSource::new();
             let request = TaskRequest {

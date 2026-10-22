@@ -285,11 +285,16 @@ fn sublayers() -> Result<(), String> {
     })?;
     let speed = s
         .app
-        .with_cam_panel(doc, SUB, |p| p.rows.iter().find(|r| r.0 == DialogField::SubSpeed).map(|r| r.1.stringValue().to_string()))
+        .with_cam_panel(doc, SUB, |p| {
+            p.rows.iter().find(|r| r.0 == DialogField::SubSpeed).map(|r| r.1.stringValue().to_string())
+        })
         .flatten()
         .ok_or("no speed field")?;
     expect(|| format!("the typed speed is in force: {speed:?}"), speed == "40")?;
-    expect(|| "the later sub-layer cannot move later".into(), press(&s, doc, SUB, DialogActionKind::MoveRowDown).is_err())?;
+    expect(
+        || "the later sub-layer cannot move later".into(),
+        press(&s, doc, SUB, DialogActionKind::MoveRowDown).is_err(),
+    )?;
     press(&s, doc, SUB, DialogActionKind::MoveRowUp)?;
     let _ = press(&s, doc, SUB, DialogActionKind::Close);
     Ok(())

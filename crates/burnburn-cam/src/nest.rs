@@ -105,6 +105,8 @@ pub struct Placement {
     pub copy: u32,
     pub stock: StockId,
     pub rotation_deg: f64,
+    /// Placed as the mirror image of the part (mirrored first, then rotated; see [`MirrorPolicy`]).
+    pub mirrored: bool,
     /// Part coordinates → stock coordinates (rotation about the origin, then translation).
     pub transform: Affine,
 }
@@ -135,11 +137,74 @@ pub struct Utilisation {
     pub value: f64,
 }
 
+/// What is used and what is left of one sheet (remnants for a later job).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StockUse {
+    pub stock: StockId,
+    /// Net area of the sheet: outline minus holes and keep-out zones, mm².
+    pub net_mm2: f64,
+    /// Net area of the parts placed on it, mm².
+    pub placed_mm2: f64,
+    /// `net - placed`: what is left, mm².
+    pub free_mm2: f64,
+}
+
+/// Whether a part may be placed as its mirror image. Mirroring changes what a part is (a cut
+/// bracket is not interchangeable with its reflection), so it is a choice and never a way to get a
+/// better score: [`MirrorPolicy::Forbidden`] is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum MirrorPolicy {
+    #[default]
+    Forbidden,
+    Allowed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NestOptions {
+    pub mirror: MirrorPolicy,
+}
+
+/// How much of an order was placed, per part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartStatus {
+    pub part: PartKey,
+    pub ordered: u32,
+    pub placed: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NestResult {
     pub placements: Vec<Placement>,
     pub unplaced: Vec<Unplaced>,
     pub utilisation: Utilisation,
+    /// Per sheet, in the order of the stock given.
+    pub stock_use: Vec<StockUse>,
+}
+
+/// Ordered and placed count of every part, in the order of `parts`.
+pub fn order_status(result: &NestResult, parts: &[NestPart]) -> Vec<PartStatus> {
+    parts
+        .iter()
+        .map(|p| PartStatus {
+            part: p.key,
+            ordered: p.count,
+            placed: u32::try_from(result.placements.iter().filter(|pl| pl.part == p.key).count()).unwrap_or(u32::MAX),
+        })
+        .collect()
+}
+
+/// How many complete sets were placed: `per_set` lists the parts of one set with the number of
+/// each. A part that was not ordered or placed at all makes it zero; no parts is no set.
+pub fn complete_sets(result: &NestResult, per_set: &[(PartKey, u32)]) -> u32 {
+    per_set
+        .iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(key, n)| {
+            let placed = result.placements.iter().filter(|pl| pl.part == *key).count();
+            u32::try_from(placed).unwrap_or(u32::MAX) / n
+        })
+        .min()
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +377,7 @@ fn boundary_cells(polys: &[Vec<Point>], origin: Point, step: f64) -> Vec<(i64, i
 #[derive(Debug, Clone)]
 struct Shape {
     rotation_deg: f64,
+    mirrored: bool,
     /// Part coordinates → local coordinates (bbox minimum at the origin).
     local: Affine,
     raw: Vec<(i64, i64)>,
@@ -326,9 +392,18 @@ fn offset_error(e: burnburn_geometry::OffsetError, what: &'static str) -> NestEr
     }
 }
 
-fn rotated(part: &NestPart, deg: f64, p: &NestParams, cancel: &CancellationToken) -> Result<Shape, NestError> {
+fn rotated(
+    part: &NestPart,
+    deg: f64,
+    mirrored: bool,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Shape, NestError> {
     let bad = |what| move |_| NestError::Geometry { what };
-    let r = rotation_about(Point::ORIGIN, deg).map_err(bad("rotation"))?;
+    let turn = rotation_about(Point::ORIGIN, deg).map_err(bad("rotation"))?;
+    // A mirrored placement is the part reflected in its own y axis first, then turned.
+    let r =
+        if mirrored { Affine::new([-1.0, 0.0, 0.0, 1.0, 0.0, 0.0]).map_err(bad("mirror"))?.then(&turn) } else { turn };
     let turned = part.outline.transform(&r);
     let b = turned.bounds().ok_or(NestError::Geometry { what: "empty part" })?;
     let to_local = Affine::translate(Point::ORIGIN - b.min()).map_err(bad("translation"))?;
@@ -343,7 +418,7 @@ fn rotated(part: &NestPart, deg: f64, p: &NestParams, cancel: &CancellationToken
         shape
     };
     let grown = touched_cells(&polygons(&grown_path, &p.tolerance)?, Point::ORIGIN, step);
-    Ok(Shape { rotation_deg: deg, local, raw, grown })
+    Ok(Shape { rotation_deg: deg, mirrored, local, raw, grown })
 }
 
 /// Free/blocked raster of one sheet plus its net area.
@@ -352,6 +427,8 @@ struct Sheet<'a> {
     blocked: Grid,
     net_area: f64,
     placed: Vec<Bounds>,
+    /// Net area of the parts placed so far, mm².
+    placed_mm2: f64,
 }
 
 fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Result<Sheet<'a>, NestError> {
@@ -387,7 +464,7 @@ fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Re
     for (c, r) in boundary_cells(&polys, b.min(), step) {
         blocked.set(c, r);
     }
-    Ok(Sheet { stock, blocked, net_area, placed: Vec::new() })
+    Ok(Sheet { stock, blocked, net_area, placed: Vec::new(), placed_mm2: 0.0 })
 }
 
 /// Liang–Barsky on the *open* box: does segment `a b` pass through the cell interior? A
@@ -412,9 +489,11 @@ fn segment_meets_box(a: Point, b: Point, x0: f64, y0: f64, x1: f64, y1: f64) -> 
     t0 < t1
 }
 
-fn grain_allows(part: &NestPart, stock: &Stock, deg: f64) -> bool {
+fn grain_allows(part: &NestPart, stock: &Stock, deg: f64, mirrored: bool) -> bool {
     match (part.grain_deg, stock.grain_deg) {
         (Some(pg), Some(sg)) => {
+            // Mirroring in the y axis turns a grain direction `g` into `180 - g`.
+            let pg = if mirrored { -pg } else { pg };
             let d = (pg + deg - sg).rem_euclid(180.0);
             d.abs() < 1e-9 || (180.0 - d).abs() < 1e-9
         }
@@ -422,13 +501,30 @@ fn grain_allows(part: &NestPart, stock: &Stock, deg: f64) -> bool {
     }
 }
 
-/// Nests `parts` on `stock` (sheets in the given order). See the module documentation.
+/// Nests `parts` on `stock` (sheets in the given order). See the module documentation. Mirroring
+/// is forbidden; [`nest_with`] can allow it.
 pub fn nest(
     parts: &[NestPart],
     stock: &[Stock],
     p: &NestParams,
     cancel: &CancellationToken,
 ) -> Result<NestResult, NestError> {
+    nest_with(parts, stock, p, &NestOptions::default(), cancel)
+}
+
+/// [`nest`] with options.
+pub fn nest_with(
+    parts: &[NestPart],
+    stock: &[Stock],
+    p: &NestParams,
+    options: &NestOptions,
+    cancel: &CancellationToken,
+) -> Result<NestResult, NestError> {
+    let mirror_choices: &[bool] = match options.mirror {
+        MirrorPolicy::Forbidden => &[false],
+        // Unmirrored first: at equal positions the part is not mirrored.
+        MirrorPolicy::Allowed => &[false, true],
+    };
     if !(p.step.mm() > 0.0) {
         return Err(NestError::InvalidInput { field: "step" });
     }
@@ -451,9 +547,11 @@ pub fn nest(
     for (i, area) in order {
         let part = &parts[i];
         let mut shapes: Vec<Shape> = Vec::new();
-        for &deg in part.rotations.degrees() {
-            if stock.iter().any(|s| grain_allows(part, s, deg)) {
-                shapes.push(rotated(part, deg, p, cancel)?);
+        for &mirrored in mirror_choices {
+            for &deg in part.rotations.degrees() {
+                if stock.iter().any(|s| grain_allows(part, s, deg, mirrored)) {
+                    shapes.push(rotated(part, deg, mirrored, p, cancel)?);
+                }
             }
         }
         if shapes.is_empty() {
@@ -467,7 +565,7 @@ pub fn nest(
             let mut exhausted = false;
             for (si, sh) in sheets.iter().enumerate() {
                 let mut best: Option<(&Shape, i64, i64)> = None;
-                for shape in shapes.iter().filter(|s| grain_allows(part, sh.stock, s.rotation_deg)) {
+                for shape in shapes.iter().filter(|s| grain_allows(part, sh.stock, s.rotation_deg, s.mirrored)) {
                     if let Some((c, r)) = first_fit(&sh.blocked, shape, &mut budget, cancel)? {
                         if best.is_none_or(|(_, bc, br)| (r, c) < (br, bc)) {
                             best = Some((shape, c, r));
@@ -503,8 +601,10 @@ pub fn nest(
                 copy,
                 stock: sh.stock.id,
                 rotation_deg: shape.rotation_deg,
+                mirrored: shape.mirrored,
                 transform,
             });
+            sh.placed_mm2 += area;
             used_mm2 += area;
             copy += 1;
         }
@@ -522,6 +622,15 @@ pub fn nest(
         placements,
         unplaced,
         utilisation: Utilisation { used_mm2, basis: p.basis, denominator_mm2, value },
+        stock_use: sheets
+            .iter()
+            .map(|s| StockUse {
+                stock: s.stock.id,
+                net_mm2: s.net_area,
+                placed_mm2: s.placed_mm2,
+                free_mm2: s.net_area - s.placed_mm2,
+            })
+            .collect(),
     })
 }
 
@@ -618,7 +727,7 @@ mod cancel_tests {
             rotations: RotationSet::new(vec![0.0]).unwrap(),
             grain_deg: None,
         };
-        let r = rotated(&part, 0.0, &params(1.0, 0.0), &cancelled());
+        let r = rotated(&part, 0.0, false, &params(1.0, 0.0), &cancelled());
         assert!(matches!(r, Err(NestError::Cancelled)), "{:?}", r.map(|_| ()));
     }
 
