@@ -341,6 +341,7 @@ dependencies = [
  "burnburn-cam",
  "burnburn-document",
  "burnburn-editor",
+ "burnburn-gcode",
  "burnburn-generators",
  "burnburn-geometry",
  "burnburn-image",

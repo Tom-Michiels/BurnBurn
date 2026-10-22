@@ -546,7 +546,17 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.machine = Some(Machine { profile: Arc::from(profile), ruida });
+                self.machine = Some(Machine { profile: Arc::from(profile), ruida, grbl: None });
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            UiIntent::SetGrblMachineProfile { profile, grbl } => {
+                // Like `SetMachineProfile`: profile data only. The Ruida part is a neutral
+                // placeholder that the GRBL backend never reads.
+                let ruida = burnburn_ruida::RuidaProfile {
+                    magic: burnburn_ruida::Magic::FIXTURE_0X88,
+                    overscan: burnburn_ruida::OverscanPolicy::Reject,
+                };
+                self.machine = Some(Machine { profile: Arc::from(profile), ruida, grbl: Some(*grbl) });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),

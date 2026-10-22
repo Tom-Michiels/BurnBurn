@@ -46,6 +46,8 @@ pub(super) struct Order {
 pub(super) struct Machine {
     pub(super) profile: Arc<MachineProfile>,
     pub(super) ruida: RuidaProfile,
+    /// The GRBL backend's configuration; `None` is a Ruida machine (G5-grbl-ui).
+    pub(super) grbl: Option<burnburn_gcode::GrblProfile>,
 }
 
 impl AppController {

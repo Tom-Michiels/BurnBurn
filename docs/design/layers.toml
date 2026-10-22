@@ -228,7 +228,7 @@ owner = "user-flow"
 unsafe = "forbid"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job",
          "burnburn-sketch", "burnburn-trace", "burnburn-cam", "burnburn-text", "burnburn-ruida", "burnburn-io",
-         "burnburn-editor", "burnburn-machine", "burnburn-generators", "burnburn-icons"]
+         "burnburn-editor", "burnburn-machine", "burnburn-generators", "burnburn-icons", "burnburn-gcode"]
 forbid = []
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 

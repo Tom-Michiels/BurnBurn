@@ -89,6 +89,12 @@ pub enum UiIntent {
         profile: Box<MachineProfile>,
         ruida: RuidaProfile,
     },
+    /// The same for a GRBL machine (G5-grbl-ui): the profile carries the GRBL capability matrix
+    /// and `grbl` the dialect settings. It replaces the active machine, Ruida or GRBL.
+    SetGrblMachineProfile {
+        profile: Box<MachineProfile>,
+        grbl: Box<burnburn_gcode::GrblProfile>,
+    },
     /// Process-layer panel (B10, C01): a new operation for the selected objects.
     AddOperation {
         document: DocumentId,
