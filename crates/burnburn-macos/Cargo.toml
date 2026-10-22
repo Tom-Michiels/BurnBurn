@@ -311,3 +311,10 @@ objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-fou
 name = "quiet_windows"
 path = "../../tests/native/macos/quiet_windows.rs"
 harness = false
+
+# Opt-in look-and-feel review tool (LF0): renders windows offscreen to PNG only when
+# BURNBURN_GUI_SNAPSHOT_DIR is set; otherwise it reports "ignored".
+[[test]]
+name = "gui_snapshots"
+path = "../../tests/native/macos/gui_snapshots.rs"
+harness = false
