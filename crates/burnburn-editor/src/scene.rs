@@ -108,6 +108,11 @@ pub enum Overlay {
     ResultPreview {
         path: Arc<Path>,
     },
+    /// An outline of the tracer's result that the user protected (G8-trace, T05); drawn heavier than
+    /// the plain outlines of `ResultPreview`. A window aid; never document data.
+    ProtectedOutline {
+        path: Arc<Path>,
+    },
     /// One variant of the tracer's A/B comparison, laid on the sheet where applying it would put
     /// it (G8-trace, T10). A window aid; never document data.
     CompareOutline {

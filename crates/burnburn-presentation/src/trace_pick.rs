@@ -21,6 +21,16 @@ pub enum TracePick {
     BeginBrush { mode: MaskMode, radius_px: f64 },
     /// The same with the radius as typed in the panel (pixels); presentation parses it.
     BeginBrushTyped { mode: MaskMode, radius: String },
+    /// Protect contours by clicking on them (G8-trace, T05): the outlines of the result in force lie on
+    /// the sheet, a click on one (or inside a part or hole) protects it from the next area retrace
+    /// or takes the protection back.
+    BeginProtectContours,
+    /// Protect corners by clicking near them (G8-trace, T06): the fit keeps a node on the sharpest
+    /// vertex near the click, even where the turn is mild; a second click takes it back.
+    BeginProtectCorners,
+    /// A click while protecting: in pixels of the picture, with how far (picture pixels) it reaches.
+    /// The host turns its own tolerance into `reach_px`; the canvas pointer does it for the user.
+    ProtectAt { x: f64, y: f64, reach_px: f64 },
     /// A click in the image.
     Point { x: f64, y: f64 },
     /// One finished brush stroke: the positions the brush went through.
@@ -40,6 +50,10 @@ pub enum PickKind {
         mode: MaskMode,
         radius_px: f64,
     },
+    /// Clicks protect contours (T05).
+    ProtectContours,
+    /// Clicks protect corners (T06).
+    ProtectCorners,
 }
 
 /// A small gray picture of what to point at.

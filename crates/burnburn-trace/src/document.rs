@@ -45,8 +45,10 @@ pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
         r = r.with("contour.keep", V::List(recipe.contour.keep.iter().map(|a| V::List(pair(*a).into())).collect()));
     }
     if !recipe.contour.corners.is_empty() {
-        r = r
-            .with("contour.corners", V::List(recipe.contour.corners.iter().map(|a| V::List(pair(*a).into())).collect()));
+        r = r.with(
+            "contour.corners",
+            V::List(recipe.contour.corners.iter().map(|a| V::List(pair(*a).into())).collect()),
+        );
     }
     r.with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
         .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))

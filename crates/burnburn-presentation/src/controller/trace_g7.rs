@@ -33,12 +33,18 @@ const MAX_BRUSH_PX: f64 = 4096.0;
 #[derive(Debug, Clone)]
 pub(super) enum PickMode {
     Corners(Vec<[f64; 2]>),
-    Brush { mode: MaskMode, radius_px: f64 },
+    Brush {
+        mode: MaskMode,
+        radius_px: f64,
+    },
+    /// Clicks protect contours (T05) or corners (T06) of the result in force.
+    ProtectContours,
+    ProtectCorners,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct PickState {
-    mode: PickMode,
+    pub(super) mode: PickMode,
     surface_px: (u32, u32),
     picture: Option<PickPicture>,
     /// Millimetres per pixel of the picture on the sheet: the declared scale.
@@ -70,6 +76,8 @@ pub(super) fn pick_view(t: &Tracer) -> Option<PrepPick> {
         kind: match &p.mode {
             PickMode::Corners(picked) => PickKind::Corners { picked: picked.clone() },
             PickMode::Brush { mode, radius_px } => PickKind::Brush { mode: *mode, radius_px: *radius_px },
+            PickMode::ProtectContours => PickKind::ProtectContours,
+            PickMode::ProtectCorners => PickKind::ProtectCorners,
         },
         surface_px: p.surface_px,
         picture: p.picture.clone(),
@@ -231,8 +239,14 @@ impl AppController {
     /// Pointing in the image.
     pub(super) fn trace_pick(&mut self, document: DocumentId, pick: TracePick) -> AppUpdate {
         let mut changed = false;
-        let begins =
-            matches!(pick, TracePick::BeginCorners | TracePick::BeginBrush { .. } | TracePick::BeginBrushTyped { .. });
+        let begins = matches!(
+            pick,
+            TracePick::BeginCorners
+                | TracePick::BeginBrush { .. }
+                | TracePick::BeginBrushTyped { .. }
+                | TracePick::BeginProtectContours
+                | TracePick::BeginProtectCorners
+        );
         let update = self.with_session(document, |s| {
             let Some(t) = s.tracer.as_mut() else { return AppUpdate::default() };
             changed = pointed(t, pick);
@@ -322,12 +336,71 @@ fn pointed(t: &mut Tracer, pick: TracePick) -> bool {
                 false
             }
         },
+        TracePick::BeginProtectContours => begin_protect(t, PickMode::ProtectContours),
+        TracePick::BeginProtectCorners => begin_protect(t, PickMode::ProtectCorners),
+        TracePick::ProtectAt { x, y, reach_px } => protect_at(t, [x, y], reach_px),
         TracePick::Point { x, y } => {
             let brush = matches!(t.pick.as_ref().map(|p| &p.mode), Some(PickMode::Brush { .. }));
             if brush { stroke(t, vec![[x, y]]) } else { click(t, [x, y]) }
         }
         TracePick::Stroke { points } => stroke(t, points),
     }
+}
+
+/// Pointing at the contours (or corners) of the result in force: the working image is the picture.
+fn begin_protect(t: &mut Tracer, mode: PickMode) -> bool {
+    if t.form.mode != TraceMode::Contour || t.result.is_none() {
+        t.prep_issue = Some(PrepIssue::NothingToCorrect);
+        return false;
+    }
+    let (surface_px, picture, mm_per_px) = surface(t, true);
+    t.pick = Some(PickState { mode, surface_px, picture, mm_per_px, stroke: None });
+    t.prep_issue = None;
+    false
+}
+
+/// A click while protecting. Whether the recipe changed (protecting a corner needs a new trace).
+fn protect_at(t: &mut Tracer, at: [f64; 2], reach_px: f64) -> bool {
+    let corners = match t.pick.as_ref().map(|p| &p.mode) {
+        Some(PickMode::ProtectContours) => false,
+        Some(PickMode::ProtectCorners) => true,
+        _ => {
+            t.prep_issue = Some(PrepIssue::PickNotStarted);
+            return false;
+        }
+    };
+    if !(at[0].is_finite() && at[1].is_finite() && reach_px.is_finite() && reach_px > 0.0) {
+        t.prep_issue = Some(PrepIssue::InvalidNumber(PrepField::MaskX));
+        return false;
+    }
+    let Some(result) = t.result.clone() else {
+        t.prep_issue = Some(PrepIssue::NothingToCorrect);
+        return false;
+    };
+    if !corners {
+        let Some(id) = result.contour_at_px(at, reach_px) else {
+            t.prep_issue = Some(PrepIssue::NothingToProtect);
+            return false;
+        };
+        t.prep_issue = None;
+        if !t.protect.remove(&id) {
+            t.protect.insert(id);
+        }
+        return false;
+    }
+    let Some(corner) = result.corner_near_px(at, reach_px.min(burnburn_trace::CORNER_REACH_PX)) else {
+        t.prep_issue = Some(PrepIssue::NothingToProtect);
+        return false;
+    };
+    let Some(recipe) = t.recipe.as_mut() else { return false };
+    t.prep_issue = None;
+    let list = &mut recipe.contour.corners;
+    let before = list.len();
+    list.retain(|k| (k[0] - corner[0]).hypot(k[1] - corner[1]) > SAME_ANCHOR_PX);
+    if list.len() == before {
+        list.push(corner);
+    }
+    true
 }
 
 fn click(t: &mut Tracer, at: [f64; 2]) -> bool {
@@ -416,7 +489,7 @@ pub(super) fn pick_scene(t: &Tracer) -> Option<PickScene> {
     let quad = [p.to_mm([0.0, 0.0]), p.to_mm([w, 0.0]), p.to_mm([w, h]), p.to_mm([0.0, h])];
     let corners = match &p.mode {
         PickMode::Corners(picked) => picked.iter().map(|c| p.to_mm(*c)).collect(),
-        PickMode::Brush { .. } => Vec::new(),
+        PickMode::Brush { .. } | PickMode::ProtectContours | PickMode::ProtectCorners => Vec::new(),
     };
     let stroke = p.stroke.iter().flatten().map(|c| p.to_mm(*c)).collect();
     Some(PickScene { quad, picture, corners, stroke })
@@ -426,6 +499,10 @@ pub(super) fn pick_scene(t: &Tracer) -> Option<PickScene> {
 pub(super) fn end_pick(s: &mut Session) -> bool {
     s.tracer.as_mut().is_some_and(|t| t.pick.take().is_some())
 }
+
+/// How far (screen points) a click reaches when protecting, and the most picture pixels that is.
+const PROTECT_REACH_PT: f64 = 6.0;
+const MAX_PROTECT_REACH_PX: f64 = 12.0;
 
 /// A point per half pixel is plenty: the stroke stays short and the recipe small.
 const STROKE_STEP_PX: f64 = 0.5;
@@ -438,17 +515,25 @@ impl AppController {
     /// A pointer event of the canvas while the tracer asks for corners or a brush: it is the pointer
     /// in the picture. `None` when nothing is being pointed at (the event is an ordinary one).
     pub(super) fn trace_pointer(&mut self, document: DocumentId, event: &ViewPointerEvent) -> Option<AppUpdate> {
-        let (px, brush) = {
+        let (px, brush, protect_reach) = {
             let s = self.sessions.get(&document)?;
             let pick = s.tracer.as_ref()?.pick.as_ref()?;
             let mm = s.camera.points_to_world(&s.viewport, event.position_pt);
-            (pick.to_px(mm), matches!(pick.mode, PickMode::Brush { .. }))
+            // Protecting reaches a few screen points around the pointer, in pixels of the picture.
+            let reach_px = PROTECT_REACH_PT * s.camera.mm_per_point() / (0.5 * (pick.mm_per_px.0 + pick.mm_per_px.1));
+            let reach = match pick.mode {
+                PickMode::ProtectContours => Some(reach_px.clamp(1.0, MAX_PROTECT_REACH_PX)),
+                PickMode::ProtectCorners => Some(reach_px.clamp(1.0, burnburn_trace::CORNER_REACH_PX)),
+                _ => None,
+            };
+            (pick.to_px(mm), matches!(pick.mode, PickMode::Brush { .. }), reach)
         };
         let primary = event.button.is_none_or(|b| b == PointerButton::Primary);
         match (event.phase, brush) {
-            (PointerPhase::Down, false) if primary => {
-                Some(self.trace_pick(document, TracePick::Point { x: px[0], y: px[1] }))
-            }
+            (PointerPhase::Down, false) if primary => Some(match protect_reach {
+                Some(reach_px) => self.trace_pick(document, TracePick::ProtectAt { x: px[0], y: px[1], reach_px }),
+                None => self.trace_pick(document, TracePick::Point { x: px[0], y: px[1] }),
+            }),
             (PointerPhase::Down, true) if primary => Some(self.with_session(document, |s| {
                 if let Some(p) = s.tracer.as_mut().and_then(|t| t.pick.as_mut()) {
                     p.stroke = Some(vec![px]);

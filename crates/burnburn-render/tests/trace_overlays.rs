@@ -97,3 +97,17 @@ fn the_two_variants_of_a_comparison_have_looks_of_their_own() {
     assert_eq!(s[1].2, t.compare_b);
     assert!(s.iter().all(|(points, closed, ..)| *closed && has_vertex_at(points, Point::new(10.0, 10.0))));
 }
+
+#[test]
+fn a_protected_outline_is_heavier_and_in_the_selection_colour() {
+    let t = theme();
+    let packet =
+        packet_of(vec![Overlay::ResultPreview { path: square() }, Overlay::ProtectedOutline { path: square() }]);
+    let s = strokes(&packet);
+    assert_eq!(s.len(), 2);
+    let (plain, protected) = (&s[0], &s[1]);
+    assert_eq!(plain.2, t.preview);
+    assert_eq!(protected.2, t.selection);
+    assert!(protected.3 > plain.3, "{} against {}", protected.3, plain.3);
+    assert!(protected.1 && has_vertex_at(protected.0, Point::new(10.0, 0.0)));
+}

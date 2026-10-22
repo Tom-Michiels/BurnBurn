@@ -179,6 +179,35 @@ impl TraceResult {
         best.map(|b| b.2)
     }
 
+    /// The contour a click at `click_px` (adjusted pixels, y down) means (G8-trace, T05): the one whose
+    /// outline passes nearest the click within `reach_px`, else the smallest contour that encloses the
+    /// click (a click inside a hole means the hole, in the body of a part the part). `None` when the
+    /// click is on nothing or is not a position.
+    pub fn contour_at_px(&self, click_px: [f64; 2], reach_px: f64) -> Option<ContourId> {
+        if !(click_px[0].is_finite() && click_px[1].is_finite() && reach_px.is_finite()) {
+            return None;
+        }
+        let (sx, sy) = (self.scale.mm_per_pixel_x(), self.scale.mm_per_pixel_y());
+        let click = Point::new(click_px[0] * sx, (f64::from(self.height_px) - click_px[1]) * sy);
+        let reach = reach_px * 0.5 * (sx + sy);
+        // The outline nearest the click, within reach (a tie goes to the smaller contour).
+        let near = self
+            .contours
+            .iter()
+            .filter_map(|c| Some((distance_to_outline(&c.source_points, click)?, c)))
+            .filter(|(d, _)| *d <= reach)
+            .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.area_mm2.total_cmp(&b.1.area_mm2)));
+        if let Some((_, c)) = near {
+            return Some(c.id);
+        }
+        // Otherwise the smallest contour that encloses the click.
+        self.contours
+            .iter()
+            .filter(|c| encloses(&c.source_points, click))
+            .min_by(|a, b| a.area_mm2.total_cmp(&b.area_mm2))
+            .map(|c| c.id)
+    }
+
     pub fn contour(&self, id: ContourId) -> Option<&TracedContour> {
         self.contours.iter().find(|c| c.id == id)
     }
@@ -461,6 +490,33 @@ fn shoelace(pts: &[Point]) -> f64 {
     let n = pts.len();
     let twice: f64 = (0..n).map(|i| pts[i].to_vector().cross(pts[(i + 1) % n].to_vector())).sum();
     0.5 * twice
+}
+
+/// Distance from `p` to the closed outline `pts`; `None` for an outline with no points.
+fn distance_to_outline(pts: &[Point], p: Point) -> Option<f64> {
+    let n = pts.len();
+    (0..n)
+        .map(|i| {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            let ab = b - a;
+            let len2 = ab.dot(ab);
+            let t = if len2 == 0.0 { 0.0 } else { ((p - a).dot(ab) / len2).clamp(0.0, 1.0) };
+            p.distance(a + ab * t)
+        })
+        .min_by(f64::total_cmp)
+}
+
+/// Whether the closed outline `pts` encloses `p` (even-odd rule).
+fn encloses(pts: &[Point], p: Point) -> bool {
+    let n = pts.len();
+    let mut inside = false;
+    for i in 0..n {
+        let (a, b) = (pts[i], pts[(i + 1) % n]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+    }
+    inside
 }
 
 pub(crate) fn bounds_of(pts: &[Point]) -> Bounds {

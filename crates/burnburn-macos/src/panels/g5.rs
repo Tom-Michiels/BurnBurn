@@ -138,6 +138,13 @@ pub enum G5Control {
     RestoreRemoved {
         index: usize,
     },
+    /// Click contours / corners of the result on the sheet to protect them (G8-trace, T05, T06).
+    PickProtectContours,
+    PickProtectCorners,
+    /// Take protected corner `index` back.
+    CornerRemove {
+        index: usize,
+    },
     RecipeName,
     RecipeSave,
     RecipeApply {
@@ -789,6 +796,9 @@ pub fn g5_intent(
         | G5Control::ContourKeep { .. }
         | G5Control::NodeApply
         | G5Control::RestoreRemoved { .. }
+        | G5Control::PickProtectContours
+        | G5Control::PickProtectCorners
+        | G5Control::CornerRemove { .. }
         | G5Control::RecipeSave
         | G5Control::RecipeApply { .. }
         | G5Control::RecipeCompare { .. }

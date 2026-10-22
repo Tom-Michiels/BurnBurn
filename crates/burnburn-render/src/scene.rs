@@ -388,6 +388,11 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
                 let style = RoleStyle { fill: None, stroke: Some(theme.preview), stroke_width_pt: 1.5 };
                 draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
             }
+            // A protected outline (T05): heavier, in the selection colour.
+            Overlay::ProtectedOutline { path } => {
+                let style = RoleStyle { fill: None, stroke: Some(theme.selection), stroke_width_pt: 2.5 };
+                draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
+            }
             // The two variants of an A/B comparison: A broad and dark underneath, B thin and red on top,
             // so where they coincide both can still be seen.
             Overlay::CompareOutline { path, side } => {

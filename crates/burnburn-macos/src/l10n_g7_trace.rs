@@ -58,6 +58,20 @@ texts! {
     PickCornersButton => ("Hoeken aanklikken", "Click the corners"),
     PickBrushKeepButton => ("Kwast: behouden", "Brush: keep"),
     PickBrushRemoveButton => ("Kwast: verwijderen", "Brush: remove"),
+    PickProtectContours => (
+        "Beschermen: klik op een contour om hem te beschermen of weer los te laten.",
+        "Protecting: click a contour to protect it or take it back."
+    ),
+    PickProtectCorners => (
+        "Beschermen: klik bij een hoek om er een knooppunt op te houden; nog een klik laat hem los.",
+        "Protecting: click near a corner to keep a node on it; another click releases it."
+    ),
+    PickProtectContoursButton => ("Contouren aanklikken om te beschermen", "Click contours to protect"),
+    PickProtectCornersButton => ("Hoeken aanklikken om te beschermen", "Click corners to protect"),
+    CornerLine => ("Beschermde hoek {0}: op ({1}, {2}) mm", "Protected corner {0}: at ({1}, {2}) mm"),
+    CornerRemoveButton => ("Laat hoek {0} los", "Release corner {0}"),
+    IssueNothingToProtect => ("Op de aangeklikte plek zit geen contour.", "There is no contour at the place you clicked."),
+    IssueUnknownCorner => ("Deze beschermde hoek staat niet in de lijst.", "This protected corner is not in the list."),
     PickEndButton => ("Stop met aanwijzen", "Stop pointing"),
     BrushMask => (
         "Masker {0}: {1} met kwast, straal {2} px, rond ({3}, {4}) px",

@@ -164,7 +164,8 @@ fn apply(t: &Tracer, intent: TracePrepIntent) -> Result<TraceRecipe, PrepIssue> 
         | TracePrepIntent::ProtectContour { .. }
         | TracePrepIntent::SetNodeTarget { .. }
         | TracePrepIntent::KeepContour { .. }
-        | TracePrepIntent::RestoreRemoved { .. } => {
+        | TracePrepIntent::RestoreRemoved { .. }
+        | TracePrepIntent::RemoveProtectedCorner { .. } => {
             return Err(PrepIssue::NothingToCorrect); // handled before; never reached
         }
         TracePrepIntent::RemoveMask { index } => {
@@ -292,6 +293,7 @@ impl AppController {
             }
             TracePrepIntent::KeepContour { id, keep } => self.keep_contour(document, id, keep),
             TracePrepIntent::RestoreRemoved { index } => self.restore_removed(document, index),
+            TracePrepIntent::RemoveProtectedCorner { index } => self.remove_protected_corner(document, index),
             other => self.prepare(document, other),
         }
     }
@@ -329,6 +331,24 @@ impl AppController {
             };
             submit(s, &tasks, task, cancel, document)
         })
+    }
+
+    /// Take protected corner `index` back; the picture is traced again without it.
+    fn remove_protected_corner(&mut self, document: DocumentId, index: usize) -> AppUpdate {
+        let mut changed = false;
+        let update = self.with_session(document, |s| {
+            let Some(t) = s.tracer.as_mut() else { return AppUpdate::default() };
+            match t.recipe.as_mut() {
+                Some(recipe) if index < recipe.contour.corners.len() => {
+                    recipe.contour.corners.remove(index);
+                    t.prep_issue = None;
+                    changed = true;
+                }
+                _ => t.prep_issue = Some(PrepIssue::UnknownCorner),
+            }
+            AppUpdate::redraw(document)
+        });
+        if changed { self.submit_trace(document) } else { update }
     }
 
     fn remove_correction(&mut self, document: DocumentId, index: usize) -> AppUpdate {
@@ -432,6 +452,23 @@ fn contours_view(t: &Tracer) -> Vec<PrepContour> {
                 protected: t.protect.contains(&c.id),
                 kept: result.contour_anchor_px(c.id).is_some_and(|a| super::trace_g7::names_same(keep, a)),
             }
+        })
+        .collect()
+}
+
+/// The protected corners of the recipe, with where they are in the frame of the trace.
+fn corners_of(t: &Tracer) -> Vec<crate::trace_prep::PrepCorner> {
+    let (Some(recipe), Some(result)) = (t.recipe.as_ref(), t.result.as_ref()) else { return Vec::new() };
+    let (sx, sy) = (result.scale.mm_per_pixel_x(), result.scale.mm_per_pixel_y());
+    recipe
+        .contour
+        .corners
+        .iter()
+        .map(|c| crate::trace_prep::PrepCorner {
+            x_px: c[0],
+            y_px: c[1],
+            x_mm: c[0] * sx,
+            y_mm: (f64::from(result.height_px) - c[1]) * sy,
         })
         .collect()
 }
@@ -544,6 +581,7 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         masks,
         corrections: corrections_view(t),
         report: t.report.clone().filter(|_| t.form.mode == TraceMode::Contour && t.result.is_some()),
+        corners: corners_of(t),
         lens: match recipe.image.lens {
             Some(l) => PrepLens { on: true, k1: text(l.k1), k2: text(l.k2), p1: text(l.p1), p2: text(l.p2) },
             None => {

@@ -138,3 +138,19 @@ fn corners_belong_to_the_recipe_key_and_the_stored_recipe_and_must_be_finite() {
 
     assert!(matches!(run(vec![[f64::NAN, 1.0]]), Err(TraceError::InvalidRecipe("contour.corners"))));
 }
+
+// ---- which contour a click means (T05) ----
+
+#[test]
+fn a_click_means_the_contour_whose_outline_is_near_or_else_the_one_around_it() {
+    let r = run(Vec::new()).unwrap();
+    let id = r.contours[0].id;
+    // The house spans x 20…140 px and y 20…110 px (mm 2…14 and 2…8.6, picture 130 px high).
+    assert_eq!(r.contour_at_px([20.0, 70.0], 1.5), Some(id), "on the left wall");
+    assert_eq!(r.contour_at_px([21.0, 70.0], 1.5), Some(id), "a pixel inside the wall, within reach");
+    assert_eq!(r.contour_at_px([18.5, 70.0], 1.5), Some(id), "a pixel and a half outside, within reach");
+    assert_eq!(r.contour_at_px([80.0, 80.0], 1.5), Some(id), "in the body of the house");
+    assert_eq!(r.contour_at_px([5.0, 5.0], 1.5), None, "outside");
+    assert_eq!(r.contour_at_px([17.0, 70.0], 1.5), None, "outside and out of reach");
+    assert_eq!(r.contour_at_px([f64::NAN, 70.0], 1.5), None);
+}

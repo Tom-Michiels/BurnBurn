@@ -66,6 +66,10 @@ pub enum PrepIssue {
     InvalidStroke,
     /// The corner points clicked cannot be told apart (two on the same place).
     CornersTooClose,
+    /// A click while protecting that is on no contour, or near no corner (G8-trace).
+    NothingToProtect,
+    /// A protected corner that is not in the list (remove).
+    UnknownCorner,
 }
 
 /// What a mask does with the foreground inside it.
@@ -151,6 +155,10 @@ pub enum TracePrepIntent {
     RestoreRemoved {
         index: usize,
     },
+    /// Take protected corner number `index` back (G8-trace, T06); the trace is made again without it.
+    RemoveProtectedCorner {
+        index: usize,
+    },
 }
 
 /// The local threshold in force.
@@ -205,6 +213,8 @@ pub struct TracePrepViewModel {
     /// The cost of simplifying, once there is a contour result.
     pub report: Option<PrepReport>,
     pub lens: PrepLens,
+    /// The corners the fit is told to keep (G8-trace, T06), in the order they were protected.
+    pub corners: Vec<PrepCorner>,
     /// The contours of the contour result in force (T05, T06).
     pub contours: Vec<PrepContour>,
     pub node_target: Option<PrepNodeTarget>,
@@ -268,6 +278,16 @@ pub struct PrepContour {
     pub protected: bool,
     /// Never dropped by "ignore less than" (T06).
     pub kept: bool,
+}
+
+/// A protected corner: where, in pixels of the adjusted image (y down) and millimetres in the frame
+/// of the trace (y up).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrepCorner {
+    pub x_px: f64,
+    pub y_px: f64,
+    pub x_mm: f64,
+    pub y_mm: f64,
 }
 
 /// The radial lens correction in force (T03).

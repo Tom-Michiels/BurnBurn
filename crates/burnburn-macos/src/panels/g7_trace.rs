@@ -74,6 +74,8 @@ pub(super) fn issue_text(issue: PrepIssue, locale: Locale) -> Option<String> {
             PrepIssue::PickNotStarted => G7Text::IssuePickNotStarted,
             PrepIssue::InvalidStroke => G7Text::IssueInvalidStroke,
             PrepIssue::CornersTooClose => G7Text::IssueCornersTooClose,
+            PrepIssue::NothingToProtect => G7Text::IssueNothingToProtect,
+            PrepIssue::UnknownCorner => G7Text::IssueUnknownCorner,
             _ => return None,
         },
         locale,
@@ -134,6 +136,8 @@ fn pick_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(G5Line::Text(match p.pick.as_ref().map(|k| &k.kind) {
         None => t(G7Text::PickNone, locale),
         Some(PickKind::Corners { picked }) => g7_fmt(G7Text::PickCorners, locale, &[&picked.len().to_string()]),
+        Some(PickKind::ProtectContours) => t(G7Text::PickProtectContours, locale),
+        Some(PickKind::ProtectCorners) => t(G7Text::PickProtectCorners, locale),
         Some(PickKind::Brush { mode, radius_px }) => g7_fmt(
             if *mode == MaskMode::Keep { G7Text::PickBrushKeep } else { G7Text::PickBrushRemove },
             locale,
@@ -144,6 +148,19 @@ fn pick_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(field(G5Control::BrushRadius, t(G7Text::BrushRadiusCaption, locale), DEFAULT_BRUSH_PX.to_owned()));
     out.push(button(G5Control::PickBrushKeep, t(G7Text::PickBrushKeepButton, locale), true));
     out.push(button(G5Control::PickBrushRemove, t(G7Text::PickBrushRemoveButton, locale), true));
+    // Protecting works on the contours of the result in force.
+    let protectable = !p.contours.is_empty();
+    out.push(button(G5Control::PickProtectContours, t(G7Text::PickProtectContoursButton, locale), protectable));
+    out.push(button(G5Control::PickProtectCorners, t(G7Text::PickProtectCornersButton, locale), protectable));
+    for (i, c) in p.corners.iter().enumerate() {
+        let n = (i + 1).to_string();
+        out.push(G5Line::Text(g7_fmt(
+            G7Text::CornerLine,
+            locale,
+            &[&n, &num(c.x_mm, 2, locale), &num(c.y_mm, 2, locale)],
+        )));
+        out.push(button(G5Control::CornerRemove { index: i }, g7_fmt(G7Text::CornerRemoveButton, locale, &[&n]), true));
+    }
     out.push(button(G5Control::PickEnd, t(G7Text::PickEndButton, locale), p.pick.is_some()));
 }
 
@@ -480,6 +497,9 @@ pub(super) fn intent(
             mode: if control == G5Control::PickBrushKeep { MaskMode::Keep } else { MaskMode::Remove },
             radius: typed(G5Control::BrushRadius, DEFAULT_BRUSH_PX),
         }),
+        G5Control::PickProtectContours => pick(TracePick::BeginProtectContours),
+        G5Control::PickProtectCorners => pick(TracePick::BeginProtectCorners),
+        G5Control::CornerRemove { index } => prep(TracePrepIntent::RemoveProtectedCorner { index }),
         G5Control::PickEnd => p.pick.is_some().then_some(UiIntent::TracePick { document, pick: TracePick::End }),
         G5Control::ContourProtect { id } => {
             let on = value_of(values, control).map(|v| v == "1")?;
