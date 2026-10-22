@@ -69,6 +69,13 @@ pub enum StructureCommand {
     RemovePartDefinition {
         definition: PartDefinitionId,
     },
+    /// Gives a variant another name (G7-editor, S07): the definition and every instance that uses
+    /// it follow in the same transaction, so nothing falls back to the default.
+    RenameVariant {
+        definition: PartDefinitionId,
+        from: String,
+        to: String,
+    },
     PlaceInstance {
         instance: PartInstance,
     },
@@ -120,6 +127,7 @@ pub enum StructureLabel {
     DefinePart,
     EditPart,
     RemovePart,
+    RenameVariant,
     PlaceInstance,
     EditInstance,
     RemoveInstance,
@@ -148,6 +156,7 @@ impl StructureCommand {
             C::DefinePart { .. } => L::DefinePart,
             C::SetPartDefinition { .. } => L::EditPart,
             C::RemovePartDefinition { .. } => L::RemovePart,
+            C::RenameVariant { .. } => L::RenameVariant,
             C::PlaceInstance { .. } => L::PlaceInstance,
             C::SetInstance { .. } => L::EditInstance,
             C::RemoveInstance { .. } => L::RemoveInstance,
@@ -538,6 +547,31 @@ pub(crate) fn apply(cmd: StructureCommand, t: StructureTxn<'_>) -> Result<Struct
                 return Err(StructureError::DefinitionInUse { definition, instance: *instance });
             }
             layer.definitions.remove(&definition).ok_or(StructureError::UnknownDefinition(definition))?;
+            changed.push(StructureChange::Definition(definition));
+        }
+        C::RenameVariant { definition, from, to } => {
+            let to = to.trim().to_owned();
+            let slot = layer.definitions.get(&definition).ok_or(StructureError::UnknownDefinition(definition))?;
+            if !slot.variants.contains_key(&from) {
+                return Err(StructureError::UnknownVariant(from));
+            }
+            if to.is_empty() || (to != from && slot.variants.contains_key(&to)) {
+                return Err(StructureError::InvalidValue { field: "variant name" });
+            }
+            if to == from {
+                return Err(StructureError::NothingChanged);
+            }
+            let mut next = (**slot).clone();
+            if let Some(values) = next.variants.remove(&from) {
+                next.variants.insert(to.clone(), values);
+            }
+            layer.definitions.insert(definition, Arc::new(next));
+            for (id, inst) in layer.instances.iter_mut() {
+                if inst.definition == definition && inst.variant.as_deref() == Some(from.as_str()) {
+                    inst.variant = Some(to.clone());
+                    changed.push(StructureChange::Instance(*id));
+                }
+            }
             changed.push(StructureChange::Definition(definition));
         }
         C::PlaceInstance { instance } => {

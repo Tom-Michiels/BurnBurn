@@ -11,7 +11,8 @@ use burnburn_macos::panels::{
 };
 use burnburn_presentation::ParamKey;
 use burnburn_presentation::{
-    CommandKey, HeadlessEditorHarness, MessageKey, ModifierKind, StructureEdit, StructureProblem, UiIntent,
+    CommandKey, HeadlessEditorHarness, MessageKey, ModifierKind, PartShapeKind, PlateField, ShapeField, StructureEdit,
+    StructureProblem, UiIntent,
 };
 use burnburn_types::DocumentId;
 
@@ -188,5 +189,215 @@ fn every_golf_7_editor_text_has_both_languages_with_the_same_placeholders() {
         let (nl, en) = (g7_text(*t, Locale::Nl), g7_text(*t, Locale::En));
         assert!(!nl.is_empty() && !en.is_empty(), "{t:?}");
         assert_eq!(placeholders(nl), placeholders(en), "{t:?}");
+    }
+}
+
+// --- P06 / S07: plates, variants and the shapes of a part in the structure panel ---------------------
+
+fn typed(h: &mut HeadlessEditorHarness, doc: DocumentId, c: E, values: &[(E, &str)]) -> Option<UiIntent> {
+    press(h, doc, c, values)
+}
+
+fn window_with_part() -> (HeadlessEditorHarness, DocumentId, u64) {
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::ToolRectangle);
+    h.drag(doc, (100.0, 50.0), (130.0, 70.0));
+    h.invoke(doc, CommandKey::ToolSelect);
+    h.invoke(doc, CommandKey::SelectAll);
+    h.send(UiIntent::Structure { document: doc, edit: StructureEdit::DefinePart { name: "Beugel".into() } });
+    let part = h.document(doc).unwrap().structure.parts[0].id;
+    h.send(UiIntent::Structure {
+        document: doc,
+        edit: StructureEdit::PlaceInstance { definition: part, x: "0".into(), y: "0".into() },
+    });
+    (h, doc, part)
+}
+
+fn make_plate(h: &mut HeadlessEditorHarness, doc: DocumentId) -> u64 {
+    let values = [
+        (E::NewPlateText(PlateField::Name), "Plaat B"),
+        (E::NewPlateText(PlateField::Width), "600"),
+        (E::NewPlateText(PlateField::Height), "400"),
+        (E::NewPlateText(PlateField::Material), "Berken"),
+        (E::NewPlateText(PlateField::Thickness), "3"),
+    ];
+    let sent = typed(h, doc, E::NewPlateMake, &values).unwrap();
+    assert_eq!(
+        sent,
+        UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::CreatePlate {
+                name: "Plaat B".into(),
+                width: "600".into(),
+                height: "400".into(),
+                material: "Berken".into(),
+                thickness: "3".into()
+            }
+        }
+    );
+    h.document(doc).unwrap().structure.plates[0].id
+}
+
+#[test]
+fn a_plate_is_made_edited_given_the_selection_and_removed_from_the_panel() {
+    let (mut h, doc, _) = window_with_part();
+    let plate = make_plate(&mut h, doc);
+    let all = lines(&h, doc, Locale::En);
+    let width = all
+        .iter()
+        .find(|l| l.control() == Some(C::Editor(E::PlateText { plate, field: PlateField::Width })))
+        .expect("the width field");
+    assert!(matches!(width, G5Line::Field { caption, text, .. } if caption == "Plaat B: width (mm)" && text == "600"));
+
+    let width_control = E::PlateText { plate, field: PlateField::Width };
+    assert_eq!(typed(&mut h, doc, width_control, &[(width_control, "600")]), None, "the shown text again is no edit");
+    let sent = typed(&mut h, doc, width_control, &[(width_control, "500 mm")]).unwrap();
+    assert_eq!(
+        sent,
+        UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::SetPlateField { plate, field: PlateField::Width, text: "500 mm".into() }
+        }
+    );
+    assert_eq!(h.document(doc).unwrap().structure.plates[0].width, "500");
+
+    // The part's source rectangle (the first object) goes on the plate and off again; placing the
+    // instance had selected its outlines, which follow their instance instead.
+    let source = h.document(doc).unwrap().objects[0].id;
+    h.send(UiIntent::Select { document: doc, ids: vec![source], mode: burnburn_presentation::SelectMode::Replace });
+    let assign = typed(&mut h, doc, E::PlateAssign { plate }, &[]).unwrap();
+    assert_eq!(
+        assign,
+        UiIntent::Structure { document: doc, edit: StructureEdit::AssignSelectionToPlate { plate: Some(plate) } }
+    );
+    assert_eq!(h.document(doc).unwrap().structure.plates[0].objects, 1);
+    typed(&mut h, doc, E::PlateUnassign, &[]).unwrap();
+    assert_eq!(h.document(doc).unwrap().structure.plates[0].objects, 0);
+
+    typed(&mut h, doc, E::PlateRemove { plate }, &[]).unwrap();
+    assert!(h.document(doc).unwrap().structure.plates.is_empty());
+}
+
+#[test]
+fn the_plate_buttons_wait_for_a_selection() {
+    let (mut h, doc, _) = window_with_part();
+    let plate = make_plate(&mut h, doc);
+    h.send(UiIntent::Select { document: doc, ids: Vec::new(), mode: burnburn_presentation::SelectMode::Replace });
+    let all = lines(&h, doc, Locale::En);
+    for c in [E::PlateAssign { plate }, E::PlateUnassign] {
+        let line = all.iter().find(|l| l.control() == Some(C::Editor(c))).unwrap();
+        assert!(matches!(line, G5Line::Button { enabled: false, .. }), "{c:?}");
+    }
+}
+
+#[test]
+fn an_instance_chooses_its_plate_from_a_list() {
+    let (mut h, doc, _) = window_with_part();
+    let plate = make_plate(&mut h, doc);
+    let instance = h.document(doc).unwrap().structure.parts[0].instances[0].id;
+    let c = E::InstancePlate { instance };
+    let all = lines(&h, doc, Locale::Nl);
+    let choice = all.iter().find(|l| l.control() == Some(C::Editor(c))).expect("a choice");
+    assert!(
+        matches!(choice, G5Line::Choice { options, selected: 0, .. } if options == &["Geen plaat".to_owned(), "Plaat B".to_owned()])
+    );
+    assert_eq!(typed(&mut h, doc, c, &[(c, "0")]), None, "none is already chosen");
+    let sent = typed(&mut h, doc, c, &[(c, "1")]).unwrap();
+    assert_eq!(
+        sent,
+        UiIntent::Structure { document: doc, edit: StructureEdit::SetInstancePlate { instance, plate: Some(plate) } }
+    );
+    assert_eq!(h.document(doc).unwrap().structure.plates[0].instances, 1);
+    assert_eq!(typed(&mut h, doc, c, &[(c, "9")]), None, "a choice outside the list sends nothing");
+}
+
+#[test]
+fn a_variant_is_renamed_and_removed_with_its_own_controls() {
+    let (mut h, doc, part) = window_with_part();
+    h.send(UiIntent::Structure {
+        document: doc,
+        edit: StructureEdit::AddVariant { definition: part, name: "groot".into() },
+    });
+    let rename = E::VariantRename { part, variant: 0 };
+    assert_eq!(typed(&mut h, doc, rename, &[(rename, "groot")]), None);
+    let sent = typed(&mut h, doc, rename, &[(rename, "extra groot")]).unwrap();
+    assert_eq!(
+        sent,
+        UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::RenameVariant { definition: part, from: "groot".into(), to: "extra groot".into() }
+        }
+    );
+    assert_eq!(h.document(doc).unwrap().structure.parts[0].variants, ["extra groot"]);
+    typed(&mut h, doc, E::VariantRemove { part, variant: 0 }, &[]).unwrap();
+    assert!(h.document(doc).unwrap().structure.parts[0].variants.is_empty());
+}
+
+#[test]
+fn the_shapes_of_a_part_have_fields_a_name_a_remove_button_and_an_add_row() {
+    let (mut h, doc, part) = window_with_part();
+    let shape = h.document(doc).unwrap().structure.parts[0].shapes[0].clone();
+    assert_eq!(shape.kind, PartShapeKind::Rectangle);
+    let all = lines(&h, doc, Locale::En);
+    for f in [ShapeField::X, ShapeField::Y, ShapeField::Width, ShapeField::Height] {
+        let c = C::Editor(E::ShapeNumber { part, shape: shape.key, field: f });
+        assert!(all.iter().any(|l| l.control() == Some(c)), "{f:?}");
+    }
+    assert!(
+        !all.iter()
+            .any(|l| l.control()
+                == Some(C::Editor(E::ShapeNumber { part, shape: shape.key, field: ShapeField::Radius })))
+    );
+
+    let width = E::ShapeNumber { part, shape: shape.key, field: ShapeField::Width };
+    let current = shape.fields.iter().find(|(f, _)| *f == ShapeField::Width).unwrap().1.clone();
+    assert_eq!(typed(&mut h, doc, width, &[(width, &current)]), None);
+    let sent = typed(&mut h, doc, width, &[(width, "55")]).unwrap();
+    assert_eq!(
+        sent,
+        UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::SetPartShapeField {
+                definition: part,
+                shape: shape.key,
+                field: ShapeField::Width,
+                text: "55".into()
+            }
+        }
+    );
+
+    let before = h.document(doc).unwrap().structure.parts[0].shapes.len();
+    let add = E::ShapeAdd { part, kind: PartShapeKind::Circle };
+    typed(&mut h, doc, add, &[(E::ShapeAddName { part }, "gat")]).unwrap();
+    assert_eq!(h.document(doc).unwrap().structure.parts[0].shapes.len(), before + 1);
+    let added = h.document(doc).unwrap().structure.parts[0].shapes.last().unwrap().clone();
+    assert_eq!((added.name.as_str(), added.kind), ("gat", PartShapeKind::Circle));
+
+    let name = E::ShapeName { part, shape: added.key };
+    let sent = typed(&mut h, doc, name, &[(name, "boorgat")]).unwrap();
+    assert!(
+        matches!(sent, UiIntent::Structure { edit: StructureEdit::RenamePartShape { ref name, .. }, .. } if name == "boorgat")
+    );
+    typed(&mut h, doc, E::ShapeRemove { part, shape: added.key }, &[]).unwrap();
+    assert_eq!(h.document(doc).unwrap().structure.parts[0].shapes.len(), before);
+}
+
+#[test]
+fn the_new_refusals_are_said_in_both_languages() {
+    for p in [
+        StructureProblem::UnknownPlate,
+        StructureProblem::UnknownShape,
+        StructureProblem::NoSuchField,
+        StructureProblem::VariantInUse,
+        StructureProblem::PartOutputSelected,
+        StructureProblem::CannotAddFixed,
+    ] {
+        let (nl, en) = (
+            message_or_key(MessageKey::Structure(p), Locale::Nl),
+            message_or_key(MessageKey::Structure(p), Locale::En),
+        );
+        assert_ne!(nl, en, "{p:?}");
+        assert!(!nl.contains("Structure"), "{p:?}: {nl}");
     }
 }

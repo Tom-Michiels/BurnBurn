@@ -146,8 +146,8 @@ pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
 pub use structure_panel::{
     BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
-    ModifierValueKind, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow, ReferenceStatus, StructureEdit,
-    StructureProblem, StructureViewModel, VariantRow,
+    ModifierValueKind, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
+    ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,

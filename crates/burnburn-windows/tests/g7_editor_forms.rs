@@ -147,3 +147,148 @@ mod stack {
         assert!(h.document(doc).unwrap().structure.modifiers.is_empty());
     }
 }
+
+// --- P06 / S07: plates, variants and shapes in the structure form ------------------------------------
+
+mod plates_parts {
+    use burnburn_presentation::{
+        CommandKey, HeadlessEditorHarness, PartShapeKind, PlateField, ShapeField, StructureEdit, UiIntent,
+    };
+    use burnburn_types::DocumentId;
+    use burnburn_windows::forms::g5;
+    use burnburn_windows::forms::{
+        ChoiceItem, ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState,
+    };
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::{EditorControl as E, G5Control as C, G5Panel as P};
+
+    fn window_with_part() -> (HeadlessEditorHarness, DocumentId, u64, u64) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::ToolRectangle);
+        h.drag(doc, (100.0, 50.0), (130.0, 70.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        h.invoke(doc, CommandKey::SelectAll);
+        let send = |h: &mut HeadlessEditorHarness, edit| h.send(UiIntent::Structure { document: doc, edit });
+        send(&mut h, StructureEdit::DefinePart { name: "Beugel".into() });
+        let part = h.document(doc).unwrap().structure.parts[0].id;
+        send(&mut h, StructureEdit::PlaceInstance { definition: part, x: "0".into(), y: "0".into() });
+        send(
+            &mut h,
+            StructureEdit::CreatePlate {
+                name: "Plaat B".into(),
+                width: "600".into(),
+                height: "400".into(),
+                material: String::new(),
+                thickness: String::new(),
+            },
+        );
+        let plate = h.document(doc).unwrap().structure.plates[0].id;
+        (h, doc, part, plate)
+    }
+
+    fn form(h: &HeadlessEditorHarness, doc: DocumentId) -> Form {
+        let vm = h.view();
+        let state = PanelState { g5_shown: vec![P::Structure], ..PanelState::default() };
+        g5::forms(&FormContext { vm: &vm, document: doc, locale: Locale::En }, &state, &Vec::new())
+            .into_iter()
+            .find(|f| f.kind == FormKind::G5(P::Structure))
+            .expect("the structure form")
+    }
+
+    fn react(h: &HeadlessEditorHarness, doc: DocumentId, c: E, values: Vec<(ControlId, ControlValue)>) -> FormOutcome {
+        let vm = h.view();
+        g5::react(
+            P::Structure,
+            &ControlId::G5(C::Editor(c)),
+            &values,
+            &FormContext { vm: &vm, document: doc, locale: Locale::En },
+        )
+    }
+
+    #[test]
+    fn the_form_has_the_plate_fields_and_the_new_plate_row_of_the_mac_panel() {
+        let (h, doc, _, plate) = window_with_part();
+        let f = form(&h, doc);
+        for field in
+            [PlateField::Name, PlateField::Width, PlateField::Height, PlateField::Material, PlateField::Thickness]
+        {
+            assert!(f.find(&ControlId::G5(C::Editor(E::PlateText { plate, field }))).is_some(), "{field:?}");
+            assert!(f.find(&ControlId::G5(C::Editor(E::NewPlateText(field)))).is_some(), "{field:?}");
+        }
+        for c in [E::NewPlateMake, E::PlateUnassign, E::PlateRemove { plate }, E::PlateAssign { plate }] {
+            assert!(f.find(&ControlId::G5(C::Editor(c))).is_some(), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn typed_text_makes_a_plate_and_a_choice_moves_an_instance() {
+        let (h, doc, _, plate) = window_with_part();
+        let id = |c: E| ControlId::G5(C::Editor(c));
+        let values = vec![
+            (id(E::NewPlateText(PlateField::Name)), ControlValue::Text("Plaat C".into())),
+            (id(E::NewPlateText(PlateField::Width)), ControlValue::Text("300".into())),
+            (id(E::NewPlateText(PlateField::Height)), ControlValue::Text("200".into())),
+        ];
+        assert_eq!(
+            react(&h, doc, E::NewPlateMake, values),
+            FormOutcome::Intent(UiIntent::Structure {
+                document: doc,
+                edit: StructureEdit::CreatePlate {
+                    name: "Plaat C".into(),
+                    width: "300".into(),
+                    height: "200".into(),
+                    material: String::new(),
+                    thickness: String::new()
+                }
+            })
+        );
+
+        let instance = h.document(doc).unwrap().structure.parts[0].instances[0].id;
+        let c = E::InstancePlate { instance };
+        let f = form(&h, doc);
+        assert!(matches!(
+            f.find(&id(c)),
+            Some(FormLine::Choice { items, selected: 0, .. }) if items == &vec![ChoiceItem::plain("No plate".to_owned()), ChoiceItem::plain("Plaat B".to_owned())]
+        ));
+        assert_eq!(
+            react(&h, doc, c, vec![(id(c), ControlValue::Choice(1))]),
+            FormOutcome::Intent(UiIntent::Structure {
+                document: doc,
+                edit: StructureEdit::SetInstancePlate { instance, plate: Some(plate) }
+            })
+        );
+    }
+
+    #[test]
+    fn the_part_section_has_variant_and_shape_controls() {
+        let (mut h, doc, part, _) = window_with_part();
+        h.send(UiIntent::Structure {
+            document: doc,
+            edit: StructureEdit::AddVariant { definition: part, name: "groot".into() },
+        });
+        let shape = h.document(doc).unwrap().structure.parts[0].shapes[0].key;
+        let f = form(&h, doc);
+        let id = |c: E| ControlId::G5(C::Editor(c));
+        for c in [
+            E::VariantRename { part, variant: 0 },
+            E::VariantRemove { part, variant: 0 },
+            E::ShapeName { part, shape },
+            E::ShapeNumber { part, shape, field: ShapeField::Width },
+            E::ShapeRemove { part, shape },
+            E::ShapeAddName { part },
+            E::ShapeAdd { part, kind: PartShapeKind::Rectangle },
+            E::ShapeAdd { part, kind: PartShapeKind::Circle },
+        ] {
+            assert!(f.find(&id(c)).is_some(), "{c:?}");
+        }
+        let rename = E::VariantRename { part, variant: 0 };
+        assert_eq!(
+            react(&h, doc, rename, vec![(id(rename), ControlValue::Text("reuze".into()))]),
+            FormOutcome::Intent(UiIntent::Structure {
+                document: doc,
+                edit: StructureEdit::RenameVariant { definition: part, from: "groot".into(), to: "reuze".into() }
+            })
+        );
+    }
+}

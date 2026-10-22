@@ -609,7 +609,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
         });
         lines.extend(super::g6_werk::reference_edit_lines(r, locale));
     }
-    lines.extend(super::g7_editor::modifier_lines(s, locale));
+    lines.extend(super::g7_editor::editor_lines(s, locale));
     lines
 }
 
