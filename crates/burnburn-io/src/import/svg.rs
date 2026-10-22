@@ -185,7 +185,7 @@ impl Walker<'_> {
                 Some(path) if !path.is_empty() => {
                     self.effects(&entity, name, attrs);
                     let label = attr(attrs, "id").unwrap_or(name).to_owned();
-                    self.items.push(ImportedPath { name: label, entity, path: path.transform(&ctm) });
+                    self.items.push(ImportedPath { name: label, entity, path: path.transform(&ctm), layer: None });
                 }
                 _ => self.report(&entity, name, SkipReason::Invalid("degenerate shape")),
             }

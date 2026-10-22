@@ -11,7 +11,9 @@ use burnburn_geometry::{EllipticalArc, Path, Point, Segment, Subpath, math};
 use burnburn_types::Angle;
 
 use super::check_size;
-use super::{HpglUnitBasis, ImportDraft, ImportedPath, ParseError, ParseLimits, SkipReason, Skipped, UnitDecision};
+use super::{
+    HpglUnitBasis, ImportDraft, ImportLayer, ImportedPath, ParseError, ParseLimits, SkipReason, Skipped, UnitDecision,
+};
 
 /// One plotter unit in millimetres.
 const MM_PER_UNIT: f64 = 0.025;
@@ -296,6 +298,7 @@ impl<'l> State<'l> {
                     name: format!("Pen {}", self.pen),
                     entity: format!("CI#{}", self.commands),
                     path,
+                    layer: Some(ImportLayer::Pen(self.pen)),
                 });
             }
             Err(_) => self.report("CI", SkipReason::Invalid("radius must be positive")),
@@ -379,6 +382,7 @@ impl<'l> State<'l> {
                 name: format!("Pen {}", run.pen),
                 entity: format!("run#{}", self.runs),
                 path: Path::from_subpaths(vec![sp]),
+                layer: Some(ImportLayer::Pen(run.pen)),
             });
         }
     }

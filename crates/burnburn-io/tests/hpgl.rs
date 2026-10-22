@@ -42,6 +42,17 @@ fn pen_up_splits_runs_and_pen_numbers_name_the_items() {
 }
 
 #[test]
+fn every_run_and_circle_names_the_pen_it_was_drawn_with_as_its_layer() {
+    use burnburn_io::import::ImportLayer;
+    let draft = parse_hpgl(b"IN;SP1;PU0,0;PD40,0;PU80,0;PD120,0;SP2;PU0,40;PD40,40;SP3;PU400,800;CI200;").unwrap();
+    let layers: Vec<_> = draft.items.iter().map(|i| i.layer).collect();
+    assert_eq!(
+        layers,
+        [Some(ImportLayer::Pen(1)), Some(ImportLayer::Pen(1)), Some(ImportLayer::Pen(2)), Some(ImportLayer::Pen(3))]
+    );
+}
+
+#[test]
 fn relative_mode_and_missing_semicolons_follow_the_plotter_state() {
     // PR moves relative to the current point; mnemonics may follow numbers without ';'.
     let draft = parse_hpgl(b"IN;PA400,400;PR;PD400,0,0,400,-400,0,0,-400PU").unwrap();

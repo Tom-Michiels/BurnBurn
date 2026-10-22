@@ -92,7 +92,12 @@ impl DxfDocument {
         let items = self
             .items
             .iter()
-            .map(|i| ImportedPath { name: i.name.clone(), entity: i.entity.clone(), path: i.path.transform(&m) })
+            .map(|i| ImportedPath {
+                name: i.name.clone(),
+                entity: i.entity.clone(),
+                path: i.path.transform(&m),
+                layer: None,
+            })
             .collect();
         Ok(ImportDraft::new(items, units, self.skipped.clone()))
     }

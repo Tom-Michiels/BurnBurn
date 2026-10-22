@@ -301,6 +301,21 @@ pub struct ImportedPath {
     /// Source reference: SVG `id` (or `element#n`), DXF `TYPE#handle` (or `TYPE#n`).
     pub entity: String,
     pub path: Path,
+    /// What the object would be a layer of: the stroke or fill colour of a PDF object, the pen of a
+    /// plotter file. `None` for formats that have their own layers or none (SVG, DXF).
+    pub layer: Option<ImportLayer>,
+}
+
+/// The layer a PDF or plotter object proposes (G7-trace, P04): objects with the same key belong
+/// together, whatever their names say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ImportLayer {
+    /// Drawn with a stroke of this colour (red, green, blue).
+    Stroke([u8; 3]),
+    /// Drawn with a fill of this colour.
+    Fill([u8; 3]),
+    /// Drawn with this pen of a plotter file (`SP`).
+    Pen(u32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
