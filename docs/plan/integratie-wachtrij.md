@@ -444,3 +444,8 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G9-cam-werk | W01/W02 expliciete onderdeelnaam in het project; orders matchen erop | `io::Project::{part_name, order_part_names}`, `part-name.json` (additief, niet in de projecthash) | `UiIntent::SetPartName`, `NotesViewModel.part_name`, `G5Control::{NotesPartName, NotesPartNameSave}` | `io/tests/g9_part_name.rs::*`, `presentation/tests/g9_part_name.rs::*`, `runtime/tests/g8_job_parts.rs::an_explicit_part_name_…`, `macos/tests/g9_cam_werk_panels.rs::part_name::*`, `windows/tests/g9_cam_werk_forms.rs` | klaar |
 | G9-cam-werk | Compile bij 100k contouren: kwadratische bucket-afbeelding weg | `cam::compile::local_buckets` (lineair) | – | `cam/src/compile.rs::tests::*`, `cam/tests/compile_scale_measure.rs` (release), `scenarios/tests/benchmarks_100k.rs` | klaar |
 | G9-cam-werk | Waarneming voor de document-lane: `Operation::new` controleert dubbele doelen kwadratisch (`targets[..i].contains(g)`), ~2,8 s bij 200k doelen | `burnburn-document/src/process/operation.rs` (een `HashSet` volstaat; fout en volgorde ongewijzigd) | – | nog geen test (buiten het gebied van G9-cam-werk) | open |
+
+## LF-A (look and feel)
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| LF1-layout | Q1 dubbele verschuiving, Q3 primaire knop rechts en Esc/Return, Q6 reden één keer, Q9 laserlabels, layout-invarianten | – (alleen `macos/src/appkit`) | – | `macos/tests` native `layout_invariants` (rood op 474 fouten, groen), `cam_dialogs::test_dialogs_make_a_private_job_and_focus_test_is_greyed_with_its_reason`; dev-note `docs/dev-notes/LF1.md` | klaar; open: basislijncontrole, laservenster op klein scherm (handmatig) |

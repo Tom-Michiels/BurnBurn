@@ -271,10 +271,6 @@ mod invariants {
                 }
             } else if !is_leaf(&child) {
                 push_buttons(&child, out);
-            } else if let Some(scroll) = any.downcast_ref::<NSScrollView>() {
-                if let Some(doc) = scroll.documentView() {
-                    push_buttons(&doc, out);
-                }
             }
         }
     }
