@@ -553,6 +553,8 @@ impl AppController {
         self.sync_selections();
         let mut update = self.dispatch(intent);
         self.sync_selections();
+        // The machine in use is kept for the next start whenever it changed (M01).
+        self.persist_active_machine();
         update.view_changed |= production.view_changed;
         update
     }

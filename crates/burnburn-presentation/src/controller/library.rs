@@ -25,7 +25,7 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask, Loaded,
+    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask, Loaded,
     MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
@@ -50,6 +50,8 @@ pub(super) enum FilesJob {
     SaveCalibration,
     /// The camera calibrations (lens, workspace alignment) are being written (W04).
     SaveCameraCalibrations,
+    /// The machine in use is being written (M01).
+    SaveActiveMachine,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -149,6 +151,11 @@ pub(super) struct Libraries {
     /// The camera calibration file could not be read: it is kept as it is and never written (W04).
     camera_calibrations_unreadable: bool,
     camera_writer: Writer,
+    /// The active-machine file could not be read: it is kept as it is and never written (M01).
+    active_unreadable: bool,
+    active_writer: Writer,
+    /// The machine as it was last handed to the writer (or read), to see when it changed.
+    active_seen: Option<super::machine::ActiveSeen>,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
     kept: Vec<(Arc<burnburn_job::MachineProfile>, super::machine::Extras)>,
@@ -230,6 +237,7 @@ impl AppController {
             FilesJob::SaveProfiles => self.profiles_saved(outcome),
             FilesJob::SaveCalibration => self.calibration_saved(outcome),
             FilesJob::SaveCameraCalibrations => self.camera_calibrations_saved(outcome),
+            FilesJob::SaveActiveMachine => self.active_machine_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -247,10 +255,9 @@ impl AppController {
     /// one the libraries live in memory only. Set it before the first panel is opened.
     pub fn set_library_dir(&mut self, dir: Option<PathBuf>) {
         self.libs.dir = dir;
-        // Whichever comes second, the folder or the camera port: the camera calibrations are read (W04).
-        if self.camera.is_some() {
-            self.ensure_libraries_if_folder();
-        }
+        // The libraries are read at once: the machine of the last start and the camera calibrations
+        // are wanted before any panel asks for them (M01, W04).
+        self.ensure_libraries_if_folder();
     }
 
     /// Identity for a new library file (project links name it).
@@ -305,6 +312,7 @@ impl AppController {
             FilesJob::SaveProfiles => self.libs.profile_writer.in_flight = Some(id),
             FilesJob::SaveCalibration => self.libs.calibration_writer.in_flight = Some(id),
             FilesJob::SaveCameraCalibrations => self.libs.camera_writer.in_flight = Some(id),
+            FilesJob::SaveActiveMachine => self.libs.active_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -318,10 +326,19 @@ impl AppController {
                 profiles,
                 calibration,
                 camera_calibrations,
+                active_machine,
                 materials,
                 art,
                 thumbnails,
             })) => {
+                match active_machine {
+                    Loaded::Ready(entries) => self.restore_active_machine(entries),
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.active_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match camera_calibrations {
                     Loaded::Ready(stored) => {
                         if self.camera_calibrations_loaded(stored) {
@@ -404,6 +421,7 @@ impl AppController {
                 }
                 self.refresh_calibration();
                 self.rebuild_layers();
+                self.persist_active_machine();
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
             _ => self.libs.state = LoadState::NotLoaded,
@@ -544,6 +562,87 @@ impl AppController {
             self.camera_ws.store.insert_alignment(alignment.clone());
         }
         newer
+    }
+
+    /// The machine of the last start, read from its file: it becomes the active machine unless one was
+    /// chosen before the file was read (that choice is newer and is written instead).
+    fn restore_active_machine(&mut self, entries: Vec<burnburn_io::profile_library::LibraryProfile>) {
+        let Some(entry) = entries.into_iter().next() else { return };
+        let machine = super::machine::Machine {
+            profile: Arc::new(entry.profile),
+            // The wire dialect details of a Ruida controller are the host's; the neutral default is
+            // what choosing a machine from the library uses too.
+            ruida: burnburn_ruida::RuidaProfile {
+                magic: burnburn_ruida::Magic::FIXTURE_0X88,
+                overscan: burnburn_ruida::OverscanPolicy::ControllerManaged,
+            },
+            grbl: entry.grbl,
+            declared: super::machine::Declared::of(
+                entry.model.as_deref().unwrap_or_default(),
+                entry.firmware.as_deref().unwrap_or_default(),
+            ),
+        };
+        if self.machine.is_none() {
+            self.libs.active_seen = Some(super::machine::ActiveSeen::of(&machine));
+            self.replace_active_machine(machine);
+        }
+    }
+
+    /// Writes the machine in use when it changed since it was last written (or read) and no write is
+    /// running. Nothing is written before the file was read, or when it could not be read.
+    pub(super) fn persist_active_machine(&mut self) {
+        let Some(machine) = self.machine.as_ref() else { return };
+        if self.libs.dir.is_none() || self.libs.active_unreadable {
+            return;
+        }
+        let unchanged = self.libs.active_seen.as_ref().is_some_and(|seen| seen.is(machine));
+        if unchanged && !self.libs.active_writer.dirty {
+            return;
+        }
+        if self.libs.state != LoadState::Ready {
+            // Written once the libraries were read (`libraries_loaded` asks again).
+            self.ensure_libraries();
+            return;
+        }
+        if self.libs.active_writer.in_flight.is_some() {
+            self.libs.active_writer.dirty = true;
+            return;
+        }
+        let Some(dir) = self.libs.dir.clone() else { return };
+        let entry = burnburn_io::profile_library::LibraryProfile {
+            profile: (*machine.profile).clone(),
+            grbl: machine.grbl.clone(),
+            model: machine.declared.model.clone(),
+            firmware: machine.declared.firmware.clone(),
+        };
+        let seen = super::machine::ActiveSeen::of(machine);
+        let task = FilesTask::SaveActiveMachine {
+            entry: Box::new(entry),
+            path: dir.join(ACTIVE_MACHINE_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveActiveMachine) {
+            self.libs.active_seen = Some(seen);
+            self.libs.active_writer.dirty = false;
+        }
+    }
+
+    fn active_machine_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.active_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.active_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.active_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if !self.libs.active_writer.failed {
+            // The machine may have changed while the write ran.
+            self.persist_active_machine();
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
 
     fn camera_calibrations_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {

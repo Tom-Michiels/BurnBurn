@@ -44,6 +44,8 @@ pub enum FilesTask {
     SaveProfileLibrary { profiles: Vec<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the calibration proofs atomically (W09).
     SaveCalibrationLibrary { library: Box<CalibrationLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write the machine in use as a profile file of one machine, atomically (M01).
+    SaveActiveMachine { entry: Box<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the camera calibrations (lens calibrations and workspace alignments) atomically (W04).
     SaveCameraCalibrations { store: Box<CalibrationStore>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Read a machine profile file (Ruida or GRBL JSON); nothing is written.
@@ -187,6 +189,8 @@ pub const PROFILE_LIBRARY_FILE: &str = "profiles.json";
 
 /// File name of the calibration proofs (kerf, scan offset, pointer offset; W09).
 pub const CALIBRATION_LIBRARY_FILE: &str = "calibration.json";
+/// File name of the machine in use: a profile library of exactly one machine, with its settings (M01).
+pub const ACTIVE_MACHINE_FILE: &str = "active-machine.json";
 /// File name of the camera calibrations (lens calibrations and workspace alignments; W04).
 pub const CAMERA_CALIBRATION_FILE: &str = "camera-calibration.json";
 
@@ -205,6 +209,9 @@ impl fmt::Debug for FilesTask {
             FilesTask::ReadMachineProfile { path, .. } => write!(f, "ReadMachineProfile({})", path.display()),
             FilesTask::SaveCalibrationLibrary { library, path, .. } => {
                 write!(f, "SaveCalibrationLibrary({} to {})", library.proofs.len(), path.display())
+            }
+            FilesTask::SaveActiveMachine { entry, path, .. } => {
+                write!(f, "SaveActiveMachine({} to {})", entry.profile.revision().id, path.display())
             }
             FilesTask::SaveCameraCalibrations { store, path, .. } => write!(
                 f,
@@ -246,6 +253,7 @@ pub enum FilesOutput {
         profiles: Loaded<Vec<LibraryProfile>>,
         calibration: Loaded<CalibrationLibrary>,
         camera_calibrations: Loaded<CalibrationStore>,
+        active_machine: Loaded<Vec<LibraryProfile>>,
         materials: Loaded<MaterialLibrary>,
         art: Loaded<ArtLibrary>,
         thumbnails: Vec<(u64, ArtThumbnail)>,
@@ -254,6 +262,7 @@ pub enum FilesOutput {
     ProfileLibrarySaved,
     CalibrationLibrarySaved,
     CameraCalibrationsSaved,
+    ActiveMachineSaved,
     MachineProfileRead(Box<crate::profile_file::ProfileFile>),
     ArtLibrarySaved,
     ArtAdded {
@@ -391,7 +400,17 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             let calibration = read_library(fs.as_ref(), &dir.join(CALIBRATION_LIBRARY_FILE), load_calibration_library);
             let camera_calibrations =
                 read_library(fs.as_ref(), &dir.join(CAMERA_CALIBRATION_FILE), load_camera_calibrations);
-            Ok(FilesOutput::LibrariesLoaded { profiles, calibration, camera_calibrations, materials, art, thumbnails })
+            let active_machine =
+                read_library(fs.as_ref(), &dir.join(ACTIVE_MACHINE_FILE), load_profile_library_entries);
+            Ok(FilesOutput::LibrariesLoaded {
+                profiles,
+                calibration,
+                camera_calibrations,
+                active_machine,
+                materials,
+                art,
+                thumbnails,
+            })
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
             save_material_library(fs.as_ref(), &path, &library)
@@ -407,6 +426,11 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             save_calibration_library(fs.as_ref(), &path, &library)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::CalibrationLibrarySaved)
+        }
+        FilesTask::SaveActiveMachine { entry, path, fs } => {
+            save_profile_library_entries(fs.as_ref(), &path, std::slice::from_ref(&*entry))
+                .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
+            Ok(FilesOutput::ActiveMachineSaved)
         }
         FilesTask::SaveCameraCalibrations { store, path, fs } => {
             save_camera_calibrations(fs.as_ref(), &path, &store)

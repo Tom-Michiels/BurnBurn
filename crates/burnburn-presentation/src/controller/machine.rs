@@ -72,6 +72,30 @@ impl Declared {
     }
 }
 
+/// What of the machine in use was last handed to the file writer, to see when it changes (M01).
+/// The profile is compared by identity of its `Arc`: a changed profile is a new one.
+#[derive(Debug, Clone)]
+pub(super) struct ActiveSeen {
+    profile: Arc<MachineProfile>,
+    grbl: Option<burnburn_gcode::GrblProfile>,
+    declared: Declared,
+}
+
+impl ActiveSeen {
+    pub(super) fn of(machine: &Machine) -> ActiveSeen {
+        ActiveSeen {
+            profile: Arc::clone(&machine.profile),
+            grbl: machine.grbl.clone(),
+            declared: machine.declared.clone(),
+        }
+    }
+
+    /// True when `machine` is what was seen.
+    pub(super) fn is(&self, machine: &Machine) -> bool {
+        Arc::ptr_eq(&self.profile, &machine.profile) && self.grbl == machine.grbl && self.declared == machine.declared
+    }
+}
+
 /// What the profile library keeps next to a machine's profile.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct Extras {
