@@ -99,6 +99,13 @@ ongebruikt recept en een handmatige rij.
 Een eerste aanname in de io-test was fout: het handgeschreven bestand heeft een lege `constraints`; de writer laat lege lijsten weg, dus
 de vergelijking negeert dat veld. Geen bug in migratie of recepten gevonden.
 
+## Verificatie
+
+`cargo fmt --all`, `cargo clippy --workspace --all-targets --locked -- -D warnings` (macOS) en dezelfde clippy voor
+`-p burnburn-windows --target x86_64-pc-windows-msvc --all-targets` zijn schoon. `cargo xtask verify` (derde run, op de laatste
+commit): exit 0, 4035 tests geslaagd, 0 gefaald, 11 genegeerd (macOS arm64, toolchain 1.99.1), inclusief de native tests
+(`schikken_panel_native`, `cut_settings_options`). De eerste twee runs faalden op de twee hierboven genoemde bewakers.
+
 ## Open (eerlijk)
 
 - Niets van de RD-uitvoer van tabvermogen of common-line is bewezen; beide blijven geweigerd (`docs/hardware/evidence-cam.md`).
