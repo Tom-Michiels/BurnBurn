@@ -14,6 +14,8 @@ workspace = true
 image = { workspace = true }
 burnburn-document = { workspace = true }
 burnburn-gcode = { workspace = true }
+# Camera calibrations (lens, workspace alignment) kept in a library file (G7-werk W04).
+burnburn-image = { workspace = true }
 burnburn-geometry = { workspace = true }
 # Frozen machine-profile snapshots in a project (IM28, P07).
 burnburn-job = { workspace = true }

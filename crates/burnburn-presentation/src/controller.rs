@@ -68,8 +68,10 @@ mod prefs;
 mod preview;
 mod process;
 mod recent;
+mod recognition;
 mod recovery;
 mod registration;
+mod remnants;
 mod repair_preview;
 mod reshape;
 mod shapes;
@@ -79,6 +81,7 @@ mod sketch_param;
 mod structure;
 
 pub(crate) use sketch_param::normalise_decimal_commas;
+mod start_confirm;
 mod sublayers_dialog;
 mod support;
 mod tasks;
@@ -444,6 +447,10 @@ pub struct AppController {
     machine_port: Option<Arc<dyn MachinePort>>,
     /// A declared model/firmware was handed to the machine port (so clearing it must reach the port too).
     declared_pushed: bool,
+    /// The start the user asked for and has not confirmed yet (M06).
+    pending_start: Option<start_confirm::PendingStart>,
+    /// Template recognition in the camera picture (W06).
+    recognition: recognition::RecognitionState,
     /// Plans the designer released (W01), as the history keeps them: a prepared job whose plan is
     /// in here is approved. A changed plan has another id, so it is not.
     approved_plans: std::collections::BTreeSet<burnburn_types::ContentHash>,
@@ -515,6 +522,8 @@ impl AppController {
             machine: None,
             machine_port: None,
             declared_pushed: false,
+            pending_start: None,
+            recognition: recognition::RecognitionState::default(),
             approved_plans: std::collections::BTreeSet::new(),
             released_jobs: Vec::new(),
             hub: machine_hub::HubState::default(),
@@ -556,6 +565,8 @@ impl AppController {
         self.sync_selections();
         let mut update = self.dispatch(intent);
         self.sync_selections();
+        // The machine in use is kept for the next start whenever it changed (M01).
+        self.persist_active_machine();
         update.view_changed |= production.view_changed;
         update
     }
@@ -676,6 +687,12 @@ impl AppController {
             UiIntent::RepeatExecution { execution } => self.hub_repeat(execution),
             UiIntent::ConfirmRepeat { document } => self.hub_confirm_repeat(document),
             UiIntent::CancelRepeat => self.hub_cancel_repeat(),
+            UiIntent::RequestStart { document } => self.request_start(document),
+            UiIntent::ConfirmStart { document, action, seen } => self.confirm_start(document, action, seen),
+            UiIntent::CancelStart => self.cancel_start(),
+            UiIntent::Recognition(intent) => self.recognition_intent(intent),
+            UiIntent::Remnant(intent) => self.remnant_intent(intent),
+            UiIntent::SetOrderRemnant { order, remnant } => self.set_order_remnant(order, remnant),
             UiIntent::RecordCalibration { input } => self.hub_record_calibration(input),
             UiIntent::RemoveCalibration { id } => self.hub_remove_calibration(id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
@@ -998,6 +1015,11 @@ fn operator_may(intent: &UiIntent) -> bool {
         | UiIntent::DialogCancelled { .. }
         | UiIntent::Camera { .. }
         | UiIntent::Machine { .. }
+        | UiIntent::RequestStart { .. }
+        | UiIntent::ConfirmStart { .. }
+        | UiIntent::CancelStart
+        | UiIntent::SetOrderRemnant { .. }
+        | UiIntent::Recognition(_)
         | UiIntent::AddOrder { .. }
         | UiIntent::ChooseOrderJob { .. }
         | UiIntent::UploadForOrder { .. } => true,

@@ -25,8 +25,8 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE,
-    PROFILE_LIBRARY_FILE,
+    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
+    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE, REMNANT_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -48,6 +48,12 @@ pub(super) enum FilesJob {
     SaveArt,
     SaveProfiles,
     SaveCalibration,
+    /// The camera calibrations (lens, workspace alignment) are being written (W04).
+    SaveCameraCalibrations,
+    /// The machine in use is being written (M01).
+    SaveActiveMachine,
+    /// The remnant library is being written (W07).
+    SaveRemnants,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -144,6 +150,19 @@ pub(super) struct Libraries {
     /// The calibration file could not be read: it is kept as it is and never written (W09).
     calibration_unreadable: bool,
     calibration_writer: Writer,
+    /// The camera calibration file could not be read: it is kept as it is and never written (W04).
+    camera_calibrations_unreadable: bool,
+    camera_writer: Writer,
+    /// The active-machine file could not be read: it is kept as it is and never written (M01).
+    active_unreadable: bool,
+    active_writer: Writer,
+    /// The remnant library (W07): read once, changed on the UI thread, written back one write at a time.
+    pub(in crate::controller) remnants: Option<burnburn_io::remnant_library::RemnantLibrary>,
+    pub(in crate::controller) remnants_unreadable: bool,
+    remnant_writer: Writer,
+    pub(in crate::controller) remnant_problem: Option<crate::remnants::RemnantProblem>,
+    /// The machine as it was last handed to the writer (or read), to see when it changed.
+    active_seen: Option<super::machine::ActiveSeen>,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
     kept: Vec<(Arc<burnburn_job::MachineProfile>, super::machine::Extras)>,
@@ -152,6 +171,11 @@ pub(super) struct Libraries {
 }
 
 impl Libraries {
+    /// Have the library files been read (or is there no folder to read them from)?
+    pub(in crate::controller) fn is_ready(&self) -> bool {
+        self.state == LoadState::Ready
+    }
+
     fn material_persisted(&self) -> bool {
         self.dir.is_some() && !self.materials_unreadable && !self.material_writer.failed
     }
@@ -225,6 +249,9 @@ impl AppController {
             FilesJob::SaveArt => self.art_saved(outcome),
             FilesJob::SaveProfiles => self.profiles_saved(outcome),
             FilesJob::SaveCalibration => self.calibration_saved(outcome),
+            FilesJob::SaveCameraCalibrations => self.camera_calibrations_saved(outcome),
+            FilesJob::SaveActiveMachine => self.active_machine_saved(outcome),
+            FilesJob::SaveRemnants => self.remnants_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -242,6 +269,9 @@ impl AppController {
     /// one the libraries live in memory only. Set it before the first panel is opened.
     pub fn set_library_dir(&mut self, dir: Option<PathBuf>) {
         self.libs.dir = dir;
+        // The libraries are read at once: the machine of the last start and the camera calibrations
+        // are wanted before any panel asks for them (M01, W04).
+        self.ensure_libraries_if_folder();
     }
 
     /// Identity for a new library file (project links name it).
@@ -257,12 +287,22 @@ impl AppController {
         let Some(dir) = self.libs.dir.clone() else {
             self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id()));
             self.libs.art = Some(ArtLibrary::new(&self.new_library_id()));
+            self.libs.remnants =
+                Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
             self.libs.state = LoadState::Ready;
             return;
         };
         let task = FilesTask::LoadLibraries { dir, fs: Arc::clone(&self.ports.fs) };
         if self.submit_files(task, FilesJob::LoadLibraries) {
             self.libs.state = LoadState::Loading;
+        }
+    }
+
+    /// Reads the libraries when there is a folder to read them from (the hosts set it before they
+    /// attach the camera); without one nothing is decided yet.
+    pub(super) fn ensure_libraries_if_folder(&mut self) {
+        if self.libs.dir.is_some() {
+            self.ensure_libraries();
         }
     }
 
@@ -287,6 +327,9 @@ impl AppController {
             FilesJob::SaveArt => self.libs.art_writer.in_flight = Some(id),
             FilesJob::SaveProfiles => self.libs.profile_writer.in_flight = Some(id),
             FilesJob::SaveCalibration => self.libs.calibration_writer.in_flight = Some(id),
+            FilesJob::SaveCameraCalibrations => self.libs.camera_writer.in_flight = Some(id),
+            FilesJob::SaveActiveMachine => self.libs.active_writer.in_flight = Some(id),
+            FilesJob::SaveRemnants => self.libs.remnant_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -296,13 +339,50 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded {
-                profiles,
-                calibration,
-                materials,
-                art,
-                thumbnails,
-            })) => {
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded(loaded))) => {
+                let crate::files_task::LoadedLibraries {
+                    profiles,
+                    calibration,
+                    camera_calibrations,
+                    active_machine,
+                    remnants,
+                    materials,
+                    art,
+                    thumbnails,
+                } = *loaded;
+                match remnants {
+                    Loaded::Ready(library) => self.libs.remnants = Some(library),
+                    Loaded::Missing => {
+                        self.libs.remnants =
+                            Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
+                    }
+                    Loaded::Unreadable(_) => {
+                        self.libs.remnants =
+                            Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
+                        self.libs.remnants_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
+                match active_machine {
+                    Loaded::Ready(entries) => self.restore_active_machine(entries),
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.active_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
+                match camera_calibrations {
+                    Loaded::Ready(stored) => {
+                        if self.camera_calibrations_loaded(stored) {
+                            self.libs.camera_writer.dirty = true;
+                        }
+                    }
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.camera_calibrations_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match calibration {
                     Loaded::Ready(library) => {
                         if self.proofs_loaded(library) {
@@ -368,7 +448,12 @@ impl AppController {
                 if self.libs.calibration_writer.dirty {
                     effects.extend(self.flush_calibration());
                 }
+                if self.libs.camera_writer.dirty {
+                    effects.extend(self.flush_camera_calibrations());
+                }
                 self.refresh_calibration();
+                self.rebuild_layers();
+                self.persist_active_machine();
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
             _ => self.libs.state = LoadState::NotLoaded,
@@ -465,6 +550,184 @@ impl AppController {
             self.libs.calibration_writer.dirty = false;
         }
         Vec::new()
+    }
+
+    /// Writes the camera calibrations when they changed and no write is running. Nothing is written
+    /// before the file has been read (it would drop what is in it) or when it could not be read.
+    pub(super) fn flush_camera_calibrations(&mut self) -> Vec<HostEffect> {
+        self.libs.camera_writer.dirty = true;
+        self.ensure_libraries();
+        if self.libs.state != LoadState::Ready
+            || self.libs.camera_writer.in_flight.is_some()
+            || self.libs.camera_calibrations_unreadable
+        {
+            return Vec::new();
+        }
+        let Some(dir) = self.libs.dir.clone() else { return Vec::new() };
+        let task = FilesTask::SaveCameraCalibrations {
+            store: Box::new(self.camera_ws.store.clone()),
+            path: dir.join(CAMERA_CALIBRATION_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveCameraCalibrations) {
+            self.libs.camera_writer.dirty = false;
+        }
+        Vec::new()
+    }
+
+    /// What was read from the camera calibration file joins what the session already holds; the
+    /// session's entries win for the same camera configuration (they are newer). True when the
+    /// session held something the file did not, so the file has to be written again.
+    fn camera_calibrations_loaded(&mut self, stored: burnburn_image::calib::CalibrationStore) -> bool {
+        let session = std::mem::replace(&mut self.camera_ws.store, stored);
+        let mut newer = false;
+        for lens in session.lenses() {
+            newer |= !self.camera_ws.store.lens_for(&lens.valid_for).is_ok_and(|kept| kept == lens);
+            self.camera_ws.store.insert_lens(lens.clone());
+        }
+        for alignment in session.alignments() {
+            newer |= !self
+                .camera_ws
+                .store
+                .alignment_for(alignment.config(), alignment.material_height_mm)
+                .is_ok_and(|kept| kept == alignment);
+            self.camera_ws.store.insert_alignment(alignment.clone());
+        }
+        newer
+    }
+
+    /// The machine of the last start, read from its file: it becomes the active machine unless one was
+    /// chosen before the file was read (that choice is newer and is written instead).
+    fn restore_active_machine(&mut self, entries: Vec<burnburn_io::profile_library::LibraryProfile>) {
+        let Some(entry) = entries.into_iter().next() else { return };
+        let machine = super::machine::Machine {
+            profile: Arc::new(entry.profile),
+            // The wire dialect details of a Ruida controller are the host's; the neutral default is
+            // what choosing a machine from the library uses too.
+            ruida: burnburn_ruida::RuidaProfile {
+                magic: burnburn_ruida::Magic::FIXTURE_0X88,
+                overscan: burnburn_ruida::OverscanPolicy::ControllerManaged,
+            },
+            grbl: entry.grbl,
+            declared: super::machine::Declared::of(
+                entry.model.as_deref().unwrap_or_default(),
+                entry.firmware.as_deref().unwrap_or_default(),
+            ),
+        };
+        if self.machine.is_none() {
+            self.libs.active_seen = Some(super::machine::ActiveSeen::of(&machine));
+            self.replace_active_machine(machine);
+        }
+    }
+
+    /// Writes the machine in use when it changed since it was last written (or read) and no write is
+    /// running. Nothing is written before the file was read, or when it could not be read.
+    pub(super) fn persist_active_machine(&mut self) {
+        let Some(machine) = self.machine.as_ref() else { return };
+        if self.libs.dir.is_none() || self.libs.active_unreadable {
+            return;
+        }
+        let unchanged = self.libs.active_seen.as_ref().is_some_and(|seen| seen.is(machine));
+        if unchanged && !self.libs.active_writer.dirty {
+            return;
+        }
+        if self.libs.state != LoadState::Ready {
+            // Written once the libraries were read (`libraries_loaded` asks again).
+            self.ensure_libraries();
+            return;
+        }
+        if self.libs.active_writer.in_flight.is_some() {
+            self.libs.active_writer.dirty = true;
+            return;
+        }
+        let Some(dir) = self.libs.dir.clone() else { return };
+        let entry = burnburn_io::profile_library::LibraryProfile {
+            profile: (*machine.profile).clone(),
+            grbl: machine.grbl.clone(),
+            model: machine.declared.model.clone(),
+            firmware: machine.declared.firmware.clone(),
+        };
+        let seen = super::machine::ActiveSeen::of(machine);
+        let task = FilesTask::SaveActiveMachine {
+            entry: Box::new(entry),
+            path: dir.join(ACTIVE_MACHINE_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveActiveMachine) {
+            self.libs.active_seen = Some(seen);
+            self.libs.active_writer.dirty = false;
+        }
+    }
+
+    fn active_machine_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.active_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.active_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.active_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if !self.libs.active_writer.failed {
+            // The machine may have changed while the write ran.
+            self.persist_active_machine();
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+    }
+
+    /// Writes the remnant library when it changed and no write is running. Nothing is written when
+    /// the file could not be read (it would replace what is in it).
+    pub(super) fn flush_remnants(&mut self) {
+        self.libs.remnant_writer.dirty = true;
+        if self.libs.remnant_writer.in_flight.is_some() || self.libs.remnants_unreadable {
+            return;
+        }
+        let (Some(dir), Some(library)) = (self.libs.dir.clone(), self.libs.remnants.clone()) else { return };
+        let task = FilesTask::SaveRemnantLibrary {
+            library: Box::new(library),
+            path: dir.join(REMNANT_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveRemnants) {
+            self.libs.remnant_writer.dirty = false;
+        }
+    }
+
+    fn remnants_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.remnant_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.remnant_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.remnant_writer.failed = true;
+                self.libs.remnant_problem = Some(crate::remnants::RemnantProblem::NotSaved);
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.remnant_writer.dirty && !self.libs.remnant_writer.failed {
+            self.flush_remnants();
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+    }
+
+    fn camera_calibrations_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.camera_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.camera_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.camera_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.camera_writer.dirty && !self.libs.camera_writer.failed {
+            effects.extend(self.flush_camera_calibrations());
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
 
     fn calibration_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {

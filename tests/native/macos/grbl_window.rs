@@ -122,7 +122,10 @@ fn scenario() -> Result<(), String> {
     s.wait(2.0, "the sheet to close", || {
         s.app.with_window(doc, |w| w.window.attachedSheet().is_none()).unwrap_or(false)
     })?;
-    let files = std::fs::read_dir(&s.dir).map(|d| d.count()).unwrap_or(0);
+    // The machine in use is kept in the user's folder (M01); that is not an export.
+    let files = std::fs::read_dir(&s.dir)
+        .map(|d| d.filter_map(Result::ok).filter(|e| e.file_name() != "active-machine.json").count())
+        .unwrap_or(0);
     expect(|| format!("nothing exported, found {files} files"), files == 0)?;
 
     // Air assist off: a new profile revision, and the plan names what the backend refuses.

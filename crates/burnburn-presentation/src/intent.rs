@@ -111,6 +111,29 @@ pub enum UiIntent {
         document: DocumentId,
     },
     CancelRepeat,
+    /// The Start control was used (M06): opens the confirmation of the stored job. Nothing is sent.
+    RequestStart {
+        document: Option<DocumentId>,
+    },
+    /// The user confirmed exactly the confirmation on screen. `action` and `seen` are copied from
+    /// `StartConfirmViewModel`; a confirmation that is not current any more sends nothing.
+    ConfirmStart {
+        document: Option<DocumentId>,
+        action: crate::production::ActionId,
+        seen: Option<burnburn_machine::ExecutionState>,
+    },
+    /// Closes the confirmation without starting.
+    CancelStart,
+    /// Recognising products in the camera picture (W06): learn, find, decide, place.
+    Recognition(crate::recognition::RecognitionIntent),
+    /// The remnant library (W07): keep the selection, remove, place.
+    Remnant(crate::remnants::RemnantIntent),
+    /// Names the remnant an order is made from, or none. The name must be in the remnant library.
+    /// Linking changes no count.
+    SetOrderRemnant {
+        order: crate::production::OrderId,
+        remnant: Option<String>,
+    },
     /// Machine hub (W09): record one calibration proof.
     RecordCalibration {
         input: crate::machine_hub::ProofInput,

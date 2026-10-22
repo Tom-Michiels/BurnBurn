@@ -176,6 +176,46 @@ fn scenario() -> Result<(), String> {
         live(&sent) == vec![LiveRequest::Home(burnburn_machine::HomeTarget::Xy)],
     )?;
 
+    // The red dot (W09): without a measured offset the switch is off and the note says so; once a
+    // pointer proof is recorded the switch is on and names the offset, and a click switches it off.
+    let (switch_on, note) = s
+        .app
+        .with_laser(doc, |p| (p.pointer_check.isEnabled(), p.pointer_note.stringValue().to_string()))
+        .ok_or("no panel")?;
+    expect(
+        || format!("without proof: switch {switch_on}, note {note:?}"),
+        !switch_on && note.contains("Geen pointeroffset"),
+    )?;
+    s.app.dispatch(UiIntent::RecordCalibration {
+        input: burnburn_presentation::ProofInput {
+            kind: burnburn_presentation::ProofKind::PointerOffset,
+            material: String::new(),
+            speed: String::new(),
+            value: "2".into(),
+            value_y: "-1".into(),
+            method: "kruis gebrand".into(),
+            date: "2026-10-22".into(),
+        },
+    });
+    s.pump(0.1);
+    let (switch_on, state, note) = s
+        .app
+        .with_laser(doc, |p| {
+            (p.pointer_check.isEnabled(), p.pointer_check.state(), p.pointer_note.stringValue().to_string())
+        })
+        .ok_or("no panel")?;
+    expect(
+        || format!("with proof: switch {switch_on}, state {state}, note {note:?}"),
+        switch_on && state == objc2_app_kit::NSControlStateValueOn && note == "Rode stip: (2; -1) mm",
+    )?;
+    s.app.with_laser(doc, |p| {
+        // SAFETY: a click on our own checkbox, as a user would; no sender.
+        unsafe { p.pointer_check.performClick(None) }
+    });
+    s.pump(0.1);
+    let state = s.app.with_laser(doc, |p| p.pointer_check.state()).ok_or("no panel")?;
+    expect(|| format!("switched off, state {state}"), state == objc2_app_kit::NSControlStateValueOff)?;
+
     // The arrow keys jog while the panel has the keyboard: key-down presses once, key repeat is not
     // a new press, key-up releases.
     let panel = s.app.with_laser(doc, |p| p.panel.retain()).ok_or("no panel")?;

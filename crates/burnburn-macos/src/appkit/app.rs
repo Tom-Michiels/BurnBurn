@@ -1221,6 +1221,7 @@ impl HostApp {
                 &w.plan_labels[3],
                 &w.plan_labels[4],
             ],
+            plan_calibration: &w.plan_calibration,
             compile_button: &w.compile_button,
             export_button: &w.export_button,
             machine_labels: [&w.machine_labels[0], &w.machine_labels[1], &w.machine_labels[2], &w.machine_labels[3]],
@@ -1375,6 +1376,8 @@ pub struct WindowParts<'a> {
     pub status_label: &'a objc2_app_kit::NSTextField,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub plan_labels: [&'a objc2_app_kit::NSTextField; 5],
+    /// The measured values the plan used, one per line (W09).
+    pub plan_calibration: &'a objc2_app_kit::NSTextField,
     pub compile_button: &'a objc2_app_kit::NSButton,
     pub export_button: &'a objc2_app_kit::NSButton,
     /// Machine section: status, message, progress, job.
@@ -1894,6 +1897,8 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(MenuItem::OffsetPanel, "", false),
             item(MenuItem::StructurePanel, "", false),
             item(MenuItem::OperatorPanel, "", false),
+            item(MenuItem::RemnantsPanel, "", false),
+            item(MenuItem::RecognitionPanel, "", false),
         ],
     ));
     main.addItem(&app_host::help_menu(mtm, target, locale));

@@ -72,6 +72,30 @@ impl Declared {
     }
 }
 
+/// What of the machine in use was last handed to the file writer, to see when it changes (M01).
+/// The profile is compared by identity of its `Arc`: a changed profile is a new one.
+#[derive(Debug, Clone)]
+pub(super) struct ActiveSeen {
+    profile: Arc<MachineProfile>,
+    grbl: Option<burnburn_gcode::GrblProfile>,
+    declared: Declared,
+}
+
+impl ActiveSeen {
+    pub(super) fn of(machine: &Machine) -> ActiveSeen {
+        ActiveSeen {
+            profile: Arc::clone(&machine.profile),
+            grbl: machine.grbl.clone(),
+            declared: machine.declared.clone(),
+        }
+    }
+
+    /// True when `machine` is what was seen.
+    pub(super) fn is(&self, machine: &Machine) -> bool {
+        Arc::ptr_eq(&self.profile, &machine.profile) && self.grbl == machine.grbl && self.declared == machine.declared
+    }
+}
+
 /// What the profile library keeps next to a machine's profile.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct Extras {
@@ -196,22 +220,30 @@ impl AppController {
         }
     }
 
-    /// Approved prepared jobs whose name is the order's part, one per plan.
-    pub(super) fn candidates(&self, part: &str) -> Vec<&Prepared> {
-        let mut out: Vec<&Prepared> = Vec::new();
-        for p in self.sessions.values().filter_map(|s| s.prepared.as_ref()) {
-            if p.approved && p.job.name == part && !out.iter().any(|q| q.job.plan == p.job.plan) {
+    /// Approved prepared jobs whose name is the order's part, one per plan: the jobs of the open
+    /// windows first, then the released jobs only the history holds (no window needed, W01/W02).
+    pub(super) fn candidates(&self, part: &str) -> Vec<Prepared> {
+        let mut out: Vec<Prepared> = Vec::new();
+        let released = self.stored_released().filter(|p| p.job.name == part);
+        for p in self.sessions.values().filter_map(|s| s.prepared.as_ref()).filter(|p| p.approved && p.job.name == part)
+        {
+            if !out.iter().any(|q| q.job.plan == p.job.plan) {
+                out.push(p.clone());
+            }
+        }
+        for p in released {
+            if !out.iter().any(|q| q.job.plan == p.job.plan) {
                 out.push(p);
             }
         }
         out
     }
 
-    pub(super) fn order_job(&self, order: &Order) -> Option<&Prepared> {
+    pub(super) fn order_job(&self, order: &Order) -> Option<Prepared> {
         let candidates = self.candidates(&order.draft.part);
-        match (order.chosen, candidates.as_slice()) {
+        match (order.chosen, candidates.len()) {
             (Some(plan), _) => candidates.into_iter().find(|p| p.job.plan.hash() == plan),
-            (None, [only]) => Some(*only),
+            (None, 1) => candidates.into_iter().next(),
             _ => None,
         }
     }
@@ -232,10 +264,11 @@ impl AppController {
             quantity: o.draft.quantity,
             completed: u32::try_from(completed).unwrap_or(u32::MAX),
             remnant: o.draft.remnant.clone(),
-            job: job.map(|p| p.job.plan),
+            remnant_link: self.remnant_link(o, job.as_ref()),
+            job: job.as_ref().map(|p| p.job.plan),
             needs_choice: job.is_none() && candidates.len() > 1,
             candidates,
-            upload: job.zip(status).map(|(p, st)| self.upload_button(st, p)),
+            upload: job.as_ref().zip(status).map(|(p, st)| self.upload_button(st, p)),
         }
     }
 
@@ -414,7 +447,7 @@ pub(super) fn machine_view_of(status: &MachineStatus) -> MachineViewModel {
 
 /// The material of the plates of a project when there is one and they all agree; a mix of
 /// materials (or none named) says nothing.
-fn plate_material(document: &burnburn_document::DocumentSnapshot) -> Option<String> {
+pub(super) fn plate_material(document: &burnburn_document::DocumentSnapshot) -> Option<String> {
     let mut materials =
         document.structure().plates().map(|(_, p)| p.material.trim().to_owned()).filter(|m| !m.is_empty());
     let first = materials.next()?;

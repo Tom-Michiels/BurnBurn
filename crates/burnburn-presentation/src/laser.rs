@@ -62,6 +62,9 @@ pub enum LaserSetup {
     /// "Oorsprong hier instellen": only from a fully known position.
     SetOriginHere,
     ClearOrigin,
+    /// Aim the job at the red dot instead of the beam when it is placed on the head position or on the
+    /// user origin: the measured pointer offset of the machine moves the anchor, never the geometry (W09).
+    UsePointerOffset(bool),
 }
 
 /// Why a laser-window control is off or an action was refused. Typed, so every host can say it in
@@ -210,6 +213,10 @@ pub struct LaserSetupView {
     pub step_mm: f64,
     pub frame_speed_mm_s: f64,
     pub position_laser_mode: bool,
+    /// The red-dot offset (x, y mm, machine frame) of the newest pointer proof of the active machine.
+    pub pointer_offset_mm: Option<(f64, f64)>,
+    /// The switch: on by default, and only effective with a proof and a position-based start.
+    pub use_pointer_offset: bool,
 }
 
 /// A file on the controller (DSP storage), apart from local projects. `None` size is "onbekend".
@@ -230,6 +237,8 @@ pub struct PlacementView {
     pub from_position_mm: Option<(f64, f64)>,
     /// `true` when the setup changed since this plan was compiled: compile again.
     pub setup_changed: bool,
+    /// The red-dot offset the anchor was moved by (machine-frame mm); `None` when none was used.
+    pub pointer_offset_mm: Option<(f64, f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -274,6 +283,8 @@ pub struct LaserCompile {
     /// The head position in machine-frame micrometres when it is fully known.
     pub current_position_um: Option<(i64, i64)>,
     pub user_origin_um: Option<(i64, i64)>,
+    /// The red-dot offset the placement aims with (machine-frame mm); `None`: aim with the beam.
+    pub pointer_offset_mm: Option<(f64, f64)>,
 }
 
 /// What the placement did to a compiled plan.
@@ -282,6 +293,8 @@ pub struct AppliedPlacement {
     pub spec: PlacementSpec,
     pub delta_mm: (f64, f64),
     pub from_position_um: Option<(i64, i64)>,
+    /// The red-dot offset the anchor was moved by, if any.
+    pub pointer_offset_mm: Option<(f64, f64)>,
     /// Identifies the setup the plan was compiled with (compared with the current setup).
     pub setup_key: u64,
 }
@@ -317,8 +330,14 @@ pub(crate) fn compile_placed(
         e => TaskError::Compile(e),
     })?;
     cancel.check().map_err(|_| TaskError::Cancelled)?;
-    let current_position = laser.current_position_um.map(um_to_point).transpose()?;
-    let user_origin = laser.user_origin_um.map(um_to_point).transpose()?;
+    // The dot, not the beam, is what the user parked on the material: the anchor goes to the position
+    // plus the measured offset. The shift is on the position, so the geometry is never touched.
+    let aim = |(x, y): (i64, i64)| match laser.pointer_offset_mm {
+        Some((dx, dy)) => (x + (dx * 1000.0).round() as i64, y + (dy * 1000.0).round() as i64),
+        None => (x, y),
+    };
+    let current_position = laser.current_position_um.map(aim).map(um_to_point).transpose()?;
+    let user_origin = laser.user_origin_um.map(aim).map(um_to_point).transpose()?;
     let input = burnburn_machine::PlacementInput { frame: &laser.frame, current_position, user_origin };
     let placed = place_plan(&plan, &laser.spec, laser.origin_bounds, &input)
         .map_err(|e| TaskError::Placement(LaserWhy::from(&e)))?;
@@ -331,6 +350,7 @@ pub(crate) fn compile_placed(
             StartFrom::CurrentPosition => laser.current_position_um,
             _ => None,
         },
+        pointer_offset_mm: laser.pointer_offset_mm,
         setup_key,
     };
     Ok((placed.plan, report, applied))

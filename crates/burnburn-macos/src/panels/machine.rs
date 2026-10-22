@@ -40,7 +40,14 @@ pub fn machine_panel(vm: Option<&MachineViewModel>, locale: Locale) -> MachinePa
 }
 
 /// A click on a machine control: `action` and `seen` go to presentation unchanged (idempotency,
-/// IM31); a disabled control sends nothing.
+/// IM31); a disabled control sends nothing. Start only asks for the confirmation (M06).
 pub fn machine_intent(document: Option<DocumentId>, button: &MachineButton) -> Option<UiIntent> {
-    button.enabled.then(|| UiIntent::Machine { document, action: button.action, seen: button.seen.clone() })
+    if !button.enabled {
+        return None;
+    }
+    // Start only asks (M06): the confirmation names job, machine, revision and place first.
+    if button.action.kind == burnburn_presentation::MachineAction::Start {
+        return Some(UiIntent::RequestStart { document });
+    }
+    Some(UiIntent::Machine { document, action: button.action, seen: button.seen.clone() })
 }

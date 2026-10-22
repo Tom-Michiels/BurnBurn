@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use burnburn_io::Project;
 use burnburn_machine::{
-    ControllerFileName, ExecutionState, FrameOptions, FrameShape, JobAnchor, JogKey, LaserAction, LiveFeature,
-    PlacementSpec, Rect, ScopeObject, StartFrom, UserOrigin, frame_plan_shaped, resolve_scope,
+    ControllerFileName, ExecutionState, FrameError, FrameOptions, FrameShape, JobAnchor, JogKey, LaserAction,
+    LiveFeature, PlacementSpec, Rect, ScopeObject, StartFrom, UserOrigin, frame_plan_aimed, resolve_scope,
 };
 use burnburn_types::{ContentHash, DocumentId, HashDomain, StableId};
 
@@ -47,6 +47,7 @@ pub(super) struct LaserState {
     pub(super) step_mm: f64,
     pub(super) frame_speed_mm_s: f64,
     pub(super) position_laser: bool,
+    pub(super) use_pointer_offset: bool,
     pub(super) last_refusal: Option<LaserWhy>,
 }
 
@@ -61,6 +62,7 @@ impl Default for LaserState {
             step_mm: DEFAULT_STEP_MM,
             frame_speed_mm_s: DEFAULT_FRAME_SPEED_MM_S,
             position_laser: false,
+            use_pointer_offset: true,
             last_refusal: None,
         }
     }
@@ -182,6 +184,8 @@ impl AppController {
                 step_mm: l.step_mm,
                 frame_speed_mm_s: l.frame_speed_mm_s,
                 position_laser_mode: l.position_laser,
+                pointer_offset_mm: self.pointer_offset_mm(),
+                use_pointer_offset: l.use_pointer_offset,
             },
             controls,
             files,
@@ -206,6 +210,7 @@ impl AppController {
             delta_mm: p.delta_mm,
             from_position_mm: p.from_position_um.map(|(x, y)| (mm_of(x), mm_of(y))),
             setup_changed: document.is_some_and(|d| self.placement_stale(d)),
+            pointer_offset_mm: p.pointer_offset_mm,
         })
     }
 
@@ -227,12 +232,22 @@ impl AppController {
         let mut h = DefaultHasher::new();
         (l.start_from, l.anchor, l.cut_selected, l.use_selection_origin).hash(&mut h);
         l.user_origin.map(|o| (o.x_um(), o.y_um())).hash(&mut h);
+        self.pointer_offset_in_use().map(|(x, y)| (x.to_bits(), y.to_bits())).hash(&mut h);
         if (l.cut_selected || l.use_selection_origin)
             && let Some(s) = self.sessions.get(&document)
         {
             s.selection.ids().hash(&mut h);
         }
         h.finish().max(1)
+    }
+
+    /// The red-dot offset the next placement aims with: only for the starts that depend on where the
+    /// head stands (the dot is what the user parks on the material), only while the switch is on and
+    /// the machine has a pointer proof. Never part of the cutting geometry (W09).
+    pub(super) fn pointer_offset_in_use(&self) -> Option<(f64, f64)> {
+        let l = &self.laser;
+        let position_based = matches!(l.start_from, StartFrom::CurrentPosition | StartFrom::UserOrigin);
+        (l.use_pointer_offset && position_based).then(|| self.pointer_offset_mm()).flatten()
     }
 
     /// The window's plan was compiled with another setup, or on a head position that has moved.
@@ -299,6 +314,7 @@ impl AppController {
             frame: *machine.profile.frame(),
             current_position_um,
             user_origin_um: l.user_origin.map(|o| (o.x_um(), o.y_um())),
+            pointer_offset_mm: self.pointer_offset_in_use(),
         };
         Ok(Some((compile, self.laser_setup_key(document))))
     }
@@ -344,6 +360,7 @@ impl AppController {
                 }
             }
             LaserSetup::ClearOrigin => self.laser.user_origin = None,
+            LaserSetup::UsePointerOffset(on) => self.laser.use_pointer_offset = on,
         }
         self.laser.last_refusal = refused;
         changed()
@@ -475,8 +492,14 @@ impl AppController {
         }
         let compiled = s.compiled.as_ref().ok_or(LaserWhy::NoReviewedPlan)?;
         let speed = self.laser.frame_speed_mm_s.min(machine.profile.max_speed_mm_s());
-        let frame = frame_plan_shaped(&compiled.plan, &FrameOptions { speed_mm_s: speed }, shape)
-            .map_err(|_| LaserWhy::NoReviewedPlan)?;
+        // The dot, not the beam, is what the user watches run along the job: the head is offset by minus
+        // the measured pointer offset. Unreachable outlines are refused, never clamped.
+        let dot = if self.laser.use_pointer_offset { self.pointer_offset_mm() } else { None };
+        let frame =
+            frame_plan_aimed(&compiled.plan, &FrameOptions { speed_mm_s: speed }, shape, dot).map_err(|e| match e {
+                FrameError::Plan(_) if dot.is_some() => LaserWhy::OutsideBed,
+                _ => LaserWhy::NoReviewedPlan,
+            })?;
         let rd = frame.rd_file(&machine.ruida).map_err(|_| LaserWhy::Refused)?;
         let mut project = Project::new(s.uuid, (*s.doc.snapshot()).clone());
         project.assets = s.assets.clone();

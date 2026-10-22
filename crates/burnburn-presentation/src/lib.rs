@@ -30,8 +30,11 @@ mod notes;
 mod offset;
 mod production;
 pub mod profile_file;
+mod recognition;
+mod remnants;
 mod schikken;
 mod search_panel;
+mod start_confirm;
 mod structure_panel;
 mod task;
 mod text_panel;
@@ -51,6 +54,8 @@ pub use barcode_panel::{
 pub use burnburn_generators::JobClock;
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
+/// The measured values a plan used (the plan panel names them and their proofs; W09).
+pub use burnburn_job::{AppliedCalibration, AppliedKind, ProofRef};
 /// What the preview window draws and picks (hosts need no job dependency of their own).
 pub use burnburn_job::{MachinePoint, MoveKind, PlanPreview, PreviewMove, SourceRef};
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
@@ -145,8 +150,14 @@ pub use production::{
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
 };
+pub use recognition::{
+    CandidateDecision, CandidateView, LocateJob, NccLocator, RecognitionIntent, RecognitionNote, RecognitionPhase,
+    RecognitionProblem, RecognitionViewModel, RunningCamera, TemplateLocator, TemplateView,
+};
+pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
+pub use start_confirm::{START_NEEDS, StartConfirmViewModel, StartEvidence};
 pub use structure_panel::{
     BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
     ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,

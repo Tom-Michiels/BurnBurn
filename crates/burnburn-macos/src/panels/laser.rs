@@ -89,6 +89,10 @@ pub enum LaserText {
     DiagnosticsPaths,
     DiagnosticsIds,
     DiagnosticsMessage,
+    PointerOffsetUse,
+    PointerOffsetNone,
+    PlacementWithDot,
+    PointerOffsetLabel,
 }
 
 impl LaserText {
@@ -165,6 +169,10 @@ impl LaserText {
         LaserText::DiagnosticsPaths,
         LaserText::DiagnosticsIds,
         LaserText::DiagnosticsMessage,
+        LaserText::PointerOffsetUse,
+        LaserText::PointerOffsetNone,
+        LaserText::PlacementWithDot,
+        LaserText::PointerOffsetLabel,
     ];
 }
 
@@ -258,6 +266,13 @@ fn pair(text: LaserText) -> (&'static str, &'static str) {
             "Het rapport is een replay van het journaal; er is geen contact met de machine. Privé-gegevens staan er alleen in als je ze aanvinkt.",
             "The report is a replay of the journal; there is no contact with the machine. Private data is included only if you tick it.",
         ),
+        T::PointerOffsetUse => ("Met de rode stip richten", "Aim with the red dot"),
+        T::PointerOffsetNone => (
+            "Geen pointeroffset gemeten voor deze machine; de kop wordt gebruikt.",
+            "No pointer offset measured for this machine; the head is used.",
+        ),
+        T::PlacementWithDot => ("rode stip", "red dot"),
+        T::PointerOffsetLabel => ("Rode stip", "Red dot"),
     }
 }
 
@@ -302,6 +317,11 @@ pub struct LaserPanel {
     pub cut_selected: bool,
     pub use_selection_origin: bool,
     pub position_laser_mode: bool,
+    /// The measured red-dot offset in words, or that there is none.
+    pub pointer_offset: String,
+    /// The switch "aim with the red dot"; only effective with a measured offset.
+    pub use_pointer_offset: bool,
+    pub can_use_pointer_offset: bool,
     pub step_mm: String,
     pub frame_speed: String,
     pub jog_held: bool,
@@ -324,6 +344,9 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
             cut_selected: false,
             use_selection_origin: false,
             position_laser_mode: false,
+            pointer_offset: String::new(),
+            use_pointer_offset: false,
+            can_use_pointer_offset: false,
             step_mm: String::new(),
             frame_speed: String::new(),
             jog_held: false,
@@ -342,7 +365,7 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
             return t(LaserText::PlacementStale).to_owned();
         }
         let shift = format!("{}; {}", mm_text(p.delta_mm.0, locale), mm_text(p.delta_mm.1, locale));
-        match p.from_position_mm {
+        let base = match p.from_position_mm {
             Some((x, y)) => format!(
                 "{} ({shift}) mm {} ({}; {}) mm",
                 t(LaserText::PlacementShift),
@@ -351,6 +374,18 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
                 mm_text(y, locale)
             ),
             None => format!("{} ({shift}) mm", t(LaserText::PlacementShift)),
+        };
+        // The offset the anchor was aimed with is said, never silently applied.
+        match p.pointer_offset_mm {
+            Some((x, y)) => {
+                format!(
+                    "{base}, {} ({}; {}) mm",
+                    t(LaserText::PlacementWithDot),
+                    mm_text(x, locale),
+                    mm_text(y, locale)
+                )
+            }
+            None => base,
         }
     });
     LaserPanel {
@@ -367,6 +402,14 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
         cut_selected: vm.setup.cut_selected,
         use_selection_origin: vm.setup.use_selection_origin,
         position_laser_mode: vm.setup.position_laser_mode,
+        pointer_offset: vm.setup.pointer_offset_mm.map_or_else(
+            || t(LaserText::PointerOffsetNone).to_owned(),
+            |(x, y)| {
+                format!("{}: ({}; {}) mm", t(LaserText::PointerOffsetLabel), mm_text(x, locale), mm_text(y, locale))
+            },
+        ),
+        use_pointer_offset: vm.setup.use_pointer_offset,
+        can_use_pointer_offset: vm.setup.pointer_offset_mm.is_some(),
         step_mm: mm_text(vm.setup.step_mm, locale),
         frame_speed: mm_text(vm.setup.frame_speed_mm_s, locale),
         jog_held: vm.jog_held.is_some(),

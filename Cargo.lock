@@ -273,6 +273,7 @@ dependencies = [
  "burnburn-document",
  "burnburn-gcode",
  "burnburn-geometry",
+ "burnburn-image",
  "burnburn-job",
  "burnburn-types",
  "image",

@@ -34,10 +34,16 @@ pub enum G5Panel {
     TracePrep,
     /// Venster ▸ Operatorweergave: machine, approved jobs and orders in one place (G6-werk, W08).
     Operator,
+    /// The confirmation before a start: opens by itself while the view model has one (G7-werk, M06).
+    StartConfirm,
+    /// Venster ▸ Restplaten: the remnant library and the remnant of an order (G7-werk, W07).
+    Remnants,
+    /// Venster ▸ Herkenning: learn a product from the camera picture, find it, decide, place (G7-werk, W06).
+    Recognition,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 8] = [
+    pub const ALL: [G5Panel; 11] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -46,6 +52,9 @@ impl G5Panel {
         G5Panel::Search,
         G5Panel::TracePrep,
         G5Panel::Operator,
+        G5Panel::StartConfirm,
+        G5Panel::Remnants,
+        G5Panel::Recognition,
     ];
 }
 
@@ -233,6 +242,48 @@ pub enum G5Control {
     OperatorOrderUpload {
         index: usize,
     },
+    // --- The confirmation before a start (G7-werk, M06).
+    StartConfirm,
+    StartCancel,
+    // --- The remnant library (G7-werk, W07).
+    RemnantName,
+    RemnantMaterial,
+    RemnantThickness,
+    RemnantNote,
+    RemnantDate,
+    /// Keep the selection as a remnant.
+    RemnantSave,
+    /// Draw remnant `id` in the window.
+    RemnantPlace {
+        id: u64,
+    },
+    RemnantRemove {
+        id: u64,
+    },
+    /// The remnant of order number `index` (a choice: none, or a remnant of the library).
+    RemnantOrder {
+        index: usize,
+    },
+    // --- Product recognition (G7-werk, W06).
+    /// The camera the template is learned from (a choice among the running cameras).
+    RecogCamera,
+    RecogX,
+    RecogY,
+    RecogWidth,
+    RecogHeight,
+    RecogName,
+    RecogLearn,
+    RecogForget,
+    RecogMinPercent,
+    RecogFind,
+    RecogCancel,
+    RecogAccept {
+        index: usize,
+    },
+    RecogReject {
+        index: usize,
+    },
+    RecogPlace,
 }
 
 /// One line of a panel.
@@ -297,7 +348,7 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search)
+    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search | G5Panel::StartConfirm)
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -373,6 +424,21 @@ pub fn g5_panel(
         G5Panel::Operator => {
             let lines = super::g6_werk::operator_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::Recognition => {
+            let lines = super::g7_werk::recognition_lines(doc, locale, draft)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RecognitionTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::Remnants => {
+            let lines = super::g7_werk::remnants_lines(doc, locale, draft)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RemnantsTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::StartConfirm => {
+            let lines = super::g7_werk::start_confirm_lines(doc, locale)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::StartConfirmTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
     };
@@ -721,6 +787,32 @@ pub fn g5_intent(
         G5Control::OperatorMachine { .. }
         | G5Control::OperatorUpload { .. }
         | G5Control::OperatorOrderUpload { .. } => super::g6_werk::operator_intent(doc, document, control),
+        G5Control::StartConfirm | G5Control::StartCancel => {
+            super::g7_werk::start_confirm_intent(doc, document, control)
+        }
+        G5Control::RemnantName
+        | G5Control::RemnantMaterial
+        | G5Control::RemnantThickness
+        | G5Control::RemnantNote
+        | G5Control::RemnantDate
+        | G5Control::RemnantSave
+        | G5Control::RemnantPlace { .. }
+        | G5Control::RemnantRemove { .. }
+        | G5Control::RemnantOrder { .. } => super::g7_werk::remnants_intent(doc, document, control, values),
+        G5Control::RecogCamera
+        | G5Control::RecogX
+        | G5Control::RecogY
+        | G5Control::RecogWidth
+        | G5Control::RecogHeight
+        | G5Control::RecogName
+        | G5Control::RecogLearn
+        | G5Control::RecogForget
+        | G5Control::RecogMinPercent
+        | G5Control::RecogFind
+        | G5Control::RecogCancel
+        | G5Control::RecogAccept { .. }
+        | G5Control::RecogReject { .. }
+        | G5Control::RecogPlace => super::g7_werk::recognition_intent(doc, document, control, values),
         G5Control::StructDefineName
         | G5Control::StructDefine
         | G5Control::PartPlaceX { .. }

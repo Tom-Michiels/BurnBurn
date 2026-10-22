@@ -74,6 +74,8 @@ pub(crate) struct DocWindow {
     pub(crate) status_label: Retained<NSTextField>,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub(crate) plan_labels: [Retained<NSTextField>; 5],
+    /// The measured values the plan used, one line each (W09).
+    pub(crate) plan_calibration: Retained<NSTextField>,
     /// What the GRBL backend refuses of the plan (pull-down under the findings; hidden on Ruida).
     pub(crate) grbl_refusals: Retained<objc2_app_kit::NSPopUpButton>,
     /// Kept alive for the pull-down (a control's target is not retained).
@@ -198,6 +200,11 @@ impl DocWindow {
         let state = col.add_label("", 34.0);
         state.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         let findings = col.add_label("", 18.0);
+        // The measured values the plan used and the proofs they come from (W09).
+        // One short line (the full text is its tooltip): the column has little room left under the plan.
+        let plan_calibration = col.add_label("", 14.0);
+        plan_calibration.setFont(Some(&NSFont::systemFontOfSize(10.0)));
+        plan_calibration.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
         // The GRBL refusals share the plan-identity row: that label truncates in the middle anyway.
         let popup_width = 104.0;
         let id_frame = plan_id.frame();
@@ -445,6 +452,7 @@ impl DocWindow {
             controls,
             status_label,
             plan_labels: [plan_title, plan_id, estimate, state, findings],
+            plan_calibration,
             grbl_refusals,
             grbl_refusal_target,
             compile_button,
@@ -534,6 +542,8 @@ impl DocWindow {
         {
             set_text(label, text);
         }
+        set_text(&self.plan_calibration, &panel.calibration.join("; "));
+        self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);
         let enabled = |k: CommandKey| vm.active == Some(document) && vm.commands.get(&k).is_some_and(|c| c.enabled);
         self.compile_button.setEnabled(enabled(CommandKey::Compile));

@@ -18,10 +18,11 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 - **CAM**: Tab Cut Power (vermogen per beweging in het plan; G5-cam, G6-machine); C06 is klaar. Common-line cutting en
   korrelrichting in de UI; aantal exemplaren per onderdeel in de nest (C12); delen-in-gaten en raster-gebonden benutting (C10);
   recepten in de bedieningsregels van bestaande projecten (C08, migratie).
-- **Werkpakketten van het plan**: kalibraties bewaren (io-DTO voor `LensCalibration`/`WorkspaceAlignment`, W04); herkenning
-  met beoordeling van meerdere treffers (W06); duurzame restenbibliotheek en orderkoppeling met een restplaat (W07); orders
-  die een vrijgegeven job zonder venster kiezen (W01/W02); pointeroffset toepassen en `PlanViewModel.calibration` tonen in het
-  plan-paneel (W09); het actieve apparaat bewaren tussen starts (M01).
+- **Werkpakketten van het plan** (golf 7 sloot W04, W07, W01/W02, W09 en de basis van W06, zie "G7-werk" hieronder): open blijft
+  bij W06 het herkennen van gedraaide/geschaalde producten (nu alleen translatie), het bewaren van geleerde sjablonen
+  (alleen in het geheugen) en het wijzen van het vak in het beeld (nu getypt); bij W07 open aantallen/exemplaren in de nest;
+  bij W09 het bewijs van de tekenconventie van de pointeroffset op een machine; bij W01/W02 dat een order een job uit de
+  historie op de naam van het onderdeel kiest (de naam van zo'n job is de bestandsnaam van het project).
 - **Editor**: extend- en fillet-UI, curve-trim (E05, IM09); modifierstapel in de inspecteur (E06); meerdere teksten
   tegelijk bewerken en tekst op pad als live binding (E07/E08); platen aanmaken/toewijzen, vormen van een onderdeel
   bewerken, variant hernoemen/verwijderen (S07, P06); kleine as van een ellips als sturende maat, raakt/punt-op-ellips (S01).
@@ -32,8 +33,9 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   zonder lokale correcties en toont de twee omtrekken in het paneel, niet op het canvas; T04 tekent de strepen maar geen
   knooppuntmarkeringen; P04 maakt Line-/Fill-operaties met standaardsnelheid en -vermogen (geen koppeling aan palet-
   kleuren).
-- **Machine**: bevestigingspaneel voor Start (M06); UI voor controllerinstellingen schrijven/herstellen (M09, wacht op
-  hardwarebewijs); plugin-loader en -paneel (X06, wacht op B-5).
+- **Machine**: UI voor controllerinstellingen schrijven/herstellen (M09, wacht op hardwarebewijs); plugin-loader en -paneel
+  (X06, wacht op B-5). Het bevestigingspaneel voor Start (M06) en het bewaren van het actieve apparaat (M01) bestaan sinds golf 7;
+  het paneel zegt eerlijk dat Start op geen enkele controller is bewezen.
 - **Prestaties/CI**: de 100k-benchmarks zijn `#[ignore]` en geen regressiedrempel in `verify` (X04); de GitHub-workflows
   (`ci.yml`, `release.yml`) zijn nooit gedraaid; fuzz-doelen (o.a. `grbl_status`) zijn gebouwd maar niet gedraaid (B-10).
 - **Tekst**: Arabisch (isol/init/medi/fina, lam-alef, tekenreeks in RTL) is getest met DejaVu Sans en gaf geen fout (G7-trace); marktekens (GPOS), kashida en Indische scripts niet; geen SHX-parser (geen permissieve Rust-crate).
@@ -42,7 +44,8 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 
 - Uiterlijk (licht/donker) van alle panelen die in golf 4–6 zijn bijgekomen: generatorpaneel en canvasvoorbeeld, zoekpaneel met
   voorbeeldplaatje, beeld voorbereiden, structuur, operatorweergave, machinehub, GRBL-venster, offset/reparatie, notities,
-  profielbestand-open, Device Settings-rijen, Vormen-menu-items.
+  profielbestand-open, Device Settings-rijen, Vormen-menu-items; in golf 7: restenpaneel, herkenningspaneel,
+  startbevestiging, rode-stipschakelaar met notitie in het laservenster, kalibratieregel onder het plan in het hoofdvenster.
 - OS-dialogen: NSOpenPanel/NSSavePanel (import, export, profielbestand, bewaarpaneel), het afsluit-alert bij een lopende
   transfer (`runModal`), het save-sheet van het diagnoserapport, CSV-kiezer, Tab-toets naar het canvas (key-view loop).
 - Weergave van RTL-tekst in canvas en tekstpaneel; barcode-leesproef; DXF in een CAD-programma openen; pasteboard tussen twee
@@ -54,6 +57,8 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 - De hele Win32-laag (`src/win32/**`, `src/win32_panels/**`) is alleen type-gecheckt en door clippy gehaald voor
   `x86_64-pc-windows-msvc`; headless modellen en de menu-/formulier-tests draaien op macOS. Dat geldt voor menubalk, formulieren,
   Tab/mnemonics/tooltips, `FormLine::Image` (`BurnBurnBitmap`), recente lijsten, opstartargument, API01-wiring.
+- De golf-7-formulieren (restplaten, herkenning, startbevestiging, rode-stipschakelaar en kalibratieregel in het laservenster) en
+  hun menu-id's 1070/1071 zijn alleen headless getest en door typecheck/clippy gehaald.
 - Media Foundation-camera (`win32/camera.rs`), MSIX (`makeappx`, ondertekenen, installeren, bestandskoppeling, SmartScreen), de
   Windows-job in `ci.yml`, Windows-replace van projectbestanden (IM04) en determinisme van libm-golden (IM02).
 
@@ -327,3 +332,14 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G7-trace | T04 strepen van de centerline op het canvas | – | scene-overlay `Overlay::ResultPreview` | `presentation/tests/g7_trace_overlay.rs::*` | klaar |
 | G7-trace | P04 lagen per kleur/pen bij PDF/HPGL | `ImportedPath.layer`, `ImportLayer` | `FilesIntent::SetImportLayers`, `ImportViewModel.layers_accepted`, `CompoundLabel::ImportLayers` | `io/tests/{pdf, hpgl}.rs`, `presentation/tests/g7_import_layers.rs::*`, `macos/tests/g7_import_layers_panel.rs`, `windows/tests/g7_import_layers_form.rs`, native `import_layers_native` | klaar |
 | G7-trace | Tekst: Arabische contextvormen | – (geen codefout gevonden) | – | `text/tests/arabic.rs::*` | klaar |
+
+## G7-werk
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G7-werk | W04 kalibraties bewaren en terugladen per camera en resolutie | `burnburn_io::camera_calibration_library::{encode,decode,save,load}_camera_calibrations` (nieuw, schema 1, `camera-calibration.json`) | `CalibrationRow.validity` bestond; laden bij het starten, bewaren na accepteren/opslaan/verwijderen | `io/tests/g7_camera_calibrations.rs::*`, `presentation/tests/g7_camera_persist.rs::*` | klaar (geen nieuw paneel nodig: de bestaande kalibratierijen); open: echte camera |
+| G7-werk | W06 herkenning met beoordeling van meerdere treffers | `burnburn_image::locate::{locate, crop_gray, check_template, gray_of_source}` (NCC, grof-naar-fijn, subpixel), poort `TemplateLocator` | `UiIntent::Recognition(RecognitionIntent::{Learn, Forget, Find, CancelFind, Decide, Place})`, `DocumentViewModel.recognition`, `G5Panel::Recognition`, `MenuItem::RecognitionPanel` (tag/id 1071) | `image/tests/g7_locate.rs::*`, `presentation/tests/g7_recognition.rs::*`, `macos/tests/g7_werk_recognition.rs::*`, `windows/tests/g7_recognition_form.rs::*` | klaar (headless, beide hosts); open: rotatie/schaal, sjablonen bewaren, wijzen in het beeld |
+| G7-werk | W07 duurzame restenbibliotheek en orderkoppeling met een restplaat | `burnburn_io::remnant_library::*` (nieuw, `remnants.json`) | `UiIntent::{Remnant(RemnantIntent), SetOrderRemnant}`, `DocumentViewModel.remnants`, `OrderViewModel.remnant_link`, `G5Panel::Remnants`, `MenuItem::RemnantsPanel` (tag/id 1070) | `io/tests/g7_remnant_library.rs::*`, `presentation/tests/g7_remnants.rs::*`, `macos/tests/g7_werk_remnants.rs::*`, `windows/tests/g7_remnants_form.rs::*` | klaar (headless, beide hosts); open: open aantallen in de nest |
+| G7-werk | W01/W02 orders kiezen een vrijgegeven job zonder venster | – (`stored_released` bestond) | `OrderViewModel.{job, candidates, needs_choice}` nu ook voor jobs uit de historie | `presentation/tests/g7_order_released.rs::*` | klaar |
+| G7-werk | W09 pointeroffset bij plaatsing en framerun; kalibratie onder het plan | `burnburn_machine::frame_plan_aimed` (nieuw, additief) | `LaserSetup::UsePointerOffset`, `LaserSetupView.{pointer_offset_mm, use_pointer_offset}`, `PlacementView.pointer_offset_mm`, `PlanPanel.calibration` | `presentation/tests/g7_pointer_offset.rs::*`, `machine/tests/g7_frame_aimed.rs::*`, `macos/tests/{g7_werk_laser_pointer, g7_werk_plan_calibration}.rs::*`, `windows/tests/g7_laser_pointer.rs::*`, native `laser_window` (schakelaar) | klaar; open: bewijs van de tekenconventie op een machine |
+| G7-werk | M01 het actieve apparaat bewaren tussen starts | hergebruikt `profile_library::{save,load}_profile_library_entries` voor `active-machine.json` | – (geen nieuw paneel: de start herstelt het apparaat) | `presentation/tests/g7_active_machine.rs::*` | klaar |
+| G7-werk | M06 bevestigingspaneel voor Start | – | `UiIntent::{RequestStart, ConfirmStart, CancelStart}`, `DocumentViewModel.start_confirm`, `G5Panel::StartConfirm` (opent vanzelf) | `presentation/tests/g7_start_confirm.rs::*`, `macos/tests/g7_werk_start_confirm.rs::*`, `windows/tests/g7_start_confirm_form.rs::*` | klaar (headless, beide hosts); Start blijft zonder hardwarebewijs getypeerd geweigerd en het paneel zegt dat |

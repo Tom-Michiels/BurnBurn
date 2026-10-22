@@ -128,6 +128,12 @@ pub struct DocumentViewModel {
     /// The compact operator view (W08), on every window while there is a machine service, an order
     /// or an approved job.
     pub operator: Option<OperatorViewModel>,
+    /// The confirmation before a start while one is open (M06).
+    pub start_confirm: Option<crate::start_confirm::StartConfirmViewModel>,
+    /// The remnant library (W07).
+    pub remnants: crate::remnants::RemnantsViewModel,
+    /// Template recognition in the camera picture (W06).
+    pub recognition: crate::recognition::RecognitionViewModel,
     /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
     pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
     /// Own recipes, the A/B comparison and the batch report of the open tracer (G7-trace, T10).
@@ -358,6 +364,8 @@ pub struct OrderViewModel {
     /// Executions of this order with Completed evidence. Never from uploads, stored or unknown.
     pub completed: u32,
     pub remnant: Option<String>,
+    /// How the named remnant compares with the order's job; `None` without a remnant.
+    pub remnant_link: Option<crate::remnants::RemnantLinkStatus>,
     /// The job that produces this order: the only candidate, or the explicit choice.
     pub job: Option<JobPlanId>,
     /// Approved jobs whose name matches the order's part.

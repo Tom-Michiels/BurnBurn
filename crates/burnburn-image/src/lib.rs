@@ -13,6 +13,7 @@ mod engrave;
 mod error;
 mod gray;
 mod lens;
+pub mod locate;
 mod mask;
 mod perspective;
 mod prepare;

@@ -37,13 +37,15 @@ use crate::panels::{
 };
 
 pub(crate) const WIDTH: f64 = 520.0;
-pub(crate) const HEIGHT: f64 = 700.0;
+pub(crate) const HEIGHT: f64 = 744.0;
 const MARGIN: f64 = 12.0;
 
 /// Tags of the three check boxes.
 const CHECK_CUT_SELECTED: isize = 0;
 const CHECK_SELECTION_ORIGIN: isize = 1;
 const CHECK_POSITION_LASER: isize = 2;
+/// The fourth, kept apart from the three (W09): aim the job with the red dot.
+const CHECK_POINTER_OFFSET: isize = 3;
 
 // ---------------------------------------------------------------------------------------------
 // Jog button: key-down on mouse-down, key-up on mouse-up (AppKit tracks the click in `super`).
@@ -275,6 +277,7 @@ define_class!(
                     CHECK_CUT_SELECTED => LaserSetup::CutSelected(on),
                     CHECK_SELECTION_ORIGIN => LaserSetup::UseSelectionOrigin(on),
                     CHECK_POSITION_LASER => LaserSetup::PositionLaserMode(on),
+                    CHECK_POINTER_OFFSET => LaserSetup::UsePointerOffset(on),
                     _ => return,
                 };
                 if let Some(app) = self.app() {
@@ -447,6 +450,9 @@ pub(crate) struct LaserSection {
     clear_origin: Retained<NSButton>,
     soft_stop: Retained<NSButton>,
     checks: [Retained<NSButton>; 3],
+    /// "Aim with the red dot" and the offset it uses, in words (W09).
+    pointer_check: Retained<NSButton>,
+    pointer_note: Retained<NSTextField>,
     start_from: Retained<NSSegmentedControl>,
     anchors: Vec<Retained<NSButton>>,
     step_field: Retained<NSTextField>,
@@ -599,6 +605,13 @@ pub(crate) fn laser_section(
         b
     };
     let position_check = checkbox(LaserText::PositionLaser, rect(MARGIN, at, inner, 22.0), CHECK_POSITION_LASER);
+    // The red dot (W09): the switch, and in words which measured offset it uses.
+    let at = row(22.0, 0.0);
+    let pointer_check = checkbox(LaserText::PointerOffsetUse, rect(MARGIN, at, inner, 22.0), CHECK_POINTER_OFFSET);
+    let at = row(14.0, 4.0);
+    let pointer_note = label(mtm, "", rect(MARGIN, at, inner, 14.0));
+    pointer_note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
+    content.addSubview(&pointer_note);
 
     // Home, origins.
     let at = row(28.0, 4.0);
@@ -782,6 +795,7 @@ pub(crate) fn laser_section(
         let tag = b.tag();
         wire_button(b, t_ref, sel!(laserCheck:), tag);
     }
+    wire_button(&pointer_check, t_ref, sel!(laserCheck:), CHECK_POINTER_OFFSET);
     // SAFETY: as in `wire_button`.
     unsafe { start_from.setTarget(Some(t_ref)) };
     // SAFETY: as above.
@@ -810,6 +824,8 @@ pub(crate) fn laser_section(
         clear_origin,
         soft_stop,
         checks,
+        pointer_check,
+        pointer_note,
         start_from,
         anchors,
         step_field,
@@ -855,6 +871,9 @@ pub struct LaserParts<'a> {
     pub start_from: &'a NSSegmentedControl,
     pub anchors: &'a [Retained<NSButton>],
     pub checks: &'a [Retained<NSButton>; 3],
+    /// The red-dot switch and the line that names the offset it uses (W09).
+    pub pointer_check: &'a NSButton,
+    pub pointer_note: &'a NSTextField,
     pub set_origin: &'a NSButton,
 }
 
@@ -871,6 +890,8 @@ impl LaserSection {
             start_from: &self.start_from,
             anchors: &self.anchors,
             checks: &self.checks,
+            pointer_check: &self.pointer_check,
+            pointer_note: &self.pointer_note,
             set_origin: &self.set_origin,
         }
     }
@@ -883,6 +904,7 @@ impl LaserSection {
             .iter()
             .chain([&self.move_button, &self.set_origin, &self.clear_origin, &self.soft_stop, &self.save_rd])
             .chain(self.checks.iter())
+            .chain(std::iter::once(&self.pointer_check))
             .chain(self.anchors.iter())
             .chain(self.file_buttons.iter());
         for b in buttons {
@@ -969,6 +991,9 @@ impl DocWindow {
         {
             b.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
         }
+        l.pointer_check.setEnabled(model.connected && model.can_use_pointer_offset);
+        l.pointer_check.setState(if model.use_pointer_offset { NSControlStateValueOn } else { NSControlStateValueOff });
+        set_text(&l.pointer_note, &model.pointer_offset);
         l.start_from.setSelectedSegment(segment_for_start_from(model.start_from));
         l.start_from.setEnabled(model.connected);
         for (i, b) in l.anchors.iter().enumerate() {
