@@ -172,8 +172,16 @@ pub struct Relation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Dim {
-    Mm { value: Num },
-    Param { name: String },
+    Mm {
+        value: Num,
+    },
+    Param {
+        name: String,
+    },
+    /// A formula over the parameters of the part (G8-editor).
+    Expr {
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use burnburn_geometry::{Affine, Path, Point, Rect, Shape};
 use burnburn_types::{CanonicalEncode, CanonicalWriter, ContentHash, HashDomain, Length, StableId};
 
-use super::{PartDefinitionId, PartInstanceId, PlateId};
+use super::{FormulaError, PartDefinitionId, PartInstanceId, PlateId, parse_formula};
 use crate::{
     DerivedKey, DerivedOutput, DerivedOwner, DocumentPatch, EvalDiagnosis, EvalStatus, ObjectKind, OwnerSolution,
 };
@@ -20,6 +20,8 @@ pub const PART_EVALUATOR_VERSION: u64 = 1;
 pub enum Dim {
     Mm(f64),
     Param(String),
+    /// A formula over the parameters of the part (G8-editor).
+    Expr(String),
 }
 
 /// A shape of a part definition, in the definition's own frame (mm).
@@ -124,14 +126,25 @@ pub(crate) fn evaluate_instance(id: PartInstanceId, def: &PartDefinition, inst: 
 
 /// A shape's path; `Err(name)` names the parameter (or field) whose value does not fit.
 fn shape_path(shape: &PartShape, values: &BTreeMap<String, Length>) -> Result<(ObjectKind, Path), String> {
-    let get = |d: &Dim, _field: &str| -> Result<f64, String> {
+    let get = |d: &Dim, field: &str| -> Result<f64, String> {
         match d {
             Dim::Mm(v) => Ok(*v),
             Dim::Param(p) => values.get(p).map(|v| v.mm()).ok_or_else(|| p.clone()),
+            Dim::Expr(text) => {
+                let formula = parse_formula(text).map_err(|_| field.to_owned())?;
+                formula.eval(values).map_err(|e| match e {
+                    FormulaError::UnknownName(n) => n,
+                    _ => formula.names().into_iter().next().unwrap_or_else(|| field.to_owned()),
+                })
+            }
         }
     };
     let name = |d: &Dim, field: &str| match d {
         Dim::Param(p) => p.clone(),
+        // A formula that gives no usable size names the first parameter it reads.
+        Dim::Expr(text) => {
+            parse_formula(text).ok().and_then(|f| f.names().into_iter().next()).unwrap_or_else(|| field.to_owned())
+        }
         Dim::Mm(_) => field.to_owned(),
     };
     let positive = |d: &Dim, field: &str| -> Result<Length, String> {
@@ -164,6 +177,10 @@ fn dim(out: &mut CanonicalWriter, d: &Dim) {
         Dim::Param(p) => {
             out.tag("param");
             out.str(p);
+        }
+        Dim::Expr(text) => {
+            out.tag("expr");
+            out.str(text);
         }
     }
 }
