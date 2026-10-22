@@ -48,6 +48,7 @@ mod geometry;
 mod history_panel;
 mod image;
 mod import;
+mod kerf_view;
 mod laser;
 mod layers;
 mod library;

@@ -95,6 +95,7 @@ impl AppController {
         let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         sketch_overlays.extend(super::nest::scene_overlays(s));
         sketch_overlays.extend(super::array_dialog::scene_overlays(s));
+        sketch_overlays.extend(super::kerf_view::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
