@@ -191,8 +191,14 @@ impl AutomationPump {
     }
 
     fn publish(&self, app: &dyn AutomationApp) {
+        self.publish_status(&app.view());
+    }
+
+    /// Makes `vm` the status the listener answers STATUS with (the host calls this after every
+    /// refresh, so a reply is never older than the last update).
+    pub fn publish_status(&self, vm: &AppViewModel) {
         if let Ok(mut status) = self.status.lock() {
-            *status = status_of(&app.view(), self.active.is_some());
+            *status = status_of(vm, self.active.is_some());
         }
     }
 
@@ -455,8 +461,17 @@ impl Automation {
         self.runtime.start(self.port, self.host.clone()).inspect_err(|_| self.start_failed = true)
     }
 
+    /// Another port for the next start (tests; `0` picks a free one).
+    pub fn set_port(&mut self, port: u16) {
+        self.port = port;
+    }
+
     pub fn observe(&mut self, effects: &[HostEffect]) {
         self.pump.observe(effects);
+    }
+
+    pub fn publish_status(&self, vm: &AppViewModel) {
+        self.pump.publish_status(vm);
     }
 
     pub fn step(&mut self, app: &mut dyn AutomationApp, now_ms: u64) {

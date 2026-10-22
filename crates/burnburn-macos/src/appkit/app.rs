@@ -31,6 +31,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSString, NSTimer};
 
 mod app_host;
+mod automation;
 mod cam_host;
 mod camera_host;
 mod files_host;
@@ -155,6 +156,10 @@ pub struct HostApp {
     display_tolerance_px: Cell<f64>,
     applied_shortcut_revision: Cell<u64>,
     menu_key_report: RefCell<app_host::MenuKeyReport>,
+    /// Desktop automation (API01): the listener follows the preference, the pump runs its requests.
+    automation: RefCell<crate::automation_host::Automation>,
+    /// The clock the automation pump measures its time limit with.
+    started: std::time::Instant,
 }
 
 /// Ask the running host (on the main queue, after the current callback) to autosave: used when a
@@ -196,6 +201,9 @@ impl HostApp {
                 });
             });
         });
+        // The automation listener wakes the main thread the same way a finished task does.
+        let automation_wake = Arc::clone(&wake);
+        let automation_fs = Arc::clone(&fs);
         let (port, inbox) = task_channel(wake);
         let ports = AppPorts { tasks: Arc::new(port), fs, new_project_uuid: Arc::new(random_uuid) };
         let locale = options.locale.unwrap_or_else(super::system_locale);
@@ -241,6 +249,8 @@ impl HostApp {
                 display_tolerance_px: Cell::new(burnburn_presentation::DisplayQuality::Smooth.tolerance_px()),
                 applied_shortcut_revision: Cell::new(0),
                 menu_key_report: RefCell::new(app_host::MenuKeyReport::default()),
+                automation: RefCell::new(crate::automation_host::Automation::new(automation_fs, automation_wake)),
+                started: std::time::Instant::now(),
             }
         });
         if let Ok(mut controller) = app.controller.try_borrow_mut() {
@@ -451,6 +461,8 @@ impl HostApp {
             };
             self.apply(&update);
         }
+        // The automation listener's wake-up lands here too: its requests start, finished tasks end them.
+        self.automation_step();
     }
 
     // ---- Application delegate ----------------------------------------------------------------
@@ -462,7 +474,10 @@ impl HostApp {
             // A second Cmd-Q while the questions are up: keep waiting for them.
             return NSApplicationTerminateReply::TerminateLater;
         }
-        let Some(flow) = QuitFlow::begin(&self.view()) else { return NSApplicationTerminateReply::TerminateNow };
+        let Some(flow) = QuitFlow::begin(&self.view()) else {
+            self.shutdown_automation();
+            return NSApplicationTerminateReply::TerminateNow;
+        };
         if let Ok(mut quit) = self.quit.try_borrow_mut() {
             *quit = Some(flow);
         }
@@ -507,6 +522,9 @@ impl HostApp {
         }
         if let Ok(mut outcomes) = self.quit_outcomes.try_borrow_mut() {
             outcomes.push(outcome);
+        }
+        if outcome == QuitOutcome::Terminate {
+            self.shutdown_automation();
         }
         if self.options.terminate_on_quit {
             NSApplication::sharedApplication(self.mtm)
@@ -761,6 +779,7 @@ impl HostApp {
     }
 
     fn apply(&self, update: &AppUpdate) {
+        self.automation_observe(&update.effects);
         for effect in &update.effects {
             if let Ok(mut quit) = self.quit.try_borrow_mut()
                 && let Some(flow) = quit.as_mut()
@@ -897,6 +916,7 @@ impl HostApp {
         self.refresh_cam_panels();
         self.refresh_camera_window();
         self.refresh_app_panels();
+        self.automation_publish(&vm);
     }
 
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
