@@ -23,6 +23,7 @@ pub(super) fn window_items() -> Vec<MenuNode> {
         host(Item::App(AppAction::Preview)),
         host(Item::App(AppAction::InspectRd)),
         host(Item::App(AppAction::History)),
+        host(Item::App(AppAction::MachineHub)),
     ]
 }
 

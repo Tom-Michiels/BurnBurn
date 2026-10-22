@@ -26,10 +26,15 @@ pub mod app_text;
 /// shared with the macOS host.
 #[path = "../../burnburn-macos/src/automation_host.rs"]
 pub mod automation_host;
+/// The machine hub window as plain data (G5-machine-rest), shared with the macOS host.
+#[path = "../../burnburn-macos/src/hub_panel.rs"]
+pub mod hub_panel;
 #[path = "../../burnburn-macos/src/l10n_files.rs"]
 pub mod l10n_files;
 #[path = "../../burnburn-macos/src/l10n_g5.rs"]
 pub mod l10n_g5;
+#[path = "../../burnburn-macos/src/l10n_machine.rs"]
+pub mod l10n_machine;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]
 pub mod panels;
 #[path = "../../burnburn-macos/src/panels_files.rs"]

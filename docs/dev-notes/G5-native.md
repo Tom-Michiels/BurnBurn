@@ -83,3 +83,14 @@ schoon; `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-
 - Reparatie voor/na is native niet getest (een open contour met de pen tekenen is niet pixelbetrouwbaar); het model is
   headless gedekt op beide hosts.
 - Een echte automatiseringsclient buiten het proces; echte LightBurn-compatibiliteit is niet geclaimd.
+
+## Machinehub-venster op Windows (extra opdracht, na merge van `integratie/golf-5` met G5-machine-rest)
+
+- Merge: conflicten in `macos/src/lib.rs`, `appkit/panels/mod.rs`, `appkit/app.rs` (update-gate-vraag en `shutdown_automation` samengevoegd) en de wachtrij; beide kanten behouden.
+- Windows: `AppAction::MachineHub` (laatste in `ALL`, dus bestaande menu-ids ongewijzigd), `AppSheet::Hub`, `host_panels/hub.rs`
+  (spec + events over het gedeelde `hub_panel.rs`/`l10n_machine.rs`, via `#[path]` meegecompileerd), `AppInput.hub`,
+  `Snapshot.hub`, Venster-popup: ... History, Machine en productie (zelfde plek als de Mac). Eén scrollend paneel met koppen i.p.v. tabbladen;
+  geschiedenis en proeven zijn lijsten (de Mac gebruikt pop-ups).
+- Tests `windows/tests/g5_hub.rs` (5). Rood: stub `hub_spec` leeg, `on_hub` Nothing -> 4 FAILED, 1 ok (id-/menu-test); groen: 5 ok
+  (een eigen fout gevonden door de id-test: bijschrift-id viel buiten het app-blok, gecorrigeerd). `menus.rs::every_popup_has_the_macos_items_in_the_macos_order` weer groen.
+- Win32-laag ongewijzigd: de manager bouwt elk `AppSheet` generiek uit de spec; alleen type-check + clippy (`x86_64-pc-windows-msvc`), geen Windows-run.

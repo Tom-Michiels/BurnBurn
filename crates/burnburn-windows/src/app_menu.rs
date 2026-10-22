@@ -32,10 +32,12 @@ pub enum AppAction {
     Manual,
     SupportData,
     DebugLog,
+    /// Venster: Machine en productie (G5-machine-rest).
+    MachineHub,
 }
 
 impl AppAction {
-    pub const ALL: [AppAction; 9] = [
+    pub const ALL: [AppAction; 10] = [
         AppAction::About,
         AppAction::Preferences,
         AppAction::Shortcuts,
@@ -45,6 +47,7 @@ impl AppAction {
         AppAction::Manual,
         AppAction::SupportData,
         AppAction::DebugLog,
+        AppAction::MachineHub,
     ];
 
     /// The `WM_COMMAND` id of this item (inside the app block of the lane's menu ids).
@@ -69,6 +72,7 @@ impl AppAction {
             AppAction::Manual => AppText::Manual,
             AppAction::SupportData => AppText::SupportData,
             AppAction::DebugLog => AppText::DebugLog,
+            AppAction::MachineHub => AppText::MachineHub,
         };
         app_text(text, locale)
     }
@@ -84,7 +88,8 @@ impl AppAction {
             | AppAction::Preferences
             | AppAction::Shortcuts
             | AppAction::SupportData
-            | AppAction::DebugLog => true,
+            | AppAction::DebugLog
+            | AppAction::MachineHub => true,
         }
     }
 
@@ -100,6 +105,7 @@ impl AppAction {
             AppAction::Manual => "host.manual",
             AppAction::SupportData => "host.support_bundle",
             AppAction::DebugLog => "host.debug_log",
+            AppAction::MachineHub => "host.machine_hub",
         }
     }
 }
@@ -204,6 +210,7 @@ pub fn action_reaction(action: AppAction, vm: &AppViewModel, help: &HelpInfo, lo
         AppAction::Preview => sheet(AppSheet::Preview),
         AppAction::InspectRd => sheet(AppSheet::Rd),
         AppAction::SupportData | AppAction::DebugLog => sheet(AppSheet::Support),
+        AppAction::MachineHub => sheet(AppSheet::Hub),
         AppAction::Manual => help
             .manual_url
             .map_or(PanelReaction::Nothing, |url| PanelReaction::Host(HostRequest::OpenUrl(url.to_owned()))),

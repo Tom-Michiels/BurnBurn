@@ -9,6 +9,7 @@ mod art;
 mod bundle;
 mod export;
 mod material;
+mod profile_keep;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -121,6 +122,9 @@ pub(super) struct Libraries {
     /// The profile library file could not be read: it is kept as it is and never written (P07).
     profiles_unreadable: bool,
     profile_writer: Writer,
+    /// Replaced active profiles waiting for the library file to be read before they are merged
+    /// into `profiles` and written (P07, `profile_keep`).
+    kept: Vec<Arc<burnburn_job::MachineProfile>>,
     /// Colours of the layer palette, slot by slot (the host owns the palette).
     palette: Vec<[u8; 3]>,
 }
@@ -295,6 +299,7 @@ impl AppController {
                 }
                 self.libs.thumbnails = thumbnails.into_iter().map(|(id, t)| (id, Arc::new(t))).collect();
                 self.libs.state = LoadState::Ready;
+                self.merge_kept_profiles();
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
             _ => self.libs.state = LoadState::NotLoaded,

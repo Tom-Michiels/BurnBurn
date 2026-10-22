@@ -50,6 +50,8 @@ mod laser;
 mod layers;
 mod library;
 mod machine;
+mod machine_hub;
+mod machine_rest;
 mod nest;
 mod notes;
 mod offset_preview;
@@ -80,6 +82,7 @@ mod view;
 pub use app_panels::{AppIntent, NudgeDirection, NudgeStep};
 pub use camera::CameraSpawner;
 pub use history_panel::{HistoryRow, HistoryViewModel};
+pub use machine_rest::MachineActivity;
 pub use prefs::{
     DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
     Preferences, PrefsViewModel,
@@ -267,6 +270,8 @@ struct Session {
     uuid: ProjectUuid,
     assets: AssetStore,
     close_after_save: bool,
+    /// Where the previous file was kept by the last save over an older or unreadable one (X07).
+    previous_version: Option<PathBuf>,
     /// Sketch mode: the open sketch and its selection (window state, never document data).
     sketch: sketch::SketchState,
     /// The geometry dialog (join, round corners, optimize) while it is open.
@@ -350,6 +355,7 @@ impl Session {
             uuid: project.0,
             assets: project.1,
             close_after_save: false,
+            previous_version: None,
             sketch: sketch::SketchState::default(),
             geometry_dialog: None,
             options: shapes::ToolOptions::default(),
@@ -404,6 +410,8 @@ pub struct AppController {
     machine: Option<Machine>,
     /// The machine service (one owner of the connection, shared with other windows/views).
     machine_port: Option<Arc<dyn MachinePort>>,
+    /// Machine hub state: a repeat in preparation and the calibration measurements (G5).
+    hub: machine_hub::HubState,
     role: Role,
     orders: Vec<Order>,
     /// Which order an upload was made for: only these executions count for that order.
@@ -450,6 +458,11 @@ pub struct AppController {
 }
 
 impl AppController {
+    /// Where the last save of `document` kept the previous file (an older or unreadable one), if it did.
+    pub fn previous_version(&self, document: DocumentId) -> Option<PathBuf> {
+        self.sessions.get(&document)?.previous_version.clone()
+    }
+
     pub fn new(ports: AppPorts) -> Self {
         AppController {
             ports,
@@ -460,6 +473,7 @@ impl AppController {
             opening: BTreeMap::new(),
             machine: None,
             machine_port: None,
+            hub: machine_hub::HubState::default(),
             role: Role::Designer,
             orders: Vec::new(),
             order_executions: BTreeMap::new(),
@@ -586,9 +600,15 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.machine = Some(Machine { profile: Arc::from(profile), ruida });
+                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
+            UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),
+            UiIntent::RepeatExecution { execution } => self.hub_repeat(execution),
+            UiIntent::ConfirmRepeat { document } => self.hub_confirm_repeat(document),
+            UiIntent::CancelRepeat => self.hub_cancel_repeat(),
+            UiIntent::RecordCalibration { input } => self.hub_record_calibration(input),
+            UiIntent::RemoveCalibration { id } => self.hub_remove_calibration(id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
             UiIntent::ExportRd { document, path } => self.export_rd(document, path),
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
@@ -862,6 +882,9 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             s.issues = geometry_issues(&snapshot);
             s.cycle = None;
             s.messages.clear();
+            if let Some(dropped) = machine_rest::trimmed_steps(&outcome.warnings) {
+                s.messages.push(StatusMessage { key: MessageKey::HistoryTrimmed(dropped) });
+            }
             s.problem = None;
             layers::sync(s);
             sketch::sync(s);

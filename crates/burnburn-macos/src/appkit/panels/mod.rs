@@ -16,6 +16,8 @@ pub(crate) mod files_ui;
 // `define_class!` and `msg_send!` need unsafe (the golf-5 panels have their own small target object).
 #[allow(unsafe_code)]
 pub(crate) mod g5;
+#[allow(unsafe_code)]
+pub(crate) mod hub;
 pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;

@@ -36,6 +36,7 @@ mod cam_host;
 mod camera_host;
 mod files_host;
 mod g5_host;
+mod hub_host;
 pub use app_host::{MenuKeyReport, app_user_dir};
 mod laser_host;
 pub use cam_host::CamPanelParts;
@@ -53,6 +54,7 @@ use crate::adapter::{
 use crate::l10n::{HostText, Locale, close_alert_title, host_text};
 use crate::lifecycle::{QuitFlow, QuitStep, RECOVERY_ALERT_BUTTONS, open_requests, recovery_message};
 use crate::panels::CameraControl;
+use crate::quit_guard::{GUARD_ALERT_BUTTONS, GuardChoice, guard_button, guard_choice, guard_message, quit_guard};
 use crate::tasks::{TaskInbox, task_channel};
 
 /// Host behaviour that differs between the app and native tests.
@@ -474,6 +476,17 @@ impl HostApp {
             // A second Cmd-Q while the questions are up: keep waiting for them.
             return NSApplicationTerminateReply::TerminateLater;
         }
+        // Update gate: a transfer, a stored or running job or live control needs a confirmation
+        // that names the reason, before any document question.
+        let busy = self.controller.try_borrow().ok().and_then(|c| quit_guard(&c.machine_activity()));
+        if let Some(reason) = busy
+            && !self.confirm_quit_while_busy(reason)
+        {
+            if let Ok(mut outcomes) = self.quit_outcomes.try_borrow_mut() {
+                outcomes.push(QuitOutcome::Cancelled);
+            }
+            return NSApplicationTerminateReply::TerminateCancel;
+        }
         let Some(flow) = QuitFlow::begin(&self.view()) else {
             self.shutdown_automation();
             return NSApplicationTerminateReply::TerminateNow;
@@ -483,6 +496,25 @@ impl HostApp {
         }
         self.advance_quit();
         NSApplicationTerminateReply::TerminateLater
+    }
+
+    /// The update-gate alert (modal): true only when the user chose "Toch afsluiten".
+    fn confirm_quit_while_busy(&self, reason: burnburn_runtime::update_gate::DeferReason) -> bool {
+        let (title, info) = guard_message(reason, self.locale);
+        let alert = NSAlert::new(self.mtm);
+        alert.setMessageText(&NSString::from_str(title));
+        alert.setInformativeText(&NSString::from_str(info));
+        for choice in GUARD_ALERT_BUTTONS {
+            alert.addButtonWithTitle(&NSString::from_str(guard_button(choice, self.locale)));
+        }
+        let response = match objc_try("showing the quit guard", || alert.runModal()) {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("burnburn: {e}");
+                return false;
+            }
+        };
+        guard_choice(response) == GuardChoice::QuitAnyway
     }
 
     fn advance_quit(&self) {

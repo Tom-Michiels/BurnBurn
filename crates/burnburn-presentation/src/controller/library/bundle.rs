@@ -396,13 +396,20 @@ impl AppController {
         for p in outcome.profiles_to_replace {
             let id = p.revision().id.clone();
             let p = Arc::new(p);
-            match self.machine.as_mut().filter(|m| m.profile.revision().id == id) {
-                // The active machine: existing plans become stale, exactly as when the profile is chosen.
-                Some(active) => active.profile = p,
-                None => match self.libs.profiles.iter_mut().find(|k| k.revision().id == id) {
-                    Some(slot) => *slot = p,
-                    None => self.libs.profiles.push(p),
-                },
+            match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
+                // The active machine: existing plans become stale, exactly as when the profile is
+                // chosen; the revision that is replaced stays in the profile library (P07).
+                Some(active) => {
+                    let ruida = active.ruida;
+                    self.replace_active_machine(super::super::machine::Machine { profile: p, ruida });
+                }
+                None => {
+                    match self.libs.profiles.iter_mut().find(|k| k.revision().id == id) {
+                        Some(slot) => *slot = p,
+                        None => self.libs.profiles.push(p),
+                    }
+                    self.flush_profiles();
+                }
             }
         }
         let mut write_templates = None;

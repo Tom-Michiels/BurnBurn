@@ -129,6 +129,7 @@ pub(super) fn window_menu(
         app(AppAction::Preview),
         app(AppAction::InspectRd),
         app(AppAction::History),
+        app(AppAction::MachineHub),
         sep(),
         raw_item(mtm, t(AppText::Minimize), Some(sel!(performMiniaturize:)), "m"),
         raw_item(mtm, t(AppText::ZoomWindow), Some(sel!(performZoom:)), ""),
@@ -349,6 +350,7 @@ impl HostApp {
             AppAction::Preferences => self.show_prefs(),
             AppAction::Shortcuts => self.show_shortcuts(),
             AppAction::History => self.show_history(),
+            AppAction::MachineHub => self.show_machine_hub(),
             AppAction::Preview => self.show_preview(),
             AppAction::InspectRd => self.show_rd(),
             AppAction::Manual => self.open_manual(),
@@ -403,15 +405,15 @@ impl HostApp {
         self.controller.try_borrow().ok()?.preview_view(document)
     }
 
-    fn float(&self) -> bool {
+    pub(super) fn float(&self) -> bool {
         self.options.float_windows
     }
 
-    fn with_panels<T>(&self, f: impl FnOnce(&mut AppPanels) -> T) -> Option<T> {
+    pub(super) fn with_panels<T>(&self, f: impl FnOnce(&mut AppPanels) -> T) -> Option<T> {
         self.app_panels.try_borrow_mut().ok().map(|mut p| f(&mut p))
     }
 
-    fn active_document(&self) -> Option<DocumentId> {
+    pub(super) fn active_document(&self) -> Option<DocumentId> {
         self.view().active
     }
 
@@ -1128,6 +1130,9 @@ impl HostApp {
         }
         if open(|p| p.rd.is_some()) {
             self.refresh_rd();
+        }
+        if open(|p| p.hub.is_some()) {
+            self.refresh_hub();
         }
     }
 }
