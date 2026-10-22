@@ -59,6 +59,7 @@ fn form(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues, panel: G
             G5Line::Check { control, caption, on } => {
                 lines.push(FormLine::Check { id: id(control), caption, on, enabled: true })
             }
+            G5Line::Image(image) => lines.push(FormLine::Image(image)),
             G5Line::Button { control, title, enabled } => {
                 let short = title.chars().count() <= SHORT_BUTTON;
                 let button = FormButton::new(id(control), title, enabled);

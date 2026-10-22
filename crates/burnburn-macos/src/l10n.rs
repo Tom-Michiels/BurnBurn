@@ -952,6 +952,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ShowNotes => ("Notities tonen", "Show Notes"),
         C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
         C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
+        C::SearchProjects => ("Zoek projecten…", "Find Projects…"),
         C::GeneratorNew => ("Doos of scharnier…", "Box or Hinge…"),
         C::GeneratorEdit => ("Bewerk generator…", "Edit Generator…"),
         other => return l10n_schikken::command_pair(other),

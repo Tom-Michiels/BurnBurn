@@ -4,12 +4,14 @@
 //! value presentation already shows sends nothing.
 
 use burnburn_presentation::{
-    DocumentViewModel, GeneratorEdit, GeneratorField, GeneratorIssue, GeneratorKind, GeneratorProblem, UiIntent,
+    DocumentViewModel, FilesIntent, GeneratorEdit, GeneratorField, GeneratorIssue, GeneratorKind, GeneratorProblem,
+    SearchField, SearchResultRow, UiIntent,
 };
 use burnburn_types::DocumentId;
 
 use super::g5::{G5Control, G5Line, flag_of, index_of, value_of};
 use crate::l10n::Locale;
+use crate::panels_image::BitmapImage;
 use crate::l10n_g6::{G6Text, g6_fmt, g6_text};
 
 const KINDS: [GeneratorKind; 2] = [GeneratorKind::FingerBox, GeneratorKind::LivingHinge];
@@ -131,4 +133,154 @@ pub(super) fn generator_intent(
         _ => return None,
     };
     Some(UiIntent::Generator { document, edit })
+}
+
+// --- Project search (P08) ---------------------------------------------------------------------------
+
+/// `2026-06-18 14:30 UTC` for seconds since the Unix epoch (the file system knows no time zone).
+fn utc_text(seconds: u64) -> String {
+    let days = i64::try_from(seconds / 86_400).unwrap_or(0);
+    let rest = seconds % 86_400;
+    // Civil date from days since 1970-01-01 (Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02} UTC", rest / 3600, rest % 3600 / 60)
+}
+
+fn found_in(field: SearchField) -> G6Text {
+    match field {
+        SearchField::FileName => G6Text::SearchFieldFileName,
+        SearchField::Object => G6Text::SearchFieldObject,
+        SearchField::Operation => G6Text::SearchFieldOperation,
+        SearchField::Material => G6Text::SearchFieldMaterial,
+        SearchField::Part => G6Text::SearchFieldPart,
+        SearchField::Plate => G6Text::SearchFieldPlate,
+        _ => G6Text::SearchFieldRevision,
+    }
+}
+
+/// The result and revision the panel shows, from what the user chose (the first when unknown).
+fn chosen<'a>(
+    results: &'a [SearchResultRow],
+    values: &[(G5Control, String)],
+) -> Option<(usize, &'a SearchResultRow, usize)> {
+    let index = index_of(values, G5Control::SearchResult).unwrap_or(0).min(results.len().checked_sub(1)?);
+    let row = results.get(index)?;
+    let revision = index_of(values, G5Control::SearchRevision).unwrap_or(0).min(row.revisions.len().saturating_sub(1));
+    Some((index, row, revision))
+}
+
+/// The lines of the search panel, or `None` while the search is closed.
+pub(super) fn search_lines(
+    doc: &DocumentViewModel,
+    locale: Locale,
+    draft: &[(G5Control, String)],
+) -> Option<Vec<G5Line>> {
+    let search = doc.files.search.as_ref()?;
+    let t = |x: G6Text| g6_text(x, locale).to_owned();
+    let mut lines = vec![
+        G5Line::Field { control: G5Control::SearchFolder, caption: t(G6Text::SearchFolderCaption), text: search.folder.clone() },
+        G5Line::Field { control: G5Control::SearchQuery, caption: t(G6Text::SearchQueryCaption), text: search.query.clone() },
+        G5Line::Button { control: G5Control::SearchRescan, title: t(G6Text::SearchRescan), enabled: !search.scanning },
+    ];
+    if search.scanning {
+        lines.push(G5Line::Text(t(G6Text::SearchScanning)));
+    } else if search.folder_unreadable {
+        lines.push(G5Line::Problem(t(G6Text::SearchFolderUnreadable)));
+    } else if let Some(scanned) = search.scanned {
+        lines.push(G5Line::Text(g6_fmt(G6Text::SearchScanned, locale, &[&scanned.to_string()])));
+    }
+    for issue in &search.issues {
+        lines.push(G5Line::Problem(g6_fmt(G6Text::SearchIssue, locale, &[&issue.file_name])));
+    }
+    let Some((index, row, revision)) = chosen(&search.results, draft) else {
+        if search.scanned.is_some() && !search.folder_unreadable {
+            lines.push(G5Line::Text(t(G6Text::SearchNone)));
+        }
+        lines.push(G5Line::Button { control: G5Control::SearchClose, title: t(G6Text::SearchClose), enabled: true });
+        return Some(lines);
+    };
+    lines.push(G5Line::Choice {
+        control: G5Control::SearchResult,
+        caption: t(G6Text::SearchResultCaption),
+        options: search
+            .results
+            .iter()
+            .map(|r| match r.modified {
+                Some(seconds) => format!("{} - {}", r.file_name, utc_text(seconds)),
+                None => r.file_name.clone(),
+            })
+            .collect(),
+        selected: index,
+    });
+    if let Some(thumbnail) = &row.thumbnail {
+        let rgba = thumbnail.coverage.iter().flat_map(|c| [255 - c, 255 - c, 255 - c, 255]).collect();
+        lines.push(G5Line::Image(BitmapImage { width: thumbnail.width, height: thumbnail.height, rgba }));
+    }
+    let objects = row.objects.to_string();
+    lines.push(G5Line::Text(match row.modified {
+        Some(seconds) => g6_fmt(G6Text::SearchInfo, locale, &[&objects, &utc_text(seconds)]),
+        None => g6_fmt(G6Text::SearchInfoUnknown, locale, &[&objects]),
+    }));
+    if !row.matched.is_empty() {
+        let fields: Vec<&str> = row.matched.iter().map(|f| g6_text(found_in(*f), locale)).collect();
+        lines.push(G5Line::Text(g6_fmt(G6Text::SearchFoundIn, locale, &[&fields.join(", ")])));
+    }
+    if !row.revisions.is_empty() {
+        lines.push(G5Line::Choice {
+            control: G5Control::SearchRevision,
+            caption: t(G6Text::SearchRevisionCaption),
+            options: row.revisions.iter().map(|r| format!("{}: {}", r.number, r.label)).collect(),
+            selected: revision,
+        });
+    }
+    lines.push(G5Line::Button { control: G5Control::SearchOpenProject, title: t(G6Text::SearchOpenProject), enabled: true });
+    lines.push(G5Line::Button {
+        control: G5Control::SearchOpenRevision,
+        title: t(G6Text::SearchOpenRevision),
+        enabled: !row.revisions.is_empty(),
+    });
+    lines.push(G5Line::Button { control: G5Control::SearchClose, title: t(G6Text::SearchClose), enabled: true });
+    Some(lines)
+}
+
+/// The intent of a search-panel control.
+pub(super) fn search_intent(
+    doc: &DocumentViewModel,
+    document: DocumentId,
+    control: G5Control,
+    values: &[(G5Control, String)],
+) -> Option<UiIntent> {
+    let search = doc.files.search.as_ref()?;
+    let intent = match control {
+        G5Control::SearchFolder => {
+            let folder = value_of(values, control)?;
+            (folder != search.folder).then(|| FilesIntent::SetSearchFolder { document, folder: folder.to_owned() })?
+        }
+        G5Control::SearchQuery => {
+            let query = value_of(values, control)?;
+            (query != search.query).then(|| FilesIntent::SetSearchQuery { document, query: query.to_owned() })?
+        }
+        G5Control::SearchRescan => FilesIntent::RescanSearch { document },
+        G5Control::SearchOpenProject => {
+            let (_, row, _) = chosen(&search.results, values)?;
+            FilesIntent::OpenFoundProject { document, path: row.path.clone() }
+        }
+        G5Control::SearchOpenRevision => {
+            let (_, row, revision) = chosen(&search.results, values)?;
+            let number = row.revisions.get(revision)?.number;
+            FilesIntent::OpenFoundRevision { document, path: row.path.clone(), number }
+        }
+        G5Control::SearchClose => FilesIntent::CloseSearch { document },
+        // Choosing a result or revision only changes what the panel shows.
+        _ => return None,
+    };
+    Some(UiIntent::Files(intent))
 }

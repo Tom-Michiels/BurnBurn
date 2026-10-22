@@ -27,11 +27,19 @@ pub enum G5Panel {
     Structure,
     /// Tekenen ▸ Doos of scharnier…: the generator dialog (E10, G6-editor).
     Generator,
+    /// Archief ▸ Zoek projecten…: the project search (P08, G6-editor).
+    Search,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 5] =
-        [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure, G5Panel::Generator];
+    pub const ALL: [G5Panel; 6] = [
+        G5Panel::Notes,
+        G5Panel::Offset,
+        G5Panel::Centerline,
+        G5Panel::Structure,
+        G5Panel::Generator,
+        G5Panel::Search,
+    ];
 }
 
 /// A control of a panel. Fields, choices, checks and the note report their value; buttons only the
@@ -77,6 +85,16 @@ pub enum G5Control {
     GeneratorLid,
     GeneratorInsert,
     GeneratorCancel,
+    SearchFolder,
+    SearchQuery,
+    SearchRescan,
+    /// The found project the panel shows (a pop-up of the results).
+    SearchResult,
+    /// The frozen revision of that project (a pop-up).
+    SearchRevision,
+    SearchOpenProject,
+    SearchOpenRevision,
+    SearchClose,
 }
 
 /// One line of a panel.
@@ -113,6 +131,8 @@ pub enum G5Line {
         title: String,
         enabled: bool,
     },
+    /// A small picture (the preview of a found project).
+    Image(crate::panels_image::BitmapImage),
 }
 
 impl G5Line {
@@ -123,7 +143,7 @@ impl G5Line {
             | G5Line::Choice { control, .. }
             | G5Line::Check { control, .. }
             | G5Line::Button { control, .. } => Some(*control),
-            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) => None,
+            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Image(_) => None,
         }
     }
 }
@@ -139,7 +159,7 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator)
+    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search)
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -193,6 +213,13 @@ pub fn g5_panel(
         G5Panel::Offset => (G5Text::OffsetTitle, offset_lines(doc, locale)),
         G5Panel::Centerline => (G5Text::CenterlineTitle, centerline_lines(doc, locale)?),
         G5Panel::Structure => (G5Text::StructureTitle, structure_lines(doc, locale)),
+        G5Panel::Search => {
+            return Some(G5PanelModel {
+                panel,
+                title: crate::l10n_g6::g6_text(crate::l10n_g6::G6Text::SearchTitle, locale).to_owned(),
+                lines: super::g6::search_lines(doc, locale, draft)?,
+            });
+        }
         G5Panel::Generator => {
             return Some(G5PanelModel {
                 panel,
@@ -549,6 +576,14 @@ pub fn g5_intent(
         | G5Control::GeneratorLid
         | G5Control::GeneratorInsert
         | G5Control::GeneratorCancel => super::g6::generator_intent(doc, document, control, values),
+        G5Control::SearchFolder
+        | G5Control::SearchQuery
+        | G5Control::SearchRescan
+        | G5Control::SearchResult
+        | G5Control::SearchRevision
+        | G5Control::SearchOpenProject
+        | G5Control::SearchOpenRevision
+        | G5Control::SearchClose => super::g6::search_intent(doc, document, control, values),
         G5Control::Override { instance, parameter } => {
             let (part, row) = find_instance(doc, instance)?;
             let name = part.parameters.get(parameter)?.name.clone();

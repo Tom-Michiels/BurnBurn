@@ -1641,6 +1641,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::SaveAs), "s", true),
             plain(CommandKey::SaveAsTemplate),
             plain(CommandKey::ShowNotes),
+            plain(CommandKey::SearchProjects),
         ],
     ));
     main.addItem(&submenu(

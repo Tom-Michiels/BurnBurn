@@ -6,12 +6,16 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod g6_fixtures;
+
 use burnburn_macos::l10n::{Locale, message_or_key, undo_label_text};
 use burnburn_macos::panels::{G5Control as C, G5Line, G5Panel, G5PanelModel, g5_intent, g5_opens_by_itself, g5_panel};
 use burnburn_presentation::{
-    CommandKey, MessageKey, GeneratorEdit, GeneratorField, GeneratorKind, HeadlessEditorHarness, SelectMode, UiIntent,
+    CommandKey, FilesIntent, GeneratorEdit, GeneratorField, GeneratorKind, HeadlessEditorHarness, MessageKey, SelectMode,
+    UiIntent,
 };
 use burnburn_types::DocumentId;
+use g6_fixtures::*;
 
 fn open() -> (HeadlessEditorHarness, DocumentId) {
     let mut h = HeadlessEditorHarness::new();
@@ -181,4 +185,148 @@ fn insert_makes_the_box_and_a_generated_object_opens_with_an_apply_button() {
     assert_eq!(press(&mut h, doc, C::GeneratorCancel, &[]), Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Cancel }));
     h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
     assert!(panel(&h, doc, Locale::En).is_none());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Project search (P08)
+// ---------------------------------------------------------------------------------------------
+
+fn search_panel(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale, draft: &[(C, &str)]) -> Option<G5PanelModel> {
+    let draft: Vec<(C, String)> = draft.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
+    g5_panel(&h.view(), doc, G5Panel::Search, locale, &draft)
+}
+
+fn search_lines(h: &HeadlessEditorHarness, doc: DocumentId, draft: &[(C, &str)]) -> Vec<G5Line> {
+    search_panel(h, doc, Locale::En, draft).expect("the search panel").lines
+}
+
+fn search_press(
+    h: &mut HeadlessEditorHarness,
+    doc: DocumentId,
+    c: C,
+    values: &[(C, &str)],
+) -> Option<UiIntent> {
+    let values: Vec<(C, String)> = values.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
+    let intent = g5_intent(&h.view(), doc, G5Panel::Search, c, &values)?;
+    h.send(intent.clone());
+    h.run_tasks();
+    Some(intent)
+}
+
+#[test]
+fn the_search_panel_opens_by_itself_with_the_search_and_titles_in_both_languages() {
+    assert!(g5_opens_by_itself(G5Panel::Search));
+    let mut h = HeadlessEditorHarness::new();
+    let (deurbord, _) = werk(&h);
+    let doc = open_window(&mut h, &deurbord);
+    assert!(search_panel(&h, doc, Locale::En, &[]).is_none(), "no search, no panel");
+    h.invoke(doc, CommandKey::SearchProjects);
+    h.run_tasks();
+    assert_eq!(search_panel(&h, doc, Locale::Nl, &[]).unwrap().title, "Projecten zoeken");
+    assert_eq!(search_panel(&h, doc, Locale::En, &[]).unwrap().title, "Find Projects");
+    assert_eq!(message_or_key(MessageKey::Command(CommandKey::SearchProjects), Locale::Nl), "Zoek projecten…");
+    assert_eq!(message_or_key(MessageKey::Command(CommandKey::SearchProjects), Locale::En), "Find Projects…");
+}
+
+#[test]
+fn the_panel_lists_the_projects_with_their_date_a_preview_and_what_could_not_be_read() {
+    let (h, doc) = searching();
+    let lines = search_lines(&h, doc, &[]);
+    let field = |c: C| lines.iter().find_map(|l| match l {
+        G5Line::Field { control, text, .. } if *control == c => Some(text.clone()),
+        _ => None,
+    });
+    assert_eq!(field(C::SearchFolder).as_deref(), Some("/werk"));
+    assert_eq!(field(C::SearchQuery).as_deref(), Some(""));
+    let texts: Vec<&String> = lines.iter().filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None }).collect();
+    assert!(texts.iter().any(|t| t.contains("2 projects")), "{texts:?}");
+    let problems: Vec<&String> = lines.iter().filter_map(|l| if let G5Line::Problem(t) = l { Some(t) } else { None }).collect();
+    assert!(problems.iter().any(|t| t.contains("kapot.burnburn")), "a broken file is named: {problems:?}");
+    match lines.iter().find(|l| l.control() == Some(C::SearchResult)).expect("the result list") {
+        G5Line::Choice { options, selected, .. } => {
+            assert_eq!(*selected, 0);
+            assert_eq!(options[0], "deurbord.burnburn - 2026-06-18 14:30 UTC");
+            assert_eq!(options[1], "onderzetters.burnburn", "an unknown time is not invented");
+        }
+        other => panic!("{other:?}"),
+    }
+    let image = lines.iter().find_map(|l| if let G5Line::Image(i) = l { Some(i) } else { None }).expect("a preview");
+    assert_eq!((image.width, image.height), (64, 64));
+    assert!(image.rgba.chunks(4).any(|p| p[0] < 128), "the outline is drawn dark on paper");
+    assert!(texts.iter().any(|t| t.contains("2 objects") && t.contains("2026-06-18 14:30 UTC")), "{texts:?}");
+}
+
+#[test]
+fn the_chosen_result_decides_the_preview_the_revisions_and_what_matched() {
+    let (mut h, doc) = searching();
+    let one = [(C::SearchResult, "1")];
+    let lines = search_lines(&h, doc, &one);
+    assert!(
+        lines.iter().all(|l| l.control() != Some(C::SearchRevision)),
+        "onderzetters has no frozen revision, so there is nothing to choose"
+    );
+    assert!(matches!(
+        lines.iter().find(|l| l.control() == Some(C::SearchOpenRevision)).unwrap(),
+        G5Line::Button { enabled: false, .. }
+    ));
+    let lines = search_lines(&h, doc, &[(C::SearchResult, "0")]);
+    match lines.iter().find(|l| l.control() == Some(C::SearchRevision)).expect("deurbord has a frozen revision") {
+        G5Line::Choice { options, .. } => assert_eq!(options, &["1: Order 4711".to_owned()]),
+        other => panic!("{other:?}"),
+    }
+    // A query says what matched, in the window language.
+    search_press(&mut h, doc, C::SearchQuery, &[(C::SearchQuery, "multiplex")]);
+    let texts = |locale| -> Vec<String> {
+        search_panel(&h, doc, locale, &[]).unwrap().lines.into_iter().filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None }).collect()
+    };
+    assert!(texts(Locale::En).iter().any(|t| t.contains("Found in") && t.contains("material")), "{:?}", texts(Locale::En));
+    assert!(texts(Locale::Nl).iter().any(|t| t.contains("Gevonden in") && t.contains("materiaal")), "{:?}", texts(Locale::Nl));
+}
+
+#[test]
+fn search_controls_become_files_intents_and_an_unchanged_value_sends_nothing() {
+    let (mut h, doc) = searching();
+    assert_eq!(search_press(&mut h, doc, C::SearchFolder, &[(C::SearchFolder, "/werk")]), None);
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchQuery, &[(C::SearchQuery, "4711")]),
+        Some(UiIntent::Files(FilesIntent::SetSearchQuery { document: doc, query: "4711".into() }))
+    );
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchFolder, &[(C::SearchFolder, "/bestaat/niet")]),
+        Some(UiIntent::Files(FilesIntent::SetSearchFolder { document: doc, folder: "/bestaat/niet".into() }))
+    );
+    assert!(
+        search_lines(&h, doc, &[]).iter().any(|l| matches!(l, G5Line::Problem(t) if t.contains("cannot be read"))),
+        "an unreadable folder is said"
+    );
+    search_press(&mut h, doc, C::SearchFolder, &[(C::SearchFolder, "/werk")]);
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchRescan, &[]),
+        Some(UiIntent::Files(FilesIntent::RescanSearch { document: doc }))
+    );
+    // The query is empty again after the folder change? No: it stays; clear it for the next steps.
+    search_press(&mut h, doc, C::SearchQuery, &[(C::SearchQuery, "")]);
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchOpenProject, &[(C::SearchResult, "1")]),
+        Some(UiIntent::Files(FilesIntent::OpenFoundProject {
+            document: doc,
+            path: "/werk/onderzetters.burnburn".into()
+        }))
+    );
+    assert_eq!(h.view().documents.len(), 2, "the found project is open next to the design");
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchOpenRevision, &[(C::SearchResult, "0"), (C::SearchRevision, "0")]),
+        Some(UiIntent::Files(FilesIntent::OpenFoundRevision {
+            document: doc,
+            path: "/werk/deurbord.burnburn".into(),
+            number: 1
+        }))
+    );
+    assert_eq!(h.view().documents.len(), 3, "and so is the old revision");
+    assert_eq!(search_press(&mut h, doc, C::SearchOpenRevision, &[(C::SearchResult, "1")]), None, "none to open");
+    assert_eq!(
+        search_press(&mut h, doc, C::SearchClose, &[]),
+        Some(UiIntent::Files(FilesIntent::CloseSearch { document: doc }))
+    );
+    assert!(search_panel(&h, doc, Locale::En, &[]).is_none());
 }

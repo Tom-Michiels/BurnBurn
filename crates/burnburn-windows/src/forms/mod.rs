@@ -232,6 +232,8 @@ pub enum FormLine {
         text: String,
         max_chars: usize,
     },
+    /// A small picture (the preview of a found project), drawn at its pixel size scaled to the form.
+    Image(crate::panels_image::BitmapImage),
 }
 
 impl FormLine {
@@ -256,7 +258,7 @@ impl FormLine {
             | FormLine::List { id, .. } => vec![id.clone()],
             FormLine::Buttons(b) | FormLine::Grid { buttons: b, .. } => b.iter().map(|b| b.id.clone()).collect(),
             FormLine::Row(lines) => lines.iter().flat_map(FormLine::ids).collect(),
-            FormLine::Heading(_) | FormLine::Text(_) | FormLine::Problem(_) => Vec::new(),
+            FormLine::Heading(_) | FormLine::Text(_) | FormLine::Problem(_) | FormLine::Image(_) => Vec::new(),
         }
     }
 }
@@ -305,6 +307,7 @@ impl Form {
                     FormLine::Heading(_)
                     | FormLine::Text(_)
                     | FormLine::Problem(_)
+                    | FormLine::Image(_)
                     | FormLine::Buttons(_)
                     | FormLine::Grid { .. } => {}
                 }

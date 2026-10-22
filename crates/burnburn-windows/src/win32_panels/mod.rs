@@ -150,7 +150,9 @@ fn metrics_for(width_px: i32) -> Metrics {
 // Registration and window creation.
 // ---------------------------------------------------------------------------------------------
 
-fn ensure_registered() -> Option<HINSTANCE> {
+/// Registers the panel and picture window classes once (the forms draw their previews with the
+/// same picture class).
+pub(crate) fn ensure_registered() -> Option<HINSTANCE> {
     if let Some(Some(instance)) = with_state(|s| s.registered.then_some(s.instance).flatten()) {
         return Some(instance);
     }
@@ -332,7 +334,7 @@ fn apply_values(hwnd: HWND, c: &ControlSpec) {
     }
 }
 
-fn set_bitmap(hwnd: HWND, image: Option<BitmapImage>) {
+pub(crate) fn set_bitmap(hwnd: HWND, image: Option<BitmapImage>) {
     with_state(|s| match image {
         Some(i) => {
             s.bitmaps.insert(hwnd.0 as isize, i);
