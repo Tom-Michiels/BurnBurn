@@ -199,7 +199,7 @@ fn centre_lines_of(bytes: &[u8]) -> (HeadlessEditorHarness, DocumentId) {
 fn an_ambiguous_junction_stays_open_until_the_operator_picks_a_pairing() {
     use burnburn_presentation::{CenterlineEdit, JunctionState};
     let (mut h, doc) = centre_lines_of(&t_png());
-    let panel = tracer(&h, doc).centerline.expect("centre-line editing is offered in centre-line mode");
+    let panel = vm(&h, doc).centerline.expect("centre-line editing is offered in centre-line mode");
     assert_eq!(panel.junctions.len(), 1, "one T junction");
     assert!(matches!(panel.junctions[0].state, JunctionState::Ambiguous { candidates: 3 }));
     assert_eq!(tracer(&h, doc).result.unwrap().components, 3, "every stroke ends at the junction");
@@ -208,13 +208,13 @@ fn an_ambiguous_junction_stays_open_until_the_operator_picks_a_pairing() {
     h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node, candidate: 0 } });
     let after = tracer(&h, doc);
     assert_eq!(after.result.unwrap().components, 2, "two branches now run through the junction");
-    assert!(matches!(after.centerline.unwrap().junctions[0].state, JunctionState::Resolved));
+    assert!(matches!(vm(&h, doc).centerline.unwrap().junctions[0].state, JunctionState::Resolved));
 
     // A candidate that does not exist, or a junction that does not exist, changes nothing.
-    let edits = tracer(&h, doc).centerline.unwrap().edits;
+    let edits = vm(&h, doc).centerline.unwrap().edits;
     h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node, candidate: 9 } });
     h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node: 999, candidate: 0 } });
-    assert_eq!(tracer(&h, doc).centerline.unwrap().edits, edits);
+    assert_eq!(vm(&h, doc).centerline.unwrap().edits, edits);
 
     h.invoke(doc, CommandKey::ApplyTraceLinked);
     assert_eq!(vm(&h, doc).objects.len(), 2, "the decision decides what is applied");
@@ -229,7 +229,7 @@ fn an_ambiguous_junction_stays_open_until_the_operator_picks_a_pairing() {
 fn an_accepted_circle_candidate_becomes_a_primitive() {
     use burnburn_presentation::{CenterlineEdit, PrimitiveKind};
     let (mut h, doc) = centre_lines_of(&ring_png());
-    let panel = tracer(&h, doc).centerline.expect("panel");
+    let panel = vm(&h, doc).centerline.expect("panel");
     assert_eq!(panel.chains.len(), 1, "one closed loop");
     let chain = &panel.chains[0];
     assert!(chain.confirmed.is_none(), "nothing is replaced on its own");
@@ -237,7 +237,7 @@ fn an_accepted_circle_candidate_becomes_a_primitive() {
     assert!(circle.within_tolerance && circle.max_residual_mm < 0.12, "{circle:?}");
 
     h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ConfirmPrimitive { chain: chain.chain } });
-    let after = tracer(&h, doc).centerline.unwrap();
+    let after = vm(&h, doc).centerline.unwrap();
     assert_eq!(after.chains[0].confirmed, Some(PrimitiveKind::Circle));
     h.invoke(doc, CommandKey::ApplyTrace);
     let scene = h.scene(doc).unwrap();

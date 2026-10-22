@@ -121,6 +121,8 @@ pub struct DocumentViewModel {
     pub offset: crate::offset::OffsetViewModel,
     /// The before/after of the repair being considered (E09).
     pub repair_preview: Option<crate::offset::RepairPreviewViewModel>,
+    /// Junctions and primitive candidates of the open centre-line result, in centre-line mode (T04, T08).
+    pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
     /// The project notes panel while it is open (P04).
     pub notes: Option<crate::notes::NotesViewModel>,
     /// The text toolbar while exactly one text object is selected (W3-UI-tekst).
@@ -405,8 +407,6 @@ pub struct TracerViewModel {
     pub result: Option<TraceSummary>,
     /// The panel's fields, the recipe in force and the last refused input.
     pub form: crate::image_panel::TraceFormViewModel,
-    /// Junctions and primitive candidates of the centre-line result, in centre-line mode (T04, T08).
-    pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

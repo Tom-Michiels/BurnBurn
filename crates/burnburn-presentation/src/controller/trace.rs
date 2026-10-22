@@ -426,6 +426,12 @@ fn kind_of(p: &Primitive) -> PrimitiveKind {
     }
 }
 
+/// What can be decided on the open centre-line result (centre-line mode only).
+pub(super) fn centerline_panel(s: &Session) -> Option<CenterlineEditViewModel> {
+    let t = s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline)?;
+    t.centerline.as_ref().map(edit_view)
+}
+
 fn edit_view(c: &CenterlineOutcome) -> CenterlineEditViewModel {
     let r = &c.result;
     CenterlineEditViewModel {
@@ -505,6 +511,5 @@ pub(super) fn tracer_view(t: &Tracer, s: &Session) -> TracerViewModel {
             issue: t.issue,
             dpi_suggestion: t.source.metadata().dpi_suggestion.map(|(x, _)| x),
         },
-        centerline: if t.form.mode == TraceMode::Centerline { t.centerline.as_ref().map(edit_view) } else { None },
     }
 }
