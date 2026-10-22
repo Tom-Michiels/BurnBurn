@@ -17,6 +17,7 @@ mod field;
 mod files;
 mod files_task;
 mod grbl;
+mod generator_panel;
 mod grbl_panel;
 mod harness;
 mod image_panel;
@@ -99,6 +100,10 @@ pub use files::{
     ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState, Lbrn2LayerRow, Lbrn2ReportViewModel,
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
+};
+pub use generator_panel::{
+    GeneratorDialogViewModel, GeneratorEdit, GeneratorField, GeneratorFieldRow, GeneratorIssue, GeneratorKind,
+    GeneratorPreview, GeneratorProblem,
 };
 pub use grbl::{GcodeExportViewModel, GrblFinding};
 pub use grbl_panel::{

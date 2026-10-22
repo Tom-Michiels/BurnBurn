@@ -139,6 +139,8 @@ pub struct DocumentViewModel {
     pub barcode_dialog: Option<crate::barcode_panel::BarcodeDialogViewModel>,
     /// The selected barcode's module would drop below its minimum at the current size.
     pub barcode_scale_warning: Option<crate::barcode_panel::BarcodeScaleWarning>,
+    /// The generator dialog (box, living hinge) while it is open.
+    pub generator_dialog: Option<crate::generator_panel::GeneratorDialogViewModel>,
     /// The file panels: Material Library, Art Library, bundles and the export dialog.
     pub files: crate::files::FilesViewModel,
 }

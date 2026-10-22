@@ -99,6 +99,7 @@ impl AppController {
         sketch_overlays.extend(super::nest::scene_overlays(s));
         sketch_overlays.extend(super::array_dialog::scene_overlays(s));
         sketch_overlays.extend(super::kerf_view::scene_overlays(s));
+        sketch_overlays.extend(super::generator::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
@@ -244,6 +245,7 @@ pub(super) fn document_view(
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
         barcode_scale_warning: super::barcode::scale_warning(s),
+        generator_dialog: super::generator::dialog_view(s),
         files: crate::files::FilesViewModel::default(),
     }
 }
@@ -333,7 +335,8 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             Some(s),
         ) => (shapes::command_enabled(key, s).unwrap_or(false), false),
         (CommandKey::TextOnPath, Some(s)) => (super::text::path_ready(s), false),
-        (CommandKey::BarcodeNew, Some(_)) => (true, false),
+        (CommandKey::BarcodeNew | CommandKey::GeneratorNew, Some(_)) => (true, false),
+        (CommandKey::GeneratorEdit, Some(s)) => (super::generator::edit_enabled(s), false),
         (CommandKey::CommitImport, Some(s)) => (
             s.import.as_ref().is_some_and(super::import::PendingImport::ready) || super::image::commit_enabled(s),
             false,

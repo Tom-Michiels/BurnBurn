@@ -279,6 +279,8 @@ pub(super) fn invoke_in_session(
         }
         CommandKey::TextOnPath => super::text::open_path_dialog(s, document),
         CommandKey::BarcodeNew => super::barcode::open(s, document),
+        CommandKey::GeneratorNew => super::generator::open(s, document),
+        CommandKey::GeneratorEdit => super::generator::open_selected(s, document),
         CommandKey::SketchNew => sketch::new_sketch(s, document, request),
         CommandKey::SketchFromSelection => sketch::from_selection(s, document, request),
         CommandKey::SketchEdit => sketch::edit_selected(s, document),

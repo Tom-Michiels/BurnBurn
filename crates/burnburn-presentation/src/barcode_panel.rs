@@ -152,6 +152,8 @@ pub struct BarcodeDialogViewModel {
     /// Set when the module (or the quiet zone) is below its limit, with the limit.
     pub readability: Option<Readability>,
     pub can_create: bool,
+    /// A generated barcode is being changed (Create becomes Apply; one history entry).
+    pub editing: bool,
 }
 
 /// An inspector-size change of a created barcode that would drop its module below the minimum.
