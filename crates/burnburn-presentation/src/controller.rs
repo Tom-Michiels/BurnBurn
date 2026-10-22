@@ -62,6 +62,7 @@ mod nest;
 mod notes;
 mod offset_preview;
 mod order_dialog;
+mod path_lock;
 mod preflight_dialog;
 mod prefs;
 mod preview;
@@ -104,7 +105,7 @@ pub use support::{DEBUG_LOG_LINES, DebugLogViewModel, HelpInfo};
 
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
-use machine::{Machine, Order, Prepared};
+use machine::{Declared, Machine, Order, Prepared};
 use process::{Compiled, add_operation_text, set_operation_field};
 use text::SharedFonts;
 use trace::Tracer;
@@ -202,6 +203,9 @@ pub enum HostEffect {
     },
     /// Open panel for a template; the host answers with `FilesIntent::NewFromTemplate`.
     ShowTemplateOpenPanel,
+    /// Open panel for a machine profile file (`.json`); the host answers with
+    /// `UiIntent::OpenMachineProfile`.
+    ShowMachineProfileOpenPanel,
     /// Open panel for a bundle file; the host answers with `FilesIntent::OpenBundleImport`.
     ShowBundleOpenPanel {
         document: DocumentId,
@@ -434,6 +438,13 @@ pub struct AppController {
     machine: Option<Machine>,
     /// The machine service (one owner of the connection, shared with other windows/views).
     machine_port: Option<Arc<dyn MachinePort>>,
+    /// A declared model/firmware was handed to the machine port (so clearing it must reach the port too).
+    declared_pushed: bool,
+    /// Plans the designer released (W01), as the history keeps them: a prepared job whose plan is
+    /// in here is approved. A changed plan has another id, so it is not.
+    approved_plans: std::collections::BTreeSet<burnburn_types::ContentHash>,
+    /// The released jobs the history holds, rebuilt from their frozen blobs (no window of their own).
+    released_jobs: Vec<Arc<crate::production::PreparedJob>>,
     /// Machine hub state: a repeat in preparation and the calibration measurements (G5).
     hub: machine_hub::HubState,
     role: Role,
@@ -499,6 +510,9 @@ impl AppController {
             opening: BTreeMap::new(),
             machine: None,
             machine_port: None,
+            declared_pushed: false,
+            approved_plans: std::collections::BTreeSet::new(),
+            released_jobs: Vec::new(),
             hub: machine_hub::HubState::default(),
             role: Role::Designer,
             orders: Vec::new(),
@@ -627,7 +641,12 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: None });
+                self.replace_active_machine(Machine {
+                    profile: Arc::from(profile),
+                    ruida,
+                    grbl: None,
+                    declared: Declared::default(),
+                });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::SetGrblMachineProfile { profile, grbl } => {
@@ -637,10 +656,16 @@ impl AppController {
                     magic: burnburn_ruida::Magic::FIXTURE_0X88,
                     overscan: burnburn_ruida::OverscanPolicy::Reject,
                 };
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: Some(*grbl) });
+                self.replace_active_machine(Machine {
+                    profile: Arc::from(profile),
+                    ruida,
+                    grbl: Some(*grbl),
+                    declared: Declared::default(),
+                });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),
+            UiIntent::OpenMachineProfile { path } => self.open_machine_profile(path),
             UiIntent::RepeatExecution { execution } => self.hub_repeat(execution),
             UiIntent::ConfirmRepeat { document } => self.hub_confirm_repeat(document),
             UiIntent::CancelRepeat => self.hub_cancel_repeat(),

@@ -340,6 +340,19 @@ pub trait HistoryStore: Send + Sync {
         Ok(RecoveredMachine::default())
     }
 
+    /// Makes the designer's release of a prepared job durable (W01): the job is frozen (once) and
+    /// the release journaled. A history that cannot keep it leaves the release for this session
+    /// only, which is the default of a history that keeps nothing.
+    fn record_approval(&self, job: &PreparedJob, role: Role) -> Result<(), HistoryStoreError> {
+        let _ = (job, role);
+        Ok(())
+    }
+
+    /// The jobs the designer released, rebuilt from their frozen blobs (after a restart).
+    fn approved_jobs(&self) -> Result<Vec<Arc<PreparedJob>>, HistoryStoreError> {
+        Ok(Vec::new())
+    }
+
     /// Records a new or changed order.
     fn record_order(&self, order: &StoredOrder) -> Result<(), HistoryStoreError> {
         let _ = order;
@@ -493,6 +506,13 @@ pub trait MachinePort: Send + Sync {
         let _ = intent;
         Err(MachineError::NotAllowed)
     }
+    /// The model and firmware the user declared for this machine (M01): what the identity check
+    /// before an upload compares the controller's reply with. Ports that cannot take a
+    /// declaration refuse.
+    fn declare_identity(&self, model: Option<String>, firmware: Option<String>) -> Result<(), MachineError> {
+        let _ = (model, firmware);
+        Err(MachineError::NotAllowed)
+    }
 }
 
 /// Machine service over one [`ExecutionActor`]. Step-driven: the runtime (or a test) calls
@@ -598,6 +618,10 @@ impl<P: ControllerPort> MachineService<P> {
 }
 
 impl<P: ControllerPort + Send> MachinePort for MachineService<P> {
+    fn declare_identity(&self, model: Option<String>, firmware: Option<String>) -> Result<(), MachineError> {
+        self.lock().actor.declare_identity(model, firmware).map_err(MachineError::Actor)
+    }
+
     fn dispatch(&self, intent: MachineIntent) -> Result<Dispatched, MachineError> {
         let mut s = self.lock();
         if let Some(done) = s.handled.get(&intent.action) {

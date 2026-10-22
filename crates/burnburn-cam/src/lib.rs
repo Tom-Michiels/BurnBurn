@@ -47,5 +47,5 @@ pub use feeder::{
 };
 pub use image::{NoRasters, RasterSource, processed_bitmap};
 pub use options::{CompileOptions, JobAnchor, Placement, StartPoint};
-pub use preflight::{Finding, PreflightReport, Severity, SizeCheck, invalid_tab_geometries, preflight};
+pub use preflight::{Finding, PreflightReport, Severity, SizeCheck, invalid_tab_geometries, preflight, preflight_with};
 pub use source::source_hash;

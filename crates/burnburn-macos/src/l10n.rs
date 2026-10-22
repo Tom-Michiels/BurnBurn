@@ -892,6 +892,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ShapesRoundCorners => ("Hoeken afronden…", "Round Corners…"),
         C::ShapesOptimize => ("Vormen optimaliseren…", "Optimize Shapes…"),
         C::ShapesReverse => ("Richting omkeren", "Reverse Direction"),
+        C::LockPathStart => ("Startpunt vergrendelen", "Lock Start Point"),
+        C::LockPathDirection => ("Richting vergrendelen", "Lock Direction"),
         C::ShapesClockwise => ("Met de klok mee", "Clockwise"),
         C::ShapesCounterClockwise => ("Tegen de klok in", "Counter-clockwise"),
         C::ShapesConvertToPath => ("Omzetten naar pad", "Convert to Path"),
@@ -943,6 +945,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ViewWireframe => ("Draadmodel", "Wireframe"),
         C::SaveAsTemplate => ("Bewaar als template…", "Save as Template…"),
         C::NewFromTemplate => ("Nieuw van template…", "New from Template…"),
+        C::OpenMachineProfile => ("Machineprofiel openen…", "Open Machine Profile…"),
         C::ExportSvg => ("SVG…", "SVG…"),
         C::ExportDxf => ("DXF…", "DXF…"),
         C::ExportBundle => ("Bundel exporteren…", "Export Bundle…"),
@@ -1043,6 +1046,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ProcessLabel::ApplyRecipe => ("Recept toepassen", "Apply Recipe"),
             ProcessLabel::SetOptimization => ("Optimalisatie-instellingen wijzigen", "Change Optimization Settings"),
             ProcessLabel::SetPriority => ("Prioriteit wijzigen", "Change Cut Priority"),
+            ProcessLabel::SetPathLock => ("Startpunt of richting vergrendelen", "Lock Start Point or Direction"),
             ProcessLabel::SetNotes => ("Notities wijzigen", "Change Notes"),
             _ => return None,
         },
@@ -1370,6 +1374,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         },
         M::BooleanFailed => ("De booleaanse bewerking is mislukt.", "The boolean operation failed."),
         M::NoMachineProfile => ("Kies eerst een machineprofiel.", "Choose a machine profile first."),
+        M::MachineProfileFileUnusable => (
+            "Dit bestand is geen bruikbaar machineprofiel; er is niets veranderd.",
+            "This file is not a usable machine profile; nothing was changed.",
+        ),
         M::CompileFailed => ("Compileren is mislukt.", "Compiling failed."),
         M::ExportFailed => ("Exporteren is mislukt.", "Exporting failed."),
         M::GcodeRefused => (
@@ -1787,6 +1795,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             ProcessLabel::ApplyRecipe,
             ProcessLabel::SetOptimization,
             ProcessLabel::SetPriority,
+            ProcessLabel::SetPathLock,
             ProcessLabel::SetNotes,
         ]
         .map(UndoLabel::Process),

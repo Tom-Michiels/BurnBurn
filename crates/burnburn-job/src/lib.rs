@@ -11,6 +11,7 @@
 //! ratio of the source's rated power. Quantisation happens only in a backend (for example
 //! `burnburn_ruida::lower`).
 
+mod calibration;
 mod capability;
 mod event;
 mod frame;
@@ -19,6 +20,9 @@ mod preview;
 mod profile;
 mod rotary;
 
+pub use calibration::{
+    AppliedCalibration, AppliedKind, Calibration, CalibrationError, KerfProof, ProofRef, ScanOffsetAt, ScanOffsetProof,
+};
 pub use capability::{Feature, MachineCapabilities, Support};
 pub use event::{
     MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, PowerRatio, ScanAxis, ScanLine, SettingsIndex,

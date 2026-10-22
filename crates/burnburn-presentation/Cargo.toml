@@ -25,9 +25,10 @@ burnburn-sketch = { workspace = true }
 burnburn-text = { workspace = true }
 burnburn-trace = { workspace = true }
 burnburn-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 burnburn-test-support = { workspace = true }
 # P01 test: a project container rewritten to claim a newer schema (W4-UI-gaten).
-serde_json = { workspace = true }
 zip = { workspace = true }

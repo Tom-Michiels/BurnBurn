@@ -258,7 +258,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         _ => MessageKey::Command(key),
     };
     let (enabled, checked) = match (key, s) {
-        (CommandKey::New | CommandKey::NewFromTemplate, _) => (true, false),
+        (CommandKey::New | CommandKey::NewFromTemplate | CommandKey::OpenMachineProfile, _) => (true, false),
         (_, None) => (false, false),
         (CommandKey::Undo, Some(s)) => (s.doc.can_undo(), false),
         (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),
@@ -294,6 +294,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::TraceEdit, Some(s)) => (super::trace_link::selected_trace(s).is_some(), false),
         (CommandKey::CloseTracer, Some(s)) => (s.tracer.is_some(), false),
         (CommandKey::PrepareJob, Some(s)) => (!is_grbl && preparable(s, machine), false),
+        (CommandKey::LockPathStart | CommandKey::LockPathDirection, Some(s)) => {
+            (!s.selection.is_empty(), super::path_lock::checked(s, key))
+        }
         (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
         (CommandKey::ToolTrim, Some(s)) => (true, s.trim_mode),
         (

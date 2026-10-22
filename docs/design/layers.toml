@@ -183,7 +183,8 @@ layer = 4
 kind = "core"
 owner = "implementatie-kern"
 unsafe = "forbid"
-allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job"]
+# G6-machine: the profile library keeps the GRBL dialect settings of a machine next to its profile.
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-image", "burnburn-job", "burnburn-gcode"]
 forbid = []
 forbid_transitive = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 

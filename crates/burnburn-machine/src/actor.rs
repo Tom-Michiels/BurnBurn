@@ -104,6 +104,21 @@ impl<P: ControllerPort> ExecutionActor<P> {
         &self.machine
     }
 
+    /// Replaces the model and firmware the user declared for this machine (M01). A controller's
+    /// reply is compared with it and never written into it. Refused while an execution is not
+    /// terminal or a request waits for its reply, so one execution is checked against one identity.
+    pub fn declare_identity(&mut self, model: Option<String>, firmware: Option<String>) -> Result<(), ActorError> {
+        if self.execution.as_ref().is_some_and(|e| !e.state.is_terminal()) {
+            return Err(ActorError::Busy);
+        }
+        if self.in_flight.is_some() {
+            return Err(ActorError::RequestInFlight);
+        }
+        self.machine.model = model;
+        self.machine.firmware = firmware;
+        Ok(())
+    }
+
     pub fn port(&self) -> &P {
         &self.port
     }

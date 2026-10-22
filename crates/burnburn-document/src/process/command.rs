@@ -4,7 +4,7 @@ use burnburn_types::{GeometryId, IdAllocator, OperationId};
 
 use super::{
     AdvancedOptions, CutPriority, MaterialRecipe, Operation, OperationDraft, OptimizationSettings, OrderConstraint,
-    ProcessError, ProcessLayer, RecipeDraft, RecipeId, RecipeRef, ToolLayer,
+    PathLock, ProcessError, ProcessLayer, RecipeDraft, RecipeId, RecipeRef, ToolLayer,
 };
 use crate::command::CommandError;
 
@@ -76,6 +76,12 @@ pub enum ProcessCommand {
         geometry: GeometryId,
         priority: CutPriority,
     },
+    /// Locks (or frees) the start point and the direction of these shapes, in one undo step. A
+    /// lock that locks nothing removes the entries.
+    SetPathLock {
+        geometries: Vec<GeometryId>,
+        lock: PathLock,
+    },
     /// Replaces the project notes (File > Show Notes). Touches no operation.
     SetNotes {
         text: String,
@@ -109,6 +115,7 @@ pub enum ProcessLabel {
     SetAdvanced,
     SetOptimization,
     SetPriority,
+    SetPathLock,
     SetNotes,
     AddToolLayer,
 }
@@ -129,6 +136,7 @@ impl ProcessCommand {
             ProcessCommand::SetAdvanced { .. } => ProcessLabel::SetAdvanced,
             ProcessCommand::SetOptimization { .. } => ProcessLabel::SetOptimization,
             ProcessCommand::SetPriority { .. } => ProcessLabel::SetPriority,
+            ProcessCommand::SetPathLock { .. } => ProcessLabel::SetPathLock,
             ProcessCommand::SetNotes { .. } => ProcessLabel::SetNotes,
             ProcessCommand::AddToolLayer { .. } => ProcessLabel::AddToolLayer,
         }
@@ -246,6 +254,17 @@ pub(crate) fn apply(cmd: ProcessCommand, t: ProcessTxn<'_>) -> Result<(), Comman
                 t.layer.priorities.insert(geometry, priority);
             }
             t.operations.extend(t.layer.operations_using(geometry));
+        }
+        ProcessCommand::SetPathLock { geometries, lock } => {
+            check_geometry(&t, &geometries)?;
+            for geometry in geometries {
+                if lock.is_none() {
+                    t.layer.path_locks.remove(&geometry);
+                } else {
+                    t.layer.path_locks.insert(geometry, lock);
+                }
+                t.operations.extend(t.layer.operations_using(geometry));
+            }
         }
         ProcessCommand::SetNotes { text } => {
             if text.chars().count() > ProcessCommand::MAX_NOTES_CHARS {

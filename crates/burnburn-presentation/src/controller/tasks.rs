@@ -50,6 +50,7 @@ impl AppController {
             return self.app_task_finished(outcome);
         }
         let machine = self.machine.clone();
+        let approved_plans = self.approved_plans.clone();
         let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
         let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
         let document = outcome.document;
@@ -270,7 +271,9 @@ impl AppController {
                         .and_then(|p| p.from_position_um);
                     let record =
                         s.compiled.as_ref().filter(|c| c.plan.id() == source.id()).and_then(|c| c.record.clone());
-                    s.prepared = Some(Prepared { job: Arc::new(job), approved: false, placed_from, record });
+                    // A plan the designer released before (also in an earlier run) stays released.
+                    let approved = approved_plans.contains(&plan.hash());
+                    s.prepared = Some(Prepared { job: Arc::new(job), approved, placed_from, record });
                 }
             }
             Ok(TaskOutput::RecoverySaved { path }) => {

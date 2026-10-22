@@ -124,6 +124,11 @@ pub enum DialogField {
     // Device Settings: backend and the GRBL fields (G5-grbl-ui)
     /// Which controller dialect the profile compiles for (Ruida RD or GRBL G-code).
     Backend,
+    /// The controller model the user says this machine has (M01). Declared, never read from a
+    /// controller reply; it is what the identity check before an upload compares with.
+    Model,
+    /// The firmware version the user says the controller runs (M01); declared like `Model`.
+    Firmware,
     /// `$30`: the spindle value that means 100 % power.
     GrblMaxSpindle,
     /// The machine runs with laser mode (`$32=1`); without it GRBL output is refused.
@@ -455,6 +460,8 @@ pub enum FindingKind {
     UnsupportedFeature,
     InvalidTabs,
     SharedBoundaryCutOnce,
+    /// A pass-through image lands on an uneven grid of dots (C05).
+    PassThroughResampled,
 }
 
 /// One entry of a document-dependent pop-up: an optional localised phrase and the data (names).

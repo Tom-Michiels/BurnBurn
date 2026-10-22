@@ -62,12 +62,21 @@ impl AppController {
         let active = self.machine.as_ref().map(|m| m.profile.revision().id.clone());
         self.known_profiles()
             .iter()
-            .map(|p| DeviceRow {
-                id: p.revision().id.clone(),
-                revision: p.revision().revision,
-                width_mm: p.frame().width_mm(),
-                height_mm: p.frame().height_mm(),
-                active: active.as_deref() == Some(p.revision().id.as_str()),
+            .map(|p| {
+                let id = p.revision().id.as_str();
+                let declared = match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
+                    Some(m) => m.declared.clone(),
+                    None => self.libs_declared(id),
+                };
+                DeviceRow {
+                    id: p.revision().id.clone(),
+                    revision: p.revision().revision,
+                    width_mm: p.frame().width_mm(),
+                    height_mm: p.frame().height_mm(),
+                    active: active.as_deref() == Some(p.revision().id.as_str()),
+                    model: declared.model,
+                    firmware: declared.firmware,
+                }
             })
             .collect()
     }
@@ -200,8 +209,9 @@ impl AppController {
         if self.repeat_refusal(&job).is_some() {
             return error(Some(document), MessageKey::RepeatRefused);
         }
+        let approved = self.approved_plans.contains(&job.plan.hash());
         let Some(s) = self.sessions.get_mut(&document) else { return AppUpdate::default() };
-        s.prepared = Some(Prepared { job, approved: false, placed_from: None, record: None });
+        s.prepared = Some(Prepared { job, approved, placed_from: None, record: None });
         self.hub.repeat = None;
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
@@ -214,12 +224,14 @@ impl AppController {
     // ---- calibration proofs (W09) --------------------------------------------------------------------
 
     pub(super) fn hub_record_calibration(&mut self, input: ProofInput) -> AppUpdate {
+        // The proofs of earlier runs are read first, so ids and the duplicate check see them.
+        self.ensure_libraries();
         match self.new_proof(&input) {
             Ok(proof) => {
                 self.hub.proofs.push(proof);
                 self.hub.next_proof += 1;
                 self.hub.problem = None;
-                self.calibration_changed();
+                self.proofs_changed();
             }
             Err(problem) => self.hub.problem = Some(problem),
         }
@@ -230,7 +242,7 @@ impl AppController {
         let before = self.hub.proofs.len();
         self.hub.proofs.retain(|p| p.id != id);
         if self.hub.proofs.len() != before {
-            self.calibration_changed();
+            self.proofs_changed();
         }
         self.hub.problem = None;
         AppUpdate { view_changed: true, ..AppUpdate::default() }
@@ -238,12 +250,98 @@ impl AppController {
 
     /// Plans compiled with the old calibration are not the current ones any more; frozen jobs keep
     /// their explicit snapshot.
-    fn calibration_changed(&mut self) {
-        for s in self.sessions.values_mut() {
-            if let Some(c) = s.compiled.as_mut() {
-                c.outdated = true;
+    fn proofs_changed(&mut self) {
+        self.refresh_calibration();
+        self.flush_calibration();
+    }
+
+    /// The calibration of machine `machine`: per material the newest kerf proof, per speed the
+    /// newest scan-offset proof (newest by date, then by id). Proofs of other machines and the
+    /// pointer offset are not part of it.
+    pub(in crate::controller) fn calibration_of(&self, machine: &str) -> burnburn_job::Calibration {
+        use burnburn_job::{KerfProof, ProofRef, ScanOffsetProof};
+        let newest = |a: &&Proof, b: &&Proof| (&a.date, a.id).cmp(&(&b.date, b.id));
+        let of_machine = || self.hub.proofs.iter().filter(|p| p.machine == machine);
+        let mut kerf: Vec<KerfProof> = Vec::new();
+        for material in of_machine().filter(|p| p.kind == ProofKind::Kerf).map(|p| p.material.clone()) {
+            if kerf.iter().any(|k| k.material == material) {
+                continue;
+            }
+            let best = of_machine().filter(|p| p.kind == ProofKind::Kerf && p.material == material).max_by(newest);
+            if let Some(p) = best {
+                kerf.push(KerfProof {
+                    material,
+                    kerf_mm: p.value_mm,
+                    proof: ProofRef { id: p.id, date: p.date.clone() },
+                });
             }
         }
+        let mut scan: Vec<ScanOffsetProof> = Vec::new();
+        for speed in of_machine().filter(|p| p.kind == ProofKind::ScanOffset).filter_map(|p| p.speed_mm_s) {
+            if scan.iter().any(|s| s.speed_mm_s == speed) {
+                continue;
+            }
+            let best =
+                of_machine().filter(|p| p.kind == ProofKind::ScanOffset && p.speed_mm_s == Some(speed)).max_by(newest);
+            if let Some(p) = best {
+                scan.push(ScanOffsetProof {
+                    speed_mm_s: speed,
+                    offset_mm: p.value_mm,
+                    proof: ProofRef { id: p.id, date: p.date.clone() },
+                });
+            }
+        }
+        burnburn_job::Calibration::new(kerf, scan).unwrap_or_default()
+    }
+
+    /// Makes the active profile carry what the proofs measured. A new measurement is a new
+    /// revision of the profile, so every plan compiled before it is stale; a frozen job keeps the
+    /// revision it was made for.
+    pub(in crate::controller) fn refresh_calibration(&mut self) {
+        let Some(machine) = self.machine.as_ref() else { return };
+        let calibration = self.calibration_of(&machine.profile.revision().id);
+        if calibration == *machine.profile.calibration() {
+            return;
+        }
+        if let Ok(profile) = (*machine.profile).clone().with_calibration(calibration)
+            && let Some(machine) = self.machine.as_mut()
+        {
+            machine.profile = Arc::new(profile);
+        }
+    }
+
+    /// The proofs and the next id as the calibration file holds them.
+    pub(super) fn calibration_file(&self) -> burnburn_io::calibration_library::CalibrationLibrary {
+        burnburn_io::calibration_library::CalibrationLibrary {
+            proofs: self.hub.proofs.iter().map(Proof::to_record).collect(),
+            next_id: self.hub.next_proof + 1,
+        }
+    }
+
+    /// The proofs the file holds join the ones recorded in this session (those get the next ids).
+    /// Returns whether session proofs were added, so the file has to be written again.
+    pub(super) fn proofs_loaded(&mut self, library: burnburn_io::calibration_library::CalibrationLibrary) -> bool {
+        let session = std::mem::take(&mut self.hub.proofs);
+        self.hub.proofs = library.proofs.iter().map(Proof::from_record).collect();
+        self.hub.next_proof = library.next_id.saturating_sub(1);
+        let joined = !session.is_empty();
+        for mut p in session {
+            self.hub.next_proof += 1;
+            p.id = self.hub.next_proof;
+            self.hub.proofs.push(p);
+        }
+        joined
+    }
+
+    /// The red-dot pointer offset (x, y in mm) of the active machine, from its newest pointer proof.
+    pub fn pointer_offset_mm(&self) -> Option<(f64, f64)> {
+        let machine = self.machine.as_ref()?.profile.revision().id.clone();
+        self.hub
+            .proofs
+            .iter()
+            .filter(|p| p.kind == ProofKind::PointerOffset && p.machine == machine)
+            .max_by(|a, b| (&a.date, a.id).cmp(&(&b.date, b.id)))
+            .and_then(|p| p.value_y_mm.map(|y| (p.value_mm, y)))
     }
 
     fn new_proof(&self, input: &ProofInput) -> Result<Proof, ProofProblem> {
@@ -299,6 +397,46 @@ impl AppController {
             method,
             date,
         })
+    }
+}
+
+impl Proof {
+    fn to_record(&self) -> burnburn_io::calibration_library::ProofRecord {
+        use burnburn_io::calibration_library::{ProofKindRecord, ProofRecord};
+        ProofRecord {
+            id: self.id,
+            kind: match self.kind {
+                ProofKind::Kerf => ProofKindRecord::Kerf,
+                ProofKind::ScanOffset => ProofKindRecord::ScanOffset,
+                ProofKind::PointerOffset => ProofKindRecord::PointerOffset,
+            },
+            machine: self.machine.clone(),
+            material: self.material.clone(),
+            speed_mm_s: self.speed_mm_s,
+            value_mm: self.value_mm,
+            value_y_mm: self.value_y_mm,
+            method: self.method.clone(),
+            date: self.date.clone(),
+        }
+    }
+
+    fn from_record(r: &burnburn_io::calibration_library::ProofRecord) -> Proof {
+        use burnburn_io::calibration_library::ProofKindRecord;
+        Proof {
+            id: r.id,
+            kind: match r.kind {
+                ProofKindRecord::Kerf => ProofKind::Kerf,
+                ProofKindRecord::ScanOffset => ProofKind::ScanOffset,
+                ProofKindRecord::PointerOffset => ProofKind::PointerOffset,
+            },
+            machine: r.machine.clone(),
+            material: r.material.clone(),
+            speed_mm_s: r.speed_mm_s,
+            value_mm: r.value_mm,
+            value_y_mm: r.value_y_mm,
+            method: r.method.clone(),
+            date: r.date.clone(),
+        }
     }
 }
 

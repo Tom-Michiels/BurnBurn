@@ -10,6 +10,7 @@ use burnburn_io::art_library::{
     ArtError, ArtFormat, ArtLibrary, ArtPlacement, NewArt, load_art_library, save_art_library,
 };
 use burnburn_io::bundle::{Bundle, BundleContents, BundleTemplate, decode_bundle, encode_bundle};
+use burnburn_io::calibration_library::{CalibrationLibrary, load_calibration_library, save_calibration_library};
 use burnburn_io::export::{
     DxfOptions, ExportError, ExportItem, ExportLoss, LostSemantics, SvgOptions, export_dxf_with, export_svg_with,
     preflight_dxf, preflight_svg,
@@ -17,7 +18,7 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
-use burnburn_io::profile_library::{load_profile_library, save_profile_library};
+use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
 use burnburn_job::MachineProfile;
@@ -38,7 +39,11 @@ pub enum FilesTask {
     /// Write the whole material library atomically.
     SaveMaterialLibrary { library: Box<MaterialLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the machine profiles a bundle brought in atomically (P07).
-    SaveProfileLibrary { profiles: Vec<burnburn_job::MachineProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    SaveProfileLibrary { profiles: Vec<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write the calibration proofs atomically (W09).
+    SaveCalibrationLibrary { library: Box<CalibrationLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Read a machine profile file (Ruida or GRBL JSON); nothing is written.
+    ReadMachineProfile { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the whole art library atomically.
     SaveArtLibrary { library: Box<ArtLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Add a drawing to a copy of the art library (the file is read and proven to import here);
@@ -176,6 +181,9 @@ pub const MATERIAL_LIBRARY_FILE: &str = "material-library.json";
 /// File name of the profile library (machine profiles a bundle brought in, P07).
 pub const PROFILE_LIBRARY_FILE: &str = "profiles.json";
 
+/// File name of the calibration proofs (kerf, scan offset, pointer offset; W09).
+pub const CALIBRATION_LIBRARY_FILE: &str = "calibration.json";
+
 impl fmt::Debug for FilesTask {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -187,6 +195,10 @@ impl fmt::Debug for FilesTask {
             FilesTask::SaveMaterialLibrary { path, .. } => write!(f, "SaveMaterialLibrary({})", path.display()),
             FilesTask::SaveProfileLibrary { profiles, path, .. } => {
                 write!(f, "SaveProfileLibrary({} to {})", profiles.len(), path.display())
+            }
+            FilesTask::ReadMachineProfile { path, .. } => write!(f, "ReadMachineProfile({})", path.display()),
+            FilesTask::SaveCalibrationLibrary { library, path, .. } => {
+                write!(f, "SaveCalibrationLibrary({} to {})", library.proofs.len(), path.display())
             }
             FilesTask::SaveArtLibrary { path, .. } => write!(f, "SaveArtLibrary({})", path.display()),
             FilesTask::AddArt(add) => write!(f, "AddArt({:?} to {:?})", add.name, add.group),
@@ -218,13 +230,16 @@ pub enum FilesOutput {
         path: PathBuf,
     },
     LibrariesLoaded {
-        profiles: Loaded<Vec<burnburn_job::MachineProfile>>,
+        profiles: Loaded<Vec<LibraryProfile>>,
+        calibration: Loaded<CalibrationLibrary>,
         materials: Loaded<MaterialLibrary>,
         art: Loaded<ArtLibrary>,
         thumbnails: Vec<(u64, ArtThumbnail)>,
     },
     MaterialLibrarySaved,
     ProfileLibrarySaved,
+    CalibrationLibrarySaved,
+    MachineProfileRead(Box<crate::profile_file::ProfileFile>),
     ArtLibrarySaved,
     ArtAdded {
         library: Box<ArtLibrary>,
@@ -305,6 +320,8 @@ pub enum FilesError {
     ProjectUnreadable(String),
     /// The project has no frozen revision with this number.
     RevisionMissing(u32),
+    /// The machine profile file cannot be read or is not a usable profile.
+    MachineProfile(String),
 }
 
 impl fmt::Display for FilesError {
@@ -322,6 +339,7 @@ impl fmt::Display for FilesError {
             FilesError::SearchFolder(e) => write!(f, "search: {e}"),
             FilesError::ProjectUnreadable(e) => write!(f, "project: {e}"),
             FilesError::RevisionMissing(n) => write!(f, "no frozen revision {n}"),
+            FilesError::MachineProfile(e) => write!(f, "machine profile: {e}"),
         }
     }
 }
@@ -354,8 +372,9 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                     }
                 }
             }
-            let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library);
-            Ok(FilesOutput::LibrariesLoaded { profiles, materials, art, thumbnails })
+            let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library_entries);
+            let calibration = read_library(fs.as_ref(), &dir.join(CALIBRATION_LIBRARY_FILE), load_calibration_library);
+            Ok(FilesOutput::LibrariesLoaded { profiles, calibration, materials, art, thumbnails })
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
             save_material_library(fs.as_ref(), &path, &library)
@@ -363,9 +382,23 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             Ok(FilesOutput::MaterialLibrarySaved)
         }
         FilesTask::SaveProfileLibrary { profiles, path, fs } => {
-            save_profile_library(fs.as_ref(), &path, &profiles)
+            save_profile_library_entries(fs.as_ref(), &path, &profiles)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::ProfileLibrarySaved)
+        }
+        FilesTask::SaveCalibrationLibrary { library, path, fs } => {
+            save_calibration_library(fs.as_ref(), &path, &library)
+                .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
+            Ok(FilesOutput::CalibrationLibrarySaved)
+        }
+        FilesTask::ReadMachineProfile { path, fs } => {
+            // A profile file is a few hundred bytes; a bigger file is not one.
+            let bytes =
+                fs.read(&path, 1 << 20).map_err(|e| TaskError::Files(FilesError::MachineProfile(format!("{e:?}"))))?;
+            cancelled(cancel)?;
+            let file = crate::profile_file::parse_profile(&bytes)
+                .map_err(|e| TaskError::Files(FilesError::MachineProfile(e.to_string())))?;
+            Ok(FilesOutput::MachineProfileRead(Box::new(file)))
         }
         FilesTask::SaveArtLibrary { library, path, fs } => {
             save_art_library(fs.as_ref(), &path, &library)

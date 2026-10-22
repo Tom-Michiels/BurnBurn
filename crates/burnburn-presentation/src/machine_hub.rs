@@ -22,6 +22,10 @@ pub struct DeviceRow {
     pub width_mm: f64,
     pub height_mm: f64,
     pub active: bool,
+    /// What the user declared about the controller (M01); `None` is not declared. Never filled
+    /// from what a controller replied.
+    pub model: Option<String>,
+    pub firmware: Option<String>,
 }
 
 /// Why an upload failed, as the evidence says. The controller reports no reason beyond a refused

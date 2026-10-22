@@ -4,8 +4,8 @@ use burnburn_geometry::{Bounds, Point};
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain, RevisionId, StableId};
 
 use crate::{
-    MachineFrame, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, ProfileRevision, RotaryConfig,
-    ScanAxis, SettingsIndex,
+    AppliedCalibration, MachineFrame, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, ProfileRevision,
+    RotaryConfig, ScanAxis, SettingsIndex,
 };
 
 /// Content address of a plan: hash of its canonical content (no addresses, no log time,
@@ -63,9 +63,15 @@ pub struct JobPlan {
     settings: Vec<OperationSettings>,
     events: Vec<PlanEvent>,
     rotary: Option<RotaryConfig>,
+    calibration: Vec<AppliedCalibration>,
 }
 
 impl JobPlan {
+    /// The calibrated values the compiler used for this plan, with the proofs they came from.
+    pub fn calibration(&self) -> &[AppliedCalibration] {
+        &self.calibration
+    }
+
     pub fn id(&self) -> JobPlanId {
         self.id
     }
@@ -150,6 +156,7 @@ pub struct JobPlanBuilder {
     current: Option<SettingsIndex>,
     position: MachinePoint,
     rotary: Option<RotaryConfig>,
+    calibration: Vec<AppliedCalibration>,
 }
 
 impl JobPlanBuilder {
@@ -163,6 +170,15 @@ impl JobPlanBuilder {
             current: None,
             position: start,
             rotary: None,
+            calibration: Vec::new(),
+        }
+    }
+
+    /// Records a calibrated value the compiler used (part of the plan's content). The same value
+    /// noted twice is kept once.
+    pub fn note_calibration(&mut self, applied: AppliedCalibration) {
+        if !self.calibration.contains(&applied) {
+            self.calibration.push(applied);
         }
     }
 
@@ -266,6 +282,7 @@ impl JobPlanBuilder {
             settings: self.settings,
             events: self.events,
             rotary: self.rotary,
+            calibration: self.calibration,
         })
     }
 }
@@ -410,6 +427,14 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
         w.u64(u64::from(r.steps_per_rotation()));
         w.f64(r.y_steps_per_mm());
         w.bool(r.mirror());
+    }
+    // Likewise only a plan made with measurements writes them (W09), so other plans keep their id.
+    if !b.calibration.is_empty() {
+        w.tag("calibration");
+        w.u64(b.calibration.len() as u64);
+        for a in &b.calibration {
+            a.encode(&mut w);
+        }
     }
     w.finish().map_err(|_| PlanError::NotFinite)
 }

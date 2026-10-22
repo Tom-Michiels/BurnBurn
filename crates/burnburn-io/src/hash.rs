@@ -43,6 +43,8 @@ pub fn project_hash(project: &Project) -> Result<ContentHash, NonFiniteValue> {
     }
     // Optimization settings and priorities (W2-L3) only when they differ from the defaults.
     process.encode_optimization(&mut w);
+    // Start and direction locks (C06) only when a shape has one.
+    process.encode_path_locks(&mut w);
     // Project notes (P04) only when present.
     if !process.notes().is_empty() {
         w.tag("notes");

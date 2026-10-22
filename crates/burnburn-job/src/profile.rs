@@ -1,6 +1,8 @@
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain};
 
-use crate::{MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio, RotaryConfig, RotaryKind};
+use crate::{
+    Calibration, MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio, RotaryConfig, RotaryKind,
+};
 
 /// Identity and revision of a machine profile. A plan compiled for one revision is stale for
 /// another (M01: a profile change invalidates the old compile result). `revision` is a display
@@ -25,6 +27,7 @@ pub struct MachineProfile {
     max_power: PowerRatio,
     capabilities: MachineCapabilities,
     rotary: Option<RotaryState>,
+    calibration: Calibration,
 }
 
 /// The rotary setting and the flat-bed frame to return to.
@@ -60,6 +63,7 @@ impl MachineProfile {
             max_power,
             capabilities: MachineCapabilities::conservative(),
             rotary: None,
+            calibration: Calibration::default(),
         };
         profile.revision.content = profile.content_hash()?;
         Ok(profile)
@@ -70,6 +74,19 @@ impl MachineProfile {
         self.capabilities = capabilities;
         self.revision.content = self.content_hash()?;
         Ok(self)
+    }
+
+    /// The same profile with the machine's measured values (W09). A different measurement is a
+    /// different revision; an empty calibration leaves the content hash as it was.
+    pub fn with_calibration(mut self, calibration: Calibration) -> Result<Self, PlanError> {
+        self.calibration = calibration;
+        self.revision.content = self.content_hash()?;
+        Ok(self)
+    }
+
+    /// The measured values the compiler may use.
+    pub fn calibration(&self) -> &Calibration {
+        &self.calibration
     }
 
     /// Canonical profile (domain `profile`): `str` id, frame (`f64` width, `f64` height, origin
@@ -101,6 +118,11 @@ impl MachineProfile {
             w.u64(u64::from(r.config.steps_per_rotation()));
             w.f64(r.config.y_steps_per_mm());
             w.bool(r.config.mirror());
+        }
+        // Likewise only a profile with measurements writes the calibration (W09).
+        if !self.calibration.is_empty() {
+            w.tag("calibration");
+            self.calibration.encode(&mut w);
         }
         Ok(ContentHash::of(HashDomain::Profile, &w.finish().map_err(|_| PlanError::NotFinite)?))
     }

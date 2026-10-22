@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use burnburn_job::{
-    Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, RotaryConfig, RotaryKind,
-    Support,
+    Calibration, Feature, KerfProof, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio,
+    ProofRef, RotaryConfig, RotaryKind, ScanOffsetProof, Support,
 };
 use burnburn_types::ContentHash;
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,9 @@ pub fn compare_profile(frozen: &MachineProfile, local: &MachineProfile) -> Profi
     if frozen.rotary() != local.rotary() {
         fields.push("rotary");
     }
+    if frozen.calibration() != local.calibration() {
+        fields.push("calibration");
+    }
     ProfileComparison::Differs { fields }
 }
 
@@ -78,6 +81,38 @@ pub(crate) struct ProfileDto {
     /// height to return to is stored here. Omitted for a flat bed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotary: Option<RotaryDto>,
+    /// Measured kerf and scan offsets (W09). Omitted without measurements, so profiles without
+    /// them are stored exactly as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<CalibrationDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CalibrationDto {
+    #[serde(default)]
+    pub kerf: Vec<KerfDto>,
+    #[serde(default)]
+    pub scan_offsets: Vec<ScanOffsetDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct KerfDto {
+    pub material: String,
+    pub kerf_mm: Num,
+    /// Identity of the proof the value came from.
+    pub proof: u64,
+    pub date: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ScanOffsetDto {
+    pub speed_mm_s: Num,
+    pub offset_mm: Num,
+    pub proof: u64,
+    pub date: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,7 +152,32 @@ pub(crate) enum SupportDto {
 
 pub(crate) fn profile_to_dto(p: &MachineProfile) -> ProfileDto {
     let (min, max) = p.power_range();
+    let calibration = (!p.calibration().is_empty()).then(|| CalibrationDto {
+        kerf: p
+            .calibration()
+            .kerf()
+            .iter()
+            .map(|k| KerfDto {
+                material: k.material.clone(),
+                kerf_mm: Num(k.kerf_mm),
+                proof: k.proof.id,
+                date: k.proof.date.clone(),
+            })
+            .collect(),
+        scan_offsets: p
+            .calibration()
+            .scan_offsets()
+            .iter()
+            .map(|s| ScanOffsetDto {
+                speed_mm_s: Num(s.speed_mm_s),
+                offset_mm: Num(s.offset_mm),
+                proof: s.proof.id,
+                date: s.proof.date.clone(),
+            })
+            .collect(),
+    });
     ProfileDto {
+        calibration,
         id: p.revision().id.clone(),
         revision: p.revision().revision,
         content: p.revision().content.to_hex(),
@@ -223,6 +283,36 @@ pub(crate) fn profile_from_dto(i: usize, d: &ProfileDto) -> Result<MachineProfil
                 RotaryConfig::new(kind, r.steps_per_rotation, n("rotary.y_steps_per_mm", r.y_steps_per_mm)?, r.mirror)
                     .map_err(|e| bad("rotary", format!("{e:?}")))?;
             profile.with_rotary(config).map_err(|e| bad("rotary", format!("{e:?}")))?
+        }
+    };
+    let profile = match &d.calibration {
+        None => profile,
+        Some(c) => {
+            let proof = |id, date: &String| ProofRef { id, date: date.clone() };
+            let kerf = c
+                .kerf
+                .iter()
+                .map(|k| {
+                    Ok(KerfProof {
+                        material: k.material.clone(),
+                        kerf_mm: n("calibration.kerf_mm", k.kerf_mm)?,
+                        proof: proof(k.proof, &k.date),
+                    })
+                })
+                .collect::<Result<Vec<_>, LoadError>>()?;
+            let scan = c
+                .scan_offsets
+                .iter()
+                .map(|s| {
+                    Ok(ScanOffsetProof {
+                        speed_mm_s: n("calibration.speed_mm_s", s.speed_mm_s)?,
+                        offset_mm: n("calibration.offset_mm", s.offset_mm)?,
+                        proof: proof(s.proof, &s.date),
+                    })
+                })
+                .collect::<Result<Vec<_>, LoadError>>()?;
+            let calibration = Calibration::new(kerf, scan).map_err(|e| bad("calibration", format!("{e}")))?;
+            profile.with_calibration(calibration).map_err(|e| bad("calibration", format!("{e:?}")))?
         }
     };
     let stored = ContentHash::from_hex(&d.content).map_err(|e| bad("content", e.to_string()))?;

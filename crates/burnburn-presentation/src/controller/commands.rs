@@ -104,6 +104,9 @@ impl AppController {
         if command == CommandKey::NewFromTemplate {
             return AppUpdate { effects: vec![HostEffect::ShowTemplateOpenPanel], ..AppUpdate::default() };
         }
+        if command == CommandKey::OpenMachineProfile {
+            return AppUpdate { effects: vec![HostEffect::ShowMachineProfileOpenPanel], ..AppUpdate::default() };
+        }
         let Some(document) = document.or(self.active) else { return AppUpdate::default() };
         match command {
             CommandKey::Save | CommandKey::SaveAs => self.save(document, None),
@@ -143,6 +146,7 @@ impl AppController {
                 })
             }
             CommandKey::ShowNotes => self.with_session(document, |s| super::notes::toggle(s, document)),
+            CommandKey::LockPathStart | CommandKey::LockPathDirection => self.toggle_path_lock(document, command),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
             // The grid distance is a preference (X02), not a session constant.
@@ -155,13 +159,7 @@ impl AppController {
             }
             CommandKey::Compile => self.submit_compile(document),
             CommandKey::PrepareJob => self.submit_prepare(document),
-            CommandKey::ApproveJob => self.with_session(document, |s| match s.prepared.as_mut() {
-                Some(p) => {
-                    p.approved = true;
-                    AppUpdate { view_changed: true, ..AppUpdate::default() }
-                }
-                None => AppUpdate::default(),
-            }),
+            CommandKey::ApproveJob => self.approve_job(document),
             CommandKey::ExportRd => match self.sessions.get(&document) {
                 Some(s) if s.compiled.is_some() => AppUpdate {
                     effects: vec![HostEffect::ShowExportPanel { document, suggested_name: format!("{}.rd", s.title) }],

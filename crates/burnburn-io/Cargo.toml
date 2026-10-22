@@ -13,6 +13,7 @@ workspace = true
 # Source-image validation and dimensions; png + jpeg only (ADR 0007).
 image = { workspace = true }
 burnburn-document = { workspace = true }
+burnburn-gcode = { workspace = true }
 burnburn-geometry = { workspace = true }
 # Frozen machine-profile snapshots in a project (IM28, P07).
 burnburn-job = { workspace = true }

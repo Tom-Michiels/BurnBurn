@@ -78,6 +78,7 @@ fn item(snapshot: &DocumentSnapshot, f: &Finding) -> Option<Item> {
             targets: geometries.clone(),
             error,
         },
+        Finding::PassThroughResampled { geometry, .. } => on_geometry(FindingKind::PassThroughResampled, *geometry),
         _ => return None,
     })
 }

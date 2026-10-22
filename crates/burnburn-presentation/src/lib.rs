@@ -29,6 +29,7 @@ mod nest_task;
 mod notes;
 mod offset;
 mod production;
+pub mod profile_file;
 mod schikken;
 mod search_panel;
 mod structure_panel;

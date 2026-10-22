@@ -271,6 +271,7 @@ name = "burnburn-io"
 version = "0.1.0"
 dependencies = [
  "burnburn-document",
+ "burnburn-gcode",
  "burnburn-geometry",
  "burnburn-job",
  "burnburn-types",
@@ -354,6 +355,7 @@ dependencies = [
  "burnburn-text",
  "burnburn-trace",
  "burnburn-types",
+ "serde",
  "serde_json",
  "zip",
 ]

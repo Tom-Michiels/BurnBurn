@@ -396,6 +396,7 @@ pub(super) fn plan_view(c: &Compiled, s: &Session, machine: Option<&Machine>) ->
         preview: Arc::clone(&c.preview),
         findings: c.report.findings.clone(),
         grbl,
+        calibration: c.plan.calibration().to_vec(),
         errors,
         warnings: c.report.findings.len() - plan_errors,
     }

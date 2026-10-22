@@ -324,7 +324,9 @@ pub struct OperatorViewModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorJobRow {
-    pub document: DocumentId,
+    /// The window the job was prepared in; `None` for a released job that comes from the history
+    /// (after a restart) and has no window.
+    pub document: Option<DocumentId>,
     pub name: String,
     pub plan: JobPlanId,
     pub rd_hash: burnburn_types::ContentHash,
@@ -445,6 +447,8 @@ pub struct PlanViewModel {
     /// What the GRBL backend refuses of this plan (empty on a Ruida machine); each one is also
     /// counted in `errors`.
     pub grbl: Vec<crate::GrblFinding>,
+    /// The measured values the compiler used for this plan, with the proofs they came from (W09).
+    pub calibration: Vec<burnburn_job::AppliedCalibration>,
     pub errors: usize,
     pub warnings: usize,
 }
@@ -747,6 +751,9 @@ pub enum MessageKey {
     HistoryTrimmed(usize),
     /// A machine profile was chosen that this app does not know; nothing changed.
     UnknownMachineProfile,
+    /// The chosen machine profile file cannot be used (unreadable, damaged or not a profile);
+    /// nothing changed.
+    MachineProfileFileUnusable,
     /// A repeat cannot be set up: the machine profile is not the one the job was frozen for.
     RepeatRefused,
     /// Machine hub: the control that stops an upload that is under way.

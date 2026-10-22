@@ -68,6 +68,8 @@ pub enum HistoryError {
     },
     /// Reconciliation is only for executions whose outcome is unknown.
     NotUnknown(ExecutionStateDto),
+    /// Only a designer releases a job for the operator.
+    NotADesigner,
     /// A quantity below what is already completed.
     QuantityBelowCompleted {
         completed: u32,
@@ -246,6 +248,8 @@ pub struct History {
     max_item: u64,
     orders: BTreeMap<u64, OrderRecord>,
     order_links: BTreeMap<ExecutionId, u64>,
+    /// Jobs the designer released, in the order they were released (W01).
+    approvals: Vec<(CompiledJobId, Role)>,
 }
 
 pub fn segment_path(dir: &Path, n: u32) -> PathBuf {
@@ -288,6 +292,7 @@ impl History {
             max_item: 0,
             orders: BTreeMap::new(),
             order_links: BTreeMap::new(),
+            approvals: Vec::new(),
         }
     }
 
@@ -720,6 +725,42 @@ impl History {
         self.append(fs, HistoryRecord::OrderLinked { order, execution }, at)
     }
 
+    /// Releases a frozen job for the operator (W01). Durable before it returns; approving a job
+    /// that is approved already writes nothing.
+    pub fn approve_job(
+        &mut self,
+        fs: &dyn JournalFs,
+        job: CompiledJobId,
+        role: Role,
+        at: WallTime,
+    ) -> Result<(), HistoryError> {
+        if role != Role::Designer {
+            return Err(HistoryError::NotADesigner);
+        }
+        if !self.jobs.contains_key(&job) {
+            return Err(HistoryError::UnknownJob(job));
+        }
+        if self.approvals.iter().any(|(j, _)| *j == job) {
+            return Ok(());
+        }
+        self.append(fs, HistoryRecord::JobApproved { job, role }, at).map(|_| ())
+    }
+
+    /// Has the designer released this frozen job?
+    pub fn is_approved(&self, job: CompiledJobId) -> bool {
+        self.approvals.iter().any(|(j, _)| *j == job)
+    }
+
+    /// Who released the job, if it was released.
+    pub fn approval_role(&self, job: CompiledJobId) -> Option<Role> {
+        self.approvals.iter().find(|(j, _)| *j == job).map(|(_, r)| *r)
+    }
+
+    /// The released jobs, in the order they were released.
+    pub fn approved_jobs(&self) -> impl Iterator<Item = CompiledJobId> + '_ {
+        self.approvals.iter().map(|(j, _)| *j)
+    }
+
     /// Orders, latest version of each, by number.
     pub fn orders(&self) -> impl Iterator<Item = &OrderRecord> {
         self.orders.values()
@@ -845,6 +886,13 @@ impl History {
             | HistoryRecord::Reconciled { execution, .. }
             | HistoryRecord::OperatorNote { execution, .. } => exec(execution),
             HistoryRecord::OrderRecorded(_) => Ok(()),
+            HistoryRecord::JobApproved { job, .. } => {
+                if self.jobs.contains_key(job) {
+                    Ok(())
+                } else {
+                    Err(HistoryError::UnknownJob(*job))
+                }
+            }
             HistoryRecord::OrderLinked { order, execution } => {
                 exec(execution)?;
                 if self.orders.contains_key(order) { Ok(()) } else { Err(HistoryError::UnknownOrder(*order)) }
@@ -951,6 +999,11 @@ impl History {
                 if let Some(v) = self.live.get_mut(action) {
                     v.outcome.get_or_insert(*outcome);
                     v.interrupted_by_restart = false;
+                }
+            }
+            HistoryRecord::JobApproved { job, role } => {
+                if !self.approvals.iter().any(|(j, _)| j == job) {
+                    self.approvals.push((*job, *role));
                 }
             }
             HistoryRecord::SettingsBackup(_) | HistoryRecord::Unrecognized { .. } => {}

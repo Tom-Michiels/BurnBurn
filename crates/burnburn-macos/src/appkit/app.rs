@@ -891,6 +891,7 @@ impl HostApp {
                 self.show_template_save_panel(*document, suggested_name)
             }
             HostEffect::ShowTemplateOpenPanel => self.show_template_open_panel(),
+            HostEffect::ShowMachineProfileOpenPanel => self.show_machine_profile_open_panel(),
             HostEffect::ShowBundleOpenPanel { document } => self.show_bundle_open_panel(*document),
             HostEffect::RecentTemplatesChanged { paths } => self.recent_templates_changed(paths),
             HostEffect::OfferRecovery { files } => {
@@ -1635,6 +1636,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
                 files_t(crate::l10n_files::FilesText::MenuBundleSubmenu),
                 vec![plain(CommandKey::ExportBundle), plain(CommandKey::ImportBundle)],
             ),
+            plain(CommandKey::OpenMachineProfile),
             sep(),
             item(c(CommandKey::Close), "w", false),
             item(c(CommandKey::Save), "s", false),
@@ -1783,6 +1785,9 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::ShapesReverse), "", false),
             item(c(CommandKey::ShapesClockwise), "", false),
             item(c(CommandKey::ShapesCounterClockwise), "", false),
+            sep(),
+            item(c(CommandKey::LockPathStart), "", false),
+            item(c(CommandKey::LockPathDirection), "", false),
             sep(),
             item(c(CommandKey::ShapesConvertToPath), "", false),
             sep(),

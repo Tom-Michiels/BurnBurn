@@ -113,6 +113,14 @@ fn cells(extent: f64, pitch: f64) -> u64 {
     if n < 1.0 { 1 } else { n as u64 }
 }
 
+/// The source window of a pass-through image in pixels and the grid of dots its frame `bounds`
+/// is burnt on (pass-through scans along X, so the grid is that of the frame itself).
+pub(crate) fn pass_through_grids(s: &ImageSettings, source: &SourceImage, bounds: &Bounds) -> ((u32, u32), (u32, u32)) {
+    let window = crop_rect(s).map_or((source.width(), source.height()), |c| (c.width, c.height));
+    let dots = |extent: f64, pitch: f64| u32::try_from(cells(extent, pitch)).unwrap_or(u32::MAX);
+    (window, (dots(bounds.width(), s.dot_pitch().mm()), dots(bounds.height(), s.line_interval().mm())))
+}
+
 /// The raster grid of one frame in the scan frame: `cols × rows` cells, centred in the bounds.
 struct Grid {
     cols: u32,

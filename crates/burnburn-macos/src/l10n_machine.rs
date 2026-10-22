@@ -33,6 +33,13 @@ texts! {
     // --- Device.
     DeviceLabel => ("Actief apparaat:", "Active device:"),
     DeviceItem => ("{0} (revisie {1}, {2} × {3} mm)", "{0} (revision {1}, {2} × {3} mm)"),
+    // What the user declared about the controller (M01); never what a controller replied.
+    DeviceDeclaredBoth => (
+        " — model {0}, firmware {1} (door jou opgegeven)",
+        " — model {0}, firmware {1} (declared by you)"
+    ),
+    DeviceDeclaredModel => (" — model {0} (door jou opgegeven)", " — model {0} (declared by you)"),
+    DeviceDeclaredFirmware => (" — firmware {0} (door jou opgegeven)", " — firmware {0} (declared by you)"),
     NoDevices => (
         "Nog geen machineprofiel: maak er een in Apparaatinstellingen.",
         "No machine profile yet: create one in Device Settings."

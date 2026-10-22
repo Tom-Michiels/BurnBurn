@@ -1097,6 +1097,11 @@ pub fn template_save_intent(document: DocumentId, path: PathBuf, scope_item: isi
     Some(UiIntent::Files(FilesIntent::SaveAsTemplate { document, path, scope }))
 }
 
+/// A machine profile file chosen in the open panel (Ruida or GRBL JSON).
+pub fn machine_profile_open_intent(path: PathBuf) -> UiIntent {
+    UiIntent::OpenMachineProfile { path }
+}
+
 pub fn template_open_intent(path: PathBuf) -> UiIntent {
     UiIntent::Files(FilesIntent::NewFromTemplate { path })
 }
