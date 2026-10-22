@@ -51,7 +51,16 @@ pub trait TemplateLocator: Send + Sync + fmt::Debug {
         Ok(self
             .locate(frame, template, &plain, cancel)?
             .into_iter()
-            .map(|m| PoseMatch { x_px: m.x_px, y_px: m.y_px, angle_deg: 0.0, scale: 1.0, score: m.score })
+            .map(|m| PoseMatch {
+                    x_px: m.x_px,
+                    y_px: m.y_px,
+                    angle_deg: 0.0,
+                    scale: 1.0,
+                    score: m.score,
+                    mirrored: false,
+                    tilt: (0.0, 0.0),
+                    visible: 1.0,
+                })
             .collect())
     }
 }
