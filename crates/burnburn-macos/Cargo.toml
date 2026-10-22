@@ -164,6 +164,11 @@ path = "../../tests/native/macos/cam_dialogs.rs"
 harness = false
 
 [[test]]
+name = "g5_cam_material"
+path = "../../tests/native/macos/g5_cam_material.rs"
+harness = false
+
+[[test]]
 name = "g5_cam_dialogs"
 path = "../../tests/native/macos/g5_cam_dialogs.rs"
 harness = false
