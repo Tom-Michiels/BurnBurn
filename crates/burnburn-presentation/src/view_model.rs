@@ -737,6 +737,8 @@ pub enum MessageKey {
     Field(FieldKey),
     InvalidLength(FieldError),
     CommandRejected,
+    /// A structure edit (part, variant, reference) was refused for this reason (G6-werk).
+    Structure(crate::structure_panel::StructureProblem),
     SaveFailed,
     /// The file on disk was written by a newer BurnBurn: not overwritten, nothing was saved (X07).
     SaveNewerFileOnDisk,

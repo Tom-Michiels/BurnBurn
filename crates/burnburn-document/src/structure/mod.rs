@@ -8,6 +8,7 @@
 
 mod canonical;
 mod command;
+mod from_objects;
 mod ids;
 mod layer;
 mod modifier;
@@ -18,6 +19,7 @@ mod relation;
 
 pub use command::{StructureChange, StructureCommand, StructureError, StructureLabel};
 pub(crate) use command::{StructureEffect, StructureTxn, apply, chain_order};
+pub use from_objects::{PartFromObjects, PartFromObjectsError, part_from_objects};
 pub use ids::{ModifierId, PartDefinitionId, PartInstanceId, PlateId, ReferenceId, RelationId};
 pub use layer::{StructureLayer, StructureParts};
 pub(crate) use layer::{relation_state_in, resolve_in};

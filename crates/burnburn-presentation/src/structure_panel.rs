@@ -33,12 +33,21 @@ pub struct InstanceRow {
     pub status: InstanceStatus,
 }
 
+/// A variant and the parameter values it sets (the others keep the definition's value).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantRow {
+    pub name: String,
+    pub values: Vec<PartValue>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartRow {
     pub id: u64,
     pub name: String,
     pub parameters: Vec<PartValue>,
     pub variants: Vec<String>,
+    /// The same variants with their values (G6-werk).
+    pub variant_values: Vec<VariantRow>,
     pub instances: Vec<InstanceRow>,
 }
 
@@ -85,6 +94,17 @@ pub struct ReferenceRow {
     pub object: u64,
     pub source: Option<String>,
     pub status: ReferenceStatus,
+    /// When the reference is ambiguous: the edges it may mean, to choose from (G6-werk).
+    pub candidates: Vec<String>,
+}
+
+/// One edge of the single selected object: the choice for a new reference (G6-werk).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeRow {
+    pub subpath: usize,
+    pub segment: usize,
+    /// Length of the edge in millimetres.
+    pub length: String,
 }
 
 /// What the chosen plate could not include as it is.
@@ -109,6 +129,11 @@ pub struct StructureViewModel {
     pub plan_plate: Option<u64>,
     /// What the chosen plate left out or blocks.
     pub plate_issues: Vec<PlateIssueRow>,
+    /// How many objects are selected: what "make a part" would use (G6-werk).
+    pub selected: usize,
+    /// The edges of the selected object when exactly one is selected; empty otherwise.
+    pub edges: Vec<EdgeRow>,
+    pub edge_object: Option<u64>,
 }
 
 /// An edit of one instance, each one undo step.
@@ -118,4 +143,47 @@ pub enum StructureEdit {
     SetVariant { instance: u64, variant: Option<String> },
     /// A local override of one parameter as typed (`80`, `80 mm`, `3,1 in`); empty removes it.
     SetOverride { instance: u64, parameter: String, text: String },
+    /// A part made of the selected objects (G6-werk, S07): rectangles and circles with their sizes
+    /// as parameters, other shapes as fixed geometry. The objects stay; nothing is placed.
+    DefinePart { name: String },
+    /// An instance at the typed position of the part's frame (`x`, `y` lengths; empty is 0).
+    PlaceInstance { definition: u64, x: String, y: String },
+    RemoveInstance { instance: u64 },
+    /// Only when no instance uses the part.
+    RemovePart { definition: u64 },
+    /// The definition's own value of a parameter; every instance follows (a local override stays).
+    SetParameter { definition: u64, parameter: String, text: String },
+    /// A new, empty variant (it takes the definition's values until it is given its own).
+    AddVariant { definition: u64, name: String },
+    /// The value a variant sets for a parameter; empty takes it away.
+    SetVariantValue { definition: u64, variant: String, parameter: String, text: String },
+    /// A named reference to edge `segment` of `subpath` of `object` (S06).
+    AddReference { name: String, object: u64, subpath: usize, segment: usize },
+    /// The operator's choice among the candidates of an ambiguous reference.
+    RebindReference { reference: u64, candidate: usize },
+    RemoveReference { reference: u64 },
+}
+
+/// Why a structure edit was refused (G6-werk). Nothing changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StructureProblem {
+    /// A part is made of the selected objects, and nothing is selected.
+    NeedsSelection,
+    /// A part or variant needs a name.
+    NeedsName,
+    UnknownPart,
+    UnknownInstance,
+    /// The part is still used by an instance.
+    PartInUse,
+    UnknownVariant,
+    VariantExists,
+    UnknownParameter,
+    UnknownObject,
+    /// The object has no such edge.
+    NotAnEdge,
+    UnknownReference,
+    /// Only an ambiguous reference is rebound, by choosing one of its candidates.
+    NotAmbiguous,
+    NoCandidate,
 }
