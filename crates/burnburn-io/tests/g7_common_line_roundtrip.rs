@@ -70,7 +70,13 @@ fn the_option_survives_save_and_reopen_with_the_same_hash() {
     assert_eq!(project_hash(&back).unwrap(), project_hash(&p).unwrap());
     assert_eq!(encode_container(&back).unwrap(), bytes, "a second save writes the same bytes");
     let common = |op: OperationId| {
-        back.document.process().operation(op).unwrap().advanced().common_line.map(|c| (c.tolerance_mm(), c.min_overlap_mm()))
+        back.document
+            .process()
+            .operation(op)
+            .unwrap()
+            .advanced()
+            .common_line
+            .map(|c| (c.tolerance_mm(), c.min_overlap_mm()))
     };
     assert_eq!((common(ops[0]), common(ops[1])), (Some((0.05, 2.5)), None));
 }

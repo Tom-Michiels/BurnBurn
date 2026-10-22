@@ -71,7 +71,6 @@ fn parts_within_the_tolerance_share_the_cut_and_parts_beyond_it_do_not() {
     let (mut s, ids) = pair(0.06, 0.0);
     common_line_on(&mut s, ids, 0.05, 2.0);
     assert!((cut_mm(&s) - 120.0).abs() < 1e-6, "a gap of 0.06 is not: {}", cut_mm(&s));
-
 }
 
 #[test]

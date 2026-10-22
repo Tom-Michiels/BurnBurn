@@ -11,8 +11,8 @@ use burnburn_document::UndoLabel;
 use burnburn_document::process::ProcessLabel;
 use burnburn_job::{Feature, MachineCapabilities, MoveKind, Support};
 use burnburn_presentation::{
-    AppIntent, CommandKey, CutExtras, CutField, CutSettingsViewModel, FieldState, HeadlessEditorHarness, HostEffect, MessageKey,
-    OperationKind, PreviewIntent, RdRefusal, SelectMode, UiIntent,
+    AppIntent, CommandKey, CutExtras, CutField, CutSettingsViewModel, FieldState, HeadlessEditorHarness, HostEffect,
+    MessageKey, OperationKind, PreviewIntent, RdRefusal, SelectMode, UiIntent,
 };
 use burnburn_types::{DocumentId, GeometryId, OperationId};
 

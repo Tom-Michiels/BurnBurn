@@ -49,7 +49,7 @@ fn send(h: &mut Harness, intent: SchikkenIntent) {
 }
 
 fn options(h: &mut Harness, doc: DocumentId, input: NestInput) {
-    send(h, SchikkenIntent::SetNestOptions { document: doc, input });
+    send(h, SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) });
 }
 
 fn nest(h: &mut Harness, doc: DocumentId) -> NestPanelViewModel {
@@ -81,7 +81,10 @@ fn every_part_is_one_copy_unless_the_panel_says_more() {
     let p = panel(&h, doc);
     assert_eq!(p.input.copies, "1");
     assert_eq!(p.part_rows.len(), 2);
-    assert_eq!(p.part_rows.iter().map(|r| r.object).collect::<Vec<_>>(), ids.iter().map(|i| i.raw()).collect::<Vec<_>>());
+    assert_eq!(
+        p.part_rows.iter().map(|r| r.object).collect::<Vec<_>>(),
+        ids.iter().map(|i| i.raw()).collect::<Vec<_>>()
+    );
     assert!(p.part_rows.iter().all(|r| r.copies == "1" && !r.own));
 
     options(&mut h, doc, copies("3"));
@@ -96,11 +99,8 @@ fn every_part_is_one_copy_unless_the_panel_says_more() {
 #[test]
 fn a_part_can_have_its_own_number() {
     let (mut h, doc, ids) = two_squares();
-    let input = NestInput {
-        copies: "2".to_owned(),
-        part_copies: vec![(ids[1].raw(), "4".to_owned())],
-        ..NestInput::default()
-    };
+    let input =
+        NestInput { copies: "2".to_owned(), part_copies: vec![(ids[1].raw(), "4".to_owned())], ..NestInput::default() };
     options(&mut h, doc, input);
     let p = panel(&h, doc);
     let shown: Vec<(&str, bool)> = p.part_rows.iter().map(|r| (r.copies.as_str(), r.own)).collect();

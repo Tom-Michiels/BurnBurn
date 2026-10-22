@@ -885,7 +885,9 @@ fn exact_valid(
     p: &NestParams,
     cancel: &CancellationToken,
 ) -> Result<bool, NestError> {
-    let moved = ts.shrunk.transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
+    let moved = ts
+        .shrunk
+        .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
     let Some(b) = moved.bounds() else { return Ok(false) };
     let options = BooleanOptions { fill: FillRule::EvenOdd, tolerance: p.tolerance };
     let boolean = |a: &Path, c: &Path, op| {
@@ -951,9 +953,7 @@ fn contact_fit_tight(
         v.dedup();
     }
     let slack = slack_mm(p);
-    let fits = |x: f64, y: f64| {
-        x + ts.size.0 <= usable.max().x + slack && y + ts.size.1 <= usable.max().y + slack
-    };
+    let fits = |x: f64, y: f64| x + ts.size.0 <= usable.max().x + slack && y + ts.size.1 <= usable.max().y + slack;
     let mut tried = 0;
     for &y in &ys {
         if known.is_some_and(|k| y > k.y + slack) {
@@ -1006,10 +1006,7 @@ fn grid_fit_tight(
                         return Ok(None);
                     }
                     *budget -= 1;
-                    let at = Point::new(
-                        grid.origin.x + (c as f64 + fx) * step,
-                        grid.origin.y + (r as f64 + fy) * step,
-                    );
+                    let at = Point::new(grid.origin.x + (c as f64 + fx) * step, grid.origin.y + (r as f64 + fy) * step);
                     if exact_valid(t, ts, at, p, cancel)? {
                         return slide(t, ts, at, p, cancel).map(Some);
                     }
@@ -1022,7 +1019,13 @@ fn grid_fit_tight(
 
 /// Moves a valid position down, then left, as far as it stays valid (bisection down to the
 /// slack), until a sweep moves nothing.
-fn slide(t: &TightSheet, ts: &TightShape, mut at: Point, p: &NestParams, cancel: &CancellationToken) -> Result<Point, NestError> {
+fn slide(
+    t: &TightSheet,
+    ts: &TightShape,
+    mut at: Point,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Point, NestError> {
     let (step, slack) = (p.step.mm(), slack_mm(p));
     for _ in 0..3 {
         let before = at;
@@ -1056,7 +1059,9 @@ fn slide(t: &TightSheet, ts: &TightShape, mut at: Point, p: &NestParams, cancel:
 /// Marks a tight placement at `at`: the grown outline for later exact checks and the cells whose
 /// centre it covers for the optimistic raster.
 fn occupy_exact(t: &mut TightSheet, ts: &TightShape, at: Point, p: &NestParams) -> Result<(), NestError> {
-    let grown = ts.grown.transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
+    let grown = ts
+        .grown
+        .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
     if let Some(b) = grown.bounds() {
         for (c, r) in centre_cells(&polygons(&grown, &p.tolerance)?, t.blocked.origin, p.step.mm()) {
             t.blocked.set(c, r);

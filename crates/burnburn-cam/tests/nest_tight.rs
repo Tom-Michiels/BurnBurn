@@ -6,7 +6,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use burnburn_cam::nest::{
-    NestOptions, NestParams, NestPart, NestResult, NestError, Packing, PartKey, RotationSet, Stock, StockId,
+    NestError, NestOptions, NestParams, NestPart, NestResult, Packing, PartKey, RotationSet, Stock, StockId,
     UtilisationBasis, nest_packed,
 };
 use burnburn_geometry::{Bounds, Path, Point, ProductionTolerance, Rect};

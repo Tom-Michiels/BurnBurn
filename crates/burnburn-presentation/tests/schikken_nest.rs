@@ -159,7 +159,7 @@ fn rotations_decide_whether_a_long_part_fits() {
         &mut h,
         SchikkenIntent::SetNestOptions {
             document: doc,
-            input: NestInput { rotations: NestRotations::Quarter, ..NestInput::default() },
+            input: Box::new(NestInput { rotations: NestRotations::Quarter, ..NestInput::default() }),
         },
     );
     send(&mut h, SchikkenIntent::StartNest { document: doc });
@@ -169,7 +169,7 @@ fn rotations_decide_whether_a_long_part_fits() {
         &mut h,
         SchikkenIntent::SetNestOptions {
             document: doc,
-            input: NestInput { rotations: NestRotations::Eighth, ..NestInput::default() },
+            input: Box::new(NestInput { rotations: NestRotations::Eighth, ..NestInput::default() }),
         },
     );
     assert!(panel(&h, doc).report.is_none(), "other options drop the old result");
@@ -214,7 +214,7 @@ fn invalid_fields_are_named_and_no_task_starts() {
         (NestInput { edge_buffer: "-2".to_owned(), ..NestInput::default() }, NestField::EdgeBuffer),
         (NestInput { step: "0".to_owned(), ..NestInput::default() }, NestField::Step),
     ] {
-        send(&mut h, SchikkenIntent::SetNestOptions { document: doc, input });
+        send(&mut h, SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) });
         assert_eq!(panel(&h, doc).error, Some(SchikkenMessage::Nest(NestFailure::InvalidField(field))));
     }
     send(&mut h, SchikkenIntent::StartNest { document: doc });

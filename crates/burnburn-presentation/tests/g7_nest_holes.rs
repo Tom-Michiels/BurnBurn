@@ -45,7 +45,7 @@ fn send(h: &mut Harness, intent: SchikkenIntent) {
 }
 
 fn options(h: &mut Harness, doc: DocumentId, input: NestInput) {
-    send(h, SchikkenIntent::SetNestOptions { document: doc, input });
+    send(h, SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) });
 }
 
 fn nest(h: &mut Harness, doc: DocumentId) -> NestPanelViewModel {
@@ -117,7 +117,8 @@ fn small_parts_go_into_the_hole_of_the_plate_and_the_hole_moves_with_the_plate()
 fn tight_packing_places_what_the_raster_alone_cannot() {
     // Two 10.4 x 10 parts on a bed whose usable width (22.8 less 1 mm at both edges) is exactly 20.8.
     let make = || {
-        let (mut h, doc, ids) = doc_with(vec![rectangle(300.0, 300.0, 10.4, 10.0), rectangle(340.0, 300.0, 10.4, 10.0)]);
+        let (mut h, doc, ids) =
+            doc_with(vec![rectangle(300.0, 300.0, 10.4, 10.0), rectangle(340.0, 300.0, 10.4, 10.0)]);
         bed(&mut h, 22.8, 12.0);
         h.invoke(doc, CommandKey::QuickNest);
         (h, doc, ids)

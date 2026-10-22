@@ -58,7 +58,7 @@ fn send(h: &mut Harness, intent: SchikkenIntent) {
 }
 
 fn nest(h: &mut Harness, doc: DocumentId, input: NestInput) -> NestPanelViewModel {
-    send(h, SchikkenIntent::SetNestOptions { document: doc, input });
+    send(h, SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) });
     send(h, SchikkenIntent::StartNest { document: doc });
     h.run_tasks();
     panel(h, doc)
@@ -164,7 +164,7 @@ fn the_sheet_cannot_be_one_of_the_parts_and_a_deleted_sheet_is_said() {
         &mut h,
         SchikkenIntent::SetNestOptions {
             document: doc,
-            input: NestInput { sheet_object: Some(ids[0].raw()), ..NestInput::default() },
+            input: Box::new(NestInput { sheet_object: Some(ids[0].raw()), ..NestInput::default() }),
         },
     );
     send(&mut h, SchikkenIntent::StartNest { document: doc });
@@ -177,7 +177,7 @@ fn the_sheet_cannot_be_one_of_the_parts_and_a_deleted_sheet_is_said() {
         &mut h,
         SchikkenIntent::SetNestOptions {
             document: doc,
-            input: NestInput { sheet_object: Some(9999), ..NestInput::default() },
+            input: Box::new(NestInput { sheet_object: Some(9999), ..NestInput::default() }),
         },
     );
     send(&mut h, SchikkenIntent::StartNest { document: doc });

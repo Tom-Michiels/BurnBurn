@@ -70,7 +70,11 @@ fn item_of(s: &DocumentSession, id: GeometryId, group: Vec<u32>) -> PasteItem {
     }
 }
 
-fn nest(s: &mut DocumentSession, moves: Vec<(GeometryId, Affine)>, copies: Vec<NestCopy>) -> Result<CommandOutcome, CommandError> {
+fn nest(
+    s: &mut DocumentSession,
+    moves: Vec<(GeometryId, Affine)>,
+    copies: Vec<NestCopy>,
+) -> Result<CommandOutcome, CommandError> {
     run(s, CommandPayload::Arrange(ArrangeCommand::NestCopies { moves, copies }))
 }
 
@@ -91,7 +95,11 @@ fn the_original_moves_and_every_copy_is_a_new_object_on_the_same_layer_in_one_hi
     let (c1, c2) = (out.changes.created[0], out.changes.created[1]);
     assert_eq!(bounds(&s, c1).min(), Point::new(20.0, 0.0), "copies are made from the part as it was before the move");
     assert_eq!(bounds(&s, c2).min(), Point::new(40.0, 0.0));
-    assert_eq!(s.snapshot().process().operation(op).unwrap().targets(), &[a, c1, c2], "the copies are cut like the original");
+    assert_eq!(
+        s.snapshot().process().operation(op).unwrap().targets(),
+        &[a, c1, c2],
+        "the copies are cut like the original"
+    );
     s.undo(s.revision()).unwrap();
     assert_eq!(s.snapshot().len(), 1, "one undo removes the copies");
     assert_eq!(bounds(&s, a).min(), Point::new(0.0, 0.0), "and puts the original back");

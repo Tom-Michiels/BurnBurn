@@ -6,8 +6,9 @@
 //! stored option the profile lacks stays untouched.
 
 use burnburn_document::process::{
-    AdvancedOptions, CommonLine, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead, LeadStyle,
-    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec, ZOffset, ZStep,
+    AdvancedOptions, CommonLine, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead,
+    LeadStyle, LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec,
+    ZOffset, ZStep,
 };
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::Length;

@@ -7,9 +7,9 @@
 mod common;
 mod edit_rig;
 
+use burnburn_document::process::ProcessLabel;
 use burnburn_document::{ObjectKind, UndoLabel};
 use burnburn_geometry::{Path, Point};
-use burnburn_document::process::ProcessLabel;
 use burnburn_job::{Feature, MachineCapabilities, MoveKind, Support};
 use burnburn_presentation::{
     CommandKey, CutExtras, CutField, CutSettingsViewModel, FieldState, HeadlessEditorHarness, MessageKey,
@@ -90,7 +90,10 @@ fn the_switch_has_its_values_and_one_apply_is_one_set_advanced() {
     assert_eq!(h.document(doc).unwrap().undo, Some(UndoLabel::Process(ProcessLabel::SetAdvanced)));
     let sheet = open(&mut h, doc, op);
     assert!(sheet.extras.flag(CutField::CommonLineEnabled));
-    assert_eq!((sheet.extras.text(CutField::CommonLineTolerance), sheet.extras.text(CutField::CommonLineMinOverlap)), ("0.1", "2"));
+    assert_eq!(
+        (sheet.extras.text(CutField::CommonLineTolerance), sheet.extras.text(CutField::CommonLineMinOverlap)),
+        ("0.1", "2")
+    );
     h.send(UiIntent::CancelCutSettings { document: doc });
     // Switched off again: gone.
     assert_eq!(apply(&mut h, doc, op, CutExtras::new().with_flag(CutField::CommonLineEnabled, false)), None);
@@ -110,7 +113,11 @@ fn values_out_of_range_are_refused_by_field() {
         ("0,05", "-1", CutField::CommonLineMinOverlap),
         ("0,05", "abc", CutField::CommonLineMinOverlap),
     ] {
-        assert_eq!(apply(&mut h, doc, op, on(tolerance, overlap)), Some(MessageKey::InvalidCutField(field)), "{tolerance} {overlap}");
+        assert_eq!(
+            apply(&mut h, doc, op, on(tolerance, overlap)),
+            Some(MessageKey::InvalidCutField(field)),
+            "{tolerance} {overlap}"
+        );
     }
     assert_eq!(h.document(doc).unwrap().revision, before);
 }

@@ -9,9 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use burnburn_document::process::{
-    OperationMode, ProcessCommand, RecipeDraft, RecipeId, RecipeRef,
-};
+use burnburn_document::process::{OperationMode, ProcessCommand, RecipeDraft, RecipeId, RecipeRef};
 use burnburn_document::{CommandPayload, DocumentCommand, DocumentSession};
 use burnburn_io::std_fs::StdFileSystem;
 use burnburn_io::{Project, decode_container, encode_container, load_project, project_hash};
@@ -43,7 +41,8 @@ fn op(p: &Project, id: u64) -> burnburn_document::process::Operation {
 fn the_fixture_is_the_recorded_file() {
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(fixtures().join("manifest.json")).unwrap()).unwrap();
-    let entry = manifest["fixtures"].as_array().unwrap().iter().find(|f| f["file"] == FIXTURE).expect("in the manifest");
+    let entry =
+        manifest["fixtures"].as_array().unwrap().iter().find(|f| f["file"] == FIXTURE).expect("in the manifest");
     let digest: [u8; 32] = Sha256::digest(bytes()).into();
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     assert_eq!(entry["sha256"].as_str().unwrap(), hex, "fixture bytes changed: review, do not regenerate silently");
@@ -74,7 +73,10 @@ fn rows_keep_their_recipe_reference_and_their_own_numbers() {
     assert!(matches!(op(&p, 10).mode(), OperationMode::Fill(_)));
 
     let seven = p.document.process().recipe(RecipeId::from_raw(7)).unwrap();
-    assert_eq!((seven.name(), seven.material(), seven.revision(), seven.thickness().mm()), ("Berken 3 mm snijden", "Berken multiplex", 2, 3.0));
+    assert_eq!(
+        (seven.name(), seven.material(), seven.revision(), seven.thickness().mm()),
+        ("Berken 3 mm snijden", "Berken multiplex", 2, 3.0)
+    );
     assert_eq!(seven.settings().speed.get_mm_per_s(), 22.0);
     let ids: Vec<u64> = p.document.process().recipes().map(|r| r.id().raw()).collect();
     assert_eq!(ids, vec![7, 8, 9], "the recipe nobody uses is kept");
@@ -92,8 +94,14 @@ fn saving_again_writes_the_same_meaning_and_no_library_file() {
     before.as_object_mut().unwrap().remove("constraints");
     assert_eq!(json(&again), before, "nothing added, nothing lost, nothing renamed");
     let zip = zip::ZipArchive::new(std::io::Cursor::new(again)).unwrap();
-    assert!(zip.file_names().all(|n| n.ok().is_none_or(|n| n != "library-links.json")), "no library behind these recipes");
-    assert_eq!(project_hash(&decode_container(&encode_container(&p).unwrap()).unwrap()).unwrap(), project_hash(&p).unwrap());
+    assert!(
+        zip.file_names().all(|n| n.ok().is_none_or(|n| n != "library-links.json")),
+        "no library behind these recipes"
+    );
+    assert_eq!(
+        project_hash(&decode_container(&encode_container(&p).unwrap()).unwrap()).unwrap(),
+        project_hash(&p).unwrap()
+    );
 }
 
 fn run(s: &mut DocumentSession, payload: CommandPayload) -> burnburn_document::CommandOutcome {

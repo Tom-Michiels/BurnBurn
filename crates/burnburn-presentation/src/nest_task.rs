@@ -210,9 +210,8 @@ const ENCLOSE_TOLERANCE_MM: f64 = 0.01;
 /// Each body joins the smallest outline that encloses all its objects, and that one in turn joins
 /// the next, so a body ends up with the outermost one.
 fn join_holes(snapshot: &DocumentSnapshot, movable: Vec<Vec<GeometryId>>) -> Vec<Vec<GeometryId>> {
-    let area = |id: GeometryId| {
-        snapshot.object(id).and_then(|o| o.bounds()).map_or(f64::INFINITY, |b| b.width() * b.height())
-    };
+    let area =
+        |id: GeometryId| snapshot.object(id).and_then(|o| o.bounds()).map_or(f64::INFINITY, |b| b.width() * b.height());
     let mut parent: Vec<Option<usize>> = vec![None; movable.len()];
     for (i, body) in movable.iter().enumerate() {
         let encloser = movable
@@ -440,10 +439,11 @@ pub fn build_job(
 
 /// Runs the job. Cancellation is checked inside the packing; a cancelled job gives no result.
 pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput, TaskError> {
-    let result = nest_packed(&job.parts, &job.stocks, &job.params, &job.options, job.packing, cancel).map_err(|e| match e {
-        NestError::Cancelled => TaskError::Cancelled,
-        other => TaskError::Nest(other),
-    })?;
+    let result =
+        nest_packed(&job.parts, &job.stocks, &job.params, &job.options, job.packing, cancel).map_err(|e| match e {
+            NestError::Cancelled => TaskError::Cancelled,
+            other => TaskError::Nest(other),
+        })?;
     let members = |key: PartKey| job.members.get(key.0 as usize).cloned().unwrap_or_default();
     let placements = result
         .placements

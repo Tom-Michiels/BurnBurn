@@ -56,7 +56,7 @@ fn panel(h: &Harness, doc: DocumentId) -> NestPanelViewModel {
 }
 
 fn options(h: &mut Harness, doc: DocumentId, input: NestInput) {
-    h.send(UiIntent::Schikken(SchikkenIntent::SetNestOptions { document: doc, input }));
+    h.send(UiIntent::Schikken(SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) }));
 }
 
 fn nest(h: &mut Harness, doc: DocumentId) -> NestPanelViewModel {

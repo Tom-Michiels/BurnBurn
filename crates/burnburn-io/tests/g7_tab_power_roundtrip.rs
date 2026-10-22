@@ -7,8 +7,8 @@
 mod common;
 
 use burnburn_document::process::{
-    AdvancedOptions, Kerf, LineOptions, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessCommand,
-    ProcessSettings, Speed, TabSpec,
+    AdvancedOptions, Kerf, LineOptions, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange,
+    ProcessCommand, ProcessSettings, Speed, TabSpec,
 };
 use burnburn_document::{CommandPayload, DocumentCommand, DocumentSession};
 use burnburn_geometry::{Point, Rect};
@@ -36,10 +36,8 @@ fn session() -> (DocumentSession, Vec<OperationId>) {
         passes: Passes::new(1).unwrap(),
         air_assist: false,
     };
-    let tabs = [
-        TabSpec::new(3, mm(0.5)).unwrap().with_cut_power(25.0).unwrap(),
-        TabSpec::spaced(mm(20.0), mm(0.5)).unwrap(),
-    ];
+    let tabs =
+        [TabSpec::new(3, mm(0.5)).unwrap().with_cut_power(25.0).unwrap(), TabSpec::spaced(mm(20.0), mm(0.5)).unwrap()];
     let mut ops = Vec::new();
     for (i, t) in tabs.into_iter().enumerate() {
         let draft = OperationDraft {

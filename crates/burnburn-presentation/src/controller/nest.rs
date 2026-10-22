@@ -71,9 +71,8 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         Ok(v) if v.mm() >= 0.0 => Ok(v.mm()),
         _ => Err(field),
     };
-    let copies = |text: &str| {
-        text.trim().parse::<u32>().ok().filter(|n| (1..=MAX_COPIES).contains(n)).ok_or(NestField::Copies)
-    };
+    let copies =
+        |text: &str| text.trim().parse::<u32>().ok().filter(|n| (1..=MAX_COPIES).contains(n)).ok_or(NestField::Copies);
     let part_copies = input
         .part_copies
         .iter()
@@ -127,7 +126,7 @@ impl AppController {
     pub(super) fn nest_intent(&mut self, intent: SchikkenIntent) -> AppUpdate {
         match intent {
             SchikkenIntent::SetNestOptions { document, input } => {
-                self.with_session(document, |s| set_options(s, document, input))
+                self.with_session(document, |s| set_options(s, document, *input))
             }
             SchikkenIntent::StartNest { document } => self.start_nest(document),
             SchikkenIntent::CancelNest { document } => self.with_session(document, |s| {

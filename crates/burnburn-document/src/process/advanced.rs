@@ -38,7 +38,11 @@ impl TabSpec {
         if !(1..=Self::MAX_COUNT).contains(&count) {
             return Err(ProcessError::OutOfRange { field: "tab count" });
         }
-        Ok(TabSpec { placement: TabPlacement::Count(count), width_mm: positive(width, "tab width")?, cut_power_percent: None })
+        Ok(TabSpec {
+            placement: TabPlacement::Count(count),
+            width_mm: positive(width, "tab width")?,
+            cut_power_percent: None,
+        })
     }
 
     /// Tabs every `spacing` of contour length. The spacing must exceed the tab width.

@@ -101,7 +101,8 @@ fn the_power_of_a_movement_is_plan_content_and_its_ends_are_in_the_bounds() {
 
 #[test]
 fn the_preview_marks_the_power_of_a_segment_and_counts_it_as_cutting() {
-    let pv = preview(&plan_with(PlanEvent::CutPower { to: pt(45.0, 0.0), power: ratio(0.1), origin: origin() }), &profile());
+    let pv =
+        preview(&plan_with(PlanEvent::CutPower { to: pt(45.0, 0.0), power: ratio(0.1), origin: origin() }), &profile());
     let cuts: Vec<_> = pv.moves.iter().filter(|m| m.kind == MoveKind::Cut).collect();
     assert_eq!(cuts.len(), 3);
     assert_eq!(cuts.iter().map(|m| m.power).collect::<Vec<_>>(), vec![None, Some(ratio(0.1)), None]);

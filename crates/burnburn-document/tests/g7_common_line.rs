@@ -58,10 +58,7 @@ fn the_tolerance_must_be_positive_and_small_and_the_overlap_not_negative() {
             "{bad}"
         );
     }
-    assert_eq!(
-        CommonLine::new(mm(0.05), mm(-1.0)),
-        Err(ProcessError::OutOfRange { field: "common-line overlap" })
-    );
+    assert_eq!(CommonLine::new(mm(0.05), mm(-1.0)), Err(ProcessError::OutOfRange { field: "common-line overlap" }));
 }
 
 #[test]

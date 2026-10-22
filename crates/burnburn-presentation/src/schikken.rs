@@ -735,7 +735,8 @@ pub enum SchikkenIntent {
     /// A result of other options is dropped.
     SetNestOptions {
         document: burnburn_types::DocumentId,
-        input: NestInput,
+        // Boxed: the options of the panel are larger than any other intent.
+        input: Box<NestInput>,
     },
     /// Start the nest as a cancellable task (an older one is cancelled).
     StartNest {

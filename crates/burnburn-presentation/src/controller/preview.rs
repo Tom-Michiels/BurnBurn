@@ -331,7 +331,12 @@ impl AppController {
     fn select_move(&mut self, document: DocumentId, index: Option<usize>) -> AppUpdate {
         let Some(view) = self.preview_view(document) else { return AppUpdate::default() };
         let picked = index.and_then(|i| {
-            view.preview.moves.get(i).map(|m| PreviewSelection { index: i, kind: m.kind, source: m.source, power: m.power })
+            view.preview.moves.get(i).map(|m| PreviewSelection {
+                index: i,
+                kind: m.kind,
+                source: m.source,
+                power: m.power,
+            })
         });
         if index.is_some() && picked.is_none() {
             return AppUpdate::default();

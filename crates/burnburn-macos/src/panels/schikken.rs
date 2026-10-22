@@ -418,10 +418,7 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestGrain => ("Nerfrichting plaat (°, leeg = geen)", "Sheet grain (°, blank = none)"),
         T::NestCopies => ("Exemplaren per onderdeel", "Copies per part"),
         T::NestPartCopies => ("Onderdeel {n}: {name}", "Part {n}: {name}"),
-        T::NestHoles => (
-            "Binnencontouren zijn gaten van het onderdeel",
-            "Inner contours are holes of the part",
-        ),
+        T::NestHoles => ("Binnencontouren zijn gaten van het onderdeel", "Inner contours are holes of the part"),
         T::NestTight => ("Strak pakken (exact, trager)", "Pack tightly (exact, slower)"),
         T::NestCommonLine => (
             "Gemeenschappelijke snijlijn (delen raken elkaar, gedeelde randen worden één keer gesneden)",
@@ -1208,7 +1205,7 @@ pub fn schikken_intent(
     let nest = |f: &dyn Fn(&mut NestInput)| {
         let mut input = s.nest.as_ref()?.input.clone();
         f(&mut input);
-        send(SchikkenIntent::SetNestOptions { document, input })
+        send(SchikkenIntent::SetNestOptions { document, input: Box::new(input) })
     };
     match control {
         SchikkenControl::PlaceReference => place(&|i| {

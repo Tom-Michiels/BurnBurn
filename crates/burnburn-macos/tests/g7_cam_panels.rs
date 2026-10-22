@@ -9,8 +9,8 @@ use burnburn_macos::app_view::{PickNames, PreviewFrame, preview_panel_named, ren
 use burnburn_macos::l10n::Locale;
 use burnburn_macos::panels::{OptionRow, cut_settings_panel, option_rows};
 use burnburn_presentation::{
-    AppIntent, CommandKey, CutExtras, CutField, HeadlessEditorHarness, OperationKind, PreviewIntent,
-    SelectMode, UiIntent,
+    AppIntent, CommandKey, CutExtras, CutField, HeadlessEditorHarness, OperationKind, PreviewIntent, SelectMode,
+    UiIntent,
 };
 use burnburn_types::{DocumentId, GeometryId, OperationId};
 
@@ -62,7 +62,11 @@ fn the_sheet_has_a_captioned_tab_power_row_greyed_with_its_reason_without_proof(
     let r = row(&panel.options, CutField::TabsPower);
     assert!(r.caption.contains("Tab power"), "{}", r.caption);
     assert!(!r.enabled);
-    assert!(r.note.to_lowercase().contains("missing capability") || r.note.to_lowercase().contains("tab cut power"), "{:?}", r.note);
+    assert!(
+        r.note.to_lowercase().contains("missing capability") || r.note.to_lowercase().contains("tab cut power"),
+        "{:?}",
+        r.note
+    );
     let nl = cut_settings_panel(&h.view(), doc, Locale::Nl).unwrap();
     assert!(row(&nl.options, CutField::TabsPower).caption.contains("Tabvermogen"));
 
@@ -265,7 +269,9 @@ mod nest_panel {
         assert!(invalid);
         let lines = schikken_panel(&h.view(), doc, Locale::Nl).unwrap().lines;
         assert!(
-            lines.iter().any(|l| matches!(l, SchikkenLine::Problem(t) if t.contains("geheel getal van 1 tot en met 1000")))
+            lines
+                .iter()
+                .any(|l| matches!(l, SchikkenLine::Problem(t) if t.contains("geheel getal van 1 tot en met 1000")))
         );
     }
 }

@@ -62,7 +62,8 @@ fn tabs_with_a_power_are_cut_at_that_share_of_the_operation_power() {
 
     let tabs = power_cuts(&plan);
     assert_eq!(tabs.len(), 4, "{tabs:?}");
-    let expected = [((4.0, 0.0), (6.0, 0.0)), ((10.0, 4.0), (10.0, 6.0)), ((6.0, 10.0), (4.0, 10.0)), ((0.0, 6.0), (0.0, 4.0))];
+    let expected =
+        [((4.0, 0.0), (6.0, 0.0)), ((10.0, 4.0), (10.0, 6.0)), ((6.0, 10.0), (4.0, 10.0)), ((0.0, 6.0), (0.0, 4.0))];
     for ((from, to, power), (want_from, want_to)) in tabs.iter().zip(expected) {
         assert!(near((from.x_mm(), from.y_mm()), want_from), "{from:?} vs {want_from:?}");
         assert!(near((to.x_mm(), to.y_mm()), want_to), "{to:?} vs {want_to:?}");

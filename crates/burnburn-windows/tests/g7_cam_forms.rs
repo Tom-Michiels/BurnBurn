@@ -5,9 +5,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
-use burnburn_presentation::{
-    CommandKey, CutField, HeadlessEditorHarness, SchikkenIntent, SelectMode, UiIntent,
-};
+use burnburn_presentation::{CommandKey, CutField, HeadlessEditorHarness, SchikkenIntent, SelectMode, UiIntent};
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
 use burnburn_types::DocumentId;
 use burnburn_windows::forms::{
@@ -72,7 +70,10 @@ fn the_cut_sheet_has_the_tab_power_row_greyed_without_proof_and_editable_with_it
 
     let (mut h, doc) = rectangle(Support::Supported);
     open_sheet(&mut h, doc);
-    assert!(matches!(cut_form(&h, doc, &[]).find(&id), Some(FormLine::Field { enabled: false, .. })), "greyed until tabs are on");
+    assert!(
+        matches!(cut_form(&h, doc, &[]).find(&id), Some(FormLine::Field { enabled: false, .. })),
+        "greyed until tabs are on"
+    );
     assert!(matches!(cut_form(&h, doc, &tabs_on).find(&id), Some(FormLine::Field { enabled: true, .. })));
 }
 
@@ -109,7 +110,12 @@ fn the_nest_form_has_copies_a_row_per_part_and_the_two_checks_and_sends_the_mac_
             Some(slot) => slot.1 = value.clone(),
             None => values.push((ControlId::Schikken(c), value.clone())),
         }
-        schikken::react(&ControlId::Schikken(c), &value, &values, &FormContext { vm: &vm, document: doc, locale: Locale::En })
+        schikken::react(
+            &ControlId::Schikken(c),
+            &value,
+            &values,
+            &FormContext { vm: &vm, document: doc, locale: Locale::En },
+        )
     };
     let FormOutcome::Intent(UiIntent::Schikken(SchikkenIntent::SetNestOptions { input, .. })) =
         react(&h, C::NestCopies, ControlValue::Text("3".into()))

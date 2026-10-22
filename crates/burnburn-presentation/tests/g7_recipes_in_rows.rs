@@ -109,8 +109,14 @@ fn a_library_entry_applied_later_gets_a_recipe_of_its_own_and_the_old_rows_stay(
     assert!(![7, 8, 9].contains(&recipe), "the new recipe is a new recipe, not one of the old: {recipe}");
     assert!(recipe >= 12, "it takes an id from the project's counter (next id 12): {recipe}");
     // The other rows are untouched.
-    assert_eq!(origin(&p, 6), MaterialOrigin::Copied { recipe: 7, recipe_name: "Berken 3 mm snijden".into(), revision: 1 });
-    assert_eq!(origin(&p, 10), MaterialOrigin::Copied { recipe: 8, recipe_name: "Berken graveren".into(), revision: 1 });
+    assert_eq!(
+        origin(&p, 6),
+        MaterialOrigin::Copied { recipe: 7, recipe_name: "Berken 3 mm snijden".into(), revision: 1 }
+    );
+    assert_eq!(
+        origin(&p, 10),
+        MaterialOrigin::Copied { recipe: 8, recipe_name: "Berken graveren".into(), revision: 1 }
+    );
 }
 
 #[test]
@@ -131,6 +137,7 @@ fn saving_and_reopening_keeps_the_rows_as_they_were() {
         })
         .expect("the saved project opened");
     let after = open_panel(&mut h, reopened);
-    let origins = |p: &MaterialPanelViewModel| p.operations.iter().map(|o| (o.id, o.origin.clone())).collect::<Vec<_>>();
+    let origins =
+        |p: &MaterialPanelViewModel| p.operations.iter().map(|o| (o.id, o.origin.clone())).collect::<Vec<_>>();
     assert_eq!(origins(&after), origins(&before));
 }
