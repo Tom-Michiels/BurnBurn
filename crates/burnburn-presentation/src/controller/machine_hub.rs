@@ -62,12 +62,21 @@ impl AppController {
         let active = self.machine.as_ref().map(|m| m.profile.revision().id.clone());
         self.known_profiles()
             .iter()
-            .map(|p| DeviceRow {
+            .map(|p| {
+                let id = p.revision().id.as_str();
+                let declared = match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
+                    Some(m) => m.declared.clone(),
+                    None => self.libs_declared(id),
+                };
+                DeviceRow {
                 id: p.revision().id.clone(),
                 revision: p.revision().revision,
                 width_mm: p.frame().width_mm(),
                 height_mm: p.frame().height_mm(),
                 active: active.as_deref() == Some(p.revision().id.as_str()),
+                model: declared.model,
+                firmware: declared.firmware,
+                }
             })
             .collect()
     }

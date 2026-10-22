@@ -42,17 +42,19 @@ fn unusual_grbl() -> GrblProfile {
 
 fn grbl_entry(id: &str, g: GrblProfile) -> LibraryProfile {
     let profile = base(id).with_capabilities(grbl_capabilities(&g)).unwrap();
-    LibraryProfile { profile, grbl: Some(g) }
+    LibraryProfile { profile, grbl: Some(g), model: None, firmware: None }
 }
 
 #[test]
 fn the_dialect_settings_of_a_grbl_machine_survive_the_library_file() {
     let fs = MemoryFileSystem::new();
     let path = Path::new("/lib/profiles.json");
-    let entries = [grbl_entry("graveur", unusual_grbl()), LibraryProfile { profile: base("ruida-bed"), grbl: None }];
+    let entries = [grbl_entry("graveur", unusual_grbl()), LibraryProfile { profile: base("ruida-bed"), grbl: None, model: None, firmware: None }];
     save_profile_library_entries(&fs, path, &entries).unwrap();
     let back = load_profile_library_entries(&fs, path).unwrap();
-    let key = |v: &[LibraryProfile]| -> Vec<_> { v.iter().map(|e| (e.profile.revision().clone(), e.grbl.clone())).collect() };
+    let key = |v: &[LibraryProfile]| -> Vec<_> {
+        v.iter().map(|e| (e.profile.revision().clone(), e.grbl.clone(), e.model.clone(), e.firmware.clone())).collect()
+    };
     assert_eq!(key(&back), key(&entries), "settings of every field come back, a Ruida machine stays without");
 }
 
@@ -60,7 +62,7 @@ fn the_dialect_settings_of_a_grbl_machine_survive_the_library_file() {
 fn a_library_without_grbl_machines_is_written_exactly_as_before() {
     let plain = [base("a"), base("b")];
     let entries: Vec<LibraryProfile> =
-        plain.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None }).collect();
+        plain.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None }).collect();
     assert_eq!(encode_profile_library_entries(&entries).unwrap(), encode_profile_library(&plain).unwrap());
 }
 
@@ -83,7 +85,7 @@ fn a_hand_written_dialect_section_is_read_by_its_documented_names() {
     let bytes = encode_profile_library(&[base("graveur")]).unwrap();
     let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     json["schema"] = 2.into();
-    json["dialects"] = serde_json::json!([{
+    json["settings"] = serde_json::json!([{
         "id": "graveur",
         "grbl": {
             "max_spindle": 1000, "laser_mode": false, "power_mode": "dynamic",
@@ -111,7 +113,7 @@ fn damaged_dialect_sections_are_typed_errors_and_never_adopted() {
     let with = |dialects: serde_json::Value| {
         let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         json["schema"] = 2.into();
-        json["dialects"] = dialects;
+        json["settings"] = dialects;
         serde_json::to_vec(&json).unwrap()
     };
     let grbl = |patch: serde_json::Value| {
@@ -154,4 +156,46 @@ fn saving_an_invalid_dialect_writes_nothing_and_keeps_the_old_file() {
     bad.max_spindle = 0;
     assert!(save_profile_library_entries(&fs, path, &[grbl_entry("graveur", bad)]).is_err());
     assert_eq!(fs.read(path, 1 << 20).unwrap(), before);
+}
+
+#[test]
+fn the_declared_model_and_firmware_survive_with_or_without_grbl() {
+    let fs = MemoryFileSystem::new();
+    let path = Path::new("/lib/profiles.json");
+    let mut ruida = LibraryProfile { profile: base("ruida-bed"), grbl: None, model: None, firmware: None };
+    ruida.model = Some("RDC6445G".into());
+    let mut grbl = grbl_entry("graveur", unusual_grbl());
+    grbl.firmware = Some("1.1h".into());
+    save_profile_library_entries(&fs, path, &[ruida.clone(), grbl.clone()]).unwrap();
+    let back = load_profile_library_entries(&fs, path).unwrap();
+    assert_eq!(
+        (back[0].model.clone(), back[0].firmware.clone(), back[0].grbl.clone()),
+        (Some("RDC6445G".into()), None, None)
+    );
+    assert_eq!((back[1].model.clone(), back[1].firmware.clone()), (None, Some("1.1h".into())));
+    assert_eq!(back[1].grbl, grbl.grbl);
+}
+
+#[test]
+fn a_hand_written_declared_identity_is_read_by_its_documented_names() {
+    let bytes = encode_profile_library(&[base("ruida-bed")]).unwrap();
+    let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    json["schema"] = 2.into();
+    json["settings"] = serde_json::json!([{"id": "ruida-bed", "model": "RDC6445G", "firmware": "v8.02"}]);
+    let entries = decode_profile_library_entries(&serde_json::to_vec(&json).unwrap()).unwrap();
+    assert_eq!(entries[0].model.as_deref(), Some("RDC6445G"));
+    assert_eq!(entries[0].firmware.as_deref(), Some("v8.02"));
+    assert_eq!(entries[0].grbl, None);
+}
+
+#[test]
+fn an_empty_declared_text_is_not_a_declaration() {
+    // The file is the user's: blank text must come back as "not declared", never as a model that
+    // no controller could ever report (the identity check would then refuse every upload).
+    let bytes = encode_profile_library(&[base("ruida-bed")]).unwrap();
+    let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    json["schema"] = 2.into();
+    json["settings"] = serde_json::json!([{"id": "ruida-bed", "model": "  ", "firmware": ""}]);
+    let entries = decode_profile_library_entries(&serde_json::to_vec(&json).unwrap()).unwrap();
+    assert_eq!((entries[0].model.clone(), entries[0].firmware.clone()), (None, None));
 }

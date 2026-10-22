@@ -112,6 +112,11 @@ impl AppController {
         out
     }
 
+    /// What the user declared about the controller of a machine kept in the profile library.
+    pub(in crate::controller) fn libs_declared(&self, id: &str) -> super::super::machine::Declared {
+        self.libs.extras.get(id).map(|e| e.declared.clone()).unwrap_or_default()
+    }
+
     pub(super) fn bundle_intent(&mut self, intent: FilesIntent) -> AppUpdate {
         match intent {
             FilesIntent::OpenBundleExport { document } => {
@@ -400,8 +405,8 @@ impl AppController {
                 // The active machine: existing plans become stale, exactly as when the profile is
                 // chosen; the revision that is replaced stays in the profile library (P07).
                 Some(active) => {
-                    let (ruida, grbl) = (active.ruida, active.grbl.clone());
-                    self.replace_active_machine(super::super::machine::Machine { profile: p, ruida, grbl });
+                    let (ruida, grbl, declared) = (active.ruida, active.grbl.clone(), active.declared.clone());
+                    self.replace_active_machine(super::super::machine::Machine { profile: p, ruida, grbl, declared });
                 }
                 None => {
                     match self.libs.profiles.iter_mut().find(|k| k.revision().id == id) {

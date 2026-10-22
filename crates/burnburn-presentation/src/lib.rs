@@ -27,6 +27,7 @@ mod machine_hub;
 mod nest_task;
 mod notes;
 mod offset;
+pub mod profile_file;
 mod production;
 mod schikken;
 mod structure_panel;

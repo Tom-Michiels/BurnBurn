@@ -102,7 +102,7 @@ pub use support::{DEBUG_LOG_LINES, DebugLogViewModel, HelpInfo};
 
 use geometry::{offset_selection, repair_issue};
 use import::PendingImport;
-use machine::{Machine, Order, Prepared};
+use machine::{Declared, Machine, Order, Prepared};
 use process::{Compiled, add_operation_text, set_operation_field};
 use text::SharedFonts;
 use trace::Tracer;
@@ -429,6 +429,8 @@ pub struct AppController {
     machine: Option<Machine>,
     /// The machine service (one owner of the connection, shared with other windows/views).
     machine_port: Option<Arc<dyn MachinePort>>,
+    /// A declared model/firmware was handed to the machine port (so clearing it must reach the port too).
+    declared_pushed: bool,
     /// Machine hub state: a repeat in preparation and the calibration measurements (G5).
     hub: machine_hub::HubState,
     role: Role,
@@ -494,6 +496,7 @@ impl AppController {
             opening: BTreeMap::new(),
             machine: None,
             machine_port: None,
+            declared_pushed: false,
             hub: machine_hub::HubState::default(),
             role: Role::Designer,
             orders: Vec::new(),
@@ -622,7 +625,7 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: None });
+                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: None, declared: Declared::default() });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::SetGrblMachineProfile { profile, grbl } => {
@@ -632,7 +635,12 @@ impl AppController {
                     magic: burnburn_ruida::Magic::FIXTURE_0X88,
                     overscan: burnburn_ruida::OverscanPolicy::Reject,
                 };
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: Some(*grbl) });
+                self.replace_active_machine(Machine {
+                    profile: Arc::from(profile),
+                    ruida,
+                    grbl: Some(*grbl),
+                    declared: Declared::default(),
+                });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),

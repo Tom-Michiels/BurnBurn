@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
 
-use super::super::machine::Machine;
+use super::super::machine::{Extras, Machine};
 use super::super::{AppController, AppUpdate, error};
 use super::LoadState;
 use crate::view_model::MessageKey;
@@ -23,20 +23,17 @@ impl AppController {
         if let Some(old) = self.machine.as_ref()
             && old.profile.revision() != new.profile.revision()
         {
-            let (profile, grbl) = (Arc::clone(&old.profile), old.grbl.clone());
-            self.keep_profile(profile, grbl);
+            let profile = Arc::clone(&old.profile);
+            let extras = Extras { grbl: old.grbl.clone(), declared: old.declared.clone() };
+            self.keep_profile(profile, extras);
         }
         self.machine = Some(new);
     }
 
-    /// Keeps `profile` in the profile library with its GRBL dialect settings, if it has any
-    /// (written once the library has been read).
-    pub(in crate::controller) fn keep_profile(
-        &mut self,
-        profile: Arc<burnburn_job::MachineProfile>,
-        grbl: Option<burnburn_gcode::GrblProfile>,
-    ) {
-        self.libs.kept.push((profile, grbl));
+    /// Keeps `profile` in the profile library with its GRBL dialect settings and declared
+    /// identity, if it has any (written once the library has been read).
+    pub(in crate::controller) fn keep_profile(&mut self, profile: Arc<burnburn_job::MachineProfile>, extras: Extras) {
+        self.libs.kept.push((profile, extras));
         self.ensure_libraries();
         if self.libs.state == LoadState::Ready {
             self.merge_kept_profiles();
@@ -49,11 +46,12 @@ impl AppController {
         if kept.is_empty() {
             return;
         }
-        for (p, grbl) in kept {
-            match grbl {
-                Some(grbl) => self.libs.dialects.insert(p.revision().id.clone(), grbl),
-                None => self.libs.dialects.remove(&p.revision().id),
-            };
+        for (p, extras) in kept {
+            if extras == Extras::default() {
+                self.libs.extras.remove(&p.revision().id);
+            } else {
+                self.libs.extras.insert(p.revision().id.clone(), extras);
+            }
             match self.libs.profiles.iter_mut().find(|k| k.revision().id == p.revision().id) {
                 Some(slot) => *slot = p,
                 None => self.libs.profiles.push(p),
@@ -74,11 +72,11 @@ impl AppController {
                 |m| m.ruida,
             );
         // The active machine listed first is the machine in use: its own settings are current.
-        let grbl = match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
-            Some(active) => active.grbl.clone(),
-            None => self.libs.dialects.get(id).cloned(),
+        let extras = match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
+            Some(active) => Extras { grbl: active.grbl.clone(), declared: active.declared.clone() },
+            None => self.libs.extras.get(id).cloned().unwrap_or_default(),
         };
-        self.replace_active_machine(Machine { profile, ruida, grbl });
+        self.replace_active_machine(Machine { profile, ruida, grbl: extras.grbl, declared: extras.declared });
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
 }

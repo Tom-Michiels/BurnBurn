@@ -119,14 +119,15 @@ pub(super) struct Libraries {
     art_busy: usize,
     /// Machine profiles a bundle brought in (the active machine is kept by the controller).
     profiles: Vec<Arc<burnburn_job::MachineProfile>>,
-    /// GRBL dialect settings of those machines, by machine id (no entry: a Ruida machine).
-    dialects: BTreeMap<String, burnburn_gcode::GrblProfile>,
+    /// What belongs to those machines besides the profile (GRBL dialect, declared model and
+    /// firmware), by machine id. No entry: a Ruida machine without a declaration.
+    extras: BTreeMap<String, super::machine::Extras>,
     /// The profile library file could not be read: it is kept as it is and never written (P07).
     profiles_unreadable: bool,
     profile_writer: Writer,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
-    kept: Vec<(Arc<burnburn_job::MachineProfile>, Option<burnburn_gcode::GrblProfile>)>,
+    kept: Vec<(Arc<burnburn_job::MachineProfile>, super::machine::Extras)>,
     /// Colours of the layer palette, slot by slot (the host owns the palette).
     palette: Vec<[u8; 3]>,
 }
@@ -268,17 +269,19 @@ impl AppController {
                     // Profiles of this session (an import before the first read) stay; the file's win on equal ids.
                     Loaded::Ready(stored) => {
                         let session = std::mem::take(&mut self.libs.profiles);
-                        let session_dialects = std::mem::take(&mut self.libs.dialects);
+                        let session_extras = std::mem::take(&mut self.libs.extras);
                         for entry in stored {
-                            if let Some(grbl) = entry.grbl {
-                                self.libs.dialects.insert(entry.profile.revision().id.clone(), grbl);
-                            }
+                            let extras = super::machine::Extras {
+                                grbl: entry.grbl,
+                                declared: super::machine::Declared { model: entry.model, firmware: entry.firmware },
+                            };
+                            self.libs.extras.insert(entry.profile.revision().id.clone(), extras);
                             self.libs.profiles.push(Arc::new(entry.profile));
                         }
                         for p in session {
                             if !self.libs.profiles.iter().any(|k| k.revision().id == p.revision().id) {
-                                if let Some(grbl) = session_dialects.get(&p.revision().id) {
-                                    self.libs.dialects.insert(p.revision().id.clone(), grbl.clone());
+                                if let Some(extras) = session_extras.get(&p.revision().id) {
+                                    self.libs.extras.insert(p.revision().id.clone(), extras.clone());
                                 }
                                 self.libs.profiles.push(p);
                             }
@@ -350,9 +353,14 @@ impl AppController {
                 .libs
                 .profiles
                 .iter()
-                .map(|p| burnburn_io::profile_library::LibraryProfile {
-                    profile: (**p).clone(),
-                    grbl: self.libs.dialects.get(&p.revision().id).cloned(),
+                .map(|p| {
+                    let extras = self.libs.extras.get(&p.revision().id).cloned().unwrap_or_default();
+                    burnburn_io::profile_library::LibraryProfile {
+                        profile: (**p).clone(),
+                        grbl: extras.grbl,
+                        model: extras.declared.model,
+                        firmware: extras.declared.firmware,
+                    }
                 })
                 .collect(),
             path: dir.join(PROFILE_LIBRARY_FILE),

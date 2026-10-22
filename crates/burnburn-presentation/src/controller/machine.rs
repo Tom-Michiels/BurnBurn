@@ -48,6 +48,35 @@ pub(super) struct Machine {
     pub(super) ruida: RuidaProfile,
     /// The GRBL backend's configuration; `None` is a Ruida machine (G5-grbl-ui).
     pub(super) grbl: Option<burnburn_gcode::GrblProfile>,
+    /// What the user declared about the controller (M01): the identity the check before an upload
+    /// compares with. Never filled from a controller's reply.
+    pub(super) declared: Declared,
+}
+
+/// The model and firmware the user declared for a machine; `None` is not declared.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct Declared {
+    pub(super) model: Option<String>,
+    pub(super) firmware: Option<String>,
+}
+
+impl Declared {
+    /// Blank text is not a declaration.
+    pub(super) fn of(model: &str, firmware: &str) -> Declared {
+        let clean = |t: &str| Some(t.trim()).filter(|t| !t.is_empty()).map(str::to_owned);
+        Declared { model: clean(model), firmware: clean(firmware) }
+    }
+
+    pub(super) fn is_none(&self) -> bool {
+        self.model.is_none() && self.firmware.is_none()
+    }
+}
+
+/// What the profile library keeps next to a machine's profile.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(super) struct Extras {
+    pub(super) grbl: Option<burnburn_gcode::GrblProfile>,
+    pub(super) declared: Declared,
 }
 
 impl AppController {
@@ -197,6 +226,7 @@ impl AppController {
             },
             _ => None,
         };
+        self.sync_declared_identity(&port);
         let machine = port.status().machine;
         let intent = MachineIntent { action, machine, job, required_state: seen, order, role: self.role };
         let changed = AppUpdate { view_changed: true, ..AppUpdate::default() };
@@ -206,6 +236,22 @@ impl AppController {
             Err(MachineError::NotRecorded(_)) => (error(document, MessageKey::IntentNotRecorded), None),
             Err(MachineError::AlreadyRecorded) => (changed, None),
             Err(_) => (error(document, MessageKey::MachineActionRefused), None),
+        }
+    }
+}
+
+impl AppController {
+    /// Hands the identity the user declared for the active machine to the port, so the check
+    /// before an upload compares the controller's reply with it (M01). Nothing declared (and
+    /// nothing handed over before) leaves the port as the host configured it. A port that is busy
+    /// with an execution keeps its identity for that execution; the next action hands it over again.
+    fn sync_declared_identity(&mut self, port: &Arc<dyn MachinePort>) {
+        let declared = self.machine.as_ref().map(|m| m.declared.clone()).unwrap_or_default();
+        if declared.is_none() && !self.declared_pushed {
+            return;
+        }
+        if port.declare_identity(declared.model.clone(), declared.firmware.clone()).is_ok() {
+            self.declared_pushed = !declared.is_none();
         }
     }
 }

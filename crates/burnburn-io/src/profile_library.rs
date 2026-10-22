@@ -19,7 +19,7 @@ use crate::profile::{ProfileDto, profile_from_dto, profile_to_dto};
 use crate::store::write_atomic;
 
 /// The newest schema this version reads and writes. Schema 1 has profiles only; schema 2 adds the
-/// `dialects` section (GRBL settings per machine). A library without dialects is still written as
+/// `settings` section (GRBL dialect, declared model and firmware). A library without settings is still written as
 /// schema 1, byte-identical to earlier versions.
 pub const PROFILE_LIBRARY_SCHEMA: u32 = 2;
 const SCHEMA_PLAIN: u32 = 1;
@@ -33,16 +33,23 @@ struct FileDto {
     format: String,
     schema: u32,
     profiles: Vec<ProfileDto>,
-    /// Dialect settings per machine id (schema 2).
+    /// Settings kept next to the profiles, per machine id (schema 2).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    dialects: Vec<DialectDto>,
+    settings: Vec<SettingsDto>,
 }
 
+/// What belongs to a machine but not to its profile: the GRBL dialect and the identity the user
+/// declared. Each part is omitted when absent.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DialectDto {
+struct SettingsDto {
     id: String,
-    grbl: GrblDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    grbl: Option<GrblDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    firmware: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -72,7 +79,7 @@ fn grbl_to_dto(g: &GrblProfile) -> GrblDto {
 }
 
 fn grbl_from_dto(i: usize, d: &GrblDto) -> Result<GrblProfile, LoadError> {
-    let bad = |field: &str, reason: String| LoadError::InvalidValue { path: format!("dialects[{i}].grbl.{field}"), reason };
+    let bad = |field: &str, reason: String| LoadError::InvalidValue { path: format!("settings[{i}].grbl.{field}"), reason };
     let power_mode = match d.power_mode.as_str() {
         "constant" => PowerMode::Constant,
         "dynamic" => PowerMode::Dynamic,
@@ -115,6 +122,15 @@ pub struct LibraryProfile {
     pub profile: MachineProfile,
     /// `None` is a Ruida machine.
     pub grbl: Option<GrblProfile>,
+    /// What the user declared about the controller (never what a controller replied). Blank text
+    /// is not a declaration.
+    pub model: Option<String>,
+    pub firmware: Option<String>,
+}
+
+/// Blank text is "not declared".
+fn declared(text: &Option<String>) -> Option<String> {
+    text.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned)
 }
 
 /// Bytes → profiles, fully validated. The dialect settings of GRBL machines are not part of the
@@ -153,24 +169,26 @@ pub fn decode_profile_library_entries(bytes: &[u8]) -> Result<Vec<LibraryProfile
                 reason: format!("duplicate machine {:?}", profile.revision().id),
             });
         }
-        out.push(LibraryProfile { profile, grbl: None });
+        out.push(LibraryProfile { profile, grbl: None, model: None, firmware: None });
     }
-    let mut dialect_ids = BTreeSet::new();
-    for (i, d) in dto.dialects.iter().enumerate() {
-        let grbl = grbl_from_dto(i, &d.grbl)?;
+    let mut setting_ids = BTreeSet::new();
+    for (i, d) in dto.settings.iter().enumerate() {
+        let grbl = d.grbl.as_ref().map(|g| grbl_from_dto(i, g)).transpose()?;
         let Some(entry) = out.iter_mut().find(|e| e.profile.revision().id == d.id) else {
             return Err(LoadError::InvalidValue {
-                path: format!("dialects[{i}].id"),
+                path: format!("settings[{i}].id"),
                 reason: format!("settings for unknown machine {:?}", d.id),
             });
         };
-        if !dialect_ids.insert(d.id.clone()) {
+        if !setting_ids.insert(d.id.clone()) {
             return Err(LoadError::InvalidValue {
-                path: format!("dialects[{i}].id"),
+                path: format!("settings[{i}].id"),
                 reason: format!("two sets of settings for machine {:?}", d.id),
             });
         }
-        entry.grbl = Some(grbl);
+        entry.grbl = grbl;
+        entry.model = declared(&d.model);
+        entry.firmware = declared(&d.firmware);
     }
     Ok(out)
 }
@@ -178,21 +196,32 @@ pub fn decode_profile_library_entries(bytes: &[u8]) -> Result<Vec<LibraryProfile
 /// Profiles → bytes (compact JSON), without dialect settings (schema 1).
 pub fn encode_profile_library(profiles: &[MachineProfile]) -> Result<Vec<u8>, SaveError> {
     let entries: Vec<LibraryProfile> =
-        profiles.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None }).collect();
+        profiles.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None }).collect();
     encode_profile_library_entries(&entries)
 }
 
 /// Machines → bytes (compact JSON). Schema 2 only when a machine has dialect settings.
 pub fn encode_profile_library_entries(entries: &[LibraryProfile]) -> Result<Vec<u8>, SaveError> {
-    let dialects: Vec<DialectDto> = entries
+    let settings: Vec<SettingsDto> = entries
         .iter()
-        .filter_map(|e| e.grbl.as_ref().map(|g| DialectDto { id: e.profile.revision().id.clone(), grbl: grbl_to_dto(g) }))
+        .filter_map(|e| {
+            let (model, firmware) = (declared(&e.model), declared(&e.firmware));
+            if e.grbl.is_none() && model.is_none() && firmware.is_none() {
+                return None;
+            }
+            Some(SettingsDto {
+                id: e.profile.revision().id.clone(),
+                grbl: e.grbl.as_ref().map(grbl_to_dto),
+                model,
+                firmware,
+            })
+        })
         .collect();
     let dto = FileDto {
         format: FORMAT.to_owned(),
-        schema: if dialects.is_empty() { SCHEMA_PLAIN } else { PROFILE_LIBRARY_SCHEMA },
+        schema: if settings.is_empty() { SCHEMA_PLAIN } else { PROFILE_LIBRARY_SCHEMA },
         profiles: entries.iter().map(|e| profile_to_dto(&e.profile)).collect(),
-        dialects,
+        settings,
     };
     serde_json::to_vec(&dto).map_err(|e| SaveError::Encode(e.to_string()))
 }

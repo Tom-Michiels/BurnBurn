@@ -119,7 +119,7 @@ fn a_library_written_before_the_dialects_existed_chooses_as_ruida() {
     save_profile_library_entries(
         fs.as_ref(),
         FsPath::new("/lib/profiles.json"),
-        &[LibraryProfile { profile: profile(1), grbl: None }],
+        &[LibraryProfile { profile: profile(1), grbl: None, model: None, firmware: None }],
     )
     .unwrap();
     let mut h = HeadlessEditorHarness::with_fs(fs);

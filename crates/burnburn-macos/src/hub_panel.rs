@@ -172,11 +172,18 @@ pub fn hub_panel(vm: &MachineHubViewModel, document_open: bool, locale: Locale) 
         .devices
         .iter()
         .map(|d| {
-            fill(
+            let line = fill(
                 T::DeviceItem,
                 locale,
                 &[&d.id, &d.revision.to_string(), &number(d.width_mm, 3, locale), &number(d.height_mm, 3, locale)],
-            )
+            );
+            let declared = match (d.model.as_deref(), d.firmware.as_deref()) {
+                (Some(m), Some(f)) => fill(T::DeviceDeclaredBoth, locale, &[m, f]),
+                (Some(m), None) => fill(T::DeviceDeclaredModel, locale, &[m]),
+                (None, Some(f)) => fill(T::DeviceDeclaredFirmware, locale, &[f]),
+                (None, None) => String::new(),
+            };
+            line + &declared
         })
         .collect();
     let queue = if vm.queue.rows.is_empty() {

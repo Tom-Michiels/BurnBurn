@@ -355,6 +355,7 @@ dependencies = [
  "burnburn-text",
  "burnburn-trace",
  "burnburn-types",
+ "serde",
  "serde_json",
  "zip",
 ]

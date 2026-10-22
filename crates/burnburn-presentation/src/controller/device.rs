@@ -24,7 +24,7 @@ use crate::cam_dialogs::{
 use crate::cut_options::FieldState;
 use crate::field::{format_mm, parse_length, parse_number};
 
-use super::machine::Machine;
+use super::machine::{Declared, Machine};
 use super::{AppController, AppUpdate};
 
 /// Id of a profile that was created in the dialog.
@@ -103,7 +103,7 @@ const GRBL_FIELDS: [DialogField; 6] = [
 ];
 
 impl DeviceDraft {
-    fn of(profile: Option<&MachineProfile>, grbl: Option<&GrblProfile>) -> Self {
+    fn of(profile: Option<&MachineProfile>, grbl: Option<&GrblProfile>, declared: &Declared) -> Self {
         let mut v: BTreeMap<DialogField, DialogValue> = BTreeMap::new();
         match profile {
             Some(p) => {
@@ -153,6 +153,8 @@ impl DeviceDraft {
                 if grbl.is_some() { DialogChoice::BackendGrbl } else { DialogChoice::BackendRuida },
             ),
         );
+        v.insert(DialogField::Model, text(declared.model.clone().unwrap_or_default()));
+        v.insert(DialogField::Firmware, text(declared.firmware.clone().unwrap_or_default()));
         v.insert(DialogField::GrblMaxSpindle, text(g.max_spindle.to_string()));
         v.insert(DialogField::GrblLaserMode, DialogValue::Flag(g.laser_mode));
         v.insert(
@@ -422,6 +424,11 @@ impl AppController {
         self.machine.as_ref().and_then(|m| m.grbl.as_ref())
     }
 
+    /// What the user declared about the active machine's controller (M01): `(model, firmware)`.
+    pub fn declared_identity(&self) -> (Option<String>, Option<String>) {
+        self.machine.as_ref().map_or((None, None), |m| (m.declared.model.clone(), m.declared.firmware.clone()))
+    }
+
     pub(super) fn device_view(&self) -> Option<DialogViewModel> {
         let draft = self.device.draft.as_ref()?;
         let profile = self.machine_profile();
@@ -430,6 +437,8 @@ impl AppController {
         let mut rows = Vec::new();
         for field in [
             DialogField::Backend,
+            DialogField::Model,
+            DialogField::Firmware,
             DialogField::BedWidth,
             DialogField::BedHeight,
             DialogField::BedOrigin,
@@ -455,6 +464,8 @@ impl AppController {
                 && !matches!(
                     field,
                     DialogField::Backend
+                        | DialogField::Model
+                        | DialogField::Firmware
                         | DialogField::BedWidth
                         | DialogField::BedHeight
                         | DialogField::BedOrigin
@@ -521,7 +532,8 @@ impl AppController {
     }
 
     pub(super) fn device_open(&mut self) -> AppUpdate {
-        self.device.draft = Some(DeviceDraft::of(self.machine_profile(), self.grbl_profile()));
+        let declared = self.machine.as_ref().map(|m| m.declared.clone()).unwrap_or_default();
+        self.device.draft = Some(DeviceDraft::of(self.machine_profile(), self.grbl_profile(), &declared));
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
 
@@ -574,15 +586,19 @@ impl AppController {
                 return AppUpdate { view_changed: true, ..AppUpdate::default() };
             }
         };
+        let declared = Declared::of(draft.text(DialogField::Model), draft.text(DialogField::Firmware));
         let unchanged =
             base.as_ref().is_some_and(|b| b.revision().content == profile.revision().content) && base_grbl == grbl;
         self.device.draft = None;
-        if !unchanged {
-            let ruida = self.machine.as_ref().map_or(
-                RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
-                |m| m.ruida,
-            );
-            self.replace_active_machine(Machine { profile: Arc::new(profile), ruida, grbl });
+        let ruida = self.machine.as_ref().map_or(
+            RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
+            |m| m.ruida,
+        );
+        match (unchanged, self.machine.as_mut()) {
+            // Only the declaration changed: it is not part of the profile, so no new revision and
+            // no stale plans.
+            (true, Some(active)) => active.declared = declared,
+            _ => self.replace_active_machine(Machine { profile: Arc::new(profile), ruida, grbl, declared }),
         }
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }

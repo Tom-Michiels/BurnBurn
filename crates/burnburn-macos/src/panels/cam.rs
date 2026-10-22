@@ -126,6 +126,8 @@ pub fn cam_caption(field: DialogField, vm: &DialogViewModel, locale: Locale) -> 
             F::YStepsPerMm => ("Y-stappen per mm (uit de machine lezen)", "Y steps per mm (read from the machine)"),
             F::RotaryMirror => ("Spiegelen", "Mirror"),
             F::Backend => ("Machinetype", "Machine type"),
+            F::Model => ("Controllermodel (zoals jij het opgeeft)", "Controller model (as you declare it)"),
+            F::Firmware => ("Controller firmware (zoals jij het opgeeft)", "Controller firmware (as you declare it)"),
             F::GrblMaxSpindle => ("GRBL: spindelwaarde bij 100 % ($30)", "GRBL: spindle value at 100 % ($30)"),
             F::GrblLaserMode => ("GRBL: lasermodus staat aan ($32=1)", "GRBL: laser mode is on ($32=1)"),
             F::GrblPowerMode => ("GRBL: vermogen tijdens de beweging", "GRBL: power during the move"),

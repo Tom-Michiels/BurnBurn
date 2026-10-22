@@ -493,6 +493,13 @@ pub trait MachinePort: Send + Sync {
         let _ = intent;
         Err(MachineError::NotAllowed)
     }
+    /// The model and firmware the user declared for this machine (M01): what the identity check
+    /// before an upload compares the controller's reply with. Ports that cannot take a
+    /// declaration refuse.
+    fn declare_identity(&self, model: Option<String>, firmware: Option<String>) -> Result<(), MachineError> {
+        let _ = (model, firmware);
+        Err(MachineError::NotAllowed)
+    }
 }
 
 /// Machine service over one [`ExecutionActor`]. Step-driven: the runtime (or a test) calls
@@ -598,6 +605,10 @@ impl<P: ControllerPort> MachineService<P> {
 }
 
 impl<P: ControllerPort + Send> MachinePort for MachineService<P> {
+    fn declare_identity(&self, model: Option<String>, firmware: Option<String>) -> Result<(), MachineError> {
+        self.lock().actor.declare_identity(model, firmware).map_err(MachineError::Actor)
+    }
+
     fn dispatch(&self, intent: MachineIntent) -> Result<Dispatched, MachineError> {
         let mut s = self.lock();
         if let Some(done) = s.handled.get(&intent.action) {
