@@ -15,6 +15,7 @@ burnburn-geometry = { workspace = true }
 burnburn-types = { workspace = true }
 harfrust = { workspace = true }
 skrifa = { workspace = true }
+unicode-bidi = { workspace = true }
 
 [dev-dependencies]
 burnburn-test-support = { workspace = true }

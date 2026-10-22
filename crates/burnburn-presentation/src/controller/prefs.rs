@@ -50,6 +50,8 @@ pub struct Preferences {
     pub nudge_normal_mm: f64,
     pub nudge_large_mm: f64,
     pub quality: DisplayQuality,
+    /// Desktop automation over loopback UDP (API01). Opt-in: off until the user turns it on.
+    pub desktop_automation: bool,
 }
 
 impl Default for Preferences {
@@ -66,6 +68,7 @@ impl Default for Preferences {
             nudge_normal_mm: 1.0,
             nudge_large_mm: 10.0,
             quality: DisplayQuality::Smooth,
+            desktop_automation: false,
         }
     }
 }
@@ -83,6 +86,7 @@ pub enum PrefKey {
     NudgeNormal,
     NudgeLarge,
     Quality,
+    DesktopAutomation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +152,7 @@ const LANGUAGE_IDS: &[&str] = &["system", "nl", "en"];
 const QUALITY_IDS: &[&str] = &["coarse", "smooth"];
 
 impl PrefKey {
-    pub const ALL: [PrefKey; 11] = [
+    pub const ALL: [PrefKey; 12] = [
         PrefKey::Units,
         PrefKey::Language,
         PrefKey::AutosaveSeconds,
@@ -160,6 +164,7 @@ impl PrefKey {
         PrefKey::NudgeNormal,
         PrefKey::NudgeLarge,
         PrefKey::Quality,
+        PrefKey::DesktopAutomation,
     ];
 
     /// Stable id: the key in the user file.
@@ -176,6 +181,7 @@ impl PrefKey {
             PrefKey::NudgeNormal => "nudge_normal_mm",
             PrefKey::NudgeLarge => "nudge_large_mm",
             PrefKey::Quality => "quality",
+            PrefKey::DesktopAutomation => "desktop_automation",
         }
     }
 }
@@ -300,6 +306,7 @@ impl Preferences {
             }
             PrefKey::SnapToObjects => next.snap_to_objects = flag(text)?,
             PrefKey::SnapToGrid => next.snap_to_grid = flag(text)?,
+            PrefKey::DesktopAutomation => next.desktop_automation = flag(text)?,
             PrefKey::AutosaveSeconds => {
                 let t = text.trim();
                 if t.is_empty() || !t.chars().all(|c| c.is_ascii_digit()) {
@@ -334,6 +341,7 @@ impl Preferences {
             PrefKey::Quality => self.quality.id().to_owned(),
             PrefKey::SnapToObjects => flag_id(self.snap_to_objects).to_owned(),
             PrefKey::SnapToGrid => flag_id(self.snap_to_grid).to_owned(),
+            PrefKey::DesktopAutomation => flag_id(self.desktop_automation).to_owned(),
             PrefKey::AutosaveSeconds => self.autosave_seconds.to_string(),
             PrefKey::GridSnap => format!("{}", self.grid_snap_mm),
             PrefKey::NudgeSmall => format!("{}", self.nudge_small_mm),
@@ -352,6 +360,7 @@ impl Preferences {
             PrefKey::Quality => PrefValue::Choice { selected: self.quality.id(), options: QUALITY_IDS },
             PrefKey::SnapToObjects => PrefValue::Flag(self.snap_to_objects),
             PrefKey::SnapToGrid => PrefValue::Flag(self.snap_to_grid),
+            PrefKey::DesktopAutomation => PrefValue::Flag(self.desktop_automation),
             PrefKey::AutosaveSeconds => number(self.autosave_seconds.to_string(), PrefUnit::Seconds),
             PrefKey::GridSnap => number(format_length(self.grid_snap_mm, self.units), PrefUnit::Length),
             PrefKey::NudgeSmall => number(format_length(self.nudge_small_mm, self.units), PrefUnit::Length),

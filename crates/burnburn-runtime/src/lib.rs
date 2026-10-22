@@ -4,6 +4,7 @@
 //!
 //! No Tokio and no discovery: a UDP port only ever talks to the one configured peer address.
 
+pub mod automation;
 mod clock;
 mod driver;
 pub mod fonts;

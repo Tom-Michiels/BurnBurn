@@ -156,8 +156,8 @@ fn the_history_journal_records_rd_jobs_only() {
 fn upload_and_start_do_not_exist_for_grbl_and_contact_nothing() {
     let r = grbl_rig();
     for cmd in [
-        "upload --history /h --job 0000000000000000000000000000000000000000000000000000000000000000 --profile /work/grbl.json --peer 192.0.2.10:50200 --allow-machine-contact",
-        "start --history /h --execution 1 --profile /work/grbl.json --peer 192.0.2.10:50200 --allow-machine-contact",
+        "upload --history /h --job 0000000000000000000000000000000000000000000000000000000000000000 --profile /work/grbl.json --peer 192.0.2.10:50200 --allow-machine-contact --machine grbl-1 --intent upload",
+        "start --history /h --execution 1 --profile /work/grbl.json --peer 192.0.2.10:50200 --allow-machine-contact --machine grbl-1 --intent start",
     ] {
         let e = r.run(cmd).unwrap_err();
         assert!(matches!(e, CliError::Machine(ref m) if m.contains("GRBL")), "{cmd}: {e:?}");

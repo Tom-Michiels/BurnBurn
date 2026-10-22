@@ -119,7 +119,7 @@ fn upload_then_start_are_separate_invocations_against_the_fake() {
     peer.script(Step::expect(Request::QueryStored).reply(Reply::Stored(true)));
     let up = r
         .run(&format!(
-            "upload --history /h --job {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact",
+            "upload --history /h --job {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact --machine ruida-bench-1 --intent upload",
             job.hash()
         ))
         .unwrap();
@@ -133,13 +133,13 @@ fn upload_then_start_are_separate_invocations_against_the_fake() {
     peer.script(Step::expect(Request::Start).reply(Reply::Ack));
     let st = r
         .run(&format!(
-            "start --history /h --execution {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact",
+            "start --history /h --execution {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact --machine ruida-bench-1 --intent start",
             exec.raw()
         ))
         .unwrap();
     assert!(st.stdout.contains("start requested"), "{}", st.stdout);
     let again = r.run(&format!(
-        "start --history /h --execution {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact",
+        "start --history /h --execution {} --profile /work/bench.json --peer 127.0.0.1:50200 --allow-machine-contact --machine ruida-bench-1 --intent start",
         exec.raw()
     ));
     assert!(again.is_err(), "a second start is refused: {again:?}");

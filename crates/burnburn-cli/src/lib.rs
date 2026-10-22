@@ -4,13 +4,16 @@
 //! - `inspect <x.rd> [--magic <n>]` — decode overview of an RD file
 //! - `preflight <project> --profile <p.json>`
 //! - `history --history <dir> [--project <hash>] [--machine <id>]`
-//! - `upload --history <dir> --job <id> --profile <p.json> --peer <ip:port> --allow-machine-contact`
-//! - `start --history <dir> --execution <n> --profile <p.json> --peer <ip:port> --allow-machine-contact`
+//! - `upload --history <dir> --job <id> --profile <p.json> --peer <ip:port> --machine <id> --intent upload --allow-machine-contact`
+//! - `start --history <dir> --execution <n> --profile <p.json> --peer <ip:port> --machine <id> --intent start --allow-machine-contact`
 //!
 //! Compile runs the same `burnburn_presentation::run_task` as the GUI (same options), so the
 //! same project revision and profile give the same `JobPlanId`. Compile/export never touch a
 //! machine. Upload and start are separate intents, each needing an explicit machine-contact
-//! switch; there is no `upload --and-start`. Start only follows fresh read-back proof in the
+//! switch, the target machine (`--machine`, which must be the machine of the profile) and the
+//! intent (`--intent`, which must name the command); there is no `upload --and-start`. Options
+//! that are not understood are refused, never ignored (`--variant` included: a project has no
+//! project-level variants). Start only follows fresh read-back proof in the
 //! same invocation and is never sent twice for one execution (history first, then driver).
 
 mod args;
@@ -78,6 +81,11 @@ pub enum CliError {
     History(HistoryError),
     /// Upload/start without `--allow-machine-contact`: nothing was contacted.
     MachineContactNotAllowed,
+    /// `--machine` names another machine than the profile describes: nothing was contacted.
+    MachineTargetMismatch {
+        expected: String,
+        given: String,
+    },
     Machine(String),
     NotImplemented(&'static str),
 }
@@ -86,7 +94,10 @@ impl CliError {
     /// Process exit code: 2 for refusals the user can act on (preflight, safety), 1 otherwise.
     pub fn exit_code(&self) -> i32 {
         match self {
-            CliError::Preflight { .. } | CliError::MachineContactNotAllowed | CliError::Usage(_) => 2,
+            CliError::Preflight { .. }
+            | CliError::MachineContactNotAllowed
+            | CliError::MachineTargetMismatch { .. }
+            | CliError::Usage(_) => 2,
             _ => 1,
         }
     }

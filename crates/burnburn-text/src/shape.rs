@@ -10,6 +10,7 @@ use burnburn_geometry::{
 };
 use burnburn_types::{CancellationToken, ContentHash, Length};
 use harfrust::{Buffer, Direction, Feature, ShapeOptions, ShaperFont, Tag};
+use unicode_bidi::BidiInfo;
 
 use crate::font::{FontData, FontError, FontSource};
 use crate::model::{Align, MissingGlyph, TextMode, TextObject, VAlign};
@@ -101,8 +102,7 @@ impl From<GeometryError> for TextError {
 /// the layout values are invalid; unsupported characters are reported in `missing`.
 ///
 /// Each line is split into runs of consecutive characters drawn by the same font (the first in
-/// the chain that maps the character); every run is shaped left-to-right with harfrust.
-/// Bidirectional reordering is not part of v1.
+/// the chain that maps the character); every run is shaped with harfrust in the direction the Unicode Bidirectional Algorithm (UAX #9) gives it, and the runs sit in visual order.
 pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, TextError> {
     let layout = &obj.layout;
     if !(layout.line_spacing.is_finite() && layout.line_spacing > 0.0)
@@ -303,21 +303,46 @@ fn shape_line(
     // The text to draw (upper-cased on request) and, per byte, its source offset in `line`.
     let (line, map) = case_mapped(line, layout.uppercase);
     let line = line.as_str();
-    // Runs of (font index, byte range within the drawn line).
-    let mut runs: Vec<(usize, Range<usize>)> = Vec::new();
-    for (i, ch) in line.char_indices() {
-        if ch == '\r' {
-            continue;
+    // Directional runs in visual (left-to-right) order, each (byte range, right-to-left).
+    let bidi = BidiInfo::new(line, None);
+    let mut directional: Vec<(Range<usize>, bool)> = Vec::new();
+    if bidi.has_rtl() {
+        for para in &bidi.paragraphs {
+            let (levels, runs) = bidi.visual_runs(para, para.range.clone());
+            for run in runs {
+                let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
+                directional.push((run, rtl));
+            }
         }
-        let end = i + ch.len_utf8();
-        match chain.iter().position(|f| f.has_glyph(ch)) {
-            Some(font) => match runs.last_mut() {
-                Some((f, r)) if *f == font && r.end == i => r.end = end,
-                _ => runs.push((font, i..end)),
-            },
-            None => raw.missing.push((ch, base + map.get(i).copied().unwrap_or(0))),
-        }
+    } else {
+        directional.push((0..line.len(), false));
     }
+    // Per directional run: runs of (font index, byte range), in logical order.
+    let mut runs: Vec<(usize, Range<usize>, bool)> = Vec::new();
+    for (span, rtl) in directional {
+        let mut logical: Vec<(usize, Range<usize>, bool)> = Vec::new();
+        let slice = line.get(span.clone()).ok_or(TextError::Shaping)?;
+        for (j, ch) in slice.char_indices() {
+            if ch == '\r' {
+                continue;
+            }
+            let i = span.start + j;
+            let end = i + ch.len_utf8();
+            match chain.iter().position(|f| f.has_glyph(ch)) {
+                Some(font) => match logical.last_mut() {
+                    Some((f, r, _)) if *f == font && r.end == i => r.end = end,
+                    _ => logical.push((font, i..end, rtl)),
+                },
+                None => raw.missing.push((ch, base + map.get(i).copied().unwrap_or(0))),
+            }
+        }
+        // Inside a right-to-left run the logically first piece is drawn right-most.
+        if rtl {
+            logical.reverse();
+        }
+        runs.extend(logical);
+    }
+    raw.missing.sort_by_key(|m| m.1);
     let mut features = Vec::new();
     if !layout.kerning {
         features.push(Feature::new(Tag::new(b"kern"), 0, ..));
@@ -326,13 +351,13 @@ fn shape_line(
         features.push(Feature::new(Tag::new(b"liga"), 0, ..));
         features.push(Feature::new(Tag::new(b"clig"), 0, ..));
     }
-    for (font_index, range) in runs {
+    for (font_index, range, rtl) in runs {
         let font = chain.get(font_index).ok_or(TextError::Shaping)?;
         let text = line.get(range.clone()).ok_or(TextError::Shaping)?;
         let mut buffer = Buffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
-        buffer.set_direction(Direction::LeftToRight);
+        buffer.set_direction(if rtl { Direction::RightToLeft } else { Direction::LeftToRight });
         let shaper = ShaperFont::new(font.shaping());
         harfrust::shape(&shaper, &mut buffer, ShapeOptions::new().features(&features))
             .map_err(|_| TextError::Shaping)?;

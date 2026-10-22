@@ -98,6 +98,7 @@ fn refuse_errors(report: &PreflightReport) -> Result<(), CliError> {
 }
 
 pub fn preflight(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
+    a.reject_unknown(&["profile"])?;
     let c = compile_project(env, a)?;
     refuse_errors(&c.report)?;
     let stdout = format!(
@@ -115,6 +116,7 @@ pub fn compile(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
             return Err(CliError::Usage(format!("compile never contacts a machine (--{flag})")));
         }
     }
+    a.reject_unknown(&["profile", "out", "plan-json", "history"])?;
     let c = compile_project(env, a)?;
     refuse_errors(&c.report)?;
     let out = PathBuf::from(a.required("out")?);
@@ -221,6 +223,7 @@ fn write_atomically(fs: &dyn FileSystem, path: &Path, bytes: &[u8]) -> Result<()
 }
 
 pub fn inspect(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
+    a.reject_unknown(&["magic"])?;
     let path = a.one_positional("RD file")?;
     let magic = match a.flag("magic") {
         None => Magic::FIXTURE_0X88,
@@ -336,6 +339,7 @@ fn state_name(s: &ExecutionStateDto) -> String {
 }
 
 pub fn history(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
+    a.reject_unknown(&["history", "project", "machine"])?;
     let dir = a.required("history")?;
     let (h, report) = History::open(env.fs.as_ref(), Path::new(dir), &JournalLimits::default())?;
     let project = match a.flag("project") {
@@ -404,13 +408,27 @@ pub fn history(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
     Ok(CliOutcome { stdout: out, ..CliOutcome::default() })
 }
 
+/// A machine action names its target machine (`--machine`, must be the machine the profile
+/// describes) and its intent (`--intent`, must be the command being run). Checked before
+/// anything is read from the machine side or connected.
+fn machine_intent(a: &Args, intent: &str) -> Result<String, CliError> {
+    let machine = a.required("machine")?.to_owned();
+    let given = a.required("intent")?;
+    if given != intent {
+        return Err(CliError::Usage(format!("--intent {given} does not match the command ({intent})")));
+    }
+    Ok(machine)
+}
+
 fn machine_session(
     env: &CliEnv,
     a: &Args,
+    intent: &str,
 ) -> Result<(MachineDriver<Box<dyn burnburn_machine::ControllerPort>>, ProfileFile), CliError> {
     if !a.switch("allow-machine-contact") {
         return Err(CliError::MachineContactNotAllowed);
     }
+    let machine = machine_intent(a, intent)?;
     let profile = read_profile(env, a)?;
     if matches!(profile.backend, Backend::Grbl(_)) {
         return Err(CliError::Machine(
@@ -422,6 +440,9 @@ fn machine_session(
         .identity
         .clone()
         .ok_or_else(|| CliError::Profile("profile has no machine identity (needed before any upload)".into()))?;
+    if identity.id.as_str() != machine {
+        return Err(CliError::MachineTargetMismatch { expected: identity.id.as_str().to_owned(), given: machine });
+    }
     let peer: SocketAddr = a.required("peer")?.parse().map_err(|_| CliError::Usage("--peer takes ip:port".into()))?;
     let (history, _) = History::open(env.fs.as_ref(), Path::new(a.required("history")?), &JournalLimits::default())?;
     let port = env.connector.connect(peer, &identity.id).map_err(|e| CliError::Machine(e.to_string()))?;
@@ -451,9 +472,10 @@ pub fn upload(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
     if !a.switch("allow-machine-contact") {
         return Err(CliError::MachineContactNotAllowed);
     }
+    a.reject_unknown(&["history", "job", "profile", "peer", "machine", "intent"])?;
     let job =
         ContentHash::from_hex(a.required("job")?).map_err(|_| CliError::Usage("--job takes a job hash".into()))?;
-    let (mut d, profile) = machine_session(env, a)?;
+    let (mut d, profile) = machine_session(env, a, "upload")?;
     let job = d
         .history()
         .jobs()
@@ -484,10 +506,11 @@ pub fn start(env: &CliEnv, a: &Args) -> Result<CliOutcome, CliError> {
     if !a.switch("allow-machine-contact") {
         return Err(CliError::MachineContactNotAllowed);
     }
+    a.reject_unknown(&["history", "execution", "profile", "peer", "machine", "intent"])?;
     let raw: u64 =
         a.required("execution")?.parse().map_err(|_| CliError::Usage("--execution takes a number".into()))?;
     let exec = ExecutionId::from_raw(raw);
-    let (mut d, _) = machine_session(env, a)?;
+    let (mut d, _) = machine_session(env, a, "start")?;
     let machine_err = |e: burnburn_runtime::DriverError| CliError::Machine(e.to_string());
     d.reverify(exec, (env.new_action)()).map_err(machine_err)?;
     let state = drive(env, &mut d, |s| !matches!(s, ExecutionState::VerifyingIdentity | ExecutionState::Reverifying))?;
