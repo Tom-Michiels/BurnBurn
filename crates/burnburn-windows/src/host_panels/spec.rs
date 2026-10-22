@@ -77,6 +77,24 @@ pub enum ControlKind {
     },
 }
 
+impl ControlKind {
+    /// Whether Tab stops on this kind of control (static text, reports and pictures are skipped).
+    pub fn is_tab_stop(&self) -> bool {
+        match self {
+            ControlKind::Button
+            | ControlKind::HoldButton
+            | ControlKind::Check { .. }
+            | ControlKind::Edit
+            | ControlKind::Combo { .. }
+            | ControlKind::List { .. }
+            | ControlKind::Slider { .. } => true,
+            ControlKind::Label | ControlKind::Heading | ControlKind::Report { .. } | ControlKind::Bitmap { .. } => {
+                false
+            }
+        }
+    }
+}
+
 /// One control. `weight` is its share of the row's width.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlSpec {
@@ -177,6 +195,21 @@ impl PanelSpec {
     pub fn control(&self, id: u16) -> Option<&ControlSpec> {
         self.controls().find(|c| c.id == id)
     }
+
+    /// The controls Tab visits, in order: visible, enabled controls of a kind that takes the focus.
+    pub fn tab_order(&self) -> Vec<u16> {
+        self.controls().filter(|c| c.visible && c.enabled && c.kind.is_tab_stop()).map(|c| c.id).collect()
+    }
+}
+
+/// Why the control under `point` (client pixels of the panel window, `scroll` = how far the content
+/// is scrolled) is off, when it has a reason. A disabled window gets no mouse input of its own, so
+/// the panel window asks this from its own `WM_MOUSEMOVE` and shows the reason as a tooltip.
+pub fn disabled_reason_at(spec: &PanelSpec, places: &[Placement], scroll: i32, point: (i32, i32)) -> Option<String> {
+    let (x, y) = (point.0, point.1 + scroll);
+    let under = places.iter().find(|p| x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h)?;
+    let control = spec.control(under.id)?;
+    (control.visible && !control.enabled && !control.tooltip.is_empty()).then(|| control.tooltip.clone())
 }
 
 /// Pixel metrics of a layout (already scaled for the window's DPI by the caller).

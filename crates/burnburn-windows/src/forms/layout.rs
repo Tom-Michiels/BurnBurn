@@ -226,3 +226,16 @@ pub fn layout(form: &Form, width: i32, scale: f64) -> Layout {
     }
     Layout { items, height: y + m.margin - m.gap }
 }
+
+/// Why the disabled field under `point` (client pixels, `scroll` = how far the content is
+/// scrolled) is off: its hint. A disabled window gets no mouse input of its own, so the form's
+/// window asks this from its own `WM_MOUSEMOVE` and shows the text as a tooltip.
+pub fn disabled_tip_at(layout: &Layout, scroll: i32, point: (i32, i32)) -> Option<String> {
+    let (x, y) = (point.0, point.1 + scroll);
+    let under =
+        layout.items.iter().find(|p| x >= p.rect.x && x < p.rect.right() && y >= p.rect.y && y < p.rect.bottom())?;
+    match &under.item {
+        Item::Field { enabled: false, hint, .. } if !hint.is_empty() => Some(hint.clone()),
+        _ => None,
+    }
+}

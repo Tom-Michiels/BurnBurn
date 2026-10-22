@@ -19,6 +19,7 @@ use crate::l10n::Locale;
 use crate::panels::{LayerColumn, ParamSection, SchikkenControl, Slot};
 
 pub mod cam;
+pub mod choice;
 pub mod cut_settings;
 pub mod inspector;
 pub mod layers;

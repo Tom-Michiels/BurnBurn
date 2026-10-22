@@ -24,6 +24,7 @@ mod dialogs;
 mod forms;
 mod menu;
 mod strip;
+pub(crate) mod tips;
 mod util;
 
 use dialogs::{FileKind, open_dialog, open_dialog_of, save_dialog, save_dialog_of};
@@ -56,13 +57,14 @@ use windows::Win32::UI::HiDpi::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_MENU};
 use windows::Win32::UI::WindowsAndMessaging::{
-    ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW,
-    DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA, GetClientRect, GetCursorPos,
-    GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT,
-    LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL,
-    MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
-    SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
-    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_INITMENUPOPUP, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD,
+    ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DLGC_WANTMESSAGE,
+    DefWindowProcW, DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GA_ROOT, GWLP_USERDATA,
+    GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL,
+    HMENU, IDC_ARROW, IsDialogMessageW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL,
+    LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL, MESSAGEBOX_RESULT, MSG, MessageBoxW,
+    MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SW_SHOWNOACTIVATE, SetTimer,
+    SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY,
+    WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD,
     WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
@@ -104,6 +106,8 @@ struct DocWin {
     /// Panels of this window: docked ones in the columns, floating ones as tool windows.
     forms: Vec<FormWin>,
     strip: StripWin,
+    /// The frame's tooltip control (strip buttons).
+    tip: Option<HWND>,
     /// Window state of the panels that is not in the view model.
     state: PanelState,
     /// The operation whose Cut Settings draft the sheet's controls hold.
@@ -459,6 +463,11 @@ fn open_window(document: DocumentId) {
         // SAFETY: user data on our own child windows (unused by the system classes).
         unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, document.raw() as isize) };
     }
+    let tip = tips::create(frame, instance);
+    if let Some(tip) = tip {
+        // Disabled strip buttons get no mouse input: the area tool asks the frame (WM_NOTIFY).
+        tips::set_area_tip(tip, frame, true);
+    }
     let canvas_surface = surface_for(instance, canvas);
     with_host(|h| {
         h.windows.insert(
@@ -472,10 +481,16 @@ fn open_window(document: DocumentId) {
                 syncing: false,
                 forms: Vec::new(),
                 strip: StripWin::new(),
+                tip,
                 state: PanelState::default(),
                 cut_op: None,
             },
         );
+    });
+    with_host(|h| {
+        if let Some(w) = h.windows.get_mut(&document) {
+            w.strip.set_tip(w.tip);
+        }
     });
     if let Some(built) = &built {
         crate::win32_panels::manager::register_recent_menus(frame, built.recent_projects, built.recent_templates);
@@ -508,6 +523,9 @@ fn layout(frame: HWND) {
         let instance = host.instance;
         let Some(d) = host.windows.get_mut(&document) else { return };
         let top = d.strip.sync(instance, frame, &panels, w, scale);
+        if let Some(tip) = d.tip {
+            tips::set_area_tip(tip, frame, false);
+        }
         let body = (h - top).max(1);
         let list_h = body * 35 / 100;
         place(d.list, 0, top, left, list_h);
@@ -562,12 +580,23 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 layout(hwnd);
                 return LRESULT(0);
             }
+            msg::WM_MOUSEMOVE => {
+                // A disabled strip button gets no mouse input: say why from here (then go on).
+                let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
+                let hovered =
+                    with_host(|h| h.windows.get(&document).map(|w| (w.tip, w.strip.disabled_tip_at((x, y))))).flatten();
+                if let Some((tip, reason)) = hovered {
+                    tips::hover(tip, hwnd, reason.as_deref());
+                }
+            }
+            WM_NOTIFY if tips::answer(hwnd, lparam) => return LRESULT(0),
             WM_INITMENUPOPUP => {
                 refresh_popup(HMENU(wparam.0 as *mut _), &view(), system_locale());
                 crate::win32_panels::manager::refresh_menu_state(HMENU(wparam.0 as *mut _));
                 return LRESULT(0);
             }
             WM_DESTROY => {
+                tips::forget(hwnd);
                 crate::win32_panels::manager::forget_recent_menus(hwnd);
                 let remaining = with_host(|h| {
                     if let Some(mut w) = h.windows.remove(&document) {
@@ -617,6 +646,20 @@ extern "system" fn canvas_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam:
     guard("canvas_proc", LRESULT(0), || {
         let Some(document) = document_of(hwnd) else { return default() };
         match message {
+            // The dialog manager (Tab) asks which keys the canvas keeps: all but Tab.
+            WM_GETDLGCODE => {
+                // SAFETY: for WM_GETDLGCODE `lparam` is null or points to the MSG being processed.
+                let pressed = unsafe { (lparam.0 as *const MSG).as_ref() }
+                    .filter(|m| m.message == msg::WM_KEYDOWN)
+                    .map(|m| (m.wParam.0 & 0xFFFF) as u16);
+                let base = default();
+                return match pressed {
+                    Some(vk) if crate::host_panels::keys::canvas_wants_key(vk) => {
+                        LRESULT(base.0 | DLGC_WANTMESSAGE as isize)
+                    }
+                    _ => base,
+                };
+            }
             msg::WM_LBUTTONDOWN | msg::WM_RBUTTONDOWN | msg::WM_MBUTTONDOWN => {
                 // SAFETY: mouse capture for our own canvas window during a drag (UI thread).
                 let _ = unsafe { SetCapture(hwnd) };
@@ -768,6 +811,21 @@ extern "system" fn form_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: L
     // SAFETY: default handling of a message for our own window.
     let default = || unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
     guard("form_proc", LRESULT(0), || match message {
+        msg::WM_MOUSEMOVE => {
+            // A disabled field gets no mouse input: say why from here.
+            let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
+            let hovered = with_host(|h| {
+                h.windows
+                    .values()
+                    .find_map(|w| w.forms.iter().find(|f| f.hwnd == hwnd).map(|f| (f.tip(), f.reason_at((x, y)))))
+            })
+            .flatten();
+            if let Some((tip, reason)) = hovered {
+                tips::hover(tip, hwnd, reason.as_deref());
+            }
+            default()
+        }
+        WM_NOTIFY if tips::answer(hwnd, lparam) => LRESULT(0),
         msg::WM_COMMAND => {
             let (id, code) = (wparam.0 & 0xFFFF, ((wparam.0 >> 16) & 0xFFFF) as u16);
             let event = with_host(|h| {
@@ -1014,6 +1072,15 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
         if translated {
             continue;
         }
+        // Tab, Shift+Tab, Return on a button and Escape in the windows with controls: the dialog
+        // manager of the window the message belongs to (controls ask for the keys they keep).
+        if matches!(message.message, msg::WM_KEYDOWN | 0x0101 /* WM_KEYUP */ | msg::WM_CHAR)
+            && let Some(root) = dialog_root(message.hwnd)
+            // SAFETY: our own top-level window and the message just read.
+            && unsafe { IsDialogMessageW(root, &message) }.as_bool()
+        {
+            continue;
+        }
         // SAFETY: the message just read.
         let _ = unsafe { TranslateMessage(&message) };
         // SAFETY: dispatches to our window procedures (which never unwind).
@@ -1027,6 +1094,21 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
         }
     });
     ExitCode::SUCCESS
+}
+
+/// The top-level window of `hwnd` when it is one of ours that holds controls (a document frame, a
+/// floating form or a panel window): the window to run the dialog manager for.
+fn dialog_root(hwnd: HWND) -> Option<HWND> {
+    // SAFETY: plain query on a window handle from the message just read (null gives null).
+    let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    if root.0.is_null() {
+        return None;
+    }
+    let mut name = [0u16; 32];
+    // SAFETY: a writable buffer of the stated length.
+    let len = usize::try_from(unsafe { GetClassNameW(root, &mut name) }).ok()?;
+    let class = String::from_utf16_lossy(&name[..len.min(name.len())]);
+    matches!(class.as_str(), "BurnBurnFrame" | "BurnBurnForm" | "BurnBurnPanel").then_some(root)
 }
 
 /// The UI language from the user's default locale name (`nl-BE`, `en-US`, …), as the macOS host

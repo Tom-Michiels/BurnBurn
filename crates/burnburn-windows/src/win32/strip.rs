@@ -13,7 +13,7 @@ use windows::core::{HSTRING, w};
 use super::forms::child;
 use super::util::{send, set_text};
 use crate::forms::layout::Rect;
-use crate::forms::toolstrip::{StripAction, StripButton, StripLayout, StripPanel, strip_layout};
+use crate::forms::toolstrip::{StripAction, StripButton, StripLayout, StripPanel, disabled_tip_at, strip_layout};
 
 /// First child id of the strip's buttons; control `n` has id `STRIP_BASE + n`.
 pub(super) const STRIP_BASE: usize = 3000;
@@ -25,11 +25,24 @@ const BST_CHECKED: usize = 1;
 pub(super) struct StripWin {
     ctls: Vec<(HWND, StripAction)>,
     signature: Vec<String>,
+    /// The tooltip control of the frame (shared with the area tool for disabled buttons).
+    tip: Option<HWND>,
+    /// The strip as last laid out, for the tooltips of disabled buttons.
+    last: Option<StripLayout>,
 }
 
 impl StripWin {
     pub(super) fn new() -> StripWin {
-        StripWin { ctls: Vec::new(), signature: Vec::new() }
+        StripWin { ctls: Vec::new(), signature: Vec::new(), tip: None, last: None }
+    }
+
+    pub(super) fn set_tip(&mut self, tip: Option<HWND>) {
+        self.tip = tip;
+    }
+
+    /// The tooltip of the disabled button under `point` (client pixels of the frame).
+    pub(super) fn disabled_tip_at(&self, point: (i32, i32)) -> Option<String> {
+        self.last.as_ref().and_then(|lay| disabled_tip_at(lay, point))
     }
 
     /// Bring the buttons in step with the strip; returns the height the strip needs at `width`.
@@ -45,6 +58,9 @@ impl StripWin {
         let signature: Vec<String> = lay.controls.iter().map(|c| format!("{:?}{}", c.action, c.label)).collect();
         if signature != self.signature {
             for (hwnd, _) in self.ctls.drain(..) {
+                if let Some(tip) = self.tip {
+                    super::tips::set_control_tip(tip, frame, hwnd, "");
+                }
                 // SAFETY: destroying our own button; no message is in flight for it.
                 let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd) };
             }
@@ -69,10 +85,17 @@ impl StripWin {
             }
             // SAFETY: plain state change on our own button.
             let _ = unsafe { EnableWindow(*hwnd, c.enabled) };
-            // The tooltip is the button's own accessible name: the window text carries the label.
+            // The window text is the label; the tooltip (label, shortcut, or the reason it is off)
+            // is shown by the pointer resting on an enabled button, and for a disabled one by the
+            // frame's area tool (`disabled_tip_at`).
             set_text(*hwnd, &c.label);
+            if let Some(tip) = self.tip {
+                super::tips::set_control_tip(tip, frame, *hwnd, if c.enabled { &c.tooltip } else { "" });
+            }
         }
-        lay.height
+        let height = lay.height;
+        self.last = Some(lay);
+        height
     }
 
     /// What the button with child id `id` does.
