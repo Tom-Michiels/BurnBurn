@@ -151,5 +151,8 @@ voor elke maat.
 
 ## Verificatie
 
-Zie het eindrapport van de lane voor de uitkomst van `cargo fmt`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
-(schoon), clippy voor `x86_64-pc-windows-msvc` (schoon) en `cargo xtask verify`.
+Op ff7e646 (vóór deze regel): `cargo fmt --all` schoon; `cargo clippy --workspace --all-targets --locked -- -D warnings` schoon;
+`cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings` schoon;
+`cargo xtask verify` exit 0 (4115 tests geslaagd, 0 gefaald, 11 genegeerd). De eerste verify-run faalde op
+`macos/tests/text_panels::every_slot_reports_itself_in_one_way` (één knop `Slot::PathLive` erbij: 7 -> 8 toggles); de test is
+aangepast en de run herhaald.
