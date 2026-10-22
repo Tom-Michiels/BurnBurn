@@ -61,7 +61,7 @@ fn the_structure_panel_has_the_add_block_with_a_kind_choice_numbers_and_buttons(
     let all = lines(&h, doc, G5Panel::Structure, Locale::En);
     let G5Line::Choice { options, selected, caption, .. } = find(&all, E::ModNewKind) else { panic!("a choice") };
     assert_eq!(caption, "Kind of step");
-    assert_eq!(options.len(), 7);
+    assert_eq!(options.len(), 9);
     assert_eq!((options[0].as_str(), options[5].as_str(), options[6].as_str()), ("Offset", "Grid", "Circle"));
     assert_eq!(*selected, 0);
     for control in [

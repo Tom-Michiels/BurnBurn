@@ -40,6 +40,8 @@ struct World {
     other: GeometryId,
     output: GeometryId,
     chain: u64,
+    /// A straight path "Pad" from (0, 0) to (100, 0) (G9-editor: the guide of a path array).
+    guide: GeometryId,
 }
 
 /// A 10 mm square "Bron" with a chain [offset 1 mm, three copies 20 mm apart] (so three disjoint
@@ -48,6 +50,13 @@ fn world() -> World {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     let source = rect_at(&mut s, 0.0, 0.0, 10.0, "Bron");
     let other = rect_at(&mut s, 4.0, 4.0, 2.0, "Gat");
+    let line = burnburn_geometry::Path::line(Point::new(0.0, -50.0), Point::new(100.0, -50.0)).unwrap();
+    let guide = run(
+        &mut s,
+        CommandPayload::Edit(burnburn_document::GeometryCommand::CreatePath { path: line, name: "Pad".into() }),
+    )
+    .changes
+    .created[0];
     let chain = ModifierChain {
         name: "Patroon".into(),
         source,
@@ -75,7 +84,7 @@ fn world() -> World {
             _ => None,
         })
         .expect("opened");
-    World { h, doc, source, other, output, chain: id.raw() }
+    World { h, doc, source, other, output, chain: id.raw(), guide }
 }
 
 impl World {
@@ -284,7 +293,12 @@ fn a_chain_is_made_on_the_selection_with_any_first_step() {
     assert_eq!((rows[1].source, rows[1].steps[0].kind), (w.source.raw(), ModifierKind::Boolean));
     // 10 mm square with a 2 mm hole: two contours, extent still 10 mm.
     let new_output =
-        w.h.scene(w.doc).unwrap().items.iter().map(|i| i.source).find(|id| ![w.source, w.other, w.output].contains(id));
+        w.h.scene(w.doc)
+            .unwrap()
+            .items
+            .iter()
+            .map(|i| i.source)
+            .find(|id| ![w.source, w.other, w.output, w.guide].contains(id));
     let (subpaths, width, _) = w.item(new_output.unwrap()).unwrap();
     assert_eq!(subpaths, 2);
     assert!((width - 10.0).abs() < 1e-3);
@@ -313,4 +327,106 @@ fn the_view_model_marks_the_chains_of_the_selection() {
     assert!(w.vm().structure.modifiers[0].in_selection, "the source");
     w.select(&[w.output]);
     assert!(w.vm().structure.modifiers[0].in_selection, "an output");
+}
+
+// --- G9-editor: a linear series and a series along a path from the panel -----------------------------------------
+
+fn linear(count: &str, step_x: &str, step_y: &str) -> NewModifierStep {
+    NewModifierStep::Linear { count: count.into(), step_x: step_x.into(), step_y: step_y.into() }
+}
+
+#[test]
+fn g9_a_linear_step_is_appended_and_repeats_the_result_along_the_typed_step() {
+    let mut w = world();
+    assert_eq!(w.item(w.output), Some((3, 52.0, 12.0)));
+    w.edit(StructureEdit::AddModifierStep { modifier: w.chain, step: linear("2", "0", "30") });
+    assert_eq!(w.problem(), None);
+    assert_eq!(w.kinds(0), [ModifierKind::Offset, ModifierKind::LinearArray, ModifierKind::LinearArray]);
+    let row = &w.vm().structure.modifiers[0];
+    assert_eq!(row.steps[2].value, Some((ModifierValueKind::Count, "2".to_owned())));
+    // Two rows 30 mm apart of the three 12 mm squares: 52 wide, 12 + 30 high, six contours.
+    let (subpaths, width, height) = w.item(w.output).unwrap();
+    assert_eq!(subpaths, 6);
+    assert!((width - 52.0).abs() < 1e-3 && (height - 42.0).abs() < 1e-3, "{width} x {height}");
+    assert_eq!(w.vm().undo, Some(UndoLabel::Structure(StructureLabel::EditModifier)));
+    w.undo();
+    assert_eq!(w.item(w.output), Some((3, 52.0, 12.0)), "one undo step");
+}
+
+#[test]
+fn g9_a_path_step_carries_the_result_along_the_other_selected_path() {
+    let mut w = world();
+    w.select(&[w.guide]);
+    w.edit(StructureEdit::AddModifierStep {
+        modifier: w.chain,
+        step: NewModifierStep::Path { count: "5".into(), orient: false },
+    });
+    assert_eq!(w.problem(), None);
+    assert_eq!(w.kinds(0), [ModifierKind::Offset, ModifierKind::LinearArray, ModifierKind::PathArray]);
+    // Five copies from the start of the 100 mm path to its end, 25 mm apart: the three squares
+    // (x -1 .. 51) reach to x = 151 and there are 15 contours.
+    let (subpaths, width, height) = w.item(w.output).unwrap();
+    assert_eq!(subpaths, 15);
+    assert!((width - 152.0).abs() < 1e-2 && (height - 12.0).abs() < 1e-3, "{width} x {height}");
+    w.undo();
+    assert_eq!(w.item(w.output), Some((3, 52.0, 12.0)));
+}
+
+#[test]
+fn g9_a_path_step_without_a_guide_or_with_a_bad_count_is_refused() {
+    let mut w = world();
+    let undo = w.vm().undo;
+    for ids in [vec![], vec![w.source], vec![w.output]] {
+        w.select(&ids);
+        w.edit(StructureEdit::AddModifierStep {
+            modifier: w.chain,
+            step: NewModifierStep::Path { count: "5".into(), orient: true },
+        });
+        assert_eq!(w.problem(), Some(MessageKey::Structure(StructureProblem::NeedsOperands)), "{ids:?}");
+    }
+    w.select(&[w.guide]);
+    for count in ["0", "2.5", "100000000", "veel"] {
+        w.edit(StructureEdit::AddModifierStep {
+            modifier: w.chain,
+            step: NewModifierStep::Path { count: count.into(), orient: false },
+        });
+        assert!(
+            matches!(
+                w.problem(),
+                Some(MessageKey::Structure(StructureProblem::InvalidCount)) | Some(MessageKey::InvalidLength(_))
+            ),
+            "{count}: {:?}",
+            w.problem()
+        );
+    }
+    for step in
+        [linear("0", "1", "1"), linear("100000000", "1", "1"), linear("2.5", "1", "1"), linear("2", "zwiep", "1")]
+    {
+        w.edit(StructureEdit::AddModifierStep { modifier: w.chain, step });
+        assert!(w.problem().is_some());
+    }
+    assert_eq!(w.vm().undo, undo);
+    assert_eq!(w.kinds(0).len(), 2);
+}
+
+#[test]
+fn g9_a_chain_can_start_with_a_linear_step_or_a_path_step() {
+    let mut w = world();
+    w.select(&[w.other]);
+    w.edit(StructureEdit::CreateModifierChain { step: linear("4", "5", "0") });
+    assert_eq!(w.problem(), None);
+    let rows = w.vm().structure.modifiers;
+    assert_eq!((rows[1].source, rows[1].steps[0].kind), (w.other.raw(), ModifierKind::LinearArray));
+    w.undo();
+    // The first selected object is the source, the second the guide.
+    w.select(&[w.other, w.guide]);
+    w.edit(StructureEdit::CreateModifierChain { step: NewModifierStep::Path { count: "3".into(), orient: true } });
+    assert_eq!(w.problem(), None);
+    let rows = w.vm().structure.modifiers;
+    assert_eq!((rows[1].source, rows[1].steps[0].kind), (w.other.raw(), ModifierKind::PathArray));
+    // A path chain with only the source selected has no guide.
+    w.undo();
+    w.select(&[w.other]);
+    w.edit(StructureEdit::CreateModifierChain { step: NewModifierStep::Path { count: "3".into(), orient: true } });
+    assert_eq!(w.problem(), Some(MessageKey::Structure(StructureProblem::NeedsOperands)));
 }

@@ -52,7 +52,7 @@ fn the_structure_form_has_the_kind_choice_the_numbers_and_the_add_buttons() {
     let f = form_of(&h, doc, P::Structure, Locale::En).expect("the structure form");
     assert!(matches!(
         f.find(&ControlId::G5(C::Editor(E::ModNewKind))),
-        Some(FormLine::Choice { caption, items, selected: 0, .. }) if caption == "Kind of step" && items.len() == 7
+        Some(FormLine::Choice { caption, items, selected: 0, .. }) if caption == "Kind of step" && items.len() == 9
     ));
     for c in [
         E::ModNewDistance,

@@ -262,6 +262,19 @@ pub enum NewModifierStep {
         center_y: String,
         sweep: String,
     },
+    /// `count` copies (the original included), each `step_x`, `step_y` further than the one before
+    /// (G9-editor).
+    Linear {
+        count: String,
+        step_x: String,
+        step_y: String,
+    },
+    /// `count` copies along another object's path, which is the first other selected object; they
+    /// turn with the path when `orient` is set (G9-editor).
+    Path {
+        count: String,
+        orient: bool,
+    },
 }
 
 /// Everything the structure panel shows; empty lists for a document without structure.

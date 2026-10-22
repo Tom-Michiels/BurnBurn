@@ -76,8 +76,8 @@ texts! {
     ),
     AddStepHeading => ("Stap toevoegen", "Add a step"),
     AddStepHint => (
-        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten.",
-        "Fill in the numbers of the kind; a boolean step combines with the other selected objects."
+        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten, een reeks langs een pad volgt het andere geselecteerde object.",
+        "Fill in the numbers of the kind; a boolean step combines with the other selected objects, a series along a path follows the other selected object."
     ),
     NewKindCaption => ("Soort stap", "Kind of step"),
     NewKindOffset => ("Offset", "Offset"),
@@ -87,6 +87,13 @@ texts! {
     NewKindXor => ("Boolean: exclusieve of", "Boolean: xor"),
     NewKindGrid => ("Raster", "Grid"),
     NewKindCircle => ("Cirkel", "Circle"),
+    NewKindLinear => ("Lineaire reeks", "Linear series"),
+    NewKindPath => ("Reeks langs een pad", "Series along a path"),
+    NewLinearCount => ("Lineaire reeks: aantal", "Linear series: count"),
+    NewStepX => ("Lineaire reeks: stap x (mm)", "Linear series: step x (mm)"),
+    NewStepY => ("Lineaire reeks: stap y (mm)", "Linear series: step y (mm)"),
+    NewPathCount => ("Reeks langs pad: aantal", "Series along a path: count"),
+    NewPathOrient => ("Reeks langs pad: kopieen draaien mee met het pad", "Series along a path: copies turn with the path"),
     NewDistance => ("Offset: afstand (mm)", "Offset: distance (mm)"),
     NewColumns => ("Raster: kolommen", "Grid: columns"),
     NewRows => ("Raster: rijen", "Grid: rows"),

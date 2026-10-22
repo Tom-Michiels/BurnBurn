@@ -219,6 +219,32 @@ fn new_step(
             burnburn_geometry::array::circular_array(&circular).map_err(array_error)?;
             Ok(Modifier::CircularArray(circular))
         }
+        NewModifierStep::Linear { count, step_x, step_y } => {
+            let count = typed_count(&count)?;
+            let step = Vector::new(typed_position(&step_x)?, typed_position(&step_y)?);
+            // The same limit as the other arrays: not more copies than the document can hold.
+            let probe = burnburn_geometry::array::GridArray {
+                columns: count,
+                rows: 1,
+                pitch_x: Length::from_mm(step.x).map_err(|_| MessageKey::CommandRejected)?,
+                pitch_y: Length::from_mm(step.y).map_err(|_| MessageKey::CommandRejected)?,
+            };
+            burnburn_geometry::array::grid_array(&probe).map_err(array_error)?;
+            Ok(Modifier::LinearArray { count, step })
+        }
+        NewModifierStep::Path { count, orient } => {
+            let count = typed_count(&count)?;
+            let along = *operands.first().ok_or(problem(StructureProblem::NeedsOperands))?;
+            let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
+            let guide = snapshot.object(along).ok_or(problem(StructureProblem::UnknownObject))?;
+            burnburn_geometry::array::path_array(
+                guide.path(),
+                &burnburn_geometry::array::PathArray { count, orient },
+                &tolerance,
+            )
+            .map_err(array_error)?;
+            Ok(Modifier::PathArray { count, along, orient })
+        }
     }
 }
 
@@ -917,6 +943,8 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
                 NewModifierStep::Boolean { .. } => "Boolean",
                 NewModifierStep::Grid { .. } => "Raster",
                 NewModifierStep::Circle { .. } => "Cirkel",
+                NewModifierStep::Linear { .. } => "Reeks",
+                NewModifierStep::Path { .. } => "Padreeks",
             };
             let made = new_step(&snapshot, source, &selected[1..], step)?;
             let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;

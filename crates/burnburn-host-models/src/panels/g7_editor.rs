@@ -62,6 +62,13 @@ pub enum EditorControl {
     ModNewCenterX,
     ModNewCenterY,
     ModNewSweep,
+    // --- A linear series and a series along a path (G9-editor).
+    ModNewLinearCount,
+    ModNewStepX,
+    ModNewStepY,
+    ModNewPathCount,
+    /// The copies of a series along a path turn with the path (a check).
+    ModNewPathOrient,
     /// Appends the step to chain `modifier`.
     ModAddStep {
         modifier: u64,
@@ -377,7 +384,7 @@ pub(super) fn modifier_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Li
 }
 
 /// The kinds of step the add block offers, in the order of its choice (see [`new_step`]).
-const NEW_KINDS: [G7Text; 7] = [
+const NEW_KINDS: [G7Text; 9] = [
     G7Text::NewKindOffset,
     G7Text::NewKindUnion,
     G7Text::NewKindDifference,
@@ -385,6 +392,8 @@ const NEW_KINDS: [G7Text; 7] = [
     G7Text::NewKindXor,
     G7Text::NewKindGrid,
     G7Text::NewKindCircle,
+    G7Text::NewKindLinear,
+    G7Text::NewKindPath,
 ];
 
 /// The "add a step" block: the kind, the numbers of every kind, a button per chain in `chains`
@@ -408,9 +417,18 @@ fn add_step_lines(s: &StructureViewModel, chains: Vec<&ModifierRow>, locale: Loc
         (EditorControl::ModNewCenterX, G7Text::NewCenterX, "0"),
         (EditorControl::ModNewCenterY, G7Text::NewCenterY, "0"),
         (EditorControl::ModNewSweep, G7Text::NewSweep, "360"),
+        (EditorControl::ModNewLinearCount, G7Text::NewLinearCount, "3"),
+        (EditorControl::ModNewStepX, G7Text::NewStepX, "20"),
+        (EditorControl::ModNewStepY, G7Text::NewStepY, "0"),
+        (EditorControl::ModNewPathCount, G7Text::NewPathCount, "4"),
     ] {
         lines.push(field(control, t(caption, locale), default.to_owned()));
     }
+    lines.push(G5Line::Check {
+        control: G5Control::Editor(EditorControl::ModNewPathOrient),
+        caption: t(G7Text::NewPathOrient, locale),
+        on: true,
+    });
     for chain in chains {
         lines.push(button(
             EditorControl::ModAddStep { modifier: chain.id },
@@ -442,6 +460,16 @@ fn new_step(values: &[(G5Control, String)]) -> NewModifierStep {
             center_x: text(EditorControl::ModNewCenterX),
             center_y: text(EditorControl::ModNewCenterY),
             sweep: text(EditorControl::ModNewSweep),
+        },
+        7 => NewModifierStep::Linear {
+            count: text(EditorControl::ModNewLinearCount),
+            step_x: text(EditorControl::ModNewStepX),
+            step_y: text(EditorControl::ModNewStepY),
+        },
+        8 => NewModifierStep::Path {
+            count: text(EditorControl::ModNewPathCount),
+            // Untouched, the copies turn with the path (the check is shown on).
+            orient: flag_of(values, G5Control::Editor(EditorControl::ModNewPathOrient)).unwrap_or(true),
         },
         _ => NewModifierStep::Offset { distance: text(EditorControl::ModNewDistance) },
     }
@@ -799,6 +827,11 @@ pub(super) fn editor_intent(
             chain(modifier)?;
             structure(document, StructureEdit::AddModifierStep { modifier, step: new_step(values) })
         }
+        EditorControl::ModNewLinearCount
+        | EditorControl::ModNewStepX
+        | EditorControl::ModNewStepY
+        | EditorControl::ModNewPathCount
+        | EditorControl::ModNewPathOrient => None,
         EditorControl::ModNewChain => (doc.structure.selected > 0).then(|| UiIntent::Structure {
             document,
             edit: StructureEdit::CreateModifierChain { step: new_step(values) },
