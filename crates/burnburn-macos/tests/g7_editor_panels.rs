@@ -635,3 +635,59 @@ mod text_on_path {
         assert_eq!(model.title, "Tekst op pad");
     }
 }
+
+// --- S01: the minor axis of an ellipse ------------------------------------------------------------------
+
+mod ellipse {
+    use burnburn_editor::Modifiers;
+    use burnburn_macos::l10n::{Locale, message_or_key};
+    use burnburn_macos::panels::shapes_panel;
+    use burnburn_presentation::{
+        CommandKey, HeadlessEditorHarness, MessageKey, ParamKey, SketchConstraintKind, UiIntent,
+    };
+
+    #[test]
+    fn the_dimension_tool_shows_the_minor_axis_option_as_a_check() {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::SketchNew);
+        h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.dimension".into() });
+        let nl = shapes_panel(&h.view(), doc, Locale::Nl);
+        assert_eq!(nl.tool.len(), 1);
+        assert_eq!((nl.tool[0].key, nl.tool[0].toggle), (ParamKey::MinorAxis, true));
+        assert_eq!(nl.tool[0].label, "Kleine as van een ellips meten");
+        let en = shapes_panel(&h.view(), doc, Locale::En);
+        assert_eq!(en.tool[0].label, "Dimension the minor axis of an ellipse");
+    }
+
+    #[test]
+    fn the_constraint_list_names_the_minor_axis_in_both_languages() {
+        let key = MessageKey::SketchConstraint(SketchConstraintKind::MinorDiameter);
+        assert_eq!(message_or_key(key, Locale::Nl), "Kleine as");
+        assert_eq!(message_or_key(key, Locale::En), "Minor axis");
+    }
+
+    #[test]
+    fn a_minor_axis_row_reaches_the_list_with_its_words() {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::SketchNew);
+        h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.ellipse".into() });
+        for at in [(10.0, 10.0), (14.0, 10.0), (10.0, 12.0)] {
+            h.click(doc, at, Modifiers::default());
+        }
+        h.send(UiIntent::SketchSelect {
+            document: doc,
+            entities: vec![burnburn_document::sketch::EntityId::from_raw(2)],
+            constraints: vec![],
+            mode: burnburn_presentation::SelectMode::Replace,
+        });
+        h.send(UiIntent::AddSketchDimension {
+            document: doc,
+            kind: burnburn_presentation::SketchDimensionKind::MinorDiameter,
+            text: "3 mm".into(),
+        });
+        let panel = burnburn_macos::panels::sketch_panel(&h.view(), doc, Locale::En).expect("the sketch panel");
+        assert!(panel.rows.iter().any(|l| l.kind == "Minor axis" && l.value == "3 mm"), "{:?}", panel.rows);
+    }
+}

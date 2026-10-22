@@ -515,6 +515,7 @@ pub enum SketchConstraintKind {
     Radius,
     Diameter,
     Angle,
+    MinorDiameter,
 }
 
 /// What the solver says about one constraint (symbol and words, not colour only).

@@ -162,6 +162,11 @@ pub enum DimensionKind {
         from: EntityId,
         to: EntityId,
     },
+    /// The full minor axis of an ellipse (G7-editor, S01): twice the semi-minor radius. Like a
+    /// diameter on the major axis, it can be driven by a named parameter.
+    MinorDiameter {
+        ellipse: EntityId,
+    },
 }
 
 /// Driving dimensions constrain; driven ones only measure (shown as "(120)").
@@ -207,6 +212,7 @@ impl SketchConstraint {
                 DimensionKind::Length { line } => vec![line],
                 DimensionKind::Radius { curve } | DimensionKind::Diameter { curve } => vec![curve],
                 DimensionKind::Angle { from, to } => vec![from, to],
+                DimensionKind::MinorDiameter { ellipse } => vec![ellipse],
             },
         }
     }
@@ -269,6 +275,9 @@ impl ParameterTable {
 pub struct SketchSolution {
     pub points: BTreeMap<EntityId, Point>,
     pub radii: BTreeMap<EntityId, f64>,
+    /// The solved semi-minor radius of an ellipse whose minor axis the solver moved (G7-editor,
+    /// S01). Absent: the ellipse still has the radius it was drawn with.
+    pub minors: BTreeMap<EntityId, f64>,
     /// Remaining degrees of freedom at the solution.
     pub dof: u32,
 }
@@ -399,20 +408,36 @@ impl Sketch {
         {
             return Err(SketchError::InvalidValue);
         }
-        // An ellipse is no circular curve: nothing can lie on it, be tangent to it or equal to a
-        // circle (its major axis and centre take part in the other relations).
+        // An ellipse is no circular curve: it is never equal to a circle and only a line can be
+        // tangent to it (G7-editor); a point can lie on it. Its major axis and centre take part in
+        // the other relations.
         let is_ellipse =
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Ellipse { .. }, .. }));
+        let is_point =
+            |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Point { .. }, .. }));
+        let is_line =
+            |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Line { .. }, .. }));
         if let SketchConstraint::Relation(r) = c {
             let bad = match *r {
-                Relation::PointOn { curve, .. } if is_ellipse(&curve) => Some(curve),
-                Relation::Tangent(a, b) => [a, b].into_iter().find(|e| is_ellipse(e)),
+                Relation::PointOn { point, curve } if is_ellipse(&curve) && !is_point(&point) => Some(point),
+                Relation::Tangent(a, b) if is_ellipse(&a) || is_ellipse(&b) => match (is_ellipse(&a), is_ellipse(&b)) {
+                    (true, false) if is_line(&b) => None,
+                    (false, true) if is_line(&a) => None,
+                    (true, false) => Some(b),
+                    (false, true) => Some(a),
+                    _ => Some(b),
+                },
                 Relation::Equal(a, b) if is_ellipse(&a) || is_ellipse(&b) => Some(if is_ellipse(&a) { a } else { b }),
                 _ => None,
             };
             if let Some(e) = bad {
                 return Err(SketchError::WrongEntityKind(e));
             }
+        }
+        if let SketchConstraint::Dimension(Dimension { kind: DimensionKind::MinorDiameter { ellipse }, .. }) = c
+            && !is_ellipse(ellipse)
+        {
+            return Err(SketchError::WrongEntityKind(*ellipse));
         }
         Ok(())
     }
@@ -422,6 +447,10 @@ impl Sketch {
             p.is_finite() && matches!(self.entities.get(id), Some(SketchEntity { entity: Entity::Point { .. }, .. }))
         }) && sol.radii.iter().all(|(id, r)| {
             r.is_finite() && matches!(self.entities.get(id), Some(SketchEntity { entity: Entity::Circle { .. }, .. }))
+        }) && sol.minors.iter().all(|(id, m)| {
+            m.is_finite()
+                && *m > 0.0
+                && matches!(self.entities.get(id), Some(SketchEntity { entity: Entity::Ellipse { .. }, .. }))
         });
         if ok { Ok(()) } else { Err(SketchError::InvalidSolution) }
     }

@@ -212,7 +212,7 @@ fn ellipse_path(center: Point, major: Point, minor: f64) -> Option<Path> {
 fn decorate(kind: DimensionKind, value: &str) -> String {
     match kind {
         DimensionKind::Radius { .. } => format!("R{value}"),
-        DimensionKind::Diameter { .. } => format!("\u{00D8}{value}"),
+        DimensionKind::Diameter { .. } | DimensionKind::MinorDiameter { .. } => format!("\u{00D8}{value}"),
         DimensionKind::Angle { .. } => format!("{value}\u{00B0}"),
         _ => value.to_owned(),
     }
@@ -308,6 +308,16 @@ fn dimension_shape(g: &SketchGeometry<'_>, kind: DimensionKind, mpp: f64) -> Opt
                     let dir = unit(pb - pa)?;
                     linear(pa, pb, Vector::new(-dir.y, dir.x) * d)
                 }
+            })
+        }
+        DimensionKind::MinorDiameter { ellipse } => {
+            // Across the ellipse, square to its major axis.
+            let (c, m, minor) = g.ellipse(ellipse)?;
+            let dir = unit(m - c)?;
+            let across = Vector::new(-dir.y, dir.x);
+            Some(DimensionShape {
+                lines: vec![[c - across * minor, c + across * minor]],
+                label_at: c + across * (minor + 12.0 * mpp),
             })
         }
         DimensionKind::Radius { curve } | DimensionKind::Diameter { curve } if g.ellipse(curve).is_some() => {
@@ -469,6 +479,53 @@ mod tests {
         let dims = dimensions(&o);
         assert_eq!(dims.len(), 1, "{dim:?}");
         assert!(dims[0].0.iter().all(|l| near(l[0].y, 20.0) && near(l[1].y, 20.0)), "along the axis: {:?}", dims[0].0);
+    }
+
+    /// G7-editor S01: the minor-axis dimension runs across the ellipse, square to the major axis,
+    /// and an ellipse uses the radius the solver last gave it.
+    #[test]
+    fn the_minor_axis_dimension_runs_across_the_ellipse_and_the_outline_uses_the_solved_radius() {
+        let mut s = Sketch::new("t");
+        let (c, m) = (s.point(20.0, 20.0).unwrap(), s.point(30.0, 20.0).unwrap());
+        let e = s.ellipse(c, m, 4.0).unwrap();
+        s.dimension(DimensionKind::MinorDiameter { ellipse: e }, "8 mm", DimensionRole::Driving).unwrap();
+        let o = build(&s, &Parts::default());
+        let dims = dimensions(&o);
+        assert_eq!(dims.len(), 1);
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6;
+        assert!(dims[0].0.iter().all(|l| near(l[0].x, 20.0) && near(l[1].x, 20.0)), "across: {:?}", dims[0].0);
+        let ys: Vec<f64> = dims[0].0.iter().flat_map(|l| [l[0].y, l[1].y]).collect();
+        assert!(
+            near(ys.iter().copied().fold(f64::MAX, f64::min), 16.0)
+                && near(ys.iter().copied().fold(0.0, f64::max), 24.0)
+        );
+        assert_eq!(dims[0].2, "8 mm", "the typed text until the analysis supplies a measured value");
+
+        // With a stored solution the highlight follows the solved radius, not the drawn one.
+        let mut sol = burnburn_document::sketch::SketchSolution::default();
+        sol.minors.insert(e, 2.5);
+        let seeded = Sketch::from_parts(
+            "t".into(),
+            s.entities().map(|(i, x)| (i, *x)).collect(),
+            s.constraints().map(|(i, x)| (i, x.clone())).collect(),
+            s.parameters().clone(),
+            s.next_entity_id().raw(),
+            s.next_constraint_id().raw(),
+            Some(sol),
+        )
+        .unwrap();
+        let parts = Parts { entities: [e].into(), ..Parts::default() };
+        let o = build(&seeded, &parts);
+        let path = o
+            .overlays
+            .iter()
+            .find_map(|x| match x {
+                Overlay::SketchEntity { path, mark: SketchMark::Selected } => Some(path.clone()),
+                _ => None,
+            })
+            .expect("highlighted");
+        let b = path.bounds().unwrap();
+        assert!(near(b.min().y, 17.5) && near(b.max().y, 22.5), "{b:?}");
     }
 
     #[test]

@@ -50,6 +50,7 @@ fn caption(key: ParamKey, locale: Locale) -> &'static str {
         ParamKey::Count => HostText::ParamCount,
         ParamKey::Sweep => HostText::ParamSweep,
         ParamKey::FilletRadius => HostText::ParamFilletRadius,
+        ParamKey::MinorAxis => HostText::ParamMinorAxis,
         ParamKey::ChamferDistance => HostText::ParamChamferDistance,
         ParamKey::ChamferDistance2 => HostText::ParamChamferDistance2,
         ParamKey::ChamferAngle => HostText::ParamChamferAngle,

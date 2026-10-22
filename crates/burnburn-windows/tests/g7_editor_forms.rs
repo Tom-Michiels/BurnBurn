@@ -470,3 +470,32 @@ mod text_on_path {
         assert!(forms(&h, doc, Locale::En).iter().all(|f| f.kind != FormKind::G5(P::TextPath)));
     }
 }
+
+// --- S01: the minor axis option of the dimension tool ---------------------------------------------------------
+
+mod ellipse {
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, ParamKey, UiIntent};
+    use burnburn_windows::forms::{ControlId, ControlValue, FormContext, FormLine, FormOutcome, inspector};
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::ParamSection;
+
+    #[test]
+    fn the_option_is_a_check_in_the_inspector_that_sends_one_or_zero() {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::SketchNew);
+        h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.dimension".into() });
+        let vm = h.view();
+        let ctx = FormContext { vm: &vm, document: doc, locale: Locale::En };
+        let form = inspector::form(&ctx).expect("an inspector form");
+        let id = ControlId::Param(ParamSection::Tool, 0);
+        assert!(matches!(
+            form.find(&id),
+            Some(FormLine::Check { caption, on: false, .. }) if caption == "Dimension the minor axis of an ellipse"
+        ));
+        assert_eq!(
+            inspector::react(&id, &ControlValue::Toggle(true), &ctx),
+            FormOutcome::Intent(UiIntent::SetToolOption { document: doc, key: ParamKey::MinorAxis, text: "1".into() })
+        );
+    }
+}

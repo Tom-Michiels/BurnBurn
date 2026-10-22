@@ -63,23 +63,87 @@ pub struct Constraint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Kind {
-    Coincident { a: u32, b: u32 },
-    PointOn { point: u32, curve: u32 },
-    Horizontal { line: u32 },
-    Vertical { line: u32 },
-    Parallel { a: u32, b: u32 },
-    Perpendicular { a: u32, b: u32 },
-    Tangent { a: u32, b: u32 },
-    Equal { a: u32, b: u32 },
-    Midpoint { point: u32, line: u32 },
-    Symmetric { a: u32, b: u32, about: u32 },
-    Concentric { a: u32, b: u32 },
-    Fix { point: u32, at: Xy },
-    Distance { a: u32, b: u32, along: Along, text: String, role: Role },
-    Length { line: u32, text: String, role: Role },
-    Radius { curve: u32, text: String, role: Role },
-    Diameter { curve: u32, text: String, role: Role },
-    Angle { from: u32, to: u32, text: String, role: Role },
+    Coincident {
+        a: u32,
+        b: u32,
+    },
+    PointOn {
+        point: u32,
+        curve: u32,
+    },
+    Horizontal {
+        line: u32,
+    },
+    Vertical {
+        line: u32,
+    },
+    Parallel {
+        a: u32,
+        b: u32,
+    },
+    Perpendicular {
+        a: u32,
+        b: u32,
+    },
+    Tangent {
+        a: u32,
+        b: u32,
+    },
+    Equal {
+        a: u32,
+        b: u32,
+    },
+    Midpoint {
+        point: u32,
+        line: u32,
+    },
+    Symmetric {
+        a: u32,
+        b: u32,
+        about: u32,
+    },
+    Concentric {
+        a: u32,
+        b: u32,
+    },
+    Fix {
+        point: u32,
+        at: Xy,
+    },
+    Distance {
+        a: u32,
+        b: u32,
+        along: Along,
+        text: String,
+        role: Role,
+    },
+    Length {
+        line: u32,
+        text: String,
+        role: Role,
+    },
+    Radius {
+        curve: u32,
+        text: String,
+        role: Role,
+    },
+    Diameter {
+        curve: u32,
+        text: String,
+        role: Role,
+    },
+    /// The full minor axis of an ellipse (G7-editor, S01).
+    MinorDiameter {
+        ellipse: u32,
+        text: String,
+        role: Role,
+    },
+    Angle {
+        from: u32,
+        to: u32,
+        text: String,
+        role: Role,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,6 +152,10 @@ pub struct Solution {
     pub points: Vec<(u32, Xy)>,
     pub radii: Vec<(u32, Num)>,
     pub dof: u32,
+    /// Solved semi-minor radii of ellipses whose minor axis the solver moved (G7-editor). Absent
+    /// = none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub minors: Vec<(u32, Num)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

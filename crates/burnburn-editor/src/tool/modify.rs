@@ -56,6 +56,8 @@ pub enum ModifyParam {
     Factor(f64),
     /// Mirror keeps the originals (copies) instead of mirroring them in place.
     KeepOriginal(bool),
+    /// The dimension tool gives an ellipse its minor axis instead of its major axis (G7-editor, S01).
+    MinorAxis(bool),
 }
 
 /// A distance between two picked points outside a sketch (a readout, not a document edit).

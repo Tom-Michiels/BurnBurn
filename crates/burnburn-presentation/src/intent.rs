@@ -588,6 +588,8 @@ pub enum ParamKey {
     Sweep,
     /// Mirror keeps the originals (`1`) or mirrors them in place (`0`).
     KeepOriginal,
+    /// The dimension tool gives an ellipse its minor axis instead of its major axis (`1` / `0`).
+    MinorAxis,
     /// Radius of the Fillet tool in mm (G7-editor, E05).
     FilletRadius,
     /// Distance of the Chamfer tools in mm (the first distance of the two-distance chamfer).
@@ -658,6 +660,8 @@ pub enum SketchDimensionKind {
     Radius,
     Diameter,
     Angle,
+    /// The full minor axis of the selected ellipse (G7-editor, S01).
+    MinorDiameter,
 }
 
 /// What the Cut Settings sheet sends: field text as typed, mode and the two toggles.

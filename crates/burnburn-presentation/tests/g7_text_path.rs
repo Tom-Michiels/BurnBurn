@@ -33,7 +33,6 @@ fn vm(h: &HeadlessEditorHarness, doc: DocumentId) -> DocumentViewModel {
 struct World {
     h: HeadlessEditorHarness,
     doc: DocumentId,
-    outlines: Vec<GeometryId>,
     circle: GeometryId,
 }
 
@@ -52,7 +51,7 @@ fn world(content: &str) -> World {
     let mut both = outlines.clone();
     both.push(circle);
     h.send(UiIntent::Select { document: doc, ids: both, mode: SelectMode::Replace });
-    World { h, doc, outlines, circle }
+    World { h, doc, circle }
 }
 
 impl World {

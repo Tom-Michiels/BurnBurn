@@ -98,12 +98,16 @@ fn an_ellipse_is_concentric_with_a_circle() {
 }
 
 #[test]
-fn a_point_cannot_be_put_on_an_ellipse_and_an_ellipse_is_never_tangent() {
+fn an_ellipse_is_never_equal_to_a_circle_and_only_a_line_is_tangent_to_it() {
+    // Changed in G7-editor (S01): a point can lie on an ellipse and a line can touch it
+    // (`g7_ellipse_relations.rs`); a circle can still be neither equal nor tangent to it.
     let (mut s, _c, m, e) = ellipse_at((14.0, 5.0));
     let q = s.point(0.0, 0.0).unwrap();
-    assert!(matches!(s.relate(Relation::PointOn { point: q, curve: e }), Err(SketchError::WrongEntityKind(_))));
+    let circle = s.circle(q, 1.0).unwrap();
+    assert!(matches!(s.relate(Relation::Tangent(circle, e)), Err(SketchError::WrongEntityKind(_))));
+    assert!(matches!(s.relate(Relation::Equal(circle, e)), Err(SketchError::WrongEntityKind(_))));
     let line = s.line(q, m).unwrap();
-    assert!(matches!(s.relate(Relation::Tangent(line, e)), Err(SketchError::WrongEntityKind(_))));
+    assert!(s.relate(Relation::Tangent(line, e)).is_ok());
 }
 
 #[test]
