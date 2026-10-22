@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 
 use burnburn_cam::nest::{
     MirrorPolicy, NestOptions, NestParams, NestPart, NestResult, Packing, PartKey, RotationSet, Stock, StockId,
-    UtilisationBasis, nest_packed,
+    UtilisationBasis, nest_packed_counted,
 };
 use burnburn_geometry::{Path, Point, ProductionTolerance, Rect};
 use burnburn_types::{CancellationToken, Length};
@@ -109,6 +109,10 @@ fn rows(r: &NestResult) -> String {
 }
 
 fn scene_plain() -> String {
+    scene_plain_counted().0
+}
+
+fn scene_plain_counted() -> (String, u64) {
     let quarter = [0.0, 90.0, 180.0, 270.0];
     let parts = vec![
         part(0, bracket(), 4, &quarter),
@@ -119,7 +123,7 @@ fn scene_plain() -> String {
     ];
     let stock =
         Stock { id: StockId(0), outline: rectangle_at(0.0, 0.0, 400.0, 250.0), keep_out: vec![], grain_deg: None };
-    let r = nest_packed(
+    let (r, work) = nest_packed_counted(
         &parts,
         std::slice::from_ref(&stock),
         &params(3.0, 3.0),
@@ -128,7 +132,7 @@ fn scene_plain() -> String {
         &CancellationToken::never(),
     )
     .unwrap();
-    rows(&r)
+    (rows(&r), work.overlays)
 }
 
 fn scene_keep_out_and_mirror() -> String {
@@ -143,7 +147,7 @@ fn scene_keep_out_and_mirror() -> String {
         keep_out: vec![rectangle_at(100.0, 80.0, 60.0, 50.0)],
         grain_deg: None,
     };
-    let r = nest_packed(
+    let r = nest_packed_counted(
         &parts,
         std::slice::from_ref(&stock),
         &params(3.0, 2.0),
@@ -151,7 +155,8 @@ fn scene_keep_out_and_mirror() -> String {
         Packing::Tight,
         &CancellationToken::never(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
     rows(&r)
 }
 
@@ -161,7 +166,7 @@ fn scene_holes_and_two_sheets() -> String {
         Stock { id: StockId(0), outline: rectangle_at(0.0, 0.0, 150.0, 100.0), keep_out: vec![], grain_deg: None },
         Stock { id: StockId(1), outline: rectangle_at(200.0, 0.0, 150.0, 100.0), keep_out: vec![], grain_deg: None },
     ];
-    let r = nest_packed(
+    let r = nest_packed_counted(
         &parts,
         &stocks,
         &params(2.5, 1.0),
@@ -169,7 +174,8 @@ fn scene_holes_and_two_sheets() -> String {
         Packing::Tight,
         &CancellationToken::never(),
     )
-    .unwrap();
+    .unwrap()
+    .0;
     rows(&r)
 }
 
@@ -186,4 +192,16 @@ fn tight_placements_of_three_scenes_match_the_recorded_implementation() {
     }
     let want = include_str!("data/nest_tight_golden.txt");
     assert_eq!(got.trim_end(), want.trim_end());
+}
+
+/// The exact checks are the cost of a tight nest. Before G9 this scene needed `BASELINE_OVERLAYS`
+/// polygon overlays (every candidate: one against the usable area and one per neighbour); clear
+/// overlaps are now rejected without an overlay and a rectangular sheet needs none for the sheet
+/// edge, so the same placements (see the test above) cost a fraction of it.
+#[test]
+fn tight_needs_far_fewer_polygon_overlays_for_the_same_placements() {
+    const BASELINE_OVERLAYS: u64 = 15_006;
+    let (_, overlays) = scene_plain_counted();
+    println!("overlays: {overlays}");
+    assert!(overlays * 3 <= BASELINE_OVERLAYS, "{overlays} overlays against a baseline of {BASELINE_OVERLAYS}");
 }
