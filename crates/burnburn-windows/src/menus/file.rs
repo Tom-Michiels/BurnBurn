@@ -33,13 +33,14 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
         MenuNode::Item(MenuItem::Open),
         recent("recent_projects", host_text(HostText::RecentProjects, locale), Item::ClearRecentProjects),
         host(Item::Import),
-        nested(files_text(FilesText::MenuExportSubmenu, locale), vec![host(Item::ExportSvg), host(Item::ExportDxf)]),
+        nested(
+            files_text(FilesText::MenuExportSubmenu, locale),
+            vec![host(Item::ExportSvg), host(Item::ExportDxf), cmd(CommandKey::ExportGcode)],
+        ),
         nested(
             files_text(FilesText::MenuBundleSubmenu, locale),
             vec![host(Item::BundleExport), host(Item::BundleImport)],
         ),
-        // G5-grbl-ui: Exporteer G-code (on for a compiled plan of a GRBL machine), as on the Mac.
-        cmd(CommandKey::ExportGcode),
         sep(),
         cmd(CommandKey::Close),
         cmd(CommandKey::Save),
