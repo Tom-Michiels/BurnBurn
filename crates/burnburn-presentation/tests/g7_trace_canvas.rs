@@ -140,3 +140,40 @@ fn a_click_in_brush_mode_paints_a_disc_and_a_click_outside_the_photo_is_refused(
     assert_eq!(prep(&h, doc).issue, Some(burnburn_presentation::PrepIssue::MaskOutsideImage));
     assert_eq!(prep(&h, doc).masks.len(), 1);
 }
+
+#[test]
+fn starting_to_point_shows_the_whole_photo_on_the_canvas() {
+    let (mut h, doc) = opened_with(&trapezoid());
+    let seen = |h: &burnburn_presentation::HeadlessEditorHarness| {
+        let vm = h.document(doc).unwrap();
+        [(0.0, 0.0), (6.4, 4.8)].map(|(x, y)| {
+            let p = vm.camera.world_to_points(&vm.viewport, burnburn_geometry::Point::new(x, y));
+            (
+                p[0] >= 0.0 && p[0] <= vm.viewport.width_pt() && p[1] >= 0.0 && p[1] <= vm.viewport.height_pt(),
+                p[0],
+                p[1],
+            )
+        })
+    };
+    // Look somewhere else first, so the test cannot pass by the default view.
+    h.send(burnburn_presentation::UiIntent::Invoke {
+        document: Some(doc),
+        command: burnburn_presentation::CommandKey::ZoomIn,
+    });
+    h.send(burnburn_presentation::UiIntent::Invoke {
+        document: Some(doc),
+        command: burnburn_presentation::CommandKey::ZoomIn,
+    });
+    h.send(burnburn_presentation::UiIntent::Invoke {
+        document: Some(doc),
+        command: burnburn_presentation::CommandKey::ZoomIn,
+    });
+    pick(&mut h, doc, TracePick::BeginCorners);
+    for (inside, x, y) in seen(&h) {
+        assert!(inside, "corner of the photo at ({x}, {y}) points is out of the view");
+    }
+    // And at a size worth clicking: the photo takes at least half the view.
+    let [(_, x0, _), (_, x1, _)] = seen(&h);
+    let vm = h.document(doc).unwrap();
+    assert!((x1 - x0).abs() > vm.viewport.width_pt() / 2.0, "{x0}..{x1} of {}", vm.viewport.width_pt());
+}

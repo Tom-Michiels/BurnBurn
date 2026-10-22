@@ -231,10 +231,22 @@ impl AppController {
     /// Pointing in the image.
     pub(super) fn trace_pick(&mut self, document: DocumentId, pick: TracePick) -> AppUpdate {
         let mut changed = false;
+        let begins =
+            matches!(pick, TracePick::BeginCorners | TracePick::BeginBrush { .. } | TracePick::BeginBrushTyped { .. });
         let update = self.with_session(document, |s| {
             let Some(t) = s.tracer.as_mut() else { return AppUpdate::default() };
             changed = pointed(t, pick);
-            AppUpdate::redraw(document)
+            // Pointing starts with the whole photo in view.
+            let photo = t
+                .pick
+                .as_ref()
+                .filter(|_| begins)
+                .and_then(|_| pick_scene(t))
+                .map(|scene| burnburn_geometry::Bounds::from_corners(scene.quad[0], scene.quad[2]));
+            match photo {
+                Some(bounds) => super::arrange::fit_to(s, document, bounds),
+                None => AppUpdate::redraw(document),
+            }
         });
         if changed { self.submit_trace(document) } else { update }
     }
