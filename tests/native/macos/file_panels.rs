@@ -166,7 +166,7 @@ fn scenario() -> Result<(), String> {
         })
         .ok_or("no window")?;
     expect(|| format!("entries {entries:?}"), entries == ["Snijden — Berken 3 mm (r1)"])?;
-    expect(|| format!("detail {detail:?}"), detail == "Lijn · 12 mm/s · 20 % · 1 pass(es)")?;
+    expect(|| format!("detail {detail:?}"), detail == "Lijn · 12 mm/s · 20 % · 1 doorgang(en)")?;
     expect(|| "Toepassen is enabled for the chosen layer".into(), apply.isEnabled())?;
     click(&apply);
     s.pump(0.3);
@@ -207,7 +207,7 @@ fn scenario() -> Result<(), String> {
         .ok_or("no window")?;
     expect(
         || format!("title {title:?} objects {objects:?}"),
-        title == "Exporteer als SVG" && objects == "1 objecten worden geëxporteerd.",
+        title == "Exporteer als SVG" && objects == "1 object wordt geëxporteerd.",
     )?;
     expect(|| "nothing is lost, so no acknowledgement is asked".into(), ack_hidden && primary.isEnabled())?;
     unit.selectItemAtIndex(1);

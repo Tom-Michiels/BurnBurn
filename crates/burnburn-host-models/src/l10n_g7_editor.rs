@@ -62,7 +62,7 @@ texts! {
     ChainRemove => ("Keten {0} verwijderen", "Remove chain {0}"),
     ChainBake => ("Keten {0} toepassen", "Apply chain {0}"),
     ChainBakeHint => (
-        "Toepassen maakt het resultaat tot gewone objecten; de bron blijft staan.",
+        "Met Pas toe wordt het resultaat gewone objecten; de bron blijft staan.",
         "Applying turns the result into plain objects; the source stays."
     ),
     MakeOffsetHeading => ("Offsetketen op de selectie", "Offset chain on the selection"),
@@ -124,7 +124,7 @@ texts! {
         "{0}: «{1}» wordt «{3}» ({2} tekens in de sjabloon)",
         "{0}: \"{1}\" becomes \"{3}\" ({2} characters in the template)"
     ),
-    TextContentMore => ("… en {0} meer", "... and {0} more"),
+    TextContentMore => ("… en {0} meer", "… and {0} more"),
     TextContentHint => (
         "Een positie telt tekens vanaf het begin van elke tekst; een negatieve telt vanaf het eind, leeg is het eind, en voorbij het eind van een kortere tekst is dat zijn eind. Alle teksten veranderen in één stap.",
         "A position counts characters from the start of each text; a negative one counts from its end, empty is the end, and beyond the end of a shorter text is its end. All texts change in one step."

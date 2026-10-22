@@ -236,7 +236,7 @@ fn a_plotter_file_reports_its_pens_and_an_svg_asks_for_its_unit() {
     h.send(UiIntent::Import { document: doc, path });
     h.run_tasks();
     let s = spec(&h, doc, Sheet::Import);
-    assert!(text(&s, id::import::REPORT).contains("Proposed layers:\n  Pen 1: 1 objects\n  Pen 2: 1 objects"));
+    assert!(text(&s, id::import::REPORT).contains("Proposed layers:\n  Pen 1: 1 object\n  Pen 2: 1 object"));
     assert_eq!(text(&s, id::import::UNIT_PROMPT), "Plotter units (0.025 mm per step)");
 
     let svg = put(

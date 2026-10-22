@@ -430,7 +430,7 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
             "Drag the handles on the canvas. Enter applies, Esc cancels.",
         ),
         T::ReshapeBilinear => ("Bilineair in plaats van perspectief", "Bilinear instead of perspective"),
-        T::ReshapeApply => ("Toepassen", "Apply"),
+        T::ReshapeApply => ("Pas toe", "Apply"),
         T::ReshapeReset => ("Grepen terugzetten", "Reset handles"),
         T::ReshapeSimplified => {
             ("Grote selectie: alleen het kader wordt getoond.", "Large selection: only the frame is previewed.")
@@ -511,7 +511,7 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::RotationsEighth => ("Stappen van 45°", "45° steps"),
         T::NestStart => ("Nest", "Nest"),
         T::NestStop => ("Stop", "Stop"),
-        T::NestApply => ("Toepassen", "Apply"),
+        T::NestApply => ("Pas toe", "Apply"),
         T::NestSelectUnplaced => ("Kies niet-geplaatste", "Select unplaced"),
         T::Close => ("Sluit", "Close"),
         T::NestIdle => ("{parts} onderdelen klaar om te nesten.", "{parts} parts ready to nest."),
