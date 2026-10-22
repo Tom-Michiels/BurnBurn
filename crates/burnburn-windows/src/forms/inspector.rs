@@ -87,6 +87,11 @@ pub fn form(ctx: &FormContext<'_>) -> Option<Form> {
     lines.push(priority);
     lines.push(FormLine::Text(crate::panels::cam_priority_hint_short(locale).to_owned()));
     lines.extend(shapes::param_lines(ctx));
+    // The stack of the selection, under its own heading, while the selection belongs to a chain.
+    if let Some(stack) = crate::panels::g5_panel(ctx.vm, ctx.document, crate::panels::G5Panel::Stack, locale, &[]) {
+        lines.push(FormLine::Heading(stack.title));
+        lines.extend(super::g5::form_lines(stack.lines));
+    }
     // The first refused field says why, as the macOS status line does.
     if let Some(error) = doc.inspector.as_ref().and_then(|i| i.fields.iter().find_map(|f| f.error)) {
         lines.push(FormLine::Problem(message_text(error, locale)));

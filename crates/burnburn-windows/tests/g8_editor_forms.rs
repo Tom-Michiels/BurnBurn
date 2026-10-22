@@ -114,17 +114,21 @@ fn a_chosen_kind_and_typed_numbers_are_one_add_step_intent_like_on_the_mac() {
 }
 
 #[test]
-fn the_stack_form_opens_by_itself_for_the_selection_of_a_chain_and_sends_the_same_intents() {
+fn the_stack_of_the_selection_is_a_section_of_the_inspector_and_sends_the_same_intents() {
+    // G9-editor: the stack is no longer a form of its own; it is built into the inspector form
+    // (`g9_editor_inspector.rs` covers the section itself). The panel model is unchanged.
     let (mut h, doc, m) = window_with_chain();
-    // No menu item asked for it: the Stack form is there because the selection belongs to a chain.
-    let f = form_of(&h, doc, P::Stack, Locale::En).expect("the stack form");
-    assert_eq!(f.title, "Stack of the selection");
-    assert!(f.find(&ControlId::G5(C::Editor(E::ModStepOn { modifier: m, step: 0 }))).is_some());
+    assert!(form_of(&h, doc, P::Stack, Locale::En).is_none(), "no floating form any more");
+    let vm = h.view();
+    let model = burnburn_windows::panels::g5_panel(&vm, doc, P::Stack, Locale::En, &[]).expect("the stack panel model");
+    assert_eq!(model.title, "Stack of the selection");
+    assert!(model.lines.iter().any(|l| l.control() == Some(C::Editor(E::ModStepOn { modifier: m, step: 0 }))));
     let outcome = react(&h, doc, P::Stack, E::ModBake { modifier: m }, Vec::new());
     assert_eq!(
         outcome,
         FormOutcome::Intent(UiIntent::Structure { document: doc, edit: StructureEdit::BakeModifier { modifier: m } })
     );
     h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
-    assert!(form_of(&h, doc, P::Stack, Locale::En).is_none(), "nothing selected, no stack form");
+    let vm = h.view();
+    assert!(burnburn_windows::panels::g5_panel(&vm, doc, P::Stack, Locale::En, &[]).is_none());
 }
