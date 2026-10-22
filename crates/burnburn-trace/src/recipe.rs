@@ -12,17 +12,22 @@ pub const ENGINE_VERSION: &str = "burnburn-trace/contour-1";
 const MAX_CORNER_WINDOW_PX: f64 = 64.0;
 
 /// Topology settings.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContourSettings {
     pub diagonal: DiagonalPolicy,
     /// Parts and holes smaller than this area (mm²) are dropped and reported in
     /// [`crate::TraceResult::removed`]. 0 keeps everything.
     pub min_area_mm2: f64,
+    /// Features the area filter never drops (T06): each is named by an anchor, a vertex of its own
+    /// outline in adjusted pixels (y down), as reported by [`crate::RemovedFeature::anchor_px`] or
+    /// [`crate::TraceResult::contour_anchor_px`]. Keeping a hole or part inside another keeps the
+    /// outlines around it too.
+    pub keep: Vec<[f64; 2]>,
 }
 
 impl Default for ContourSettings {
     fn default() -> Self {
-        ContourSettings { diagonal: DiagonalPolicy::Connect, min_area_mm2: 0.0 }
+        ContourSettings { diagonal: DiagonalPolicy::Connect, min_area_mm2: 0.0, keep: Vec::new() }
     }
 }
 
@@ -73,6 +78,9 @@ impl TraceRecipe {
         if let Some(lens) = &self.image.lens {
             lens.validate().map_err(|_| TraceError::InvalidRecipe("image.lens"))?;
         }
+        if self.contour.keep.iter().any(|a| !(a[0].is_finite() && a[1].is_finite())) {
+            return Err(TraceError::InvalidRecipe("contour.keep"));
+        }
         Ok(())
     }
 
@@ -102,6 +110,15 @@ impl CanonicalEncode for TraceRecipe {
             DiagonalPolicy::Separate => "diagonal-separate",
         });
         out.f64(self.contour.min_area_mm2);
+        // Only written when there is something to keep, so keys of recipes without it stay unchanged.
+        if !self.contour.keep.is_empty() {
+            out.tag("contour-keep");
+            out.u64(self.contour.keep.len() as u64);
+            for a in &self.contour.keep {
+                out.f64(a[0]);
+                out.f64(a[1]);
+            }
+        }
         out.f64(self.fit.tolerance_mm);
         out.f64(self.fit.corner_angle_deg);
         out.f64(self.fit.corner_window_px);

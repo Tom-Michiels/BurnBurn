@@ -42,6 +42,10 @@ fn every_field() -> TraceRecipe {
                     mode: RegionMode::Include,
                     shape: RegionShape::Polygon(vec![[0.5, 0.25], [10.0, 0.0], [5.0, 1.0 / 7.0]]),
                 },
+                RegionMask {
+                    mode: RegionMode::Exclude,
+                    shape: RegionShape::Stroke { points: vec![[1.5, 2.5], [3.25, 4.0 / 3.0]], radius: 2.5 },
+                },
             ],
             morphology: vec![Morphology::Open(1), Morphology::Close(3)],
             perspective: Some(Perspective {
@@ -56,7 +60,11 @@ fn every_field() -> TraceRecipe {
             }),
             lens: Some(LensDistortion { k1: -0.12, k2: 0.03 }),
         },
-        contour: ContourSettings { diagonal: DiagonalPolicy::Separate, min_area_mm2: 0.75 },
+        contour: ContourSettings {
+            diagonal: DiagonalPolicy::Separate,
+            min_area_mm2: 0.75,
+            keep: vec![[3.0, 4.5], [10.0, 1.0 / 3.0]],
+        },
         fit: FitSettings { tolerance_mm: 0.02, corner_angle_deg: 45.0, corner_window_px: 3.5, curves: false },
     }
 }
