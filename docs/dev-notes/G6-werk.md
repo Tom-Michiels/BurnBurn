@@ -84,3 +84,15 @@ hosts. Teksten: `l10n_g6_werk.rs` (NL/EN, nieuw bestand, ook door Windows meegec
 - W04 (kalibraties bewaren: vraagt een DTO voor `LensCalibration`/`WorkspaceAlignment`, de acceptatie van W04 zelf was al gedekt) en W06 (herkenning: template-localisatie met beoordeling van meerdere treffers; vraagt een eigen algoritme, aanleerflow en kaartkoppeling) zijn niet gebouwd. W05 blijft wat het was (hardwarebewijs handmatig).
 - W08: tweede scherm/proces (IPC) niet gebouwd; het paneel is lokaal. Materiaal komt uit de platen van het bevroren project en is leeg bij een mix of zonder platen. Native AppKit-run van dit paneel apart is niet gedaan (alleen de algemene G5-paneelroute is native getest, via de andere panelen).
 - W07: duurzame restenbibliotheek (materiaal, dikte), open aantallen/exemplaren in de nest, orderkoppeling met een restplaat.
+
+## Eindcontrole (macOS arm64, toolchain 1.99.1)
+
+- `cargo fmt --all`; `cargo clippy --workspace --all-targets --locked -- -D warnings` zonder meldingen;
+  `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings` en
+  `cargo check ... --target x86_64-pc-windows-msvc --all-targets` zonder meldingen (typecheck, geen Windows-run).
+- `cargo xtask verify` (met `CARGO_TARGET_DIR=.../target/g6-werk`) op commit 2f556c5: exit 0, 571 testbinaries `ok`, geen `FAILED`.
+  Een eerdere verify-run viel om op `g6_werk_panels::every_text_has_both_languages…` (een te strenge eis dat NL en EN verschillen
+  voor woorden als "Machine"); de eis is geschrapt en de run herhaald. De regel `panicked at …recovery_offer.rs` in de testuitvoer is
+  de opzettelijke "simulated callback panic" van die native test, geen falen.
+- Native macOS-runs (AppKit): `g5_panels_native` met `trace_prep_panel_adds_a_mask_and_a_local_threshold` en
+  `structure_panel_defines_places_and_references`. Het operatorpaneel is native niet apart gedraaid.
