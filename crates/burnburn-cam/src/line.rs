@@ -2,14 +2,15 @@
 //! the cut-path options of IM25 (tabs, leads, overcut, perforation) plus the shared-edge policy
 //! of IM32.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use burnburn_document::process::{LeadStyle, LineOptions, SharedEdgePolicy, TabPlacement, TabSpec};
-use burnburn_geometry::{Bounds, Point, Vector, math};
+use burnburn_geometry::{Bounds, Point, SpatialIndex, Vector, math};
 use burnburn_types::{CancellationToken, GeometryId, OperationId};
 
 use crate::CompileError;
 use crate::compile::Step;
+use crate::nearest::{NearestIndex, SearchStats};
 
 /// One flattened subpath of a referenced geometry, in bed-view mm.
 #[derive(Debug, Clone, PartialEq)]
@@ -101,46 +102,155 @@ pub(crate) fn plan(
     tolerance_mm: f64,
     cancel: &CancellationToken,
 ) -> Result<Vec<Step>, CompileError> {
+    let mut stats = PlanStats::default();
+    plan_counted(contours, order, options, shared, heuristics, head, operation, tolerance_mm, cancel, &mut stats)
+}
+
+/// What the contour selection of one [`plan_counted`] run cost: a deterministic measure for tests.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlanStats {
+    /// How many times the entry of a contour was evaluated while choosing the next one.
+    pub entry_evaluations: usize,
+}
+
+/// [`plan`], also reporting what the selection cost.
+pub(crate) fn plan_counted(
+    contours: &[Contour],
+    order: Order,
+    options: &LineOptions,
+    shared: SharedEdgePolicy,
+    heuristics: &Heuristics,
+    head: &mut Point,
+    operation: OperationId,
+    tolerance_mm: f64,
+    cancel: &CancellationToken,
+    stats: &mut PlanStats,
+) -> Result<Vec<Step>, CompileError> {
     let usable: Vec<&Contour> = contours.iter().filter(|c| c.points.len() >= 2).collect();
     let inner = match order {
         Order::Containment if heuristics.inner_first => containment(&usable, cancel)?,
         _ => vec![Vec::new(); usable.len()],
     };
     let depth = hole_depth(&usable);
-    let mut done = vec![false; usable.len()];
     let mut steps = Vec::new();
-    for k in 0..usable.len() {
-        cancel.check()?;
-        let chosen = match order {
-            Order::AsGiven => Some((k, entry(usable[k], *head, heuristics))),
-            Order::Containment => {
-                let ready = |i: usize| !done[i] && inner[i].iter().all(|&k| done[k]);
-                // If containment were ever cyclic (degenerate input), fall back to any remaining contour.
-                let any_ready = (0..usable.len()).any(ready);
-                let mut best: Option<(usize, Entry)> = None;
-                for (i, c) in usable.iter().enumerate() {
-                    if done[i] || (any_ready && !ready(i)) {
-                        continue;
-                    }
-                    let e = entry(c, *head, heuristics);
-                    // Without travel reduction the given order wins: the first candidate stays.
-                    if best.as_ref().is_none_or(|(_, b)| heuristics.reduce_travel && e.cost < b.cost) {
-                        best = Some((i, e));
-                    }
-                }
-                best
+    match order {
+        Order::AsGiven => {
+            for (k, c) in usable.iter().enumerate() {
+                cancel.check()?;
+                let e = entry(c, *head, heuristics);
+                emit(c, &e, options, depth[k] % 2 == 1, tolerance_mm, &mut steps, head, operation)?;
             }
-        };
-        let Some((i, e)) = chosen else { break };
-        done[i] = true;
-        let waste_inside = depth[i] % 2 == 1;
-        emit(usable[i], &e, options, waste_inside, tolerance_mm, &mut steps, head, operation)?;
+        }
+        Order::Containment => {
+            let mut chooser = Chooser::new(&usable, &inner, heuristics);
+            while let Some((i, e)) = chooser.next(&usable, *head, heuristics, stats) {
+                cancel.check()?;
+                emit(usable[i], &e, options, depth[i] % 2 == 1, tolerance_mm, &mut steps, head, operation)?;
+            }
+        }
     }
     if shared == SharedEdgePolicy::CutOnce {
         let start = start_of(&steps);
         steps = cut_shared_edges_once(steps, start);
     }
     Ok(steps)
+}
+
+/// Picks the next contour of a [`Order::Containment`] pass: among the ready contours (all
+/// contours inside them are cut) the one with the cheapest entry; equal costs keep input order.
+/// Without travel reduction the first ready contour in input order goes next. If containment
+/// were ever cyclic (degenerate input) and nothing is ready, any remaining contour qualifies.
+struct Chooser {
+    done: Vec<bool>,
+    /// Contours that contain contour `i` (it must be cut before them).
+    outers: Vec<Vec<usize>>,
+    /// How many contours inside `i` are still to be cut.
+    pending: Vec<usize>,
+    ready: BTreeSet<usize>,
+    remaining: BTreeSet<usize>,
+    /// Only with travel reduction: the ready contours in a spatial index.
+    tree: Option<NearestIndex>,
+}
+
+impl Chooser {
+    fn new(cs: &[&Contour], inner: &[Vec<usize>], h: &Heuristics) -> Self {
+        let n = cs.len();
+        let mut outers = vec![Vec::new(); n];
+        for (j, list) in inner.iter().enumerate() {
+            for &i in list {
+                outers[i].push(j);
+            }
+        }
+        let pending: Vec<usize> = inner.iter().map(Vec::len).collect();
+        let ready: BTreeSet<usize> = (0..n).filter(|&i| pending[i] == 0).collect();
+        let tree = h.reduce_travel.then(|| {
+            let boxes: Vec<Bounds> = cs.iter().map(|c| entry_bounds(c, h)).collect();
+            NearestIndex::build(&boxes, |i| pending[i] == 0)
+        });
+        Chooser { done: vec![false; n], outers, pending, ready, remaining: (0..n).collect(), tree }
+    }
+
+    fn next(&mut self, cs: &[&Contour], head: Point, h: &Heuristics, stats: &mut PlanStats) -> Option<(usize, Entry)> {
+        let i = if !self.ready.is_empty() {
+            match &self.tree {
+                Some(tree) => {
+                    let mut search = SearchStats::default();
+                    let found = tree.cheapest(head, |i| entry(cs[i], head, h).cost, &mut search).map(|(i, _)| i);
+                    stats.entry_evaluations += search.evaluated;
+                    found
+                }
+                None => self.ready.first().copied(),
+            }
+        } else if h.reduce_travel {
+            let mut best: Option<(usize, f64)> = None;
+            for &i in &self.remaining {
+                stats.entry_evaluations += 1;
+                let cost = entry(cs[i], head, h).cost;
+                if best.is_none_or(|(_, b)| cost < b) {
+                    best = Some((i, cost));
+                }
+            }
+            best.map(|(i, _)| i)
+        } else {
+            self.remaining.first().copied()
+        }?;
+        self.finish(i);
+        Some((i, entry(cs[i], head, h)))
+    }
+
+    fn finish(&mut self, i: usize) {
+        self.done[i] = true;
+        self.remaining.remove(&i);
+        if self.ready.remove(&i)
+            && let Some(tree) = &mut self.tree
+        {
+            tree.set_live(i, false);
+        }
+        for k in 0..self.outers[i].len() {
+            let j = self.outers[i][k];
+            self.pending[j] -= 1;
+            if self.pending[j] == 0 && !self.done[j] {
+                self.ready.insert(j);
+                if let Some(tree) = &mut self.tree {
+                    tree.set_live(j, true);
+                }
+            }
+        }
+    }
+}
+
+/// A box around every point [`entry`] may choose for `c`.
+fn entry_bounds(c: &Contour, h: &Heuristics) -> Bounds {
+    let candidates: Vec<Point> = if c.closed {
+        if h.best_start { c.points.clone() } else { c.points.first().copied().into_iter().collect() }
+    } else {
+        let mut v: Vec<Point> = c.points.first().copied().into_iter().collect();
+        if h.best_direction {
+            v.extend(c.points.last().copied());
+        }
+        v
+    };
+    bounds_of(&candidates).unwrap_or(Bounds::from_point(Point::ORIGIN))
 }
 
 fn start_of(steps: &[Step]) -> Option<Point> {
@@ -521,44 +631,67 @@ fn cut_shared_edges_once(steps: Vec<Step>, start: Option<Point>) -> Vec<Step> {
 /// Nesting depth of each closed contour among the closed contours of the same geometry
 /// (odd = hole).
 fn hole_depth(cs: &[&Contour]) -> Vec<usize> {
+    let index = SpatialIndex::build(
+        cs.iter()
+            .enumerate()
+            .filter(|(_, c)| c.closed && c.points.len() >= 3)
+            .filter_map(|(j, c)| Some((j, bounds_of(&c.points)?))),
+    );
     cs.iter()
         .enumerate()
         .map(|(i, c)| {
             let Some(p) = c.points.first() else { return 0 };
-            cs.iter()
-                .enumerate()
-                .filter(|(j, o)| {
-                    *j != i
-                        && o.geometry == c.geometry
-                        && o.closed
-                        && o.points.len() >= 3
-                        && point_in_polygon(*p, &o.points)
+            // A point outside a polygon's box is never inside it; the margin absorbs rounding of
+            // the crossing computation for points right on the box edge.
+            index
+                .query_rect(&Bounds::from_point(*p).expanded(BOX_MARGIN_MM))
+                .into_iter()
+                .filter(|&j| {
+                    let o = cs[j];
+                    j != i && o.geometry == c.geometry && point_in_polygon(*p, &o.points)
                 })
                 .count()
         })
         .collect()
 }
 
+/// Slack on box tests, far above the rounding of coordinates in mm and far below any feature.
+const BOX_MARGIN_MM: f64 = 1e-9;
+
 /// For each contour, the contours that lie inside it (and must be cut first).
 fn containment(cs: &[&Contour], cancel: &CancellationToken) -> Result<Vec<Vec<usize>>, CompileError> {
+    containment_counted(cs, cancel, &mut 0)
+}
+
+/// [`containment`], also counting how many (inner, outer) pairs were examined.
+fn containment_counted(
+    cs: &[&Contour],
+    cancel: &CancellationToken,
+    pairs: &mut usize,
+) -> Result<Vec<Vec<usize>>, CompileError> {
     let bounds: Vec<Option<Bounds>> = cs.iter().map(|c| bounds_of(&c.points)).collect();
-    let mut inside = vec![vec![false; cs.len()]; cs.len()]; // inside[i][j]: i lies inside j
+    let index = SpatialIndex::build(bounds.iter().enumerate().filter_map(|(i, b)| Some((i, (*b)?))));
+    // inside_of[j]: the contours that lie inside j, ascending.
+    let mut inside_of: Vec<Vec<usize>> = vec![Vec::new(); cs.len()];
     for (j, outer) in cs.iter().enumerate() {
         cancel.check()?;
+        let Some(bj) = bounds[j] else { continue };
         if !outer.closed || outer.points.len() < 3 {
             continue;
         }
-        for (i, c) in cs.iter().enumerate() {
-            let within = match (bounds[i], bounds[j]) {
-                (Some(bi), Some(bj)) => bj.contains(bi.min()) && bj.contains(bi.max()) && (bi != bj),
-                _ => false,
-            };
-            if i != j && within && c.points.iter().all(|p| point_in_polygon(*p, &outer.points)) {
-                inside[i][j] = true;
+        for i in index.query_rect(&bj) {
+            *pairs += 1;
+            let Some(bi) = bounds[i] else { continue };
+            let within = bj.contains(bi.min()) && bj.contains(bi.max()) && bi != bj;
+            if i != j && within && cs[i].points.iter().all(|p| point_in_polygon(*p, &outer.points)) {
+                inside_of[j].push(i);
             }
         }
+        inside_of[j].sort_unstable();
     }
-    Ok((0..cs.len()).map(|j| (0..cs.len()).filter(|&i| inside[i][j] && !inside[j][i]).collect()).collect())
+    Ok((0..cs.len())
+        .map(|j| inside_of[j].iter().copied().filter(|&i| inside_of[i].binary_search(&j).is_err()).collect())
+        .collect())
 }
 
 pub(crate) fn bounds_of(points: &[Point]) -> Option<Bounds> {
@@ -585,4 +718,258 @@ pub(crate) fn point_in_polygon(p: Point, poly: &[Point]) -> bool {
         }
     }
     inside
+}
+
+#[cfg(test)]
+mod tests {
+    //! Characterisation of the contour selection against the original quadratic planner
+    //! (`reference`), plus a cost counter: the indexed planner must give exactly the same steps.
+
+    use super::*;
+    use burnburn_types::StableId;
+    use proptest::prelude::*;
+
+    /// The planner as it was before the spatial index (W4-prestaties): the oracle.
+    mod reference {
+        use super::*;
+
+        pub fn plan(
+            contours: &[Contour],
+            order: Order,
+            options: &LineOptions,
+            shared: SharedEdgePolicy,
+            heuristics: &Heuristics,
+            head: &mut Point,
+            operation: OperationId,
+            tolerance_mm: f64,
+            cancel: &CancellationToken,
+        ) -> Result<Vec<Step>, CompileError> {
+            let usable: Vec<&Contour> = contours.iter().filter(|c| c.points.len() >= 2).collect();
+            let inner = match order {
+                Order::Containment if heuristics.inner_first => containment(&usable, cancel)?,
+                _ => vec![Vec::new(); usable.len()],
+            };
+            let depth = hole_depth(&usable);
+            let mut done = vec![false; usable.len()];
+            let mut steps = Vec::new();
+            for k in 0..usable.len() {
+                cancel.check()?;
+                let chosen = match order {
+                    Order::AsGiven => Some((k, entry(usable[k], *head, heuristics))),
+                    Order::Containment => {
+                        let ready = |i: usize| !done[i] && inner[i].iter().all(|&k| done[k]);
+                        let any_ready = (0..usable.len()).any(ready);
+                        let mut best: Option<(usize, Entry)> = None;
+                        for (i, c) in usable.iter().enumerate() {
+                            if done[i] || (any_ready && !ready(i)) {
+                                continue;
+                            }
+                            let e = entry(c, *head, heuristics);
+                            if best.as_ref().is_none_or(|(_, b)| heuristics.reduce_travel && e.cost < b.cost) {
+                                best = Some((i, e));
+                            }
+                        }
+                        best
+                    }
+                };
+                let Some((i, e)) = chosen else { break };
+                done[i] = true;
+                let waste_inside = depth[i] % 2 == 1;
+                emit(usable[i], &e, options, waste_inside, tolerance_mm, &mut steps, head, operation)?;
+            }
+            if shared == SharedEdgePolicy::CutOnce {
+                let start = start_of(&steps);
+                steps = cut_shared_edges_once(steps, start);
+            }
+            Ok(steps)
+        }
+
+        pub fn hole_depth(cs: &[&Contour]) -> Vec<usize> {
+            cs.iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let Some(p) = c.points.first() else { return 0 };
+                    cs.iter()
+                        .enumerate()
+                        .filter(|(j, o)| {
+                            *j != i
+                                && o.geometry == c.geometry
+                                && o.closed
+                                && o.points.len() >= 3
+                                && point_in_polygon(*p, &o.points)
+                        })
+                        .count()
+                })
+                .collect()
+        }
+
+        pub fn containment(cs: &[&Contour], cancel: &CancellationToken) -> Result<Vec<Vec<usize>>, CompileError> {
+            let bounds: Vec<Option<Bounds>> = cs.iter().map(|c| bounds_of(&c.points)).collect();
+            let mut inside = vec![vec![false; cs.len()]; cs.len()];
+            for (j, outer) in cs.iter().enumerate() {
+                cancel.check()?;
+                if !outer.closed || outer.points.len() < 3 {
+                    continue;
+                }
+                for (i, c) in cs.iter().enumerate() {
+                    let within = match (bounds[i], bounds[j]) {
+                        (Some(bi), Some(bj)) => bj.contains(bi.min()) && bj.contains(bi.max()) && (bi != bj),
+                        _ => false,
+                    };
+                    if i != j && within && c.points.iter().all(|p| point_in_polygon(*p, &outer.points)) {
+                        inside[i][j] = true;
+                    }
+                }
+            }
+            Ok((0..cs.len()).map(|j| (0..cs.len()).filter(|&i| inside[i][j] && !inside[j][i]).collect()).collect())
+        }
+    }
+
+    fn pt(x: i32, y: i32) -> Point {
+        Point::new(f64::from(x), f64::from(y))
+    }
+
+    /// Integer coordinates on a small grid: plenty of exact ties and of nested or touching shapes.
+    fn arb_contour() -> impl Strategy<Value = Contour> {
+        let coords = prop::collection::vec((0..24, 0..24), 2..7);
+        (0u64..3, coords, any::<bool>(), prop::bool::weighted(0.3)).prop_map(|(g, pts, closed, boxy)| {
+            let points: Vec<Point> = if boxy {
+                // An axis-aligned box: the typical nesting case.
+                let (x0, y0) = pts[0];
+                let (x1, y1) = pts[1];
+                vec![pt(x0, y0), pt(x1.max(x0 + 1), y0), pt(x1.max(x0 + 1), y1.max(y0 + 1)), pt(x0, y1.max(y0 + 1))]
+            } else {
+                pts.into_iter().map(|(x, y)| pt(x, y)).collect()
+            };
+            Contour::new(GeometryId::from_raw(g), points, closed || boxy)
+        })
+    }
+
+    fn arb_heuristics() -> impl Strategy<Value = Heuristics> {
+        (any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
+            |(inner_first, reduce_travel, best_start, best_direction, hide_backlash)| Heuristics {
+                inner_first,
+                reduce_travel,
+                best_start,
+                best_direction,
+                hide_backlash,
+            },
+        )
+    }
+
+    fn run_both(
+        contours: &[Contour],
+        order: Order,
+        h: &Heuristics,
+        start: Point,
+    ) -> (Vec<Step>, Point, Vec<Step>, Point) {
+        let op = OperationId::from_raw(1);
+        let options = LineOptions::default();
+        let cancel = CancellationToken::never();
+        let (mut ha, mut hb) = (start, start);
+        let a =
+            reference::plan(contours, order, &options, SharedEdgePolicy::CutPerRegion, h, &mut ha, op, 0.01, &cancel);
+        let b = plan(contours, order, &options, SharedEdgePolicy::CutPerRegion, h, &mut hb, op, 0.01, &cancel);
+        (a.unwrap_or_default(), ha, b.unwrap_or_default(), hb)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(400))]
+
+        #[test]
+        fn the_indexed_planner_gives_exactly_the_steps_of_the_original(
+            contours in prop::collection::vec(arb_contour(), 0..40),
+            h in arb_heuristics(),
+            (sx, sy) in (-5..30, -5..30),
+            as_given in any::<bool>(),
+        ) {
+            let order = if as_given { Order::AsGiven } else { Order::Containment };
+            let (a, ha, b, hb) = run_both(&contours, order, &h, pt(sx, sy));
+            prop_assert_eq!(a, b);
+            prop_assert_eq!(ha, hb);
+        }
+
+        #[test]
+        fn containment_and_hole_depth_equal_the_original(contours in prop::collection::vec(arb_contour(), 0..40)) {
+            let usable: Vec<&Contour> = contours.iter().filter(|c| c.points.len() >= 2).collect();
+            let cancel = CancellationToken::never();
+            prop_assert_eq!(
+                containment(&usable, &cancel).unwrap_or_default(),
+                reference::containment(&usable, &cancel).unwrap_or_default()
+            );
+            prop_assert_eq!(hole_depth(&usable), reference::hole_depth(&usable));
+        }
+    }
+
+    /// A rows x cols lattice of unit squares, 3 mm apart, in a scrambled input order.
+    fn lattice(rows: usize, cols: usize) -> Vec<Contour> {
+        let out: Vec<Contour> = (0..rows * cols)
+            .map(|k| {
+                let (r, c) = ((k / cols) as i32, (k % cols) as i32);
+                let (x, y) = (c * 3, r * 3);
+                Contour::new(
+                    GeometryId::from_raw(k as u64),
+                    vec![pt(x, y), pt(x + 1, y), pt(x + 1, y + 1), pt(x, y + 1)],
+                    true,
+                )
+            })
+            .collect();
+        // Deterministic scramble (a fixed stride coprime to the length).
+        let n = out.len();
+        (0..n).map(|k| out[(k * 7919) % n].clone()).collect()
+    }
+
+    #[test]
+    fn choosing_the_next_contour_examines_a_few_contours_not_all_of_them() {
+        let contours = lattice(40, 50); // 2 000 contours
+        let n = contours.len();
+        let mut stats = PlanStats::default();
+        let mut head = pt(0, 0);
+        let steps = plan_counted(
+            &contours,
+            Order::Containment,
+            &LineOptions::default(),
+            SharedEdgePolicy::CutPerRegion,
+            &Heuristics::default(),
+            &mut head,
+            OperationId::from_raw(1),
+            0.01,
+            &CancellationToken::never(),
+            &mut stats,
+        );
+        assert!(steps.is_ok());
+        // The original examines n*(n+1)/2 = 2 001 000 entries; a spatial index needs a small multiple of n.
+        assert!(stats.entry_evaluations < 40 * n, "examined {} entries for {n} contours", stats.entry_evaluations);
+    }
+
+    #[test]
+    fn containment_and_hole_depth_examine_neighbours_not_every_pair() {
+        let contours = lattice(40, 50);
+        let usable: Vec<&Contour> = contours.iter().collect();
+        let n = usable.len();
+        let mut pairs = 0;
+        let inner = containment_counted(&usable, &CancellationToken::never(), &mut pairs);
+        assert!(inner.is_ok_and(|v| v.iter().all(Vec::is_empty)), "a lattice of separate squares nests nothing");
+        assert!(pairs < 40 * n, "examined {pairs} pairs for {n} contours");
+    }
+
+    #[test]
+    fn a_cancelled_plan_returns_cancelled() {
+        let contours = lattice(10, 10);
+        let source = burnburn_types::CancellationSource::new();
+        source.cancel();
+        let mut head = pt(0, 0);
+        let r = plan(
+            &contours,
+            Order::Containment,
+            &LineOptions::default(),
+            SharedEdgePolicy::CutPerRegion,
+            &Heuristics::default(),
+            &mut head,
+            OperationId::from_raw(1),
+            0.01,
+            &source.token(),
+        );
+        assert!(matches!(r, Err(CompileError::Cancelled)));
+    }
 }

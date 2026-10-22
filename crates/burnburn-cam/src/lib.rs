@@ -27,6 +27,7 @@ mod features;
 mod fill;
 mod image;
 mod line;
+mod nearest;
 pub mod nest;
 mod offset_fill;
 mod options;
