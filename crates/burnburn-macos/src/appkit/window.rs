@@ -73,6 +73,11 @@ pub(crate) struct DocWindow {
     pub(crate) status_label: Retained<NSTextField>,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub(crate) plan_labels: [Retained<NSTextField>; 5],
+    /// What the GRBL backend refuses of the plan (pull-down under the findings; hidden on Ruida).
+    pub(crate) grbl_refusals: Retained<objc2_app_kit::NSPopUpButton>,
+    /// Kept alive for the pull-down (a control's target is not retained).
+    #[allow(dead_code)]
+    grbl_refusal_target: Retained<super::panels::grbl_window::RefusalTarget>,
     pub(crate) compile_button: Retained<NSButton>,
     pub(crate) export_button: Retained<NSButton>,
     /// Machine section: status, message, progress, job.
@@ -188,6 +193,14 @@ impl DocWindow {
         let state = col.add_label("", 34.0);
         state.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         let findings = col.add_label("", 18.0);
+        let (grbl_refusals, grbl_refusal_target) = super::panels::grbl_window::refusal_popup(
+            mtm,
+            app.clone(),
+            document,
+            rect(12.0, col.y - 24.0, col.width, 24.0),
+        );
+        inspector.addSubview(&grbl_refusals);
+        col.y -= 28.0;
 
         let controller = WindowController::new(
             mtm,
@@ -406,6 +419,8 @@ impl DocWindow {
             controls,
             status_label,
             plan_labels: [plan_title, plan_id, estimate, state, findings],
+            grbl_refusals,
+            grbl_refusal_target,
             compile_button,
             export_button,
             machine_labels: [machine_status, machine_message, machine_progress, machine_job],
@@ -492,6 +507,7 @@ impl DocWindow {
         {
             set_text(label, text);
         }
+        super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);
         let enabled = |k: CommandKey| vm.active == Some(document) && vm.commands.get(&k).is_some_and(|c| c.enabled);
         self.compile_button.setEnabled(enabled(CommandKey::Compile));
         self.export_button.setEnabled(enabled(CommandKey::ExportRd));

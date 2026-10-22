@@ -209,7 +209,8 @@ impl AppController {
 
     pub(super) fn grbl_intent(&mut self, intent: GrblIntent) -> AppUpdate {
         let mut effects = Vec::new();
-        if self.grbl_profile().is_none() {
+        // The macros of the last session load at start, before any machine is chosen.
+        if self.grbl_profile().is_none() && !matches!(intent, GrblIntent::LoadMacros(_)) {
             self.grbl_panel.last_refusal = Some(GrblWhy::NotGrblMachine);
             return AppUpdate { view_changed: true, ..AppUpdate::default() };
         }

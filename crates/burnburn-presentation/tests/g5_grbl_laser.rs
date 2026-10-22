@@ -569,3 +569,27 @@ fn a_changed_spindle_scale_marks_the_attached_session_as_stale() {
     });
     assert!(view(&mut h).settings_stale, "the session still expects $30=1000");
 }
+
+/// The host loads the macros of the last session at start, before any machine is chosen.
+#[test]
+fn macros_can_be_loaded_before_a_machine_exists_and_wait_for_the_grbl_window() {
+    let (mut h, _fake) = rig();
+    let update = grbl(&mut h, GrblIntent::AddMacro { name: "Nul".into(), program: "G92 X0 Y0".into() });
+    let text = update
+        .effects
+        .iter()
+        .find_map(|e| match e {
+            HostEffect::GrblMacrosChanged { text } => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap();
+
+    let mut fresh = HeadlessEditorHarness::new();
+    fresh.new_document().unwrap();
+    grbl(&mut fresh, GrblIntent::LoadMacros(text));
+    assert!(fresh.controller().grbl_view().is_none(), "still no GRBL machine");
+    grbl_machine(&mut fresh, OriginCorner::BottomLeft);
+    let v = view(&mut fresh);
+    assert_eq!(v.macro_row("Nul").unwrap().lines, ["G92 X0 Y0"]);
+    assert_eq!(v.last_refusal, None);
+}

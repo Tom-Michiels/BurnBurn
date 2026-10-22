@@ -189,6 +189,11 @@ path = "../../tests/native/macos/laser_window.rs"
 harness = false
 
 [[test]]
+name = "grbl_window"
+path = "../../tests/native/macos/grbl_window.rs"
+harness = false
+
+[[test]]
 name = "inspector_transform"
 path = "../../tests/native/macos/inspector_transform.rs"
 harness = false
