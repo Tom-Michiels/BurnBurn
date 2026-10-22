@@ -171,8 +171,8 @@ fn an_accepted_lens_calibration_is_kept_too() {
             pitch_mm: "30".into(),
         },
     );
-    for pose in 0..3 {
-        first.cam.show(A, mode(640, 360), photo_of_board(&POSES[pose], -0.12));
+    for pose in &POSES {
+        first.cam.show(A, mode(640, 360), photo_of_board(pose, -0.12));
         go(&mut first, I::AddPatternView);
     }
     go(&mut first, I::FitLens { two_coefficients: false });

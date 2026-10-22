@@ -257,16 +257,7 @@ pub enum FilesOutput {
         project: Box<Project>,
         path: PathBuf,
     },
-    LibrariesLoaded {
-        profiles: Loaded<Vec<LibraryProfile>>,
-        calibration: Loaded<CalibrationLibrary>,
-        camera_calibrations: Loaded<CalibrationStore>,
-        active_machine: Loaded<Vec<LibraryProfile>>,
-        remnants: Loaded<RemnantLibrary>,
-        materials: Loaded<MaterialLibrary>,
-        art: Loaded<ArtLibrary>,
-        thumbnails: Vec<(u64, ArtThumbnail)>,
-    },
+    LibrariesLoaded(Box<LoadedLibraries>),
     MaterialLibrarySaved,
     ProfileLibrarySaved,
     CalibrationLibrarySaved,
@@ -316,6 +307,19 @@ pub enum FilesOutput {
         number: u32,
         label: String,
     },
+}
+
+/// Everything read from the user's library folder at once.
+#[derive(Debug, Clone)]
+pub struct LoadedLibraries {
+    pub profiles: Loaded<Vec<LibraryProfile>>,
+    pub calibration: Loaded<CalibrationLibrary>,
+    pub camera_calibrations: Loaded<CalibrationStore>,
+    pub active_machine: Loaded<Vec<LibraryProfile>>,
+    pub remnants: Loaded<RemnantLibrary>,
+    pub materials: Loaded<MaterialLibrary>,
+    pub art: Loaded<ArtLibrary>,
+    pub thumbnails: Vec<(u64, ArtThumbnail)>,
 }
 
 /// What reading one library file gave.
@@ -413,7 +417,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             let active_machine =
                 read_library(fs.as_ref(), &dir.join(ACTIVE_MACHINE_FILE), load_profile_library_entries);
             let remnants = read_library(fs.as_ref(), &dir.join(REMNANT_LIBRARY_FILE), load_remnant_library);
-            Ok(FilesOutput::LibrariesLoaded {
+            Ok(FilesOutput::LibrariesLoaded(Box::new(LoadedLibraries {
                 profiles,
                 calibration,
                 camera_calibrations,
@@ -422,7 +426,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                 materials,
                 art,
                 thumbnails,
-            })
+            })))
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
             save_material_library(fs.as_ref(), &path, &library)

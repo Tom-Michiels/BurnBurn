@@ -338,16 +338,17 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded {
-                profiles,
-                calibration,
-                camera_calibrations,
-                active_machine,
-                remnants,
-                materials,
-                art,
-                thumbnails,
-            })) => {
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded(loaded))) => {
+                let crate::files_task::LoadedLibraries {
+                    profiles,
+                    calibration,
+                    camera_calibrations,
+                    active_machine,
+                    remnants,
+                    materials,
+                    art,
+                    thumbnails,
+                } = *loaded;
                 match remnants {
                     Loaded::Ready(library) => self.libs.remnants = Some(library),
                     Loaded::Missing => {
@@ -580,15 +581,15 @@ impl AppController {
         let session = std::mem::replace(&mut self.camera_ws.store, stored);
         let mut newer = false;
         for lens in session.lenses() {
-            newer |= self.camera_ws.store.lens_for(&lens.valid_for).map_or(true, |kept| kept != lens);
+            newer |= !self.camera_ws.store.lens_for(&lens.valid_for).is_ok_and(|kept| kept == lens);
             self.camera_ws.store.insert_lens(lens.clone());
         }
         for alignment in session.alignments() {
-            newer |= self
+            newer |= !self
                 .camera_ws
                 .store
                 .alignment_for(alignment.config(), alignment.material_height_mm)
-                .map_or(true, |kept| kept != alignment);
+                .is_ok_and(|kept| kept == alignment);
             self.camera_ws.store.insert_alignment(alignment.clone());
         }
         newer
