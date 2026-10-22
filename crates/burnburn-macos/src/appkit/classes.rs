@@ -482,9 +482,12 @@ define_class!(
         fn palette_clicked(&self, sender: Option<&AnyObject>) {
             ffi_guard("paletteClicked:", (), || {
                 let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
-                let flags = MainThreadMarker::new()
-                    .and_then(|m| NSApplication::sharedApplication(m).currentEvent())
-                    .map_or(0, |e| e.modifierFlags().0);
+                // Only the click's own mouse event decides Shift (never a leftover or unrelated event).
+                let event = MainThreadMarker::new().and_then(|m| NSApplication::sharedApplication(m).currentEvent());
+                let flags = crate::adapter::click_modifier_flags(
+                    event.as_ref().map(|e| e.r#type().0),
+                    event.as_ref().map_or(0, |e| e.modifierFlags().0),
+                );
                 self.send(NativeEvent::PaletteClicked { document: self.ivars().document, tag: button.tag(), flags });
             });
         }

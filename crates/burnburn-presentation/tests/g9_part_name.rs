@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
+use burnburn_test_support::host::rig as common;
 
 use std::path::PathBuf;
 use std::sync::Arc;

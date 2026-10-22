@@ -643,6 +643,18 @@ pub const LINE_SCROLL_PT: f64 = 10.0;
 pub const CLOSE_ALERT_BUTTONS: [CloseChoice; 3] = [CloseChoice::Save, CloseChoice::Cancel, CloseChoice::Discard];
 
 /// Normalised modifiers: Cmd is the shortcut modifier on macOS.
+/// The modifier flags a button click carries: those of the click itself (a mouse-down or -up of
+/// any button). Any other current event (a key, a system or app-defined event, none at all) says
+/// nothing about this click, so it adds no modifiers — a Shift held for something else, or the
+/// last event of an earlier gesture, must never turn a plain click into a Shift-click.
+pub fn click_modifier_flags(event_type: Option<usize>, raw_flags: usize) -> usize {
+    // NSEventType: left/right mouse down/up (1–4), other mouse down/up (25, 26).
+    match event_type {
+        Some(1..=4 | 25 | 26) => raw_flags,
+        _ => 0,
+    }
+}
+
 pub fn modifiers(raw: usize) -> Modifiers {
     Modifiers {
         shift: raw & flags::SHIFT != 0,

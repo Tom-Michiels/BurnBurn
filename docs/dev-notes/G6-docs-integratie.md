@@ -49,3 +49,20 @@ Native macOS-tests zetten vensters boven de apps van de gebruiker (`float_window
   523 geslaagd, 0 gefaald, geen overgeslagen schermcontroles (transparante vensters tellen voor de window server als
   zichtbaar; Metal presenteert gewoon).
 - Beperking: of een venster er voor een mens goed uitziet en echt de focus krijgt, toetst alleen `--native` (en handmatig).
+
+# Golf 9 — integratie (22-10-2026)
+
+**Bug: palet-klik nam modifiers van een willekeurige gebeurtenis.** De native `layer_palette`-test zag één keer een gewone
+klik als Shift-klik (gemeld door G9-cam-werk). `paletteClicked:` las `NSApplication.currentEvent().modifierFlags` zonder te
+kijken wat voor gebeurtenis dat was; bij `performClick` of een klik via het toetsenbord is dat de laatst verwerkte
+gebeurtenis (een eerdere gebaar, een systeemgebeurtenis met de Shift die de gebruiker toevallig vasthoudt).
+
+| Test | Rood | Groen |
+|---|---|---|
+| `burnburn-macos/tests/g9_click_modifiers.rs::any_other_current_event_adds_no_modifiers` | `cargo test -p burnburn-macos --test g9_click_modifiers --locked` met `click_modifier_flags` als doorgeefluik: 1 failed, 1 passed | alleen muis-down/up (NSEventType 1–4, 25, 26) houdt zijn flags: 2 passed |
+| `a_mouse_click_keeps_its_own_modifiers` | groen vanaf het begin (bewaakt dat een echte Shift-klik blijft werken) | 2 passed |
+| native `layer_palette` (stil) | — | ok (`BURNBURN_NATIVE_QUIET=1 cargo test -p burnburn-macos --test layer_palette`) |
+
+**Merge-breuk opgelost**: G9-cam-werk (`macos/tests/g9_cam_werk_panels.rs`, `presentation/tests/{g9_recognition,g9_part_name}.rs`)
+gebruikte nog `#[path]`-fixtures die G9-trace-infra naar `burnburn-test-support::host` verhuisde; omgezet naar
+`burnburn_test_support::host::{camera, rig}`.

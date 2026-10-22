@@ -3,8 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-presentation/tests/common/camera.rs"]
-mod rig;
+use burnburn_test_support::host::camera as rig;
 
 mod nest_panel {
     use burnburn_macos::adapter::{NativeEvent, Reaction, translate};
