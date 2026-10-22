@@ -851,6 +851,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::Measure => ("Meet document", "Measure Document"),
         C::Compile => ("Compileer plan", "Compile Plan"),
         C::ExportRd => ("Exporteer RD…", "Export RD…"),
+        C::ExportGcode => ("Exporteer G-code…", "Export G-code…"),
         C::ApplyTrace => ("Pas trace toe", "Apply Trace"),
         C::ApplyTraceLinked => ("Pas toe als trace", "Apply as Trace"),
         C::TraceEdit => ("Bewerk trace…", "Edit Trace…"),
@@ -1337,6 +1338,18 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         M::NoMachineProfile => ("Kies eerst een machineprofiel.", "Choose a machine profile first."),
         M::CompileFailed => ("Compileren is mislukt.", "Compiling failed."),
         M::ExportFailed => ("Exporteren is mislukt.", "Exporting failed."),
+        M::GcodeRefused => (
+            "De GRBL-backend weigert dit plan: er is geen G-code geschreven. Zie de GRBL-weigeringen bij het plan.",
+            "The GRBL backend refuses this plan: no G-code was written. See the GRBL refusals at the plan.",
+        ),
+        M::RdNotForGrbl => (
+            "Een GRBL-machine heeft geen RD-bestand; gebruik Exporteer G-code.",
+            "A GRBL machine has no RD file; use Export G-code.",
+        ),
+        M::GcodeNotForRuida => (
+            "Een Ruida-machine heeft geen G-code; gebruik Exporteer RD.",
+            "A Ruida machine has no G-code; use Export RD.",
+        ),
         M::ImageFailed => ("Het beeld kon niet gelezen worden.", "The image could not be read."),
         M::TraceFailed => ("Traceren is mislukt.", "Tracing failed."),
         M::MachineAction(a) => match a {
@@ -1872,6 +1885,9 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::NoMachineProfile,
         MessageKey::CompileFailed,
         MessageKey::ExportFailed,
+        MessageKey::GcodeRefused,
+        MessageKey::RdNotForGrbl,
+        MessageKey::GcodeNotForRuida,
         MessageKey::ImageFailed,
         MessageKey::TraceFailed,
         MessageKey::SaveNotConfirmedDurable,

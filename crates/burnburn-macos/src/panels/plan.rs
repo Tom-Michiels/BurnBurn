@@ -1,9 +1,16 @@
 //! The JobPlan preview panel.
 
-use burnburn_presentation::AppViewModel;
-use burnburn_types::DocumentId;
+use burnburn_presentation::{AppViewModel, GrblRefusalKind, SelectMode, UiIntent};
+use burnburn_types::{DocumentId, GeometryId};
 
 use crate::l10n::{HostText, Locale, host_text};
+
+/// One thing the GRBL backend refuses of the plan, in words, with the object to go to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrblRefusalRow {
+    pub text: String,
+    pub geometry: Option<GeometryId>,
+}
 
 /// The preview panel's texts.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +22,81 @@ pub struct PlanPanel {
     /// Current, or out of date — said in words, not only with a colour (X03).
     pub state: String,
     pub findings: String,
+    /// What the GRBL backend refuses (empty on a Ruida machine); choosing a row goes to its object.
+    pub grbl: Vec<GrblRefusalRow>,
+}
+
+impl PlanPanel {
+    /// Choosing refusal `index`: select the object it belongs to (a refusal of the plan as a whole
+    /// has none).
+    pub fn select_intent(&self, document: DocumentId, index: usize) -> Option<UiIntent> {
+        let geometry = self.grbl.get(index)?.geometry?;
+        Some(UiIntent::Select { document, ids: vec![geometry], mode: SelectMode::Replace })
+    }
+}
+
+/// A GRBL refusal in words.
+pub fn grbl_refusal_text(kind: &GrblRefusalKind, locale: Locale) -> String {
+    let nl = locale == Locale::Nl;
+    match kind {
+        GrblRefusalKind::LaserModeRequired => {
+            if nl {
+                "Lasermodus ($32=1) staat niet aan in het profiel".to_owned()
+            } else {
+                "Laser mode ($32=1) is not on in the profile".to_owned()
+            }
+        }
+        GrblRefusalKind::AirAssistUnavailable => {
+            if nl {
+                "Luchtondersteuning gevraagd, maar de machine heeft geen M8-uitgang".to_owned()
+            } else {
+                "Air assist requested, but the machine has no M8 output".to_owned()
+            }
+        }
+        GrblRefusalKind::OutsideBed => {
+            if nl {
+                "Beweging buiten het bed".to_owned()
+            } else {
+                "Motion outside the bed".to_owned()
+            }
+        }
+        GrblRefusalKind::InvalidProfile(what) => {
+            if nl {
+                format!("Ongeldig GRBL-profiel: {what}")
+            } else {
+                format!("Invalid GRBL profile: {what}")
+            }
+        }
+        GrblRefusalKind::Feature(feature) => {
+            let name = crate::l10n::feature_name(*feature, locale);
+            if nl {
+                format!("{name} wordt niet ondersteund door de GRBL-backend")
+            } else {
+                format!("{name} is not supported by the GRBL backend")
+            }
+        }
+        GrblRefusalKind::Rotary => {
+            if nl {
+                "Rotary wordt door de GRBL-backend niet ondersteund".to_owned()
+            } else {
+                "Rotary is not supported by the GRBL backend".to_owned()
+            }
+        }
+        GrblRefusalKind::NotRepresentable(what) => {
+            if nl {
+                format!("{what} kan niet als G-code worden geschreven")
+            } else {
+                format!("{what} cannot be written as G-code")
+            }
+        }
+        _ => {
+            if nl {
+                "De GRBL-backend weigert dit plan".to_owned()
+            } else {
+                "The GRBL backend refuses this plan".to_owned()
+            }
+        }
+    }
 }
 
 pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> PlanPanel {
@@ -26,6 +108,7 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
             estimate: String::new(),
             state: host_text(HostText::NoPlanHint, locale).to_owned(),
             findings: String::new(),
+            grbl: Vec::new(),
         };
     };
     let state = if plan.stale { HostText::PlanStale } else { HostText::PlanCurrent };
@@ -35,6 +118,11 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
         estimate: estimate_text(plan.preview.estimated_seconds, locale),
         state: host_text(state, locale).to_owned(),
         findings: findings_text(plan.errors, plan.warnings, locale),
+        grbl: plan
+            .grbl
+            .iter()
+            .map(|f| GrblRefusalRow { text: grbl_refusal_text(&f.kind, locale), geometry: f.geometry })
+            .collect(),
     }
 }
 

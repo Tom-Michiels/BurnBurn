@@ -70,6 +70,9 @@ pub use burnburn_gcode::SerialPort as GrblSerialPort;
 /// The GRBL backend's vocabulary, so hosts need no gcode dependency of their own.
 pub use burnburn_gcode::console::{ConsoleError, MacroError};
 pub use burnburn_gcode::grbl::CommandRefusal as GrblCommandRefusal;
+pub use burnburn_gcode::{
+    GrblProfile, PowerMode as GrblPowerMode, WorkCoordinate as GrblWorkCoordinate, grbl_capabilities,
+};
 pub use controller::{
     AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
     LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
