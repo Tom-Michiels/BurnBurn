@@ -32,7 +32,7 @@ fn abs_round_floor_ceil_sqrt_behave_like_the_textbook() {
     assert!(near(eval("abs(2 - 9)", &[]).unwrap(), 7.0));
     assert!(near(eval("round(2.5)", &[]).unwrap(), 3.0), "halves round away from zero");
     assert!(near(eval("round(-2.5)", &[]).unwrap(), -3.0));
-    assert!(near(eval("round(3.14159, 2)", &[]).unwrap(), 3.14), "a second argument is the number of decimals");
+    assert!(near(eval("round(2.71828, 2)", &[]).unwrap(), 2.72), "a second argument is the number of decimals");
     assert!(near(eval("floor(2.9)", &[]).unwrap(), 2.0));
     assert!(near(eval("ceil(2.1)", &[]).unwrap(), 3.0));
     assert!(near(eval("sqrt(16)", &[]).unwrap(), 4.0));
