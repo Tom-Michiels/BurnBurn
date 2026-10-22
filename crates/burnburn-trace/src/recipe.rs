@@ -70,6 +70,9 @@ impl TraceRecipe {
         if !(self.contour.min_area_mm2.is_finite() && self.contour.min_area_mm2 >= 0.0) {
             return Err(TraceError::InvalidRecipe("contour.min_area_mm2"));
         }
+        if let Some(lens) = &self.image.lens {
+            lens.validate().map_err(|_| TraceError::InvalidRecipe("image.lens"))?;
+        }
         Ok(())
     }
 
