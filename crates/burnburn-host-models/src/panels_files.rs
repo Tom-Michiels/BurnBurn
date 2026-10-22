@@ -140,7 +140,10 @@ pub fn import_details(import: &ImportViewModel, locale: Locale) -> String {
     if !import.layers.is_empty() {
         lines.push(t(T::LayersHeader, locale).to_owned());
         for layer in &import.layers {
-            lines.push(fill(t(T::LayerLine, locale), &[&layer.name, &layer.items.to_string()]));
+            lines.push(fill(
+                t(T::LayerLine, locale),
+                &[&layer.name, &crate::format::format_count(layer.items, crate::format::Noun::Object, locale)],
+            ));
         }
     }
     let Some(report) = &import.lbrn2 else { return lines.join("\n") };
@@ -984,6 +987,12 @@ pub fn loss_text(loss: &ExportLoss, locale: Locale) -> String {
     }
 }
 
+/// The export sheet's first line: how many objects will be written.
+pub fn export_objects_text(count: usize, locale: Locale) -> String {
+    let digits = crate::format::format_number(count as f64, 0, locale);
+    fill(t(if count == 1 { T::ExportObjectOne } else { T::ExportObjects }, locale), &[&digits])
+}
+
 pub fn export_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Option<ExportPanel> {
     let d: &ExportDialogViewModel = vm.document(document)?.files.export.as_ref()?;
     let svg = d.format == ExportFormat::Svg;
@@ -1026,7 +1035,7 @@ pub fn export_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
     };
     Some(ExportPanel {
         title: t(if svg { T::ExportSvgTitle } else { T::ExportDxfTitle }, locale).to_owned(),
-        objects: fill(t(T::ExportObjects, locale), &[&d.objects.to_string()]),
+        objects: export_objects_text(d.objects, locale),
         units: popup(
             units.iter().map(|u| unit_title(*u).to_owned()).collect(),
             units.iter().position(|u| *u == o.unit),

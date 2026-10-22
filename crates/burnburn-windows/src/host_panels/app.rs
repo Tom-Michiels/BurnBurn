@@ -197,7 +197,7 @@ fn prefs_spec(input: &AppInput<'_>) -> PanelSpec {
     rows.push(Row::one(ControlSpec::label(id::PREF_BANNER, panel.banner.clone().unwrap_or_default())));
     rows.push(Row::one(ControlSpec::label(id::PREF_NOTE, at(AppText::PrefsNote, locale))));
     rows.push(Row::one(ControlSpec::button(id::PREF_RESET, at(AppText::PrefsReset, locale), true)));
-    PanelSpec { title: at(AppText::PrefsTitle, locale).to_owned(), rows }
+    PanelSpec { title: at(AppText::OptionsTitle, locale).to_owned(), rows }
 }
 
 /// The text of one line of the shortcut list: name, key, and the default when it was changed.

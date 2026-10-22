@@ -42,7 +42,7 @@ mod snapshots {
     use std::ptr;
 
     use burnburn_macos::adapter::MenuItem;
-    use burnburn_macos::appkit::{HostOptions, canvas_packet};
+    use burnburn_macos::appkit::{HostOptions, canvas_packet_themed};
     use burnburn_macos::l10n::Locale;
     use burnburn_presentation::{CommandKey, UiIntent};
     use burnburn_render::gpu::{GpuContext, render_offscreen};
@@ -63,6 +63,7 @@ mod snapshots {
         prefix: String,
         count: usize,
         gpu: Option<GpuContext>,
+        dark: bool,
     }
 
     pub fn run(dir: PathBuf) -> Result<(), String> {
@@ -86,7 +87,7 @@ mod snapshots {
                 None
             }
         };
-        let mut shot = Shooter { dir, prefix, count: 0, gpu };
+        let mut shot = Shooter { dir, prefix, count: 0, gpu, dark };
 
         let doc = s.new_document()?;
         shot.document(&s, doc, "empty-document")?;
@@ -117,10 +118,8 @@ mod snapshots {
         s.pump(0.3);
         shot.document(&s, doc, "selection")?;
 
-        // The About box is an NSAlert: its window, laid out but never run.
-        let about = s.app.about_alert();
-        about.layout();
-        shot.window(&s, &about.window(), "about", None);
+        // About is the system's standard panel (Q5): it cannot be laid out without being shown, so
+        // no offscreen shot; its options are checked in app_panels.rs.
 
         // Cut Settings for the first layer.
         if let Some(op) = s.doc(doc).and_then(|d| d.operations.first().map(|o| o.id)) {
@@ -238,7 +237,7 @@ mod snapshots {
             rep: &NSBitmapImageRep,
         ) {
             let (Some(gpu), Some(scene)) = (&self.gpu, s.app.scene(doc)) else { return };
-            let image = match render_offscreen(gpu, &canvas_packet(&scene, false)) {
+            let image = match render_offscreen(gpu, &canvas_packet_themed(&scene, false, 0.25, self.dark)) {
                 Ok(i) => i,
                 Err(e) => {
                     println!("    canvas render: {e:?}");

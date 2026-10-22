@@ -2,6 +2,7 @@
 
 mod bundle;
 mod dist;
+mod icon;
 mod layers;
 mod msix;
 mod path_attrs;
@@ -12,7 +13,7 @@ mod workspace_deps;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|path-attrs|bundle|msix-layout|gen-trace-corpus|help>
+const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|path-attrs|bundle|icon|msix-layout|gen-trace-corpus|help>
 
   verify            cargo fmt --check, layers, workspace-deps, clippy -D warnings, tests, the 100k performance guard (work counts, no clock) and doc tests (all --locked);
                     native macOS tests run quietly (transparent windows, no focus taken) unless --native
@@ -20,6 +21,7 @@ const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|path-attrs
   workspace-deps    every crate dependency must be `{ workspace = true, ... }`
   path-attrs        no crate may compile another crate's files through #[path] (ADR 0009)
   bundle            macOS: build BurnBurn.app [--release] [--zip] [--dmg] [--sign-adhoc] (dist files in <target>/<profile>/dist/)
+  icon              render assets/app-icon/*.svg: rewrite the committed host PNG and Windows .ico [--preview <dir> writes inspection PNGs instead]
   msix-layout       Windows: write the MSIX package directory [--exe <burnburn-win.exe>] [--out <dir>] [--publisher CN=...]
   gen-trace-corpus  (re)write test-data/trace/ from the vector references in xtask/src/trace_corpus.rs";
 
@@ -29,6 +31,7 @@ fn main() -> ExitCode {
         Some("verify") => verify(&args[1..]),
         Some("layers") => check_layers(),
         Some("bundle") => bundle::run(&root(), args.get(1..).unwrap_or_default()),
+        Some("icon") => icon::run(&root(), args.get(1..).unwrap_or_default()),
         Some("msix-layout") => msix::run(&root(), args.get(1..).unwrap_or_default()),
         Some("workspace-deps") => check_workspace_deps(),
         Some("path-attrs") => check_path_attrs(),

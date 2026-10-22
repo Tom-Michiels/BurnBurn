@@ -146,6 +146,10 @@ fn plan_panel_names_the_compiled_plan_and_marks_it_stale_after_an_edit() {
     let panel = plan_panel(&h.view(), doc, Locale::Nl);
     assert_eq!(panel.title, "Voorbeeld van het plan");
     assert_eq!(panel.plan_id, plan.id.to_string());
+    // The hash is for the tooltip and "Copy id", never the visible text (LF3 Q4).
+    assert_eq!(panel.id_tooltip, format!("Plan-id: {}", plan.id));
+    assert_eq!(panel.copy_id_title, "Kopieer id");
+    assert_eq!(plan_panel(&h.view(), doc, Locale::En).copy_id_title, "Copy id");
     assert_eq!(panel.estimate, estimate_text(plan.preview.estimated_seconds, Locale::Nl));
     assert!(panel.estimate.ends_with("(schatting)"));
     assert_eq!(panel.state, "Actueel");

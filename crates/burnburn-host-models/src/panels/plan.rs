@@ -18,6 +18,10 @@ pub struct PlanPanel {
     pub title: String,
     /// Full plan identity (`plan-<hash>`), the same that RD export and upload name; empty without plan.
     pub plan_id: String,
+    /// The identity as a tooltip ("Plan-id: plan-…"); the panel itself does not show the hash.
+    pub id_tooltip: String,
+    /// The "Copy id" button's title (empty without plan).
+    pub copy_id_title: String,
     pub estimate: String,
     /// Current, or out of date — said in words, not only with a colour (X03).
     pub state: String,
@@ -107,6 +111,8 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
         return PlanPanel {
             title: host_text(HostText::NoPlan, locale).to_owned(),
             plan_id: String::new(),
+            id_tooltip: String::new(),
+            copy_id_title: String::new(),
             estimate: String::new(),
             state: host_text(HostText::NoPlanHint, locale).to_owned(),
             findings: String::new(),
@@ -118,6 +124,15 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
     PlanPanel {
         title: host_text(HostText::PlanTitle, locale).to_owned(),
         plan_id: plan.id.to_string(),
+        id_tooltip: match locale {
+            Locale::Nl => format!("Plan-id: {}", plan.id),
+            Locale::En => format!("Plan id: {}", plan.id),
+        },
+        copy_id_title: match locale {
+            Locale::Nl => "Kopieer id",
+            Locale::En => "Copy id",
+        }
+        .to_owned(),
         estimate: estimate_text(plan.preview.estimated_seconds, locale),
         state: host_text(state, locale).to_owned(),
         findings: findings_text(plan.errors, plan.warnings, locale),
@@ -168,18 +183,8 @@ pub fn calibration_lines(applied: &[burnburn_presentation::AppliedCalibration], 
 }
 
 fn findings_text(errors: usize, warnings: usize, locale: Locale) -> String {
-    match locale {
-        Locale::Nl => format!(
-            "{errors} {}, {warnings} {}",
-            if errors == 1 { "fout" } else { "fouten" },
-            if warnings == 1 { "waarschuwing" } else { "waarschuwingen" }
-        ),
-        Locale::En => format!(
-            "{errors} {}, {warnings} {}",
-            if errors == 1 { "error" } else { "errors" },
-            if warnings == 1 { "warning" } else { "warnings" }
-        ),
-    }
+    use crate::format::{Noun, format_count};
+    format!("{}, {}", format_count(errors, Noun::Error, locale), format_count(warnings, Noun::Warning, locale))
 }
 
 /// The plan's constant-velocity time estimate, always labelled as an estimate (it is not a

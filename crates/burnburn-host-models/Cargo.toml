@@ -22,6 +22,8 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
+# The barcode hints of every symbology (l10n_names tests).
+burnburn-generators = { workspace = true }
 burnburn-job = { workspace = true }
 burnburn-machine = { workspace = true }
 burnburn-ruida = { workspace = true }

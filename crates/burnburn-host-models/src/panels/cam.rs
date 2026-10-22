@@ -315,7 +315,7 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
             "The test is a job of its own beside the project: the document does not change.",
         ),
         DialogNote::NewProfile => (
-            "Er is nog geen profiel: Toepassen maakt het eerste. De beginwaarden zijn instellingen, geen meting.",
+            "Er is nog geen profiel: Pas toe maakt het eerste. De beginwaarden zijn instellingen, geen meting.",
             "There is no profile yet: Apply creates the first one. The start values are settings, not measurements.",
         ),
         DialogNote::DialectUnverified => (
@@ -335,7 +335,7 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
             "The command-line profile file knows no rotary yet: this setting only applies in this window.",
         ),
         DialogNote::ProfileChangeMakesPlansStale => (
-            "Toepassen maakt een nieuwe profielversie: eerder gecompileerde plannen worden verouderd getoond tot je opnieuw compileert.",
+            "Met Pas toe maak je een nieuwe profielversie: eerder gecompileerde plannen worden verouderd getoond tot je opnieuw compileert.",
             "Applying makes a new profile revision: plans compiled earlier show as out of date until you compile again.",
         ),
         DialogNote::TestCompileFailed => ("De test kon niet worden gecompileerd.", "The test could not be compiled."),
@@ -389,9 +389,11 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
         ),
         DialogNote::ArrayExtent { copies, width_um, height_um } => {
             let (w, h) = (width_um as f64 / 1000.0, height_um as f64 / 1000.0);
+            let count = crate::format::format_count(copies as usize, crate::format::Noun::Copy, locale);
+            let size = crate::format::format_size(w, h, crate::format::LengthPreference::Millimeters, locale);
             return match locale {
-                Locale::Nl => format!("{copies} kopieën (met het origineel), samen {w:.3} × {h:.3} mm."),
-                Locale::En => format!("{copies} copies (with the original), together {w:.3} × {h:.3} mm."),
+                Locale::Nl => format!("{count} (met het origineel), samen {size}."),
+                Locale::En => format!("{count} (with the original), together {size}."),
             };
         }
         _ => ("", ""),
@@ -409,7 +411,7 @@ pub fn cam_action_title(kind: DialogActionKind, dialog: CamDialog, locale: Local
             (DialogActionKind::MoveRowUp, _) => ("Eerder", "Earlier"),
             (DialogActionKind::MoveRowDown, _) => ("Later", "Later"),
             (DialogActionKind::Apply, CamDialog::Array) => ("Reeks maken", "Make array"),
-            (DialogActionKind::Apply, _) => ("Toepassen", "Apply"),
+            (DialogActionKind::Apply, _) => ("Pas toe", "Apply"),
             (DialogActionKind::Close, _) => ("Sluiten", "Close"),
             (DialogActionKind::Generate, _) => ("Maak test", "Generate test"),
             (DialogActionKind::ExportRd, _) => ("Opslaan als RD…", "Save as RD…"),

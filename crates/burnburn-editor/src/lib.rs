@@ -36,8 +36,8 @@ pub use place::{
 };
 pub use registration::{CenterFinderSession, RegistrationFlowError, RegistrationSession};
 pub use scene::{
-    CompareSide, MIN_GRID_SPACING_PT, Overlay, SceneItem, SceneRequest, SceneSnapshot, StyleRole, build_scene,
-    grid_spacing_mm,
+    BedOrigin, CompareSide, MIN_GRID_SPACING_PT, Overlay, SceneItem, SceneRequest, SceneSnapshot, StyleRole,
+    build_scene, grid_major_every, grid_spacing_mm,
 };
 pub use selection::{Selection, SelectionChange, hit_test, next_in_cycle, objects_inside};
 pub use sketch::{

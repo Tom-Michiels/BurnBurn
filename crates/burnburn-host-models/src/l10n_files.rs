@@ -43,7 +43,7 @@ texts! {
     UnitPdf => ("Maat uit het bestand (1 punt = 0,3528 mm)", "Size from the file (1 point = 0.3528 mm)"),
     UnitLightBurn => ("LightBurn-projecten staan in millimeters", "LightBurn projects are in millimetres"),
     LayersHeader => ("Voorgestelde lagen:", "Proposed layers:"),
-    LayerLine => ("  {0}: {1} objecten", "  {0}: {1} objects"),
+    LayerLine => ("  {0}: {1}", "  {0}: {1}"),
     ProjectLayersHeader => ("Lagen van het project:", "Layers of the project:"),
     ProjectLayerTaken => ("  {0} ({1}): {2} vormen → laag wordt aangemaakt", "  {0} ({1}): {2} shapes → a layer is created"),
     ProjectLayerSkipped => (
@@ -102,7 +102,7 @@ texts! {
     NoEntries => ("Geen instellingen gevonden", "No settings found"),
     LabelLayer => ("Laag:", "Layer:"),
     NoLayers => ("Geen lagen in dit project", "No layers in this project"),
-    ButtonApply => ("Toepassen", "Apply"),
+    ButtonApply => ("Pas toe", "Apply"),
     ButtonUpdate => ("Recept bijwerken", "Update recipe"),
     ButtonUpdateApply => ("Bijwerken en toepassen", "Update and apply"),
     ButtonRemove => ("Verwijder", "Remove"),
@@ -113,7 +113,7 @@ texts! {
     ButtonClose => ("Sluit", "Close"),
     EntryItem => ("{0} — {1} {2} mm (r{3})", "{0} — {1} {2} mm (r{3})"),
     EntryDetail => (
-        "{0} · {1} mm/s · {2} % · {3} pass(es)",
+        "{0} · {1} mm/s · {2} % · {3} doorgang(en)",
         "{0} · {1} mm/s · {2} % · {3} pass(es)"
     ),
     ModeLine => ("Lijn", "Line"),
@@ -207,6 +207,7 @@ texts! {
     ExportSvgTitle => ("Exporteer als SVG", "Export as SVG"),
     ExportDxfTitle => ("Exporteer als DXF", "Export as DXF"),
     ExportObjects => ("{0} objecten worden geëxporteerd.", "{0} objects will be exported."),
+    ExportObjectOne => ("{0} object wordt geëxporteerd.", "{0} object will be exported."),
     LabelUnit => ("Eenheid:", "Unit:"),
     LabelLayers => ("Lagen:", "Layers:"),
     LabelCurves => ("Krommen:", "Curves:"),

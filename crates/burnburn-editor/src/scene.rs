@@ -45,6 +45,15 @@ pub enum CompareSide {
     B,
 }
 
+/// Which physical bed corner is the controller's origin (the editor's own copy; no machine types).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BedOrigin {
+    BottomLeft,
+    TopLeft,
+    TopRight,
+    BottomRight,
+}
+
 /// Window-local decorations drawn above the items (the grid below them).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -52,6 +61,15 @@ pub enum Overlay {
     /// Background grid; spacing chosen from the zoom so lines stay readable.
     Grid {
         spacing_mm: f64,
+        /// Every n-th line (counted from the world origin) is a major line; 0 means no major lines.
+        major_every: u32,
+    },
+    /// The machine's work area (bed) in bed view (y up, `(0, 0)` bottom-left) and the corner that
+    /// is the controller's origin. Drawn beneath the grid; the grid is only drawn inside it.
+    Bed {
+        width_mm: f64,
+        height_mm: f64,
+        origin: BedOrigin,
     },
     /// Union of the selected objects' bounds.
     SelectionBounds {
@@ -220,6 +238,19 @@ pub fn grid_spacing_mm(camera: &Camera) -> f64 {
     decade
 }
 
+/// How many grid lines make a major line, so that majors fall on powers of ten: spacing 1 → 10,
+/// 2 → 5, 5 → 2 (times a decade).
+pub fn grid_major_every(spacing_mm: f64) -> u32 {
+    if !(spacing_mm.is_finite() && spacing_mm > 0.0) {
+        return 0;
+    }
+    let decade = 10f64.powf(spacing_mm.log10().floor());
+    let mantissa = spacing_mm / decade;
+    // Guard against log10 rounding just below a power of ten (mantissa ~ 10 is 1 of the next decade).
+    let mantissa = if mantissa > 9.999 { 1.0 } else { mantissa };
+    (10.0 / mantissa).round().clamp(1.0, 10.0) as u32
+}
+
 /// Builds the scene for one window.
 pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
     // Back to front in draw order; hidden objects are not drawn.
@@ -239,7 +270,8 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
             })
         })
         .collect();
-    let mut overlays = vec![Overlay::Grid { spacing_mm: grid_spacing_mm(&req.camera) }];
+    let spacing_mm = grid_spacing_mm(&req.camera);
+    let mut overlays = vec![Overlay::Grid { spacing_mm, major_every: grid_major_every(spacing_mm) }];
     let mm_per_point = req.camera.mm_per_point();
     let gesture = req.preview.is_some();
     if let Some(bounds) = req.selection.bounds(req.snapshot) {
@@ -373,6 +405,19 @@ mod tests {
 
     fn doc() -> DocumentSnapshot {
         DocumentSnapshot::from_parts(vec![rect(1, 0.0, 0.0, 40.0, 20.0), rect(2, 50.0, 0.0, 10.0, 10.0)], 3).unwrap()
+    }
+
+    #[test]
+    fn major_grid_lines_fall_on_decades_for_every_1_2_5_spacing() {
+        for (spacing, every) in [(1.0, 10), (2.0, 5), (5.0, 2), (0.5, 2), (20.0, 5), (50.0, 2), (0.1, 10)] {
+            assert_eq!(grid_major_every(spacing), every, "spacing {spacing}");
+        }
+        // And the scene carries it, whatever the zoom.
+        let snap = doc();
+        let sel = Selection::default();
+        let scene = build_scene(&request(&snap, &sel, None, ToolKind::Select));
+        let Some(Overlay::Grid { spacing_mm, major_every }) = scene.overlays.first() else { panic!("no grid") };
+        assert_eq!(*major_every, grid_major_every(*spacing_mm));
     }
 
     #[test]

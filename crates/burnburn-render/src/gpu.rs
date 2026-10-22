@@ -93,12 +93,30 @@ impl GpuContext {
         Ok(GpuContext { adapter, device, queue, lost })
     }
 
+    /// The MSAA sample count for `format`: [`MSAA_SAMPLES`] when the adapter can resolve it for this
+    /// format, else 1 (anti-aliasing off, reported once on stderr).
+    pub fn sample_count(&self, format: wgpu::TextureFormat) -> u32 {
+        let flags = self.adapter.get_texture_format_features(format).flags;
+        if flags.sample_count_supported(MSAA_SAMPLES)
+            && flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
+        {
+            MSAA_SAMPLES
+        } else {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| eprintln!("burnburn: canvas: {MSAA_SAMPLES}x MSAA is not supported for {format:?}; drawing without anti-aliasing"));
+            1
+        }
+    }
+
     /// The device was lost (driver reset, GPU removed, or destroyed). A lost context never
     /// recovers: the host opens a new one and recreates its surface; the document is untouched.
     pub fn is_lost(&self) -> bool {
         self.lost.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
+
+/// The anti-aliasing sample count the canvas asks for.
+pub const MSAA_SAMPLES: u32 = 4;
 
 /// A picture read back from the GPU: tightly packed RGBA8 rows, top row first.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,6 +142,9 @@ pub struct CanvasRenderer {
     pipeline: wgpu::RenderPipeline,
     pictures: PicturePass,
     format: wgpu::TextureFormat,
+    samples: u32,
+    /// The multisampled colour target, kept between frames of the same size.
+    msaa: Mutex<Option<([u32; 2], wgpu::TextureView)>>,
 }
 
 /// Bytes per vertex: position (2 × f32) then colour (4 × f32).
@@ -152,7 +173,7 @@ struct PicturePass {
 }
 
 impl PicturePass {
-    fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    fn new(device: &wgpu::Device, format: wgpu::TextureFormat, samples: u32) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("burnburn pictures"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
@@ -203,7 +224,7 @@ impl PicturePass {
             },
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState { count: 1, mask: !0, alpha_to_coverage_enabled: false },
+            multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
             fragment: Some(wgpu::FragmentState {
                 module: &module,
                 entry_point: Some("fs_main"),
@@ -334,7 +355,8 @@ fn picture_vertex_bytes(cells: &[ImageCell], [w, h]: [u32; 2]) -> Vec<u8> {
 }
 
 impl CanvasRenderer {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    /// A renderer drawing with `samples`-fold multisampling (1 = none; ask [`GpuContext::sample_count`]).
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, samples: u32) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("burnburn canvas"),
             source: wgpu::ShaderSource::Wgsl(include_str!("canvas.wgsl").into()),
@@ -360,7 +382,7 @@ impl CanvasRenderer {
             },
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, ..Default::default() },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState { count: 1, mask: !0, alpha_to_coverage_enabled: false },
+            multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
             fragment: Some(wgpu::FragmentState {
                 module: &module,
                 entry_point: Some("fs_main"),
@@ -374,7 +396,40 @@ impl CanvasRenderer {
             multiview_mask: None,
             cache: None,
         });
-        CanvasRenderer { pipeline, pictures: PicturePass::new(device, format), format }
+        CanvasRenderer {
+            pipeline,
+            pictures: PicturePass::new(device, format, samples),
+            format,
+            samples,
+            msaa: Mutex::new(None),
+        }
+    }
+
+    pub fn samples(&self) -> u32 {
+        self.samples
+    }
+
+    /// The multisampled colour attachment for a frame of `size` (created on a size change).
+    fn msaa_target(&self, device: &wgpu::Device, size: [u32; 2]) -> wgpu::TextureView {
+        let mut slot = self.msaa.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((have, view)) = slot.as_ref()
+            && *have == size
+        {
+            return view.clone();
+        }
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("burnburn canvas msaa"),
+            size: wgpu::Extent3d { width: size[0].max(1), height: size[1].max(1), depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: self.samples,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        *slot = Some((size, view.clone()));
+        view
     }
 
     pub fn format(&self) -> wgpu::TextureFormat {
@@ -420,12 +475,13 @@ impl CanvasRenderer {
             buffer
         });
         let c = packet.clear;
+        let msaa = (self.samples > 1).then(|| self.msaa_target(device, packet.size_px));
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("burnburn canvas"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
+                view: msaa.as_ref().unwrap_or(target),
                 depth_slice: None,
-                resolve_target: None,
+                resolve_target: msaa.is_some().then_some(target),
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
                         r: c.r.into(),
@@ -433,7 +489,7 @@ impl CanvasRenderer {
                         b: c.b.into(),
                         a: c.a.into(),
                     }),
-                    store: wgpu::StoreOp::Store,
+                    store: if msaa.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
                 },
             })],
             depth_stencil_attachment: None,
@@ -505,7 +561,7 @@ pub fn render_offscreen(ctx: &GpuContext, packet: &RenderPacket) -> Result<Image
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
-    let renderer = CanvasRenderer::new(device, OFFSCREEN_FORMAT);
+    let renderer = CanvasRenderer::new(device, OFFSCREEN_FORMAT, ctx.sample_count(OFFSCREEN_FORMAT));
     let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("burnburn offscreen") });

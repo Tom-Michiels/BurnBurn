@@ -128,6 +128,8 @@ fn scene_snapshot_renders_offscreen_to_exact_pixels() {
     theme.design.fill = Some(Rgba::new(1.0, 0.0, 0.0, 1.0));
     theme.design.stroke = None;
     theme.grid = None;
+    // These pixel expectations assume a white canvas and a filled object (LF2: the light theme now has a grey canvas and no fills).
+    theme.background = Rgba::new(1.0, 1.0, 1.0, 1.0);
     let image = render_offscreen(&ctx, &build_packet(&scene, &theme)).unwrap();
     let reds = count(&image, RED, |x, y| assert!((10..30).contains(&x) && (24..34).contains(&y), "red at {x},{y}"));
     assert_eq!(reds, 200);

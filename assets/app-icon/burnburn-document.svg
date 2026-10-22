@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- BurnBurn project document icon (.burnburn): a sheet with a folded corner carrying the flame mark. -->
+  <defs>
+    <linearGradient id="paper" gradientUnits="userSpaceOnUse" x1="512" y1="60" x2="512" y2="944">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6dfd8"/>
+    </linearGradient>
+    <linearGradient id="fold" gradientUnits="userSpaceOnUse" x1="640" y1="60" x2="800" y2="294">
+      <stop offset="0" stop-color="#d4cbc2"/>
+      <stop offset="1" stop-color="#f4efe9"/>
+    </linearGradient>
+    <linearGradient id="flame" gradientUnits="userSpaceOnUse" x1="512" y1="215" x2="512" y2="790">
+      <stop offset="0" stop-color="#ffb02e"/>
+      <stop offset="0.45" stop-color="#ff6a1f"/>
+      <stop offset="1" stop-color="#e02a12"/>
+    </linearGradient>
+    <linearGradient id="core" gradientUnits="userSpaceOnUse" x1="512" y1="470" x2="512" y2="770">
+      <stop offset="0" stop-color="#fff3b0"/>
+      <stop offset="1" stop-color="#ffd24a"/>
+    </linearGradient>
+  </defs>
+  <path d="M168 90 C 168 70 184 60 204 60 L 622 60 L 856 294 L 856 904 C 856 928 840 944 816 944 L 208 944 C 184 944 168 928 168 904 Z" fill="#000000" opacity="0.10" transform="translate(0 16)"/>
+  <path d="M168 90 C 168 70 184 60 204 60 L 622 60 L 856 294 L 856 904 C 856 928 840 944 816 944 L 208 944 C 184 944 168 928 168 904 Z" fill="url(#paper)"/>
+  <path d="M168 90 C 168 70 184 60 204 60 L 622 60 L 856 294 L 856 904 C 856 928 840 944 816 944 L 208 944 C 184 944 168 928 168 904 Z" fill="none" stroke="#b9afa5" stroke-width="4"/>
+  <path d="M622 60 L 622 258 C 622 280 636 294 658 294 L 856 294 Z" fill="url(#fold)"/>
+  <g transform="translate(512 610) scale(0.8) translate(-512 -520)">
+    <path d="M548 205 C 600 318 728 392 728 566 C 728 694 636 792 512 792 C 388 792 296 694 296 566 C 296 478 340 420 392 368 C 396 424 428 452 462 458 C 440 372 484 266 548 205 Z" fill="url(#flame)"/>
+    <path d="M512 452 C 548 520 626 572 626 650 C 626 718 574 770 512 770 C 450 770 398 718 398 650 C 398 572 476 520 512 452 Z" fill="url(#core)"/>
+  </g>
+</svg>

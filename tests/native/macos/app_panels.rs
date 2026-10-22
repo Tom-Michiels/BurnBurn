@@ -29,6 +29,7 @@ fn main() -> ExitCode {
         ("support_dialog_shows_the_report_and_writes_exactly_that", support),
         ("inspector_captions_and_values_follow_the_display_unit", inspector_unit),
         ("canvas_keys_nudge_and_switch_tools", canvas_keys),
+        ("dock_icon_is_the_burnburn_flame_when_unbundled", dock_icon),
         ("app_panels_open_no_network_socket", offline),
     ] {
         let code = common::report(name, scenario());
@@ -265,7 +266,7 @@ fn menus() -> Result<(), String> {
     )?;
     for title in [
         "Over BurnBurn",
-        "Voorkeuren…",
+        "Instellingen…",
         "Sneltoetsen…",
         "Diensten",
         "Verberg BurnBurn",
@@ -283,7 +284,7 @@ fn menus() -> Result<(), String> {
     ] {
         expect(|| format!("menu item {title:?} missing"), find_menu_item(menu, title).is_some())?;
     }
-    let prefs = find_menu_item(menu, "Voorkeuren…").ok_or("no Preferences item")?;
+    let prefs = find_menu_item(menu, "Instellingen…").ok_or("no Preferences item")?;
     expect(
         || "Preferences has Cmd+,".into(),
         prefs.keyEquivalent().to_string() == "," && prefs.keyEquivalentModifierMask() == NSEventModifierFlags::Command,
@@ -317,15 +318,56 @@ fn menus() -> Result<(), String> {
     s.menu(MenuItem::App(AppAction::DebugLog))?;
     expect(|| "debug log off again".into(), s.menu_item_checked(MenuItem::App(AppAction::DebugLog)) == Some(false))?;
 
-    // About: name, version and the offline promise.
-    let alert = s.app.about_alert();
-    let info = alert.informativeText().to_string();
+    // About (Q5): the standard About panel's options carry name, version, credits and the icon.
+    use objc2_app_kit::NSImage;
+    use objc2_foundation::NSAttributedString;
+    let options = s.app.about_panel_options();
+    let get = |key: &str| options.objectForKey(&NSString::from_str(key));
+    let string = |key: &str| get(key).and_then(|v| v.downcast::<NSString>().ok()).map(|v| v.to_string());
+    expect(|| "ApplicationName".into(), string("ApplicationName").as_deref() == Some("BurnBurn"))?;
     expect(
-        || format!("about text {info:?}"),
-        alert.messageText().to_string() == "BurnBurn"
-            && info.contains(env!("CARGO_PKG_VERSION"))
-            && info.contains("geen netwerkverbinding"),
+        || format!("ApplicationVersion {:?}", string("ApplicationVersion")),
+        string("ApplicationVersion").as_deref() == Some(env!("CARGO_PKG_VERSION")),
     )?;
+    let credits = get("Credits").and_then(|v| v.downcast::<NSAttributedString>().ok()).map(|c| c.string().to_string());
+    expect(
+        || format!("Credits {credits:?}"),
+        credits.as_deref().is_some_and(|c| c.contains("geen netwerkverbinding") && c.contains(std::env::consts::OS)),
+    )?;
+    let icon = get("ApplicationIcon").and_then(|v| v.downcast::<NSImage>().ok());
+    expect(|| "ApplicationIcon is an image".into(), icon.is_some_and(|i| i.representations().count() >= 1))?;
+    Ok(())
+}
+
+// ---- the Dock icon ------------------------------------------------------------------------------------------------
+
+/// Q5/LF4: an unbundled run (cargo run, the tests) shows the BurnBurn flame, not the generic
+/// executable icon: the host sets `NSApplication.applicationIconImage` from the embedded PNG.
+#[cfg(target_os = "macos")]
+fn dock_icon() -> Result<(), String> {
+    use common::expect;
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSApplication, NSBitmapImageRep};
+
+    let s = common::start()?;
+    let image = NSApplication::sharedApplication(s.mtm).applicationIconImage().ok_or("no application icon image")?;
+    // AppKit hands the icon back as a snapshot rep: read its pixels through a TIFF round trip.
+    let tiff = image.TIFFRepresentation().ok_or("icon has no TIFF representation")?;
+    let rep = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff).ok_or("icon TIFF is not readable")?;
+    // The snapshot is the 512 pt icon at the screen's scale: sample by fraction of its width.
+    let w = rep.pixelsWide();
+    expect(
+        || format!("square icon of at least 512 px, got {w} x {}", rep.pixelsHigh()),
+        w >= 512 && rep.pixelsHigh() == w,
+    )?;
+    let at = |fraction: f64| (fraction * w as f64) as isize;
+    // The flame body left of its bright core (normalised 0.34, 0.59) is orange: red high, blue low.
+    let flame = rep.colorAtX_y(at(0.34), at(0.586)).ok_or("no pixel")?;
+    let (r, b) = (flame.redComponent(), flame.blueComponent());
+    expect(|| format!("flame colour r={r:.2} b={b:.2}"), r > 0.75 && b < 0.3)?;
+    // The corner of the canvas is transparent (squircle with margin).
+    let corner = rep.colorAtX_y(at(0.008), at(0.008)).ok_or("no corner pixel")?;
+    expect(|| format!("corner alpha {}", corner.alphaComponent()), corner.alphaComponent() < 0.01)?;
     Ok(())
 }
 

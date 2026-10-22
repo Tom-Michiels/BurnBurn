@@ -73,7 +73,7 @@ use windows::core::{BOOL, HSTRING, PCWSTR, w};
 use crate::adapter::{
     CharDecoder, Control, MessageContext, Reaction, accelerators, close_guard, message_text, msg, object_labels,
     on_close_box, on_guard_box, on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text,
-    recovery_dir, selected_rows, window_title,
+    recovery_dir, selected_rows, window_title, window_title_localized,
 };
 use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
 use crate::forms::{
@@ -378,7 +378,7 @@ fn refresh() {
     with_host(|h| {
         for (document, w) in h.windows.iter_mut() {
             let Some(doc) = vm.document(*document) else { continue };
-            set_text(w.frame, &window_title(&vm, *document));
+            set_text(w.frame, &window_title_localized(&vm, *document, locale));
             let message = doc
                 .inspector
                 .as_ref()
@@ -391,7 +391,7 @@ fn refresh() {
             w.syncing = true;
             send(w.list, LB_RESETCONTENT, 0, 0);
             for label in object_labels(&vm, *document) {
-                let text = wide(&label);
+                let text = wide(&crate::l10n_names::display_name(&label, locale));
                 send(w.list, LB_ADDSTRING, 0, text.as_ptr() as isize);
             }
             for row in selected_rows(&vm, *document) {

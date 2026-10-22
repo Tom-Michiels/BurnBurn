@@ -439,6 +439,19 @@ pub fn window_title(vm: &AppViewModel, document: DocumentId) -> String {
         .unwrap_or_default()
 }
 
+/// [`window_title`] with a default document name ("Naamloos") shown in the UI language.
+pub fn window_title_localized(vm: &AppViewModel, document: DocumentId, locale: crate::l10n::Locale) -> String {
+    vm.document(document)
+        .map(|d| {
+            format!(
+                "{}{} — BurnBurn",
+                if d.dirty { "*" } else { "" },
+                crate::l10n_names::display_name(&d.title, locale)
+            )
+        })
+        .unwrap_or_default()
+}
+
 pub fn object_labels(vm: &AppViewModel, document: DocumentId) -> Vec<String> {
     vm.document(document)
         .map(|d| {
