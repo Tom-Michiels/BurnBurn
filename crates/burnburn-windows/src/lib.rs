@@ -10,6 +10,14 @@ pub use burnburn_host_models::{
     l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor, l10n_g7_trace, l10n_g7_werk, l10n_machine,
 };
 
+pub use burnburn_host_models::app_text;
+pub use burnburn_host_models::panels_image;
+pub use burnburn_host_models::panels_files;
+pub use burnburn_host_models::toolbar;
+pub use burnburn_host_models::recent;
+pub use burnburn_host_models::quit_guard;
+pub use burnburn_host_models::automation_host;
+
 pub mod adapter;
 pub mod forms;
 pub mod menus;
@@ -21,28 +29,11 @@ pub mod tasks;
 // (W4-L8a) Same interim route as `l10n`: these files have no AppKit and only use presentation view
 // models and `crate::l10n`, so both hosts show identical panel texts, rows and enablement. They move
 // into `burnburn-presentation` when the contracts phase gets to them (contracts-phase-c §IM20).
-#[path = "../../burnburn-macos/src/app_text.rs"]
-pub mod app_text;
-/// Desktop automation (API01): the protocol of `burnburn-runtime` over the presentation controller,
-/// shared with the macOS host.
-#[path = "../../burnburn-macos/src/automation_host.rs"]
-pub mod automation_host;
 /// The machine hub window as plain data (G5-machine-rest), shared with the macOS host.
 #[path = "../../burnburn-macos/src/hub_panel.rs"]
 pub mod hub_panel;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]
 pub mod panels;
-#[path = "../../burnburn-macos/src/panels_files.rs"]
-pub mod panels_files;
-#[path = "../../burnburn-macos/src/panels_image.rs"]
-pub mod panels_image;
-/// Quit guard (update gate X07), shared with the macOS host: the reason and its words.
-#[path = "../../burnburn-macos/src/quit_guard.rs"]
-pub mod quit_guard;
-#[path = "../../burnburn-macos/src/recent.rs"]
-pub mod recent;
-#[path = "../../burnburn-macos/src/toolbar.rs"]
-pub mod toolbar;
 
 #[cfg(windows)]
 pub mod win32;

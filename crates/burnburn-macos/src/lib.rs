@@ -8,11 +8,9 @@
 pub mod accessibility;
 pub mod adapter;
 pub mod app_menu;
-pub mod app_text;
 pub mod app_view;
 #[cfg(target_os = "macos")]
 pub mod appkit;
-pub mod automation_host;
 pub mod calib;
 pub mod camera;
 pub mod hub_panel;
@@ -20,13 +18,15 @@ pub mod hub_panel;
 pub use burnburn_host_models::{
     l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor, l10n_g7_trace, l10n_g7_werk, l10n_machine,
 };
+pub use burnburn_host_models::app_text;
+pub use burnburn_host_models::panels_image;
+pub use burnburn_host_models::panels_files;
+pub use burnburn_host_models::toolbar;
+pub use burnburn_host_models::recent;
+pub use burnburn_host_models::quit_guard;
+pub use burnburn_host_models::automation_host;
 pub mod lifecycle;
 pub mod panels;
-pub mod panels_files;
-pub mod panels_image;
 pub mod pasteboard;
-pub mod quit_guard;
-pub mod recent;
 pub mod tasks;
 pub mod text_input;
-pub mod toolbar;
