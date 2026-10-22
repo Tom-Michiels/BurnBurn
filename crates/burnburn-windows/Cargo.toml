@@ -36,6 +36,7 @@ path = "src/main.rs"
 burnburn-document = { workspace = true }
 burnburn-editor = { workspace = true }
 burnburn-geometry = { workspace = true }
+burnburn-host-models = { workspace = true }
 burnburn-image = { workspace = true }
 burnburn-io = { workspace = true }
 burnburn-presentation = { workspace = true }

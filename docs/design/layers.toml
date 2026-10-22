@@ -273,28 +273,48 @@ forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime"
 forbid_transitive = ["gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
 
 # ---------------------------------------------------------------------------------------------
-# Layer 7: hosts and binaries. Nothing depends on these.
+# Layer 7: platform-free host models and binaries. (ADR 0009)
+# ---------------------------------------------------------------------------------------------
+# The models both native hosts show (NL/EN catalogue, panel view models, toolbar texts, recent list,
+# quit guard, automation pump). Replaces the interim `#[path]` sharing of the macOS files by the
+# Windows host. Sits above runtime (automation pump and quit guard use `burnburn_runtime`), so one
+# layer higher than presentation/runtime; the hosts moved to layer 8 to depend on it. Native toolkits,
+# GPU and C toolchains stay out; `windows_native` is only transitive (via runtime), as for runtime.
+[crates.burnburn-host-models]
+layer = 7
+kind = "core"
+owner = "gui"
+unsafe = "forbid"
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-image",
+         "burnburn-io", "burnburn-presentation", "burnburn-runtime"]
+forbid = ["apple_native", "windows_native", "gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+forbid_transitive = ["gpu", "ui_toolkit", "async_runtime", "network", "foreign_kernel", "c_toolchain"]
+
+# ---------------------------------------------------------------------------------------------
+# Layer 7/8: hosts and binaries. Nothing depends on these.
 # ---------------------------------------------------------------------------------------------
 # burnburn-io: interim, for StdFileSystem in AppPorts until burnburn-runtime re-exports it (GUI, fase B).
 # C-1: bevestigd als tijdelijk; vervalt zodra runtime `StdFileSystem` re-exporteert (DR-21).
 # burnburn-image: IM27 — the host's CameraPort builds `CameraFrame { image: RasterImage }`.
 [crates.burnburn-macos]
-layer = 7
+layer = 8
 kind = "host"
 owner = "gui"
 unsafe = "adapter"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
-         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons"]
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons",
+         "burnburn-host-models"]
 forbid = ["windows_native", "ui_toolkit", "foreign_kernel"]
 forbid_transitive = ["ui_toolkit", "foreign_kernel"]
 
 [crates.burnburn-windows]
-layer = 7
+layer = 8
 kind = "host"
 owner = "gui"
 unsafe = "adapter"
 allow = ["burnburn-types", "burnburn-geometry", "burnburn-document", "burnburn-editor", "burnburn-job",
-         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons"]
+         "burnburn-presentation", "burnburn-render", "burnburn-runtime", "burnburn-io", "burnburn-image", "burnburn-icons",
+         "burnburn-host-models"]
 forbid = ["apple_native", "ui_toolkit", "foreign_kernel"]
 forbid_transitive = ["ui_toolkit", "foreign_kernel"]
 

@@ -16,15 +16,10 @@ pub mod automation_host;
 pub mod calib;
 pub mod camera;
 pub mod hub_panel;
-pub mod l10n;
-pub mod l10n_files;
-pub mod l10n_g5;
-pub mod l10n_g6;
-pub mod l10n_g6_werk;
-pub mod l10n_g7_editor;
-pub mod l10n_g7_trace;
-pub mod l10n_g7_werk;
-pub mod l10n_machine;
+// Shared with the Windows host through `burnburn-host-models` (ADR 0009).
+pub use burnburn_host_models::{
+    l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor, l10n_g7_trace, l10n_g7_werk, l10n_machine,
+};
 pub mod lifecycle;
 pub mod panels;
 pub mod panels_files;

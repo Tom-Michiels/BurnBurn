@@ -5,12 +5,13 @@
 //! platform. `win32` (Windows only) is the thin native layer: window, controls, file dialogs and the
 //! DX12 canvas surface. Native code never mutates the document; it only produces intents.
 
+// The hosts' one NL/EN catalogue lives in `burnburn-host-models` (ADR 0009).
+pub use burnburn_host_models::{
+    l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor, l10n_g7_trace, l10n_g7_werk, l10n_machine,
+};
+
 pub mod adapter;
 pub mod forms;
-/// The hosts' one NL/EN catalogue, compiled from the macOS host's source file so both hosts show
-/// the same strings (interim until it moves into `burnburn-presentation`, contracts-phase-c §IM20).
-#[path = "../../burnburn-macos/src/l10n.rs"]
-pub mod l10n;
 pub mod menus;
 pub mod persist;
 pub mod startup;
@@ -29,22 +30,6 @@ pub mod automation_host;
 /// The machine hub window as plain data (G5-machine-rest), shared with the macOS host.
 #[path = "../../burnburn-macos/src/hub_panel.rs"]
 pub mod hub_panel;
-#[path = "../../burnburn-macos/src/l10n_files.rs"]
-pub mod l10n_files;
-#[path = "../../burnburn-macos/src/l10n_g5.rs"]
-pub mod l10n_g5;
-#[path = "../../burnburn-macos/src/l10n_g6.rs"]
-pub mod l10n_g6;
-#[path = "../../burnburn-macos/src/l10n_g6_werk.rs"]
-pub mod l10n_g6_werk;
-#[path = "../../burnburn-macos/src/l10n_g7_editor.rs"]
-pub mod l10n_g7_editor;
-#[path = "../../burnburn-macos/src/l10n_g7_trace.rs"]
-pub mod l10n_g7_trace;
-#[path = "../../burnburn-macos/src/l10n_g7_werk.rs"]
-pub mod l10n_g7_werk;
-#[path = "../../burnburn-macos/src/l10n_machine.rs"]
-pub mod l10n_machine;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]
 pub mod panels;
 #[path = "../../burnburn-macos/src/panels_files.rs"]

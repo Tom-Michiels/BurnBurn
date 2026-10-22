@@ -1,0 +1,32 @@
+[package]
+name = "burnburn-host-models"
+description = "Platform-free models shared by the native hosts: NL/EN catalogue, panel view models, toolbar texts, recent list, automation pump (ADR 0009)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+burnburn-document = { workspace = true }
+burnburn-editor = { workspace = true }
+burnburn-geometry = { workspace = true }
+burnburn-image = { workspace = true }
+burnburn-io = { workspace = true }
+burnburn-presentation = { workspace = true }
+# Automation protocol (automation_host) and the update gate (quit_guard).
+burnburn-runtime = { workspace = true }
+burnburn-types = { workspace = true }
+# The recent-projects file (a JSON array of path strings).
+serde_json = { workspace = true }
+# assets/l10n/tools.toml (tool labels, tooltips, panel titles).
+toml = { workspace = true }
+
+[dev-dependencies]
+burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
+burnburn-ruida = { workspace = true }
+burnburn-test-support = { workspace = true }
+burnburn-text = { workspace = true }
+
+[lints]
+workspace = true

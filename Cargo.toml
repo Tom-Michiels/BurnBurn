@@ -19,6 +19,7 @@ burnburn-editor = { path = "crates/burnburn-editor" }
 burnburn-gcode = { path = "crates/burnburn-gcode" }
 burnburn-generators = { path = "crates/burnburn-generators" }
 burnburn-geometry = { path = "crates/burnburn-geometry" }
+burnburn-host-models = { path = "crates/burnburn-host-models" }
 burnburn-icons = { path = "crates/burnburn-icons" }
 burnburn-history = { path = "crates/burnburn-history" }
 burnburn-image = { path = "crates/burnburn-image" }

@@ -263,6 +263,7 @@ harness = false
 burnburn-document = { workspace = true }
 burnburn-editor = { workspace = true }
 burnburn-geometry = { workspace = true }
+burnburn-host-models = { workspace = true }
 # IM27: camera frames become `SourceImage`s (layers.toml allows image for the hosts).
 burnburn-image = { workspace = true }
 # StdFileSystem for AppPorts.fs until burnburn-runtime re-exports it (docs/coordination/gui.md).

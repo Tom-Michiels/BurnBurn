@@ -249,6 +249,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "burnburn-host-models"
+version = "0.1.0"
+dependencies = [
+ "burnburn-document",
+ "burnburn-editor",
+ "burnburn-geometry",
+ "burnburn-image",
+ "burnburn-io",
+ "burnburn-job",
+ "burnburn-machine",
+ "burnburn-presentation",
+ "burnburn-ruida",
+ "burnburn-runtime",
+ "burnburn-test-support",
+ "burnburn-text",
+ "burnburn-types",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "burnburn-icons"
 version = "0.1.0"
 dependencies = [
@@ -311,6 +332,7 @@ dependencies = [
  "burnburn-document",
  "burnburn-editor",
  "burnburn-geometry",
+ "burnburn-host-models",
  "burnburn-icons",
  "burnburn-image",
  "burnburn-io",
@@ -495,6 +517,7 @@ dependencies = [
  "burnburn-document",
  "burnburn-editor",
  "burnburn-geometry",
+ "burnburn-host-models",
  "burnburn-image",
  "burnburn-io",
  "burnburn-job",
