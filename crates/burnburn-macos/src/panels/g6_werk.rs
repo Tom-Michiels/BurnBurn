@@ -212,7 +212,7 @@ pub(super) fn trace_prep_lines(doc: &DocumentViewModel, locale: Locale) -> Optio
     Some(lines)
 }
 
-fn value_of<'a>(values: &'a [(G5Control, String)], control: G5Control) -> Option<&'a str> {
+fn value_of(values: &[(G5Control, String)], control: G5Control) -> Option<&str> {
     values.iter().find(|(c, _)| *c == control).map(|(_, v)| v.as_str())
 }
 
@@ -239,13 +239,13 @@ pub(super) fn trace_prep_intent(
                 typed(G5Control::PrepCorner { index: i, axis }, &p.perspective.corners[i][axis])
             };
             send(TracePrepIntent::ApplyPerspective {
-                corners: std::array::from_fn(|i| [corner(i, 0), corner(i, 1)]),
+                corners: Box::new(std::array::from_fn(|i| [corner(i, 0), corner(i, 1)])),
                 width: typed(G5Control::PrepWidth, &p.perspective.width),
                 height: typed(G5Control::PrepHeight, &p.perspective.height),
             })
         }
         G5Control::PrepClearCorners => {
-            p.perspective.on.then(|| UiIntent::TracePrep { document, intent: TracePrepIntent::ClearPerspective })
+            p.perspective.on.then_some(UiIntent::TracePrep { document, intent: TracePrepIntent::ClearPerspective })
         }
         G5Control::PrepAddMask => send(TracePrepIntent::AddMask {
             mode: if value_of(values, G5Control::PrepMaskKind).and_then(|v| v.trim().parse::<usize>().ok()) == Some(1) {

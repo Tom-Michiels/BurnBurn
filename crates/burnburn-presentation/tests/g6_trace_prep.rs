@@ -193,7 +193,11 @@ fn four_corners_correct_the_plane_and_the_panel_shows_the_transform() {
     let (_, plain_width, _) = shapes(&h, doc);
     assert!((plain_width - 5.7).abs() < 0.3, "the skewed photo: {plain_width}");
     let want = corners([["10", "8"], ["54", "8"], ["60", "40"], ["4", "40"]]);
-    send(&mut h, doc, TracePrepIntent::ApplyPerspective { corners: want.clone(), width: s("40"), height: s("32") });
+    send(
+        &mut h,
+        doc,
+        TracePrepIntent::ApplyPerspective { corners: Box::new(want.clone()), width: s("40"), height: s("32") },
+    );
     let p = prep(&h, doc);
     assert_eq!(p.issue, None);
     assert!(p.perspective.on);
@@ -233,7 +237,7 @@ fn the_size_of_the_corrected_image_defaults_to_the_longer_opposite_edges() {
         &mut h,
         doc,
         TracePrepIntent::ApplyPerspective {
-            corners: corners([["10", "8"], ["54", "8"], ["60", "40"], ["4", "40"]]),
+            corners: Box::new(corners([["10", "8"], ["54", "8"], ["60", "40"], ["4", "40"]])),
             width: s(""),
             height: s(""),
         },
@@ -248,7 +252,7 @@ fn corners_that_span_no_plane_or_cannot_be_read_are_refused_and_leave_the_recipe
     let (mut h, doc) = opened(&trapezoid());
     let before = shapes(&h, doc);
     let apply = |h: &mut HeadlessEditorHarness, c: [[&str; 2]; 4], w: &str, hh: &str| {
-        send(h, doc, TracePrepIntent::ApplyPerspective { corners: corners(c), width: s(w), height: s(hh) });
+        send(h, doc, TracePrepIntent::ApplyPerspective { corners: Box::new(corners(c)), width: s(w), height: s(hh) });
         prep(h, doc)
     };
     // Three corners on one line.

@@ -35,7 +35,7 @@ fn circle(s: &mut DocumentSession, cx: f64, cy: f64, r: f64) -> GeometryId {
         .created[0]
 }
 
-fn objects<'a>(s: &'a DocumentSession, ids: &[GeometryId]) -> Vec<GeometryObject> {
+fn objects(s: &DocumentSession, ids: &[GeometryId]) -> Vec<GeometryObject> {
     let snap = s.snapshot();
     let _ = s;
     ids.iter().map(|id| snap.object(*id).unwrap().clone()).collect()

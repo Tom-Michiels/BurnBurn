@@ -70,7 +70,7 @@ pub enum TracePrepIntent {
     /// The four-point correction: corners as typed `(x, y)`, then the size of the corrected image.
     /// Empty size fields take the longer of each pair of opposite edges.
     ApplyPerspective {
-        corners: [[String; 2]; 4],
+        corners: Box<[[String; 2]; 4]>,
         width: String,
         height: String,
     },
