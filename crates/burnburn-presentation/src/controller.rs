@@ -472,9 +472,18 @@ impl AppController {
         }
         // Job events the machine reported since the last intent reach the counters first.
         let production = self.sync_production();
+        // The document keeps the selection in its undo records (P02): tell it before and after.
+        self.sync_selections();
         let mut update = self.dispatch(intent);
+        self.sync_selections();
         update.view_changed |= production.view_changed;
         update
+    }
+
+    fn sync_selections(&mut self) {
+        for s in self.sessions.values_mut() {
+            s.doc.set_selection(s.selection.ids());
+        }
     }
 
     fn dispatch(&mut self, intent: UiIntent) -> AppUpdate {
@@ -792,10 +801,15 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
     match result {
         Ok(outcome) => {
             s.cancel_revision_sensitive();
-            let mut focus: Vec<_> = outcome.changes.created.clone();
-            focus.extend(outcome.changes.modified.iter().copied());
-            if !focus.is_empty() {
-                s.selection.apply(&SelectionChange::Replace(focus));
+            if let Some(kept) = outcome.selection.clone() {
+                // Undo/redo: the document's record knows what was selected (P02).
+                s.selection.apply(&SelectionChange::Replace(kept));
+            } else {
+                let mut focus: Vec<_> = outcome.changes.created.clone();
+                focus.extend(outcome.changes.modified.iter().copied());
+                if !focus.is_empty() {
+                    s.selection.apply(&SelectionChange::Replace(focus));
+                }
             }
             let snapshot = s.doc.snapshot();
             s.selection.retain_existing(&snapshot);

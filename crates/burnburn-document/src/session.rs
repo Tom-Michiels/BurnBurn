@@ -30,6 +30,9 @@ struct HistoryEntry {
     after: DocumentSnapshot,
     changes: ChangeSet,
     label: UndoLabel,
+    /// Selection before the command and the one the user ended with (P02).
+    selection_before: Vec<GeometryId>,
+    selection_after: Option<Vec<GeometryId>>,
     /// Estimated memory this step retains (see [`step_bytes`]).
     bytes: usize,
 }
@@ -75,6 +78,9 @@ pub struct DocumentSession {
     /// Content last marked as saved; compared by pointer, since undo restores the same `Arc`s.
     saved: Option<Saved>,
     budget: HistoryBudget,
+    /// The selection the host last reported, and whether it belongs to the newest undo entry.
+    selection: Vec<GeometryId>,
+    selection_tracks_top: bool,
 }
 
 type Saved = (
@@ -128,6 +134,8 @@ impl DocumentSession {
             redo: Vec::new(),
             saved,
             budget: HistoryBudget::DEFAULT,
+            selection: Vec::new(),
+            selection_tracks_top: false,
         }
     }
 
@@ -153,6 +161,20 @@ impl DocumentSession {
             dropped += 1;
         }
         dropped
+    }
+
+    /// Tells the session what is selected now. A command applied later records this as the
+    /// selection to come back to on undo; while the newest history entry is the live state, the
+    /// value also becomes the selection that redo restores. Plain ids: no native or editor types.
+    pub fn set_selection(&mut self, ids: &[GeometryId]) {
+        if self.selection != ids {
+            self.selection = ids.to_vec();
+        }
+        if self.selection_tracks_top
+            && let Some(entry) = self.undo.last_mut()
+        {
+            entry.selection_after = Some(self.selection.clone());
+        }
     }
 
     pub fn id(&self) -> DocumentId {
@@ -253,12 +275,21 @@ impl DocumentSession {
         self.current = Arc::new(after.clone());
         self.redo.clear();
         let bytes = step_bytes(&after, &txn.changes);
-        self.undo.push(HistoryEntry { before, after, changes: txn.changes.clone(), label, bytes });
+        self.undo.push(HistoryEntry {
+            before,
+            after,
+            changes: txn.changes.clone(),
+            label,
+            selection_before: self.selection.clone(),
+            selection_after: None,
+            bytes,
+        });
+        self.selection_tracks_top = true;
         let dropped_steps = self.trim_history();
         if dropped_steps > 0 {
             txn.warnings.push(CommandWarning::HistoryTrimmed { dropped_steps });
         }
-        Ok(CommandOutcome { previous, revision, changes: txn.changes, warnings: txn.warnings, undo_label: label })
+        Ok(CommandOutcome { previous, revision, changes: txn.changes, warnings: txn.warnings, undo_label: label, selection: None })
     }
 
     /// Restores the content and identities before the last command, as a new revision.
@@ -267,7 +298,10 @@ impl DocumentSession {
         let revision = self.revision().next().ok_or(CommandError::RevisionsExhausted)?;
         let entry = self.undo.pop().ok_or(CommandError::NothingToUndo)?;
         let changes = inverse(&entry.changes);
-        let outcome = self.restore(&entry.before, revision, changes, entry.label);
+        let mut outcome = self.restore(&entry.before, revision, changes, entry.label);
+        self.selection = entry.selection_before.clone();
+        self.selection_tracks_top = false;
+        outcome.selection = Some(entry.selection_before.clone());
         self.redo.push(entry);
         Ok(outcome)
     }
@@ -277,7 +311,12 @@ impl DocumentSession {
         self.check_expected(expected)?;
         let revision = self.revision().next().ok_or(CommandError::RevisionsExhausted)?;
         let entry = self.redo.pop().ok_or(CommandError::NothingToRedo)?;
-        let outcome = self.restore(&entry.after, revision, entry.changes.clone(), entry.label);
+        let mut outcome = self.restore(&entry.after, revision, entry.changes.clone(), entry.label);
+        if let Some(after) = &entry.selection_after {
+            self.selection = after.clone();
+            outcome.selection = Some(after.clone());
+        }
+        self.selection_tracks_top = true;
         self.undo.push(entry);
         Ok(outcome)
     }
@@ -305,7 +344,7 @@ impl DocumentSession {
             )
             .with_arrange_layer(Arc::clone(&content.arrange)),
         );
-        CommandOutcome { previous, revision, changes, warnings: Vec::new(), undo_label: label }
+        CommandOutcome { previous, revision, changes, warnings: Vec::new(), undo_label: label, selection: None }
     }
 
     fn check_expected(&self, expected: RevisionId) -> Result<(), CommandError> {
