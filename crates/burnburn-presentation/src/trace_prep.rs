@@ -27,6 +27,14 @@ pub enum PrepField {
     RegionThreshold,
     /// The list of anchor points of a correction, `x, y; x, y`.
     Anchors,
+    /// The radial lens coefficients (G7-trace, T03).
+    LensK1,
+    LensK2,
+    /// Node goal of a local correction (G7-trace, T05): most nodes, and the coarsest tolerance (mm).
+    NodeLimit,
+    NodeTolerance,
+    /// The radius of the brush in pixels.
+    BrushRadius,
 }
 
 /// Why a preparation was refused. The recipe stays as it was.
@@ -45,6 +53,16 @@ pub enum PrepIssue {
     NothingToCorrect,
     /// The corrections stored with the trace could not be read; the trace starts without them.
     StoredCorrectionsUnreadable,
+    /// A contour that is not in the result in force (protect, keep).
+    UnknownContour,
+    /// A dropped piece that is not in the report in force (restore).
+    UnknownRemoved,
+    /// A click or a stroke while no picking was started.
+    PickNotStarted,
+    /// A stroke without points, or with points all outside the image.
+    InvalidStroke,
+    /// The corner points clicked cannot be told apart (two on the same place).
+    CornersTooClose,
 }
 
 /// What a mask does with the foreground inside it.
@@ -99,6 +117,34 @@ pub enum TracePrepIntent {
     RemoveCorrection {
         index: usize,
     },
+    /// Correct the radial distortion of the lens before anything else (G7-trace, T03): the two
+    /// coefficients as typed. Barrel distortion is negative.
+    UseLens {
+        k1: String,
+        k2: String,
+    },
+    ClearLens,
+    /// Contour `id` of the result in force is (`on`) or is no longer protected from the next area
+    /// retrace: inside the area it stays exactly as it is (G7-trace, T05).
+    ProtectContour {
+        id: u64,
+        on: bool,
+    },
+    /// The goal of the next area retrace: at most `max_nodes` nodes in the whole result, reached by
+    /// raising the tolerance up to `max_tolerance_mm`. Both empty: no goal.
+    SetNodeTarget {
+        max_nodes: String,
+        max_tolerance_mm: String,
+    },
+    /// Contour `id` is (`keep`) or is no longer protected from "ignore less than" (G7-trace, T06).
+    KeepContour {
+        id: u64,
+        keep: bool,
+    },
+    /// Bring back piece number `index` of the report that "ignore less than" dropped (G7-trace, T06).
+    RestoreRemoved {
+        index: usize,
+    },
 }
 
 /// The local threshold in force.
@@ -129,8 +175,10 @@ pub struct PrepPerspective {
     pub transform: Option<PrepTransform>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PrepMask {
+    /// Radius in pixels when the mask is a brush stroke (x, y, width and height are then its box).
+    pub brush_px: Option<f64>,
     pub mode: MaskMode,
     pub x: u32,
     pub y: u32,
@@ -150,6 +198,12 @@ pub struct TracePrepViewModel {
     pub corrections: Vec<PrepCorrection>,
     /// The cost of simplifying, once there is a contour result.
     pub report: Option<PrepReport>,
+    pub lens: PrepLens,
+    /// The contours of the contour result in force (T05, T06).
+    pub contours: Vec<PrepContour>,
+    pub node_target: Option<PrepNodeTarget>,
+    /// What pointing in the image is waiting for, if anything (T03).
+    pub pick: Option<crate::trace_pick::PrepPick>,
     pub issue: Option<PrepIssue>,
     /// A trace of the prepared image is running.
     pub computing: bool,
@@ -179,7 +233,50 @@ pub struct PrepCorrection {
     /// The gray level the area was traced at, or the local threshold in words.
     pub threshold: String,
     pub anchors: usize,
+    /// How many contours the correction left alone inside its area (T05).
+    pub protected: usize,
+    /// The node goal and what it reached (T05); `met == false` is said, never hidden.
+    pub node_goal: Option<PrepNodeGoal>,
     pub status: CorrectionStatus,
+}
+
+/// What a node goal reached.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrepNodeGoal {
+    pub max_nodes: usize,
+    pub met: bool,
+    pub nodes: usize,
+    pub tolerance_mm: f64,
+}
+
+/// A contour of the result in force, to protect or to keep.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrepContour {
+    pub id: u64,
+    pub hole: bool,
+    pub area_mm2: f64,
+    /// Middle of its box, millimetres in the frame of the trace (y up).
+    pub x_mm: f64,
+    pub y_mm: f64,
+    /// Left alone by the next area retrace (T05).
+    pub protected: bool,
+    /// Never dropped by "ignore less than" (T06).
+    pub kept: bool,
+}
+
+/// The radial lens correction in force (T03).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrepLens {
+    pub on: bool,
+    pub k1: String,
+    pub k2: String,
+}
+
+/// The goal of the next area retrace, as typed (T05).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrepNodeTarget {
+    pub max_nodes: String,
+    pub max_tolerance_mm: String,
 }
 
 /// One of the largest deviations between the fitted outline and the source contour.

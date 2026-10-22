@@ -320,6 +320,11 @@ pub enum UiIntent {
         document: DocumentId,
         intent: crate::trace_prep::TracePrepIntent,
     },
+    /// Pointing in the image of the open tracer: corners clicked, masks painted (G7-trace, T03).
+    TracePick {
+        document: DocumentId,
+        pick: crate::trace_pick::TracePick,
+    },
     /// A decision on the open centre-line result (T04, T08).
     CenterlineEdit {
         document: DocumentId,

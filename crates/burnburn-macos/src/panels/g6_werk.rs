@@ -43,6 +43,8 @@ fn field_name(field: PrepField, locale: Locale) -> String {
         PrepField::MaskY => t(G6Text::FieldMaskY, locale),
         PrepField::RegionThreshold => t(G6Text::FieldThreshold, locale),
         PrepField::Anchors => t(G6Text::FieldAnchors, locale),
+        // Fields of the golf-7 lines (panels/g7_trace.rs) name themselves there.
+        _ => crate::panels::g7_trace::field_name(field, locale),
     }
 }
 

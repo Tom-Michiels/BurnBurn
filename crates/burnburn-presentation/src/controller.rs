@@ -85,6 +85,7 @@ mod tasks;
 mod tests_gen;
 mod text;
 mod trace;
+mod trace_g7;
 mod trace_link;
 mod trace_prep;
 mod variable;
@@ -602,6 +603,7 @@ impl AppController {
                 self.with_session(document, |s| notes::set(s, document, text, request))
             }
             UiIntent::TracePrep { document, intent } => self.trace_prep_intent(document, intent),
+            UiIntent::TracePick { document, pick } => self.trace_pick(document, pick),
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
             }
@@ -1016,6 +1018,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::ChoosePlate { document, .. }
         | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::TracePrep { document, .. }
+        | UiIntent::TracePick { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }
