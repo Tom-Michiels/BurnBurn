@@ -43,7 +43,13 @@ pub enum PartShape {
     Fixed(Path),
     /// Fixed geometry whose box follows parameters and formulas (G9-editor): `path` keeps its own
     /// shape and is stretched from its own box to the box `x, y, width, height`.
-    Fitted { path: Path, x: Dim, y: Dim, width: Dim, height: Dim },
+    Fitted {
+        path: Path,
+        x: Dim,
+        y: Dim,
+        width: Dim,
+        height: Dim,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,7 +183,8 @@ fn shape_path(shape: &PartShape, values: &BTreeMap<String, Length>) -> Result<(O
             }
             let (sx, sy) = (target_w / own.width(), target_h / own.height());
             // Own corner to the origin, stretch, then to the target corner.
-            let to_origin = Affine::translate(Vector::new(-own.min().x, -own.min().y)).map_err(|_| "path".to_owned())?;
+            let to_origin =
+                Affine::translate(Vector::new(-own.min().x, -own.min().y)).map_err(|_| "path".to_owned())?;
             let stretch = Affine::scale(sx, sy).map_err(|_| name(width, "width"))?;
             let to_target = Affine::translate(Vector::new(target_x, target_y)).map_err(|_| "x".to_owned())?;
             let fitted = path.transform(&to_origin).transform(&stretch).transform(&to_target);

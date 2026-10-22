@@ -6,9 +6,7 @@
 use std::sync::Arc;
 
 use burnburn_document::structure::{PartInstanceId, PlateId, StructureCommand};
-use burnburn_document::{
-    CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, GeometrySource,
-};
+use burnburn_document::{CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, GeometrySource};
 use burnburn_types::{CancellationSource, DocumentId, GeometryId, RequestId, TaskId};
 
 use crate::nest_task::{PlateSheet, build_plate_job};

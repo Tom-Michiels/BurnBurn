@@ -108,6 +108,24 @@ fn number(text: &str, field: TextField, signed: bool) -> Result<f64, TextIssue> 
     parsed.map(Length::mm).map_err(|_| invalid(field))
 }
 
+/// The byte offset in `content` of the position typed in a field (G9-editor, E07): a whole number
+/// of characters from the start, a negative one from the end, an empty one the end; beyond either
+/// end is that end.
+fn byte_at(content: &str, position: &str) -> Result<usize, TextIssue> {
+    let position = position.trim();
+    if position.is_empty() {
+        return Ok(content.len());
+    }
+    let n = position.parse::<i64>().map_err(|_| invalid(TextField::Position))?;
+    let total = content.chars().count();
+    let index = if n >= 0 {
+        usize::try_from(n).map_or(total, |n| n.min(total))
+    } else {
+        total.saturating_sub(usize::try_from(n.unsigned_abs()).unwrap_or(usize::MAX))
+    };
+    Ok(content.char_indices().nth(index).map_or(content.len(), |(i, _)| i))
+}
+
 /// What `edit` changes in a copy of the source; an `Err` is shown in the toolbar and sends nothing.
 fn apply(next: &mut TextObject, fonts: Option<&SharedFonts>, edit: TextEdit) -> Result<(), TextIssue> {
     match edit {
@@ -173,6 +191,16 @@ fn apply(next: &mut TextObject, fonts: Option<&SharedFonts>, edit: TextEdit) -> 
         TextEdit::PathDistort(d) => next.path.as_mut().ok_or(TextIssue::NotOnPath)?.warp = d == Distort::Warp,
         TextEdit::UnbindPath => {
             next.path.take().ok_or(TextIssue::NotOnPath)?;
+        }
+        TextEdit::InsertAt { position, text } => {
+            let at = byte_at(&next.content, &position)?;
+            next.content.insert_str(at, &text);
+        }
+        TextEdit::DeleteAt { position, count } => {
+            let count = count.trim().parse::<usize>().map_err(|_| invalid(TextField::Count))?;
+            let from = byte_at(&next.content, &position)?;
+            let end = next.content[from..].char_indices().nth(count).map_or(next.content.len(), |(i, _)| from + i);
+            next.content.replace_range(from..end, "");
         }
     }
     Ok(())
@@ -407,6 +435,7 @@ pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
     out.uppercase = views.iter().all(|v| v.uppercase);
     out.single_line = views.iter().all(|v| v.single_line);
     out.mixed = m;
+    out.contents = views.iter().flat_map(|v| v.contents.iter().cloned()).collect();
     let mut families: Vec<String> = views.iter().flat_map(|v| v.families.iter().cloned()).collect();
     families.sort();
     families.dedup();
@@ -469,6 +498,7 @@ fn toolbar_of(s: &Session, snapshot: &DocumentSnapshot, id: TextId) -> Option<Te
         }),
         can_convert: !s.selection.is_empty(),
         variable: t.variable.is_some(),
+        contents: vec![t.content.clone()],
         issue: s.text.issue.filter(|(t, _)| *t == id).map(|(_, i)| i),
         path: t.path.map(|b| {
             let guide = snapshot.object(b.guide);

@@ -832,8 +832,14 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             };
             let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
             let target = match (&mut slot.shape, field) {
-                (PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. } | PartShape::Fitted { x, .. }, ShapeField::X) => x,
-                (PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. } | PartShape::Fitted { y, .. }, ShapeField::Y) => y,
+                (
+                    PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. } | PartShape::Fitted { x, .. },
+                    ShapeField::X,
+                ) => x,
+                (
+                    PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. } | PartShape::Fitted { y, .. },
+                    ShapeField::Y,
+                ) => y,
                 (PartShape::Rectangle { width, .. } | PartShape::Fitted { width, .. }, ShapeField::Width) => width,
                 (PartShape::Rectangle { height, .. } | PartShape::Fitted { height, .. }, ShapeField::Height) => height,
                 (PartShape::Circle { radius, .. }, ShapeField::Radius) => radius,
@@ -893,9 +899,7 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
         }
         StructureEdit::RotateInstance { .. }
         | StructureEdit::DistributeOverPlates { .. }
-        | StructureEdit::DistributeAndNestOverPlates { .. } => {
-            Err(MessageKey::CommandRejected)
-        }
+        | StructureEdit::DistributeAndNestOverPlates { .. } => Err(MessageKey::CommandRejected),
         StructureEdit::AddModifierStep { modifier, step } => {
             let (id, mut chain) = chain_of(layer, modifier)?;
             let own = DerivedOwner::Modifier(id);

@@ -7,9 +7,7 @@
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, StructureEdit, UiIntent};
 use burnburn_types::DocumentId;
 use burnburn_windows::forms::g5;
-use burnburn_windows::forms::{
-    ControlId, ControlValue, Form, FormContext, FormKind, FormOutcome, PanelState,
-};
+use burnburn_windows::forms::{ControlId, ControlValue, Form, FormContext, FormKind, FormOutcome, PanelState};
 use burnburn_windows::l10n::Locale;
 use burnburn_windows::panels::{EditorControl as E, G5Control as C, G5Panel as P};
 

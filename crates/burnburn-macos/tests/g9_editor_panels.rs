@@ -48,7 +48,9 @@ fn find(all: &[G5Line], control: E) -> &G5Line {
 fn the_distribute_block_has_a_nest_button_in_both_languages() {
     let (h, doc) = window();
     let en = lines(&h, doc, Locale::En);
-    assert!(matches!(find(&en, E::PlatesDistributeNest), G5Line::Button { enabled: true, title, .. } if title.contains("nest")));
+    assert!(
+        matches!(find(&en, E::PlatesDistributeNest), G5Line::Button { enabled: true, title, .. } if title.contains("nest"))
+    );
     let nl = lines(&h, doc, Locale::Nl);
     assert!(matches!(find(&nl, E::PlatesDistributeNest), G5Line::Button { title, .. } if title.contains("nest")));
 }

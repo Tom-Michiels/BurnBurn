@@ -237,6 +237,6 @@ fn a_plain_object_without_a_chain_has_no_stack_panel() {
 fn every_panel_is_listed_once() {
     let mut all = G5Panel::ALL.to_vec();
     all.dedup();
-    assert_eq!(all.len(), 13);
+    assert_eq!(all.len(), 14);
     assert!(all.contains(&G5Panel::Stack));
 }

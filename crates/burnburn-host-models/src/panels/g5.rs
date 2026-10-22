@@ -45,10 +45,13 @@ pub enum G5Panel {
     /// The modifier stack of the selected object(s) and the way to add a step; opens by itself
     /// while the selection is the source or an output of a chain (G8-editor, E06).
     Stack,
+    /// The content of the selected text(s): insert and delete in the middle; opens by itself
+    /// while the selection is made of texts (G9-editor, E07).
+    TextContent,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 13] = [
+    pub const ALL: [G5Panel; 14] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -62,6 +65,7 @@ impl G5Panel {
         G5Panel::Recognition,
         G5Panel::TextPath,
         G5Panel::Stack,
+        G5Panel::TextContent,
     ];
 }
 
@@ -388,6 +392,7 @@ pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
             | G5Panel::StartConfirm
             | G5Panel::TextPath
             | G5Panel::Stack
+            | G5Panel::TextContent
     )
 }
 
@@ -464,6 +469,11 @@ pub fn g5_panel(
         G5Panel::Stack => {
             let lines = super::g7_editor::stack_lines(doc, locale)?;
             let title = crate::l10n_g7_editor::g7_text(crate::l10n_g7_editor::G7Text::StackTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::TextContent => {
+            let lines = super::g7_editor::text_content_lines(doc, locale)?;
+            let title = crate::l10n_g7_editor::g7_text(crate::l10n_g7_editor::G7Text::TextContentTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
         G5Panel::TextPath => {

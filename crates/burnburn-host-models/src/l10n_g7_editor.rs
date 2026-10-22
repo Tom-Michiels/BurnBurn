@@ -110,6 +110,19 @@ texts! {
     ),
     DistributeGap => ("Tussenruimte (mm)", "Space between parts (mm)"),
     DistributeButton => ("Verdeel exemplaren zonder plaat", "Distribute instances without a plate"),
+    TextContentTitle => ("Tekst bewerken", "Edit text"),
+    TextContentTexts => ("Geselecteerde teksten ({0}):", "Selected texts ({0}):"),
+    TextContentRow => ("{0}: «{1}» ({2} tekens)", "{0}: \"{1}\" ({2} characters)"),
+    TextContentMore => ("… en {0} meer", "... and {0} more"),
+    TextContentHint => (
+        "Een positie telt tekens vanaf het begin van elke tekst; een negatieve telt vanaf het eind, leeg is het eind, en voorbij het eind van een kortere tekst is dat zijn eind. Alle teksten veranderen in één stap.",
+        "A position counts characters from the start of each text; a negative one counts from its end, empty is the end, and beyond the end of a shorter text is its end. All texts change in one step."
+    ),
+    TextContentPosition => ("Positie (tekens)", "Position (characters)"),
+    TextContentInsert => ("Invoegen: tekst", "Insert: text"),
+    TextContentInsertGo => ("Voeg in op de positie", "Insert at the position"),
+    TextContentCount => ("Wissen: aantal tekens", "Delete: number of characters"),
+    TextContentDeleteGo => ("Wis vanaf de positie", "Delete from the position"),
     DistributeNestButton => ("Verdeel en nest", "Distribute and nest"),
     DistributeNestHint => (
         "Verdeel en nest kiest de plaat net zo en laat het nesten daarna bepalen waar elk exemplaar op de plaat ligt (ook gedraaid). De platen liggen naast elkaar vanaf de oorsprong van het document, 10 mm uit elkaar. Het nesten loopt op de achtergrond.",

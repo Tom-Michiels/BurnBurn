@@ -140,6 +140,13 @@ pub enum EditorControl {
     /// A choice: rigid, then warp.
     TextPathDistort,
     TextPathUnbind,
+    // --- The content of the selected texts (G9, E07).
+    /// Where to insert or delete (characters from the start; negative from the end; empty is the end).
+    TextEditPosition,
+    TextEditInsert,
+    TextEditInsertGo,
+    TextEditCount,
+    TextEditDeleteGo,
 }
 
 fn t(text: G7Text, locale: Locale) -> String {
@@ -554,6 +561,35 @@ pub(super) fn text_path_lines(doc: &DocumentViewModel, locale: Locale) -> Option
     Some(lines)
 }
 
+/// The panel of the content of the selected text(s) (G9-editor, E07). `None` when no text is selected.
+pub(super) fn text_content_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Line>> {
+    const SHOWN: usize = 6;
+    const PREVIEW_CHARS: usize = 40;
+    let bar = doc.text_toolbar.as_ref()?;
+    let mut lines = vec![G5Line::Text(g7_fmt(G7Text::TextContentTexts, locale, &[&bar.contents.len().to_string()]))];
+    for (n, content) in bar.contents.iter().take(SHOWN).enumerate() {
+        let mut preview: String = content.chars().take(PREVIEW_CHARS).collect();
+        if content.chars().count() > PREVIEW_CHARS {
+            preview.push('…');
+        }
+        let chars = content.chars().count().to_string();
+        lines.push(G5Line::Text(g7_fmt(G7Text::TextContentRow, locale, &[&(n + 1).to_string(), &preview, &chars])));
+    }
+    if bar.contents.len() > SHOWN {
+        lines.push(G5Line::Text(g7_fmt(G7Text::TextContentMore, locale, &[&(bar.contents.len() - SHOWN).to_string()])));
+    }
+    lines.push(G5Line::Text(t(G7Text::TextContentHint, locale)));
+    lines.push(field(EditorControl::TextEditPosition, t(G7Text::TextContentPosition, locale), String::new()));
+    lines.push(field(EditorControl::TextEditInsert, t(G7Text::TextContentInsert, locale), String::new()));
+    lines.push(button(EditorControl::TextEditInsertGo, t(G7Text::TextContentInsertGo, locale), true));
+    lines.push(field(EditorControl::TextEditCount, t(G7Text::TextContentCount, locale), "1".to_owned()));
+    lines.push(button(EditorControl::TextEditDeleteGo, t(G7Text::TextContentDeleteGo, locale), true));
+    if let Some(issue) = bar.issue {
+        lines.push(G5Line::Problem(super::text::text_issue_text(issue, locale)));
+    }
+    Some(lines)
+}
+
 fn structure(document: DocumentId, edit: StructureEdit) -> Option<UiIntent> {
     Some(UiIntent::Structure { document, edit })
 }
@@ -735,6 +771,21 @@ pub(super) fn editor_intent(
             document,
             StructureEdit::DistributeOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
         ),
+        EditorControl::TextEditPosition | EditorControl::TextEditInsert | EditorControl::TextEditCount => None,
+        EditorControl::TextEditInsertGo => doc.text_toolbar.as_ref().map(|_| UiIntent::Text {
+            document,
+            edit: TextEdit::InsertAt {
+                position: typed(EditorControl::TextEditPosition).unwrap_or_default(),
+                text: typed(EditorControl::TextEditInsert).unwrap_or_default(),
+            },
+        }),
+        EditorControl::TextEditDeleteGo => doc.text_toolbar.as_ref().map(|_| UiIntent::Text {
+            document,
+            edit: TextEdit::DeleteAt {
+                position: typed(EditorControl::TextEditPosition).unwrap_or_default(),
+                count: typed(EditorControl::TextEditCount).unwrap_or_default(),
+            },
+        }),
         EditorControl::PlatesDistributeNest => structure(
             document,
             StructureEdit::DistributeAndNestOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
