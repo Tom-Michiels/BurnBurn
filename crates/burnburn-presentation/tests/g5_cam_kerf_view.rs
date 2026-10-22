@@ -36,7 +36,9 @@ fn ghosts(h: &HeadlessEditorHarness, doc: DocumentId) -> Vec<((f64, f64), (f64, 
         .overlays
         .iter()
         .filter_map(|o| match o {
-            Overlay::DragPreview { path, .. } => path.bounds().map(|b| ((b.min().x, b.min().y), (b.max().x, b.max().y))),
+            Overlay::DragPreview { path, .. } => {
+                path.bounds().map(|b| ((b.min().x, b.min().y), (b.max().x, b.max().y)))
+            }
             _ => None,
         })
         .collect()
