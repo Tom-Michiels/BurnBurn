@@ -40,6 +40,24 @@
       "content": "Licence text for BIZUDPGothic-Regular.ttf."
     },
     {
+      "path": "DejaVuSans.ttf",
+      "role": "font",
+      "bytes": 756072,
+      "sha256": "3fdf69cabf06049ea70a00b5919340e2ce1e6d02b0cc3c4b44fb6801bd1e0d22",
+      "licence": "Bitstream Vera licence with public-domain DejaVu changes (DejaVuSans-LICENSE.txt); permissive",
+      "origin": "Copied 2026-10-22 (G7-trace), unchanged, from the matplotlib package already on this machine (mpl-data/fonts/ttf/DejaVuSans.ttf, which ships LICENSE_DEJAVU). Not downloaded.",
+      "content": "Arabic test font: isolated, initial, medial and final shapes and the lam-alef ligature through GSUB, combining marks."
+    },
+    {
+      "path": "DejaVuSans-LICENSE.txt",
+      "role": "licence",
+      "bytes": 4816,
+      "sha256": "d75938dec098f06f0ac3c00853065d94f020be1c3c62ef1dc2975ba15b4d9b0e",
+      "licence": "Bitstream Vera licence",
+      "origin": "Copied with the font from matplotlib's LICENSE_DEJAVU.",
+      "content": "Licence text for DejaVuSans.ttf."
+    },
+    {
       "path": "reference_metrics.py",
       "role": "reference-tool",
       "bytes": 3019,
