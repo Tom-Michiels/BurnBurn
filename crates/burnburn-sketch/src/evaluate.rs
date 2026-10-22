@@ -33,10 +33,11 @@ impl SolvedSketch {
         }
     }
 
-    /// Radius of a circle or arc.
+    /// Radius of a circle or arc; of an ellipse its semi-major radius (centre to major end).
     pub fn radius(&self, id: EntityId) -> Option<f64> {
         match self.entities.get(&id)?.entity {
             DocEntity::Circle { radius, .. } => Some(radius),
+            DocEntity::Ellipse { center, major, .. } => Some(self.point(center)?.distance(self.point(major)?)),
             DocEntity::Arc { center, start, .. } => Some(self.point(center)?.distance(self.point(start)?)),
             _ => None,
         }
@@ -245,6 +246,10 @@ fn lower(sketch: &Sketch) -> Option<(Problem, Index)> {
                 center: get(center, &index)?,
                 radius: sol.and_then(|s| s.radii.get(&id).copied()).unwrap_or(radius),
             },
+            // The solver sees an ellipse as its major axis: a line from the centre to the major end.
+            DocEntity::Ellipse { center, major, .. } => {
+                Entity::Line { start: get(center, &index)?, end: get(major, &index)? }
+            }
             _ => return None,
         };
         let pid = problem.add(entity);
@@ -254,8 +259,27 @@ fn lower(sketch: &Sketch) -> Option<(Problem, Index)> {
     Some((problem, index))
 }
 
-fn relation(r: Relation, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<Constraint> {
+/// The solver entity of the centre of a circle, arc or ellipse.
+fn centre_of(sketch: &Sketch, id: EntityId, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<solver::EntityId> {
+    match sketch.entity(id)?.entity {
+        DocEntity::Circle { center, .. } | DocEntity::Arc { center, .. } | DocEntity::Ellipse { center, .. } => {
+            e(center)
+        }
+        _ => None,
+    }
+}
+
+fn relation(
+    sketch: &Sketch,
+    r: Relation,
+    e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
+) -> Option<Constraint> {
+    let is_ellipse = |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
     Some(match r {
+        // The solver's concentricity wants round curves; an ellipse shares its centre point.
+        Relation::Concentric(a, b) if is_ellipse(a) || is_ellipse(b) => {
+            Constraint::Coincident(centre_of(sketch, a, e)?, centre_of(sketch, b, e)?)
+        }
         Relation::Coincident(a, b) => Constraint::Coincident(e(a)?, e(b)?),
         Relation::PointOn { point, curve } => Constraint::PointOn { point: e(point)?, curve: e(curve)? },
         Relation::Horizontal(l) => Constraint::Horizontal(e(l)?),
@@ -272,8 +296,19 @@ fn relation(r: Relation, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Op
     })
 }
 
-fn dimension(kind: DimensionKind, value: f64, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<Constraint> {
+fn dimension(
+    sketch: &Sketch,
+    kind: DimensionKind,
+    value: f64,
+    e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
+) -> Option<Constraint> {
+    let is_ellipse = |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
     Some(match kind {
+        // An ellipse is its major axis for the solver: radius = semi-major, diameter = full axis.
+        DimensionKind::Radius { curve } if is_ellipse(curve) => Constraint::Length { line: e(curve)?, value },
+        DimensionKind::Diameter { curve } if is_ellipse(curve) => {
+            Constraint::Length { line: e(curve)?, value: value / 2.0 }
+        }
         DimensionKind::Distance { a, b, along: al } => {
             Constraint::Distance { a: e(a)?, b: e(b)?, value, along: along(al) }
         }
@@ -328,10 +363,10 @@ pub fn evaluate_sketch(
     let mut any_invalid = false;
     for (id, c) in sketch.constraints() {
         let lowered = match c {
-            SketchConstraint::Relation(r) => relation(*r, &e),
+            SketchConstraint::Relation(r) => relation(sketch, *r, &e),
             SketchConstraint::Dimension(d) if d.role == DimensionRole::Driven => continue,
             SketchConstraint::Dimension(d) => match dim_value(d.kind, &d.text, &params) {
-                Ok(v) => dimension(d.kind, v, &e),
+                Ok(v) => dimension(sketch, d.kind, v, &e),
                 Err(err) => {
                     diagnostics.insert(id, Diagnosis::Invalid(err));
                     any_invalid = true;

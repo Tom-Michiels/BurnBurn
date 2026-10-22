@@ -60,6 +60,9 @@ fn entity_to(id: EntityId, e: &SketchEntity) -> Option<d::Entity> {
             d::Shape::Arc { center: center.raw(), start: start.raw(), end: end.raw(), clockwise }
         }
         Entity::Circle { center, radius } => d::Shape::Circle { center: center.raw(), radius: Num(radius) },
+        Entity::Ellipse { center, major, minor } => {
+            d::Shape::Ellipse { center: center.raw(), major: major.raw(), minor: Num(minor) }
+        }
         _ => return None,
     };
     Some(d::Entity { id: id.raw(), construction: e.construction, shape })
@@ -178,6 +181,11 @@ fn sketch_from(si: usize, s: &d::Sketch) -> Result<Sketch, LoadError> {
             d::Shape::Circle { center, radius } => {
                 Entity::Circle { center: e(center), radius: num(&|| format!("{}.radius", at()), radius)? }
             }
+            d::Shape::Ellipse { center, major, minor } => Entity::Ellipse {
+                center: e(center),
+                major: e(major),
+                minor: num(&|| format!("{}.minor", at()), minor)?,
+            },
         };
         entities.push((e(en.id), SketchEntity { entity, construction: en.construction }));
     }

@@ -47,6 +47,10 @@ impl CanonicalEncode for Definition<'_> {
                     ids(out, "circle", &[center.raw()]);
                     out.f64(radius);
                 }
+                Entity::Ellipse { center, major, minor } => {
+                    ids(out, "ellipse", &[center.raw(), major.raw()]);
+                    out.f64(minor);
+                }
             }
         }
         out.u64(s.constraints().len() as u64);
