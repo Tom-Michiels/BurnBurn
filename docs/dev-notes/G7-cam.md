@@ -55,6 +55,8 @@ Bevindingen onderweg (echte bugs of aannames):
   probeert daarom ook contactposities (onderkant/rand van buren en de bruikbare plaat).
 - **Catalogus-test**: `cargo xtask verify` (eerste run) liet `macos tests/l10n.rs::edit_round_keys_are_listed_with_nl_and_en` falen
   (`UndoAction(Arrange(NestCopies))` ontbrak in `known_message_keys`); toegevoegd, daarna `cargo test -p burnburn-macos --locked --test l10n` 7 ok.
+- **Fixturelijst**: `cargo xtask verify` (tweede run) liet `test-support tests/fixtures.rs::project_fixture_hashes_match_manifest` falen
+  (de lijst van projectfixtures bewaakt het aantal); de nieuwe fixture met hash is erin gezet, daarna `-p burnburn-test-support` ok.
 - `SetNestOptions` draagt nu een `Box<NestInput>` (de enum-variant werd groter dan 200 bytes: clippy); 14 bestaande testregels
   kregen `Box::new`.
 
