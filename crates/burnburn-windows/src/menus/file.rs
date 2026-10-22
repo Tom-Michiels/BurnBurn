@@ -10,6 +10,8 @@ pub(super) fn items() -> Vec<MenuNode> {
         cmd(CommandKey::New),
         MenuNode::Item(MenuItem::Open),
         // W4-L8b: Importeer, Exporteren, Bundels, Recente projecten, Nieuw van template.
+        // G5-grbl-ui: Exporteer G-code (on for a compiled plan of a GRBL machine), as on the Mac.
+        cmd(CommandKey::ExportGcode),
         sep(),
         cmd(CommandKey::Close),
         cmd(CommandKey::Save),

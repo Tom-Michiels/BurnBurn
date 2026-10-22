@@ -848,6 +848,9 @@ pub fn on_files_file_chosen(vm: &AppViewModel, purpose: &FilePurpose, path: Chos
         FilePurpose::ExportRd { document } if open(document) => {
             PanelReaction::Intent(UiIntent::ExportRd { document: *document, path })
         }
+        FilePurpose::ExportGcode { document } if open(document) => {
+            PanelReaction::Intent(UiIntent::ExportGcode { document: *document, path })
+        }
         FilePurpose::ExportDrawing { document } if open(document) => {
             PanelReaction::Intent(export_write_intent(*document, path))
         }
@@ -883,6 +886,12 @@ pub fn effect_dialog(effect: &HostEffect, input: &FilesInput<'_>) -> Option<Dial
             title: cmd_name(CommandKey::ExportRd, locale),
             suggested_name: suggested_name.clone(),
             filters: vec![ext_filter("Ruida RD", "rd")],
+        }),
+        HostEffect::ShowGcodeExportPanel { document, suggested_name } => Some(DialogRequest::Save {
+            purpose: FilePurpose::ExportGcode { document: *document },
+            title: cmd_name(CommandKey::ExportGcode, locale),
+            suggested_name: suggested_name.clone(),
+            filters: vec![ext_filter("G-code", "gcode")],
         }),
         HostEffect::ShowTemplateSavePanel { document, suggested_name } => Some(DialogRequest::Save {
             purpose: FilePurpose::TemplateSave {
