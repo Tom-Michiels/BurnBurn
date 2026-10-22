@@ -30,6 +30,7 @@ impl CanonicalEncode for TextObject {
             Align::Left => "left",
             Align::Center => "center",
             Align::Right => "right",
+            Align::Justify => "justify",
         });
         out.f64(self.layout.line_spacing);
         out.f64(self.layout.letter_spacing_mm);

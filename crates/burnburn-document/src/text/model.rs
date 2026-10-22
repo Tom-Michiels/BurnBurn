@@ -133,6 +133,9 @@ pub enum Align {
     Left,
     Center,
     Right,
+    /// Every line but the last is stretched to the width of the widest line (word gaps; kashida in
+    /// Arabic).
+    Justify,
 }
 
 /// Where the text block hangs on the origin of text space (y = 0).

@@ -112,6 +112,7 @@ fn toolbar_controls_become_one_text_edit_and_a_repeat_is_none() {
     assert_eq!(send(Slot::SingleLine, SlotValue::Toggle(true)), edit(TextEdit::SingleLine(true)));
     assert_eq!(send(Slot::Align, SlotValue::Choice(1)), edit(TextEdit::Align(Align::Center)));
     assert_eq!(send(Slot::Align, SlotValue::Choice(2)), edit(TextEdit::Align(Align::Right)));
+    assert_eq!(send(Slot::Align, SlotValue::Choice(3)), edit(TextEdit::Align(Align::Justify)));
     for (index, v) in [(1, VAlign::Top), (2, VAlign::Middle), (3, VAlign::Bottom)] {
         assert_eq!(send(Slot::VAlign, SlotValue::Choice(index)), edit(TextEdit::VAlign(v)), "{index}");
     }

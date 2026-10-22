@@ -136,3 +136,19 @@ fn project_hash_covers_text_sources() {
     let after = project_hash(&Project::new(ProjectUuid::from_bytes([4; 16]), (*s.snapshot()).clone())).unwrap();
     assert_ne!(before, after);
 }
+
+#[test]
+fn justified_text_survives_save_and_reopen_and_is_part_of_the_hash() {
+    let hash_with = |align: Align| {
+        let mut s = DocumentSession::new(DocumentId::from_raw(1));
+        let mut t = every_field_text();
+        t.layout.align = align;
+        s.apply_with(cmd(&s, TextCommand::Create { text: Box::new(t) }), &[&Fake]).unwrap();
+        let (original, back) = saved_and_reopened((*s.snapshot()).clone());
+        let reopened = back.document.text_layer().texts().next().map(|(_, t)| t.layout.align);
+        assert_eq!(reopened, Some(align));
+        assert_eq!(project_hash(&back).unwrap(), project_hash(&original).unwrap());
+        project_hash(&original).unwrap()
+    };
+    assert_ne!(hash_with(Align::Justify), hash_with(Align::Right), "the alignment is part of the text source");
+}

@@ -292,7 +292,7 @@ pub struct TextPanels {
 }
 
 /// Alignment choices, in the order of the control's segments.
-pub const ALIGNS: [Align; 3] = [Align::Left, Align::Center, Align::Right];
+pub const ALIGNS: [Align; 4] = [Align::Left, Align::Center, Align::Right, Align::Justify];
 /// Vertical alignment choices, in the order of the pop-up.
 pub const VALIGNS: [VAlign; 4] = [VAlign::Baseline, VAlign::Top, VAlign::Middle, VAlign::Bottom];
 /// Auto-advance choices, in the order of the pop-up.
@@ -313,6 +313,7 @@ pub enum TextText {
     AlignLeft,
     AlignCenter,
     AlignRight,
+    AlignJustify,
     Vertical,
     VBaseline,
     VTop,
@@ -385,6 +386,7 @@ fn pair(text: TextText) -> (&'static str, &'static str) {
         T::AlignLeft => ("Links", "Left"),
         T::AlignCenter => ("Midden", "Centre"),
         T::AlignRight => ("Rechts", "Right"),
+        T::AlignJustify => ("Uitvullen", "Justify"),
         T::Vertical => ("Verticaal", "Vertical"),
         T::VBaseline => ("Basislijn", "Baseline"),
         T::VTop => ("Boven", "Top"),
