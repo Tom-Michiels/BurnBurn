@@ -384,8 +384,9 @@ mod tests {
     }
 
     fn arc_path_through(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> Path {
-        let arc = burnburn_geometry::arc_through_three(Point::new(a.0, a.1), Point::new(b.0, b.1), Point::new(c.0, c.1))
-            .unwrap();
+        let arc =
+            burnburn_geometry::arc_through_three(Point::new(a.0, a.1), Point::new(b.0, b.1), Point::new(c.0, c.1))
+                .unwrap();
         burnburn_geometry::PathBuilder::new().move_to(arc.start_point()).arc(arc).build().unwrap()
     }
 
@@ -451,12 +452,14 @@ mod tests {
             Angle::from_radians(2.0).unwrap(),
         )
         .unwrap();
-        let path = burnburn_geometry::PathBuilder::new().move_to(ellipse_arc.start_point()).arc(ellipse_arc).build().unwrap();
+        let path =
+            burnburn_geometry::PathBuilder::new().move_to(ellipse_arc.start_point()).arc(ellipse_arc).build().unwrap();
         assert_eq!(
             plan_commit(&Sketch::new("t"), &EditCommit::CreatePath { path }, 0.5, false),
             Err(PlanError::Unsupported)
         );
-        let two_lines = Path::polyline(&[Point::new(0.0, 0.0), Point::new(5.0, 5.0), Point::new(9.0, 0.0)], false).unwrap();
+        let two_lines =
+            Path::polyline(&[Point::new(0.0, 0.0), Point::new(5.0, 5.0), Point::new(9.0, 0.0)], false).unwrap();
         assert_eq!(
             plan_commit(&Sketch::new("t"), &EditCommit::CreatePath { path: two_lines }, 0.5, false),
             Err(PlanError::Unsupported)

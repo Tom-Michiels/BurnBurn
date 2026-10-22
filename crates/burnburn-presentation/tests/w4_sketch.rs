@@ -344,7 +344,11 @@ fn an_arc_drawn_in_sketch_mode_becomes_an_arc_entity_that_dimensions_can_drive()
         h.click(doc, at, Modifiers::default());
     }
     let after = vm(&h, doc);
-    assert_eq!(after.undo.map(|u| matches!(u, burnburn_document::UndoLabel::Sketch(_))), Some(true), "one sketch entry");
+    assert_eq!(
+        after.undo.map(|u| matches!(u, burnburn_document::UndoLabel::Sketch(_))),
+        Some(true),
+        "one sketch entry"
+    );
     assert_eq!(after.sketch_mode.as_ref().unwrap().refused, None, "the arc was accepted");
     assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
     let b = h.scene(doc).unwrap().items[0].path.bounds().unwrap();
@@ -352,7 +356,12 @@ fn an_arc_drawn_in_sketch_mode_becomes_an_arc_entity_that_dimensions_can_drive()
 
     // A radius dimension on the arc, through the panel.
     let arc = burnburn_document::sketch::EntityId::from_raw(3);
-    h.send(UiIntent::SketchSelect { document: doc, entities: vec![arc], constraints: vec![], mode: SelectMode::Replace });
+    h.send(UiIntent::SketchSelect {
+        document: doc,
+        entities: vec![arc],
+        constraints: vec![],
+        mode: SelectMode::Replace,
+    });
     h.send(UiIntent::AddSketchDimension {
         document: doc,
         kind: burnburn_presentation::SketchDimensionKind::Radius,
