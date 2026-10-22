@@ -23,6 +23,8 @@ minimale stub op gedrag faalde (niet op een compilerfout).
 | E11 `g5_variable::{the_counter_policy_and_chosen_row_survive_save_and_reopen, changing_only_the_counters_makes_the_window_unsaved_until_the_next_save}` (+ guard `a_project_with_untouched_counters_gets_no_production_entry`) | na heropenen weer de standaardreeks; teller telt niet als ongeopgeslagen | `cargo test -p burnburn-presentation --locked --test g5_variable` → 2 FAILED (`left: current "1" … right: current "20" …`) | → 3 ok; hele presentation-suite ok |
 | E05 `g5_edit::{the_offset_preview_is_a_task_that_never_changes_the_document, an_impossible_offset_preview_names_the_problem_and_shows_nothing, applying_an_offset_uses_the_chosen_options}` (+ `an_offset_preview_of_an_older_revision_is_dropped`, onder de stub vacuous groen) | stubs deden niets | → 3 FAILED | → 4 ok |
 | E09 `g5_edit::{the_repair_preview_shows_what_closes_and_what_stays_without_changing_the_document, a_bad_tolerance_starts_no_repair_preview}` | stub deed niets | `--test g5_edit repair` → 2 FAILED | → ok |
+| S06/S07/P06 `g5_structure::{the_panel_lists_parts_with_their_variants_and_each_instance_fails_alone, choosing_a_variant_is_one_undo_step_and_an_unknown_one_is_refused, a_local_override_is_visible_and_never_written_into_the_definition, a_plate_shows_its_size_material_and_instances, a_reference_to_a_deleted_object_shows_a_broken_link}` | stub gaf een leeg `StructureViewModel` en deed niets | `cargo test -p burnburn-presentation --locked --test g5_structure` → 5 FAILED | → 5 ok |
+| P06 `g5_structure::compiling_uses_only_the_chosen_plate_and_reports_what_it_left_out` | `ChoosePlate` deed niets (stub): na keuze plaat A bleef de plan-snijlengte 160 mm | zelfde commando → FAILED (`left: None right: Some(3)` op `compile_plate`) | → 6 ok (omtrekken 40/120/160 mm als analytisch orakel) |
 | X03 `g5_edit::locale_does_not_change_physical_value` | — | geen rode run: het gedrag bestond al (veldparser + eenheden), de test ontbrak alleen (storydekking) | → ok |
 
 ## Ontwerpkeuzes en aannames
@@ -58,16 +60,31 @@ minimale stub op gedrag faalde (niet op een compilerfout).
   probleemoverlay, "na" = de gerepareerde omtrekken als overlay; het paneel zegt hoeveel gaten sluiten en hoeveel open blijven.
 - **X03**: de test bestond niet; het gedrag wel.
 
+- **S06/S07/P06 structuurpaneel** (`DocumentViewModel.structure`): onderdelen met parameters, varianten en instanties (effectieve
+  waarden = definitie, dan variant, dan lokale override; status per instantie: een ongeldige variant faalt alleen die instantie),
+  platen (maat, materiaal, aantal instanties/objecten) en referenties (gebonden / dubbelzinnig / gebroken met reden). Bewerken per
+  instantie via `UiIntent::Structure` (`SetVariant`, `SetOverride`; elk één `StructureCommand::SetInstance` = één undo-stap, de
+  definitie wordt nooit geschreven; een lokale override moet een positieve lengte zijn, leeg verwijdert; onbekende variant/parameter
+  wordt geweigerd). Aanname: een negatieve of nul override is een veldfout, geen opgeslagen foute waarde.
+- **P06 plaatkeuze**: `UiIntent::ChoosePlate`; Compile gebruikt dan `DocumentSnapshot::plate_view` (alleen de objecten en operaties van die
+  plaat); het getoonde plan van een andere keuze verdwijnt en lopende compiles worden geannuleerd; `plate_issues` meldt doelen buiten
+  de plaat en geblokkeerde afgeleide geometrie. Het plan weet voor welke plaat het is (`plan_plate`).
+
 ## Wat gedekt is / eerlijk open
 
-Zie het eindrapport; per story:
-
-- P02 gedekt (document + presentatie). P04: notities en LBRN2-als-één-stap gedekt in domein + presentatie; **native notitiepaneel en
-  menu-item (Mac + Windows) niet gebouwd** (geen dood menu-item toegevoegd). P06, P08: niet gedaan.
-- E05: offsetvoorbeeld + opties in presentatie gedekt; extend/fillet-UI niet; **geen native offsetpaneel** (bestond niet).
-  E09: voor/na in presentatie; geen native knop. E10 (generatorpaneel dozen/scharnieren, barcode als object): niet gedaan.
-  E11: gedekt voor reeks/rij/beleid/CSV; Auto-Advance-gebeurtenis van LightBurn blijft onbevestigd.
-- S01 ellips in een schets, S05–S07: niet gedaan. T03, T05, T06: niet gedaan. T04 en T08 (centerline als TraceCommand, knooppunt-
-  en primitiefbeslissingen): gedekt in presentatie; geen native paneel voor de centerline-beslissingen.
-- W04–W08: niet gedaan (camera/orders zijn hardware- of cam-gebonden of hoorden bij andere lanes). X01: niet gedaan. X02: niets
-  nieuws. X03: gedekt met een test.
+- **P02** gedekt (document + presentatie). **P04**: notities en LBRN2-als-één-stap gedekt in domein + presentatie; **native
+  notitiepaneel en menu-item (Mac `app.rs`, Windows `menus/file.rs`) niet gebouwd** (bewust geen dood menu-item).
+- **P06**: platen tonen + plaatkeuze bij compileren gedekt in presentatie; **geen native paneel**; compile-optie per plaat in de laser-
+  window/cam-lane niet aangeraakt. **P08**: niet gedaan (zoekpaneel, "heropenen maakt geen productie-intentie").
+- **E05**: offsetvoorbeeld + opties in presentatie; extend/fillet-UI niet; **geen native offsetpaneel** (bestond niet).
+  **E09**: voor/na in presentatie; geen native knop. **E10** (generatorpaneel dozen/scharnieren, barcode als object): niet gedaan.
+  **E11**: reeks/rij/beleid/CSV gedekt; Auto-Advance-gebeurtenis van LightBurn onbevestigd; het CSV-bestand kiezen blijft handmatig.
+- **S01** ellips in een schets (sketch-domein), **S05** (`branch_flip_is_reported_not_silent`): niet gedaan. **S06**: gebroken koppeling
+  zichtbaar in het paneel; verwijderen/splitsen van een rand levert domeinmatig `Broken`/`Ambiguous` en wordt getoond, maar er is
+  geen UI om een rand-referentie te maken. **S07**: varianten/overrides bedienbaar; er is nog geen UI om een onderdeel te
+  definiëren of te plaatsen.
+- **T03, T05, T06**: niet gedaan. **T04** en **T08** (centerline als TraceCommand, knooppunt- en primitiefbeslissingen): gedekt in
+  presentatie; geen native paneel voor de centerline-beslissingen.
+- **W04–W08**: niet gedaan (camera/orders zijn hardware- of cam-gebonden of hoorden bij andere lanes). **X01**: niet gedaan.
+  **X02**: niets nieuws. **X03**: gedekt met een test.
+- Handmatig/onbevestigd: alle AppKit/Win32-bediening van bovenstaande panelen (er is geen host-code voor gebouwd).
