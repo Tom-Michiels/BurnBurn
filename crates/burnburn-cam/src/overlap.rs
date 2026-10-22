@@ -140,8 +140,8 @@ pub(crate) fn remove(
     let mut at = start;
     for step in steps {
         cancel.check()?;
-        let (to, source) = match step {
-            Step::Cut { to, source } => (to, source),
+        let (to, source, tab_percent) = match step {
+            Step::Cut { to, source, tab_percent } => (to, source, tab_percent),
             Step::Travel(p) => {
                 out.push(step);
                 at = p;
@@ -191,7 +191,7 @@ pub(crate) fn remove(
             if head != p {
                 out.push(Step::Travel(p));
             }
-            out.push(Step::Cut { to: q, source });
+            out.push(Step::Cut { to: q, source, tab_percent });
             kept.add(p, q, source);
             head = q;
         }

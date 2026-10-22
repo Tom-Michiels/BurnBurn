@@ -2,7 +2,7 @@
 
 use burnburn_types::OperationId;
 
-use crate::{JobPlan, JobPlanId, MachinePoint, MachineProfile, PlanEvent, PlanMode, SourceRef};
+use crate::{JobPlan, JobPlanId, MachinePoint, MachineProfile, PlanEvent, PlanMode, PowerRatio, SourceRef};
 
 /// What a preview segment represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,6 +34,9 @@ pub struct PreviewMove {
     /// This segment's share of [`PlanPreview::estimated_seconds`] (same constant-velocity
     /// estimate: a scrub position in the preview is a position on this clock, not a measurement).
     pub seconds: f64,
+    /// The segment's own power when it differs from the settings' (Tab Cut Power); `None` for
+    /// every move that burns at the power of its settings and for moves with the laser off.
+    pub power: Option<PowerRatio>,
 }
 
 /// Everything a preview shows, for exactly one plan.
@@ -87,7 +90,7 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
             }
             let seconds = if kind == MoveKind::Dot { dwell_ms / 1000.0 } else { len / v };
             pv.estimated_seconds += seconds;
-            pv.moves.push(PreviewMove { kind, from, to, event, operation, source, seconds });
+            pv.moves.push(PreviewMove { kind, from, to, event, operation, source, seconds, power: None });
         };
         match *e {
             PlanEvent::OperationBoundary { operation: op, settings, .. } => {
@@ -105,6 +108,13 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
             }
             PlanEvent::Cut { to, origin } => {
                 push(MoveKind::Cut, at, to, origin, speed);
+                at = to;
+            }
+            PlanEvent::CutPower { to, power, origin } => {
+                push(MoveKind::Cut, at, to, origin, speed);
+                if let Some(m) = pv.moves.last_mut() {
+                    m.power = Some(power);
+                }
                 at = to;
             }
             PlanEvent::FocusOffset { .. } => {}

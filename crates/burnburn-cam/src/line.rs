@@ -375,7 +375,7 @@ fn emit(
         path.append(&mut extra);
     }
 
-    let mut gaps: Vec<(f64, f64)> = Vec::new();
+    let mut gaps: Vec<Gap> = Vec::new();
     if let Some(t) = options.tabs
         && c.closed
     {
@@ -385,7 +385,11 @@ fn emit(
         let count = f64::from(n);
         for i in 0..n {
             let centre = (f64::from(i) + 0.5) * perimeter / count;
-            gaps.push((centre - t.width_mm() / 2.0, centre + t.width_mm() / 2.0));
+            gaps.push(Gap {
+                from: centre - t.width_mm() / 2.0,
+                to: centre + t.width_mm() / 2.0,
+                tab_percent: t.cut_power_percent(),
+            });
         }
     }
     if let Some(p) = options.perforation {
@@ -393,7 +397,7 @@ fn emit(
         let period = p.on_mm() + p.off_mm();
         let mut k = 0.0;
         while k * period < total {
-            gaps.push((k * period + p.on_mm(), (k + 1.0) * period));
+            gaps.push(Gap { from: k * period + p.on_mm(), to: (k + 1.0) * period, tab_percent: None });
             k += 1.0;
         }
     }
@@ -417,9 +421,9 @@ fn emit(
             if let Some(start) = points.next() {
                 steps.push(Step::Travel(start));
                 for p in points {
-                    steps.push(Step::Cut { to: p, source: c.geometry });
+                    steps.push(Step::Cut { to: p, source: c.geometry, tab_percent: None });
                 }
-                steps.push(Step::Cut { to: first, source: c.geometry });
+                steps.push(Step::Cut { to: first, source: c.geometry, tab_percent: None });
             }
         }
         None => steps.push(Step::Travel(first)),
@@ -438,7 +442,7 @@ fn emit(
             vec![last + d_last * l.length_mm()]
         };
         for p in lead {
-            steps.push(Step::Cut { to: p, source: c.geometry });
+            steps.push(Step::Cut { to: p, source: c.geometry, tab_percent: None });
             *head = p;
         }
     }
@@ -568,15 +572,41 @@ fn walk(path: &[Point], distance: f64) -> Vec<Point> {
     out
 }
 
-/// Cuts along `path` except inside `gaps` (arc-length intervals), which become travel.
-fn emit_with_gaps(path: &[Point], gaps: &[(f64, f64)], source: GeometryId, steps: &mut Vec<Step>) {
-    let in_gap = |s: f64| gaps.iter().any(|&(a, b)| s >= a && s < b);
+/// A stretch of a contour that is not cut at full power, in arc length from its start.
+struct Gap {
+    from: f64,
+    to: f64,
+    /// `Some`: a tab cut at this percentage of the power (C04); `None`: laser off (a skipped tab
+    /// or a perforation gap).
+    tab_percent: Option<f64>,
+}
+
+/// What the laser does on one stretch of a contour.
+enum Laser {
+    Full,
+    Tab(f64),
+    Off,
+}
+
+/// Cuts along `path` except inside `gaps`: a gap becomes laser-off travel, or a cut at the power
+/// of its tab. A stretch inside a laser-off gap and a powered tab is laser off.
+fn emit_with_gaps(path: &[Point], gaps: &[Gap], source: GeometryId, steps: &mut Vec<Step>) {
+    let state = |s: f64| -> Laser {
+        let mut tab: Option<f64> = None;
+        for g in gaps.iter().filter(|g| s >= g.from && s < g.to) {
+            match g.tab_percent {
+                None => return Laser::Off,
+                Some(p) => tab = Some(tab.map_or(p, |q| q.min(p))),
+            }
+        }
+        tab.map_or(Laser::Full, Laser::Tab)
+    };
     let mut s0 = 0.0;
     for w in path.windows(2) {
         let (a, b) = (w[0], w[1]);
         let d = a.distance(b);
         // Split points of this segment at gap boundaries.
-        let mut cuts: Vec<f64> = gaps.iter().flat_map(|&(g0, g1)| [g0, g1]).filter(|&t| t > s0 && t < s0 + d).collect();
+        let mut cuts: Vec<f64> = gaps.iter().flat_map(|g| [g.from, g.to]).filter(|&t| t > s0 && t < s0 + d).collect();
         cuts.sort_by(f64::total_cmp);
         cuts.dedup();
         cuts.push(s0 + d);
@@ -584,10 +614,10 @@ fn emit_with_gaps(path: &[Point], gaps: &[(f64, f64)], source: GeometryId, steps
         for t in cuts {
             let to = if t >= s0 + d { b } else { a.lerp(b, (t - s0) / d) };
             let mid = 0.5 * (from + t);
-            if in_gap(mid) {
-                steps.push(Step::Travel(to));
-            } else {
-                steps.push(Step::Cut { to, source });
+            match state(mid) {
+                Laser::Off => steps.push(Step::Travel(to)),
+                Laser::Tab(percent) => steps.push(Step::Cut { to, source, tab_percent: Some(percent) }),
+                Laser::Full => steps.push(Step::Cut { to, source, tab_percent: None }),
             }
             from = t;
         }
@@ -612,7 +642,7 @@ fn cut_shared_edges_once(steps: Vec<Step>, start: Option<Point>) -> Vec<Step> {
     let mut at = start;
     for step in steps {
         match step {
-            Step::Cut { to, source } => {
+            Step::Cut { to, source, .. } => {
                 let Some(from) = at else {
                     out.push(step);
                     at = Some(to);

@@ -90,6 +90,7 @@ impl GrblProfile {
 ///   Ruida-equivalent ordinary events, diagonal scan runs (one `G1`) and per-run power (one `G1`
 ///   with its own `S`). "Supported" means the **lowering** is exact and tested against an
 ///   independent interpreter; it is no claim about a concrete controller (`docs/hardware/`).
+/// - `Supported` as well: a tab cut at its own power (one `G1` with its own `S`, like a grayscale run).
 /// - `Unsupported`: Z steps (no Z axis is modelled), dot pulses and power ramps: the lowering
 ///   has no exact form for them and refuses instead of approximating.
 /// - `Unverified`: common-line cutting needs its own validated process (as on every backend).
@@ -99,6 +100,7 @@ pub fn grbl_capabilities(_profile: &GrblProfile) -> MachineCapabilities {
     MachineCapabilities::conservative()
         .with(Feature::ScanAngle, Support::Supported)
         .with(Feature::GrayscaleModulation, Support::Supported)
+        .with(Feature::TabCutPower, Support::Supported)
         .with(Feature::ZStep, Support::Unsupported)
         .with(Feature::DotMode, Support::Unsupported)
         .with(Feature::RampLength, Support::Unsupported)

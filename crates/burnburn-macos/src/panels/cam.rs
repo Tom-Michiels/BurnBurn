@@ -468,6 +468,11 @@ fn unverified_reason(feature: Feature, domain_reason: &str, locale: Locale) -> S
         Feature::RampLength => {
             pick(("vermogensverloop heeft nog geen RD-vorm", "power ramps have no RD form yet"), locale).to_owned()
         }
+        Feature::TabCutPower => pick(
+            ("een vermogen per beweging heeft nog geen RD-vorm", "a power per movement has no RD form yet"),
+            locale,
+        )
+        .to_owned(),
         // A reason a profile gave itself stays as it was written.
         _ => domain_reason.to_owned(),
     }

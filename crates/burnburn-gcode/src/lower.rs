@@ -178,6 +178,16 @@ pub fn check(plan: &JobPlan, profile: &GrblProfile) -> Vec<Refusal> {
                 inside(i, to, &mut buf);
                 representable(i, to, &mut buf);
             }
+            PlanEvent::CutPower { to, power, .. } => {
+                need(i, Feature::TabCutPower, &mut buf);
+                inside(i, to, &mut buf);
+                representable(i, to, &mut buf);
+                // S0 means "laser off" in GRBL laser mode: a power that rounds to it would turn
+                // a tab that was meant to be cut into a skipped one without saying so.
+                if power.get() > 0.0 && (power.get() * f64::from(profile.max_spindle)).round() < 1.0 {
+                    buf.push(Refusal { event: Some(i), kind: RefusalKind::NotRepresentable("tab power") });
+                }
+            }
             PlanEvent::ScanRun { line, .. } | PlanEvent::PowerRun { line, .. } => {
                 if matches!(*e, PlanEvent::PowerRun { .. }) {
                     need(i, Feature::GrayscaleModulation, &mut buf);
@@ -304,6 +314,13 @@ impl<'a> Writer<'a> {
                     let to = self.q(to);
                     self.sync();
                     self.burn(to, self.power_s);
+                    self.logical = to;
+                }
+                PlanEvent::CutPower { to, power, .. } => {
+                    let to = self.q(to);
+                    self.sync();
+                    let s = self.spindle_s(power.get());
+                    self.burn(to, s);
                     self.logical = to;
                 }
                 PlanEvent::ScanRun { line, .. } => self.scan(line, self.power_s),

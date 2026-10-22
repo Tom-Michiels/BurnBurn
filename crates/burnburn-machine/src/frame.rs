@@ -141,7 +141,7 @@ fn reached_points(plan: &JobPlan) -> Vec<(f64, f64)> {
                 out.push(xy(to));
                 at = to;
             }
-            PlanEvent::Cut { to, .. } => {
+            PlanEvent::Cut { to, .. } | PlanEvent::CutPower { to, .. } => {
                 out.push(xy(at));
                 out.push(xy(to));
                 at = to;

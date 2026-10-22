@@ -143,9 +143,10 @@ app_texts! {
     PreviewMoveTravel => ("verplaatsing (laser uit)", "travel (laser off)"),
     PreviewMoveOverscan => ("overscan (laser uit, afhankelijk van de firmware)", "overscan (laser off, firmware dependent)"),
     PreviewMoveDot => ("puntpuls", "dot pulse"),
+    PreviewAtPower => ("met vermogen", "at power"),
     PreviewSource => ("bron", "source"),
     PreviewOperation => ("bewerking", "operation"),
-    PreviewLegend => ("rood = snijden/graveren · grijs = verplaatsing · blauw = gekozen · groen = afgespeeld", "red = cut/scan · grey = travel · blue = picked · green = played"),
+    PreviewLegend => ("rood = snijden/graveren · oranje = verlaagd vermogen (tab) · grijs = verplaatsing · blauw = gekozen · groen = afgespeeld", "red = cut/scan · orange = lowered power (tab) · grey = travel · blue = picked · green = played"),
     PreviewPlanId => ("Plan", "Plan"),
     // RD inspector
     RdTitle => ("RD-records (alleen lezen)", "RD records (read-only)"),

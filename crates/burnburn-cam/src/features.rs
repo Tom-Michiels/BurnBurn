@@ -56,8 +56,11 @@ pub fn required_features(op: &Operation) -> Vec<Feature> {
     mode_features(op.mode(), &mut out);
     let a = op.advanced();
     let l = &a.line;
-    if l.tabs.is_some() {
+    if let Some(tabs) = l.tabs {
         out.push(Feature::Tabs);
+        if tabs.cut_power_percent().is_some() {
+            out.push(Feature::TabCutPower);
+        }
     }
     if l.lead_in.is_some() || l.lead_out.is_some() {
         out.push(Feature::Leads);

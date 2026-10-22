@@ -140,7 +140,8 @@ pub fn cut_length(plan: &burnburn_job::JobPlan) -> f64 {
     let mut total = 0.0;
     for e in plan.events() {
         match *e {
-            PlanEvent::Travel { to } => at = to,
+            // A cut at its own power moves the head but is not counted: this is full-power cutting.
+            PlanEvent::Travel { to } | PlanEvent::CutPower { to, .. } => at = to,
             PlanEvent::Cut { to, .. } => {
                 total += at.distance(to);
                 at = to;

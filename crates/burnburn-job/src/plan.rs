@@ -120,7 +120,7 @@ impl JobPlan {
                     at = to;
                 }
                 // A cut burns from the current position: include it (it may be the start).
-                PlanEvent::Cut { to, .. } => {
+                PlanEvent::Cut { to, .. } | PlanEvent::CutPower { to, .. } => {
                     add(at);
                     add(to);
                     at = to;
@@ -215,7 +215,7 @@ impl JobPlanBuilder {
                 self.current = Some(settings);
             }
             PlanEvent::Travel { to } => self.position = to,
-            PlanEvent::Cut { to, .. } => {
+            PlanEvent::Cut { to, .. } | PlanEvent::CutPower { to, .. } => {
                 if mode(self)? != PlanMode::Line {
                     return Err(PlanError::EventDoesNotMatchMode);
                 }
@@ -381,6 +381,12 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
                 point(&mut w, line.from);
                 point(&mut w, line.to);
                 w.f64(line.overscan_mm);
+                w.f64(power.get());
+                origin(&mut w, o);
+            }
+            PlanEvent::CutPower { to, power, origin: o } => {
+                w.tag("cut-power");
+                point(&mut w, to);
                 w.f64(power.get());
                 origin(&mut w, o);
             }

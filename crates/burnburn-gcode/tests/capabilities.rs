@@ -13,7 +13,7 @@ enum Want {
 
 /// The reviewed decision per feature. A new `Feature` variant makes
 /// `the_matrix_decides_every_feature` fail until it is decided here (and in the backend).
-const MATRIX: [(Feature, Want); 17] = [
+const MATRIX: [(Feature, Want); 18] = [
     // Ordinary G0/G1 motion with S/F words: expressed exactly.
     (Feature::KerfCompensation, Want::Supported),
     (Feature::OffsetFill, Want::Supported),
@@ -29,6 +29,8 @@ const MATRIX: [(Feature, Want); 17] = [
     // A diagonal run is one G1; a PowerRun is one G1 with its own S.
     (Feature::ScanAngle, Want::Supported),
     (Feature::GrayscaleModulation, Want::Supported),
+    // A tab at lowered power is one G1 with its own S (G7-cam).
+    (Feature::TabCutPower, Want::Supported),
     // No lowering exists for these; they must stay refused, not approximated.
     (Feature::ZStep, Want::Unsupported),
     (Feature::DotMode, Want::Unsupported),

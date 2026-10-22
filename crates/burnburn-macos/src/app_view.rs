@@ -295,6 +295,10 @@ pub fn preview_panel_named(view: &PreviewViewModel, names: &PickNames, locale: L
             MoveKind::Dot => AppText::PreviewMoveDot,
         });
         let mut text = format!("{}: {kind}", t(AppText::PreviewPicked));
+        if let Some(power) = p.power {
+            // The share of the rated power this stretch is cut with (a tab with a lowered power).
+            text.push_str(&format!(" {} {:.1} %", t(AppText::PreviewAtPower), power.get() * 100.0));
+        }
         if let Some(source) = p.source {
             let geometry = names
                 .geometry
@@ -417,6 +421,8 @@ const BED_FILL: [u8; 3] = [245, 245, 245];
 const BED_EDGE: [u8; 3] = [200, 200, 200];
 const TRAVEL: [u8; 3] = [170, 170, 170];
 const UNPLAYED: [u8; 3] = [220, 40, 40];
+/// A stretch cut at a lowered power (a tab, C04) that has not been played yet.
+const UNPLAYED_LOWERED: [u8; 3] = [235, 140, 20];
 const PLAYED: [u8; 3] = [30, 160, 60];
 const PICKED: [u8; 3] = [0, 100, 255];
 const HEAD: [u8; 3] = [0, 0, 0];
@@ -499,13 +505,14 @@ pub fn render_preview(view: &PreviewViewModel, frame: &PreviewFrame) -> BitmapIm
     }
     for (i, m) in moves.iter().enumerate().filter(|(_, m)| burning(m.kind)) {
         let (a, b) = (px(m.from), px(m.to));
+        let unplayed = if m.power.is_some() { UNPLAYED_LOWERED } else { UNPLAYED };
         match view.partial {
             Some(PartialMove { index, fraction }) if index == i => {
                 let split = [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction];
                 canvas.line(a, split, 3, PLAYED);
-                canvas.line(split, b, 3, UNPLAYED);
+                canvas.line(split, b, 3, unplayed);
             }
-            _ => canvas.line(a, b, 3, if i < view.completed_moves { PLAYED } else { UNPLAYED }),
+            _ => canvas.line(a, b, 3, if i < view.completed_moves { PLAYED } else { unplayed }),
         }
     }
     if let Some(m) = view.selected.and_then(|p| moves.get(p.index)) {

@@ -30,6 +30,8 @@ pub(crate) enum Step {
     Cut {
         to: Point,
         source: GeometryId,
+        /// Tab Cut Power (C04): the cut runs at this percentage of the operation's power.
+        tab_percent: Option<f64>,
     },
     Scan {
         from: Point,
@@ -511,8 +513,12 @@ fn emit(
                     plan.push(PlanEvent::Travel { to })?;
                 }
             }
-            Step::Cut { to, source } => {
+            Step::Cut { to, source, tab_percent: None } => {
                 plan.push(PlanEvent::Cut { to: frame.to_machine(to)?, origin: origin(source) })?
+            }
+            Step::Cut { to, source, tab_percent: Some(percent) } => {
+                let power = PowerRatio::new(hi * percent / 100.0)?;
+                plan.push(PlanEvent::CutPower { to: frame.to_machine(to)?, power, origin: origin(source) })?
             }
             Step::Dot { source } => plan.push(PlanEvent::Dot { origin: origin(source) })?,
             Step::Scan { from, to, source }

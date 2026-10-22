@@ -29,6 +29,8 @@ pub enum CutField {
     /// Tab count or spacing in mm, as `TabsMode` says.
     TabsValue,
     TabsWidth,
+    /// Percentage of the operation's power the tabs are cut with; `0` or empty = skipped (C04).
+    TabsPower,
     LeadInEnabled,
     LeadInLength,
     LeadInShape,
@@ -129,11 +131,12 @@ pub const IMAGE_MODES: [CutChoice; 11] = [
 
 impl CutField {
     /// Every field, in sheet order.
-    pub const ALL: [CutField; 41] = [
+    pub const ALL: [CutField; 42] = [
         CutField::TabsEnabled,
         CutField::TabsMode,
         CutField::TabsValue,
         CutField::TabsWidth,
+        CutField::TabsPower,
         CutField::LeadInEnabled,
         CutField::LeadInLength,
         CutField::LeadInShape,
@@ -235,7 +238,7 @@ impl CutField {
     pub fn switch(self) -> Option<CutField> {
         use CutField as F;
         match self {
-            F::TabsMode | F::TabsValue | F::TabsWidth => Some(F::TabsEnabled),
+            F::TabsMode | F::TabsValue | F::TabsWidth | F::TabsPower => Some(F::TabsEnabled),
             F::LeadInLength | F::LeadInShape | F::LeadInAngle => Some(F::LeadInEnabled),
             F::LeadOutLength | F::LeadOutShape | F::LeadOutAngle => Some(F::LeadOutEnabled),
             F::PerforationOn | F::PerforationOff => Some(F::PerforationEnabled),
@@ -253,6 +256,7 @@ impl CutField {
                 | F::TabsMode
                 | F::TabsValue
                 | F::TabsWidth
+                | F::TabsPower
                 | F::LeadInEnabled
                 | F::LeadInLength
                 | F::LeadInShape

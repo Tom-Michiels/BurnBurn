@@ -52,6 +52,8 @@ pub struct PreviewSelection {
     pub kind: MoveKind,
     /// Geometry and operation of a burning move; `None` for travel and overscan.
     pub source: Option<SourceRef>,
+    /// The segment's own power when it differs from its operation's (a tab cut at a lowered power).
+    pub power: Option<burnburn_job::PowerRatio>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -329,7 +331,7 @@ impl AppController {
     fn select_move(&mut self, document: DocumentId, index: Option<usize>) -> AppUpdate {
         let Some(view) = self.preview_view(document) else { return AppUpdate::default() };
         let picked = index.and_then(|i| {
-            view.preview.moves.get(i).map(|m| PreviewSelection { index: i, kind: m.kind, source: m.source })
+            view.preview.moves.get(i).map(|m| PreviewSelection { index: i, kind: m.kind, source: m.source, power: m.power })
         });
         if index.is_some() && picked.is_none() {
             return AppUpdate::default();

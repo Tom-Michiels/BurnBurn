@@ -207,6 +207,7 @@ fn translated(plan: &JobPlan, (dx, dy): (f64, f64)) -> Result<JobPlan, Placement
         let moved = match *e {
             PlanEvent::Travel { to } => PlanEvent::Travel { to: mv(to)? },
             PlanEvent::Cut { to, origin } => PlanEvent::Cut { to: mv(to)?, origin },
+            PlanEvent::CutPower { to, power, origin } => PlanEvent::CutPower { to: mv(to)?, power, origin },
             PlanEvent::ScanRun { line, origin } => PlanEvent::ScanRun { line: moved_line(line, &mv)?, origin },
             PlanEvent::PowerRun { line, power, origin } => {
                 PlanEvent::PowerRun { line: moved_line(line, &mv)?, power, origin }

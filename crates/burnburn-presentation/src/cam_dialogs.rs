@@ -498,6 +498,8 @@ pub enum RdRefusal {
     NegativeCoordinate,
     /// Feeder feeds and pauses.
     Feeder,
+    /// Tabs cut at a lowered power (C04).
+    TabCutPower,
 }
 
 impl RdRefusal {
@@ -511,6 +513,7 @@ impl RdRefusal {
             "scan angle" => RdRefusal::ScanAngle,
             "grayscale modulation" => RdRefusal::GrayscaleModulation,
             "feeder" => RdRefusal::Feeder,
+            "tab cut power" => RdRefusal::TabCutPower,
             _ => RdRefusal::Other,
         }
     }

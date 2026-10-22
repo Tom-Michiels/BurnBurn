@@ -1100,6 +1100,7 @@ pub fn option_caption(field: burnburn_presentation::CutField, locale: Locale) ->
         F::TabsMode => ("Tabs per", "Tabs by"),
         F::TabsValue => ("Aantal of afstand (mm)", "Count or spacing (mm)"),
         F::TabsWidth => ("Tabbreedte (mm)", "Tab width (mm)"),
+        F::TabsPower => ("Tabvermogen (%, 0 = overslaan)", "Tab power (%, 0 = skip)"),
         F::LeadInEnabled => ("Aanloop (lead-in)", "Lead-in"),
         F::LeadInLength => ("Aanloop, lengte (mm)", "Lead-in length (mm)"),
         F::LeadInShape => ("Aanloop, vorm", "Lead-in shape"),
@@ -1670,6 +1671,10 @@ pub fn rd_refusal_text(reason: burnburn_presentation::RdRefusal, locale: Locale)
             "Grijswaarden (vermogen per run) hebben nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
             "Grayscale (power per run) has no proven Ruida form yet: RD output is refused.",
         ),
+        RdRefusal::TabCutPower => (
+            "Tabs met verlaagd vermogen hebben nog geen bewezen Ruida-vorm: RD-uitvoer wordt geweigerd.",
+            "Tabs cut at a lowered power have no proven Ruida form yet: RD output is refused.",
+        ),
         RdRefusal::TooManyParts => (
             "Meer instellingenblokken dan het RD-formaat toelaat (128): RD-uitvoer wordt geweigerd.",
             "More settings blocks than the RD format allows (128): RD output is refused.",
@@ -1718,6 +1723,7 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
         Feature::FloodFill => ("flood fill", "flood fill"),
         Feature::FillGrouping => ("vulgroepering", "fill grouping"),
         Feature::RampLength => ("vermogensverloop (ramp)", "power ramp"),
+        Feature::TabCutPower => ("tabvermogen", "tab cut power"),
         _ => return None,
     })
 }
@@ -1844,6 +1850,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             burnburn_presentation::RdRefusal::FocusOffset,
             burnburn_presentation::RdRefusal::ScanAngle,
             burnburn_presentation::RdRefusal::GrayscaleModulation,
+            burnburn_presentation::RdRefusal::TabCutPower,
             burnburn_presentation::RdRefusal::Other,
             burnburn_presentation::RdRefusal::TooManyParts,
             burnburn_presentation::RdRefusal::NegativeCoordinate,

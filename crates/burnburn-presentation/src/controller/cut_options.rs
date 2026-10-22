@@ -17,7 +17,8 @@ use crate::field::{format_mm, parse_angle, parse_length, parse_number, parse_pos
 use crate::intent::OperationKind;
 use crate::view_model::MessageKey;
 
-const TABS: [CutField; 4] = [CutField::TabsEnabled, CutField::TabsMode, CutField::TabsValue, CutField::TabsWidth];
+const TABS: [CutField; 5] =
+    [CutField::TabsEnabled, CutField::TabsMode, CutField::TabsValue, CutField::TabsWidth, CutField::TabsPower];
 const LEAD_IN: [CutField; 4] =
     [CutField::LeadInEnabled, CutField::LeadInLength, CutField::LeadInShape, CutField::LeadInAngle];
 const LEAD_OUT: [CutField; 4] =
@@ -29,6 +30,8 @@ const SCREEN: [CutField; 2] = [CutField::ScreenCell, CutField::ScreenAngle];
 // Defaults shown for an option that is off (LightBurn-like starting values).
 const DEFAULT_TAB_COUNT: &str = "4";
 const DEFAULT_TAB_WIDTH_MM: &str = "0.5";
+/// No power: the tabs are skipped.
+const DEFAULT_TAB_POWER: &str = "0";
 const DEFAULT_LEAD_MM: &str = "2";
 const DEFAULT_LEAD_ANGLE_DEG: &str = "90";
 const DEFAULT_PERFORATION_MM: &str = "1";
@@ -51,6 +54,10 @@ fn lead_fields(e: &mut CutExtras, lead: Option<Lead>, f: [CutField; 4]) {
 
 fn line_extras(l: &LineOptions, e: &mut CutExtras) {
     e.set_flag(CutField::TabsEnabled, l.tabs.is_some());
+    e.set_text(
+        CutField::TabsPower,
+        l.tabs.and_then(|t| t.cut_power_percent()).map_or(DEFAULT_TAB_POWER.to_owned(), format_mm),
+    );
     match l.tabs.map(|t| (t.placement(), t.width_mm())) {
         Some((TabPlacement::Count(n), w)) => {
             e.set_choice(CutField::TabsMode, CutChoice::TabsByCount);
@@ -197,6 +204,8 @@ pub(super) fn gates_of(kind: OperationKind, caps: &MachineCapabilities) -> CutGa
             }
         }
         _ => {
+            // The power first: when the tabs themselves are missing too, their reason wins.
+            block(&[CutField::TabsPower], Feature::TabCutPower);
             block(&TABS, Feature::Tabs);
             block(&[LEAD_IN, LEAD_OUT].concat(), Feature::Leads);
             block(&[CutField::Overcut], Feature::Overcut);
@@ -254,7 +263,17 @@ fn tabs(m: &CutExtras) -> Result<TabSpec, MessageKey> {
         Some(CutChoice::TabsBySpacing) => TabSpec::spaced(length(value, CutField::TabsValue)?, width),
         _ => TabSpec::new(whole(value, CutField::TabsValue)?, width),
     };
-    spec.map_err(|_| invalid(CutField::TabsValue))
+    let spec = spec.map_err(|_| invalid(CutField::TabsValue))?;
+    // `0` or an empty field: the tabs are skipped (C04); otherwise a percentage of the power.
+    let text = m.text(CutField::TabsPower);
+    if text.trim().is_empty() {
+        return Ok(spec);
+    }
+    let percent = parse_number(text, &["%"]).map_err(|_| invalid(CutField::TabsPower))?;
+    if percent == 0.0 {
+        return Ok(spec);
+    }
+    spec.with_cut_power(percent).map_err(|_| invalid(CutField::TabsPower))
 }
 
 fn lead(m: &CutExtras, f: [CutField; 4]) -> Result<Option<Lead>, MessageKey> {
