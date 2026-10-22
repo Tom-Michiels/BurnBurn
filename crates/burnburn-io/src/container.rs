@@ -310,6 +310,8 @@ struct RowsDto {
     name: String,
     /// Asset key (`sha256-<hex>`) of the CSV.
     asset: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    frozen_at: String,
 }
 
 fn production_to_dto(p: &crate::ProductionState) -> ProductionDto {
@@ -329,7 +331,7 @@ fn production_to_dto(p: &crate::ProductionState) -> ProductionDto {
             crate::AdvanceChoice::OnJobStarted => "on_job_started",
         }
         .into(),
-        rows: p.rows.as_ref().map(|r| RowsDto { name: r.name.clone(), asset: asset_key(&r.asset) }),
+        rows: p.rows.as_ref().map(|r| RowsDto { name: r.name.clone(), asset: asset_key(&r.asset), frozen_at: r.frozen_at.clone() }),
     }
 }
 
@@ -379,7 +381,7 @@ fn production_from_dto(d: &ProductionDto, assets: &AssetStore) -> Result<crate::
             if assets.get(&asset).is_none() {
                 return Err(bad("rows.asset", "is not an asset of the project"));
             }
-            Some(crate::RowsSource { name: r.name.clone(), asset })
+            Some(crate::RowsSource { name: r.name.clone(), asset, frozen_at: r.frozen_at.clone() })
         }
     };
     Ok(crate::ProductionState { serial, row: d.row, policy, rows })

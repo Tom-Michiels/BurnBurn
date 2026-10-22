@@ -165,6 +165,8 @@ pub enum AdvanceChoice {
 pub struct RowsSource {
     pub name: String,
     pub asset: ContentHash,
+    /// The time value `{datum}` resolved to when the table was chosen (empty when there was no clock).
+    pub frozen_at: String,
 }
 
 /// A frozen copy of the design at one moment ("opnieuw maken als revisie X").

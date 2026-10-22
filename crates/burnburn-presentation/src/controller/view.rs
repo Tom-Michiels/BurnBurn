@@ -171,7 +171,7 @@ pub(super) fn document_view(
         id,
         revision: s.doc.revision(),
         title: s.title.clone(),
-        dirty: s.doc.is_dirty(),
+        dirty: s.unsaved(),
         tool: s.editor.tool(),
         preview: s.editor.preview(),
         objects,

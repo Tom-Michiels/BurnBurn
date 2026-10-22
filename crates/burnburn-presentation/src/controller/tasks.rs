@@ -88,7 +88,8 @@ impl AppController {
             }
             Ok(TaskOutput::Saved { path }) => {
                 s.doc.mark_saved(outcome.source);
-                if let Some(recovery) = s.recovery_path.take().filter(|_| !s.doc.is_dirty()) {
+                s.variable.mark_saved();
+                if let Some(recovery) = s.recovery_path.take().filter(|_| !s.unsaved()) {
                     s.autosaved = None;
                     if let Ok(id) = self.ids.allocate::<TaskId>() {
                         let request = TaskRequest {

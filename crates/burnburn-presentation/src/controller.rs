@@ -797,6 +797,13 @@ fn error(document: Option<DocumentId>, message: MessageKey) -> AppUpdate {
     AppUpdate { effects: vec![HostEffect::ShowError { document, message }], ..AppUpdate::default() }
 }
 
+impl Session {
+    /// Unsaved work: document changes, or counters that moved since the last save (E11).
+    fn unsaved(&self) -> bool {
+        self.doc.is_dirty() || self.variable.unsaved()
+    }
+}
+
 fn apply_selection(s: &mut Session, change: &SelectionChange) {
     s.selection.apply(change);
     s.selection.retain_existing(&s.doc.snapshot());

@@ -18,7 +18,7 @@ fn state(project: &mut Project) -> ProductionState {
         serial: Some(SerialState { start: 100, end: 199, advance_by: 3, width: 5, wrap: false, current: 112 }),
         row: 2,
         policy: AdvanceChoice::OnUploadConfirmed,
-        rows: Some(RowsSource { name: "klanten.csv".into(), asset: csv }),
+        rows: Some(RowsSource { name: "klanten.csv".into(), asset: csv, frozen_at: "2026-10-22".into() }),
     }
 }
 

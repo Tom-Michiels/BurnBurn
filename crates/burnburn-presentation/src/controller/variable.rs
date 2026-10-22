@@ -17,6 +17,7 @@ use burnburn_generators::{
     AdvancePolicy, Commit, CsvError, CutField, DataTable, FrozenRows, JobClock, JobEvent, OnEnd, ProductionCounters,
     ProductionRecord, RowError, SerialCounter, SerialSpec, Template, Token, VariableError, bake_command, resolve_text,
 };
+use burnburn_io::{AdvanceChoice, AssetStore, ProductionState, RowsSource, SerialState};
 use burnburn_machine::{ExecutionId, ExecutionState, FailReason, UnknownReason};
 use burnburn_text::TextEvaluator;
 use burnburn_types::{DocumentId, RequestId, StableId, TaskId};
@@ -47,6 +48,10 @@ pub(super) struct VariableState {
     in_flight: BTreeMap<TaskId, ProductionRecord>,
     /// Executions whose job events were already reported to the counters.
     reported: Vec<(ExecutionId, JobEvent)>,
+    /// The CSV bytes behind `rows`, so the project can keep the table (E11).
+    rows_bytes: Option<Arc<[u8]>>,
+    /// Counter generation at the last save or open: a different one means unsaved counters.
+    saved_generation: u64,
 }
 
 impl Default for VariableState {
@@ -58,6 +63,8 @@ impl Default for VariableState {
             test: None,
             in_flight: BTreeMap::new(),
             reported: Vec::new(),
+            rows_bytes: None,
+            saved_generation: 0,
         }
     }
 }
@@ -71,6 +78,82 @@ impl VariableState {
     /// Remembers the record a compile is bound to until its result arrives.
     pub(super) fn bind_task(&mut self, task: TaskId, record: ProductionRecord) {
         self.in_flight.insert(task, record);
+    }
+
+    /// The counters changed since the last save or open (they travel with the project, E11).
+    pub(super) fn unsaved(&self) -> bool {
+        self.counters.generation() != self.saved_generation
+    }
+
+    pub(super) fn mark_saved(&mut self) {
+        self.saved_generation = self.counters.generation();
+    }
+
+    /// The counters as project data; `None` while everything is at its initial value. The chosen
+    /// CSV is added to `assets` (content-addressed, so saving twice adds it once).
+    pub(super) fn production(&self, assets: &mut AssetStore) -> Option<ProductionState> {
+        let serial = self.counters.serial().map(|c| {
+            let spec = c.spec();
+            SerialState {
+                start: spec.start(),
+                end: spec.end(),
+                advance_by: spec.advance_by(),
+                width: u8::try_from(spec.width()).unwrap_or(u8::MAX),
+                wrap: spec.on_end() == OnEnd::Wrap,
+                current: c.current(),
+            }
+        });
+        let rows = match (&self.rows, &self.rows_bytes) {
+            (Some((name, frozen)), Some(bytes)) => Some(RowsSource {
+                name: name.clone(),
+                asset: assets.add("text/csv", bytes),
+                frozen_at: frozen.frozen_at.clone(),
+            }),
+            _ => None,
+        };
+        let policy = match self.counters.policy() {
+            AdvancePolicy::Manual => AdvanceChoice::Manual,
+            AdvancePolicy::OnUploadConfirmed => AdvanceChoice::OnUploadConfirmed,
+            AdvancePolicy::OnJobStarted => AdvanceChoice::OnJobStarted,
+        };
+        let initial = default_serial().map(|c| SerialState {
+            start: c.spec().start(),
+            end: c.spec().end(),
+            advance_by: c.spec().advance_by(),
+            width: 0,
+            wrap: true,
+            current: c.current(),
+        });
+        let untouched = serial == initial && self.counters.row() == 0 && policy == AdvanceChoice::Manual && rows.is_none();
+        (!untouched).then(|| ProductionState { serial, row: self.counters.row() as u64, policy, rows })
+    }
+
+    /// Takes the counters, policy and data table a project was saved with. What cannot be read
+    /// back (a damaged table) leaves the initial value of that part.
+    pub(super) fn restore(&mut self, p: &ProductionState, assets: &AssetStore) {
+        if let Some(s) = &p.serial {
+            let on_end = if s.wrap { OnEnd::Wrap } else { OnEnd::Stop };
+            if let Ok(spec) = SerialSpec::new(s.start, s.end, s.advance_by, usize::from(s.width), on_end) {
+                let mut counter = SerialCounter::new(spec);
+                if counter.set_current(s.current).is_ok() {
+                    self.counters.set_serial(Some(counter));
+                }
+            }
+        }
+        self.counters.set_policy(match p.policy {
+            AdvanceChoice::Manual => AdvancePolicy::Manual,
+            AdvanceChoice::OnUploadConfirmed => AdvancePolicy::OnUploadConfirmed,
+            AdvanceChoice::OnJobStarted => AdvancePolicy::OnJobStarted,
+        });
+        if let Some(r) = &p.rows
+            && let Some(asset) = assets.get(&r.asset)
+            && let Ok(table) = DataTable::from_utf8(&asset.bytes, delimiter(&asset.bytes))
+        {
+            self.rows = Some((r.name.clone(), Arc::new(FrozenRows::freeze(table, &r.frozen_at))));
+            self.rows_bytes = Some(Arc::clone(&asset.bytes));
+        }
+        self.counters.set_row(usize::try_from(p.row).unwrap_or(0));
+        self.mark_saved();
     }
 
     /// A compile was accepted: an earlier refusal no longer applies.
@@ -196,6 +279,7 @@ fn load_csv(s: &mut Session, clock: Option<JobClock>, name: String, bytes: &[u8]
     };
     let frozen_at = clock.and_then(|c| c.format("%Y-%m-%d").ok()).unwrap_or_default();
     s.variable.rows = Some((name, Arc::new(FrozenRows::freeze(table, &frozen_at))));
+    s.variable.rows_bytes = Some(Arc::from(bytes));
     s.variable.counters.set_row(0);
     done(s)
 }
@@ -360,6 +444,7 @@ pub(super) fn edit(
         VariableEdit::LoadCsv { name, bytes } => load_csv(s, clock, name, &bytes),
         VariableEdit::ClearCsv => {
             s.variable.rows = None;
+            s.variable.rows_bytes = None;
             s.variable.counters.set_row(0);
             done(s)
         }
