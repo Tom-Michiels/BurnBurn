@@ -9,7 +9,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use burnburn_cam::{CompileError, CompileOptions, PreflightReport, RasterSource, compile_with, preflight};
+use burnburn_cam::{CompileError, CompileOptions, PreflightReport, RasterSource, compile_with, preflight_with};
 use burnburn_document::DocumentSnapshot;
 use burnburn_job::{JobPlan, MachineFrame, MachinePoint, MachineProfile};
 use burnburn_machine::{
@@ -323,7 +323,7 @@ pub(crate) fn compile_placed(
     let placed = place_plan(&plan, &laser.spec, laser.origin_bounds, &input)
         .map_err(|e| TaskError::Placement(LaserWhy::from(&e)))?;
     cancel.check().map_err(|_| TaskError::Cancelled)?;
-    let report = preflight(&scoped, &placed.plan, profile);
+    let report = preflight_with(&scoped, &placed.plan, profile, rasters);
     let applied = AppliedPlacement {
         spec: laser.spec,
         delta_mm: placed.delta_mm,

@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile_with, preflight};
+use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile_with, preflight, preflight_with};
 use burnburn_document::DocumentSnapshot;
 use burnburn_geometry::{
     BooleanError, BooleanOp, Bounds, OffsetError, OffsetJoin, Path, ProductionTolerance, boolean, offset,
@@ -615,7 +615,8 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             })?;
             cancel.check().map_err(|_| TaskError::Cancelled)?;
             let preview = Arc::new(preview(&plan, &profile));
-            let report = preflight(&snapshot, &plan, &profile);
+            // The source pixels are at hand: findings about images can be judged.
+            let report = preflight_with(&snapshot, &plan, &profile, &rasters);
             Ok(TaskOutput::Compiled { plan: Arc::new(plan), preview, report })
         }
         TaskInput::CompilePlaced { snapshot, profile, options, assets, laser, setup_key } => {

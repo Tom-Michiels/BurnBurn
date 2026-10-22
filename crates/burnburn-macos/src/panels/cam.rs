@@ -191,6 +191,10 @@ pub fn finding_text(kind: FindingKind, locale: Locale) -> &'static str {
             K::UnsupportedFeature => ("Niet ondersteund door dit profiel:", "Not supported by this profile:"),
             K::InvalidTabs => ("Tabs passen niet op:", "Tabs do not fit:"),
             K::SharedBoundaryCutOnce => ("Gedeelde rand wordt één keer gesneden:", "Shared edge is cut once:"),
+            K::PassThroughResampled => (
+                "Vaste pixelschaal valt ongelijk uiteen (pixels dubbel of overgeslagen):",
+                "Fixed pixel scale lands unevenly (pixels duplicated or skipped):",
+            ),
             _ => ("Melding:", "Finding:"),
         },
         locale,

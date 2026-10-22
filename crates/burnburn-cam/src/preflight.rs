@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use burnburn_document::DocumentSnapshot;
-use burnburn_document::process::{OperationMode, SharedEdgePolicy};
+use burnburn_document::process::{DitherMode, ImageRender, OperationMode, SharedEdgePolicy};
 use burnburn_geometry::{Bounds, Point, Segment};
 use burnburn_job::{Feature, JobPlan, MachinePoint, MachineProfile, PlanEvent, SourceRef};
 use burnburn_types::{GeometryId, OperationId};
@@ -46,6 +46,17 @@ pub enum Finding {
     /// These geometries of one Line operation share boundary segments exactly; with the default
     /// `SharedEdgePolicy::CutOnce` each shared segment is cut only once (IM32).
     SharedBoundaryCutOnce { operation: OperationId, geometries: Vec<GeometryId> },
+    /// A pass-through image (burnt pixel for pixel, for images that are dithered already) lands on
+    /// a grid of dots that is not a whole multiple of its pixels: pixels are duplicated or skipped
+    /// unevenly, which spoils the dither (G6-machine, C05).
+    PassThroughResampled {
+        operation: OperationId,
+        geometry: GeometryId,
+        /// Width and height of the source window in pixels.
+        source_px: (u32, u32),
+        /// Width and height of the grid of dots it is burnt on.
+        dots: (u32, u32),
+    },
 }
 
 impl Finding {
@@ -62,7 +73,8 @@ impl Finding {
             Finding::DuplicateCut { .. }
             | Finding::EmptyOperation { .. }
             | Finding::UnassignedGeometry { .. }
-            | Finding::SharedBoundaryCutOnce { .. } => Severity::Warning,
+            | Finding::SharedBoundaryCutOnce { .. }
+            | Finding::PassThroughResampled { .. } => Severity::Warning,
         }
     }
 }
@@ -104,6 +116,17 @@ impl PreflightReport {
 /// `f64` machine coordinates against the bed, without tolerance or rounding, before any
 /// backend quantises (IM15).
 pub fn preflight(snapshot: &DocumentSnapshot, plan: &JobPlan, profile: &MachineProfile) -> PreflightReport {
+    preflight_with(snapshot, plan, profile, &crate::NoRasters)
+}
+
+/// [`preflight`] with the source pixels of image operations, for the findings that need them. An
+/// image whose pixels are not there is not judged.
+pub fn preflight_with(
+    snapshot: &DocumentSnapshot,
+    plan: &JobPlan,
+    profile: &MachineProfile,
+    rasters: &dyn crate::RasterSource,
+) -> PreflightReport {
     let mut report = PreflightReport::default();
     let mut add = |f: Finding| {
         if !report.findings.contains(&f) {
@@ -201,6 +224,25 @@ pub fn preflight(snapshot: &DocumentSnapshot, plan: &JobPlan, profile: &MachineP
         for feature in crate::required_features(op) {
             if !profile.capabilities().is_supported(feature) {
                 add(Finding::UnsupportedFeature { operation: op.id(), feature });
+            }
+        }
+        if let OperationMode::Image(image) = op.mode()
+            && image.render() == ImageRender::Dither(DitherMode::PassThrough)
+            && let Some(source) = rasters.source_image(image.source())
+        {
+            for &geometry in op.targets() {
+                let Some(bounds) = snapshot.object(geometry).and_then(|o| o.bounds()) else { continue };
+                let (window, dots) = crate::image::pass_through_grids(&image, source, &bounds);
+                // A whole number of dots per pixel keeps every pixel intact; anything else
+                // duplicates some pixels more than others, or skips some.
+                if dots.0 % window.0.max(1) != 0 || dots.1 % window.1.max(1) != 0 {
+                    add(Finding::PassThroughResampled {
+                        operation: op.id(),
+                        geometry,
+                        source_px: window,
+                        dots,
+                    });
+                }
             }
         }
         if matches!(op.mode(), OperationMode::Line { .. }) && op.advanced().shared_edges == SharedEdgePolicy::CutOnce {

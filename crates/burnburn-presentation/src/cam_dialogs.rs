@@ -460,6 +460,8 @@ pub enum FindingKind {
     UnsupportedFeature,
     InvalidTabs,
     SharedBoundaryCutOnce,
+    /// A pass-through image lands on an uneven grid of dots (C05).
+    PassThroughResampled,
 }
 
 /// One entry of a document-dependent pop-up: an optional localised phrase and the data (names).
