@@ -45,6 +45,21 @@ impl Args {
         self.flag(name).ok_or_else(|| CliError::Usage(format!("--{name} is required")))
     }
 
+    /// Refuses every option that is not in `known` (flags) or a global switch: an option that is
+    /// not understood must never be silently ignored (X05). `--variant` gets its own reason.
+    pub fn reject_unknown(&self, known: &[&str]) -> Result<(), CliError> {
+        if self.flags.contains_key("variant") {
+            return Err(CliError::Usage(
+                "--variant is not available: a project has no project-level variants; component variants are part of the document, so compile uses the document as saved"
+                    .into(),
+            ));
+        }
+        match self.flags.keys().find(|k| !known.contains(&k.as_str())) {
+            Some(unknown) => Err(CliError::Usage(format!("unknown option --{unknown} for {}", self.command))),
+            None => Ok(()),
+        }
+    }
+
     pub fn switch(&self, name: &str) -> bool {
         self.switches.iter().any(|s| s == name)
     }
