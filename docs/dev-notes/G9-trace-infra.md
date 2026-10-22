@@ -115,7 +115,12 @@ uitvoer per doel staat niet in de repo (scratchpad van de run).
 
 ## Verificatie
 
-VERIFY_RESULTS
+- `cargo fmt --all`: schoon. `cargo clippy --workspace --all-targets --locked -- -D warnings`: schoon (eerst: `FakeGrbl` zonder `Default`, een
+  `needless_range_loop` in mijn eigen test; beide gefixt).
+- `cargo clippy -p burnburn-windows -p burnburn-presentation -p burnburn-render --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings`: schoon.
+- `cargo xtask verify` (native macOS-tests stil): **exit 0**; `layers: 27 crates, 2 triples, no violations`, `workspace-deps: 27 crates, every dependency
+  inherits from [workspace.dependencies]`, `path-attrs: 27 crates, 1348 source files, no #[path] leaves its own crate (src, tests)`, de algemene testrun
+  met `--skip perf_guard_`, de eigen perf-guardstap en de doctests; som van alle `test result`-regels: 4720 geslaagd, 0 gefaald, 13 genegeerd.
 
 ## Open / handmatig
 
