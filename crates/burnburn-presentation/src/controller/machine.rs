@@ -264,6 +264,7 @@ impl AppController {
             quantity: o.draft.quantity,
             completed: u32::try_from(completed).unwrap_or(u32::MAX),
             remnant: o.draft.remnant.clone(),
+            remnant_link: self.remnant_link(o, job.as_ref()),
             job: job.as_ref().map(|p| p.job.plan),
             needs_choice: job.is_none() && candidates.len() > 1,
             candidates,

@@ -71,6 +71,7 @@ mod recent;
 mod recovery;
 mod registration;
 mod repair_preview;
+mod remnants;
 mod reshape;
 mod shapes;
 mod shortcuts;
@@ -680,6 +681,8 @@ impl AppController {
             UiIntent::RequestStart { document } => self.request_start(document),
             UiIntent::ConfirmStart { document, action, seen } => self.confirm_start(document, action, seen),
             UiIntent::CancelStart => self.cancel_start(),
+            UiIntent::Remnant(intent) => self.remnant_intent(intent),
+            UiIntent::SetOrderRemnant { order, remnant } => self.set_order_remnant(order, remnant),
             UiIntent::RecordCalibration { input } => self.hub_record_calibration(input),
             UiIntent::RemoveCalibration { id } => self.hub_remove_calibration(id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
@@ -1004,6 +1007,7 @@ fn operator_may(intent: &UiIntent) -> bool {
         | UiIntent::RequestStart { .. }
         | UiIntent::ConfirmStart { .. }
         | UiIntent::CancelStart
+        | UiIntent::SetOrderRemnant { .. }
         | UiIntent::AddOrder { .. }
         | UiIntent::ChooseOrderJob { .. }
         | UiIntent::UploadForOrder { .. } => true,

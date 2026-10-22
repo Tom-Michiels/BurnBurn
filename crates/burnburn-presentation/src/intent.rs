@@ -124,6 +124,14 @@ pub enum UiIntent {
     },
     /// Closes the confirmation without starting.
     CancelStart,
+    /// The remnant library (W07): keep the selection, remove, place.
+    Remnant(crate::remnants::RemnantIntent),
+    /// Names the remnant an order is made from, or none. The name must be in the remnant library.
+    /// Linking changes no count.
+    SetOrderRemnant {
+        order: crate::production::OrderId,
+        remnant: Option<String>,
+    },
     /// Machine hub (W09): record one calibration proof.
     RecordCalibration {
         input: crate::machine_hub::ProofInput,

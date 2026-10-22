@@ -31,6 +31,7 @@ mod profile;
 pub mod profile_library;
 mod project;
 pub mod recent;
+pub mod remnant_library;
 pub mod search;
 pub mod shape_dto;
 mod shape_map;

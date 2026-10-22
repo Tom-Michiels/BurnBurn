@@ -29,6 +29,7 @@ mod nest_task;
 mod notes;
 mod offset;
 mod production;
+mod remnants;
 pub mod profile_file;
 mod schikken;
 mod search_panel;
@@ -147,6 +148,7 @@ pub use production::{
 };
 pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
+pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use start_confirm::{START_NEEDS, StartConfirmViewModel, StartEvidence};
 pub use structure_panel::{
     BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,

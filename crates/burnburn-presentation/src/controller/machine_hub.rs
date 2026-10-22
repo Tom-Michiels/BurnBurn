@@ -455,7 +455,7 @@ fn proof_row(p: &Proof) -> ProofRow {
 }
 
 /// `YYYY-MM-DD`, nothing else.
-fn iso_date(text: &str) -> Option<String> {
+pub(super) fn iso_date(text: &str) -> Option<String> {
     let t = text.trim();
     let bytes = t.as_bytes();
     let digits = |r: std::ops::Range<usize>| bytes.get(r).is_some_and(|b| b.iter().all(u8::is_ascii_digit));

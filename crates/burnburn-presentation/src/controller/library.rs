@@ -25,7 +25,7 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
+    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, REMNANT_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
     Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
@@ -52,6 +52,8 @@ pub(super) enum FilesJob {
     SaveCameraCalibrations,
     /// The machine in use is being written (M01).
     SaveActiveMachine,
+    /// The remnant library is being written (W07).
+    SaveRemnants,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -154,6 +156,11 @@ pub(super) struct Libraries {
     /// The active-machine file could not be read: it is kept as it is and never written (M01).
     active_unreadable: bool,
     active_writer: Writer,
+    /// The remnant library (W07): read once, changed on the UI thread, written back one write at a time.
+    pub(in crate::controller) remnants: Option<burnburn_io::remnant_library::RemnantLibrary>,
+    pub(in crate::controller) remnants_unreadable: bool,
+    remnant_writer: Writer,
+    pub(in crate::controller) remnant_problem: Option<crate::remnants::RemnantProblem>,
     /// The machine as it was last handed to the writer (or read), to see when it changed.
     active_seen: Option<super::machine::ActiveSeen>,
     /// Replaced active profiles waiting for the library file to be read before they are merged
@@ -164,6 +171,11 @@ pub(super) struct Libraries {
 }
 
 impl Libraries {
+    /// Have the library files been read (or is there no folder to read them from)?
+    pub(in crate::controller) fn is_ready(&self) -> bool {
+        self.state == LoadState::Ready
+    }
+
     fn material_persisted(&self) -> bool {
         self.dir.is_some() && !self.materials_unreadable && !self.material_writer.failed
     }
@@ -238,6 +250,7 @@ impl AppController {
             FilesJob::SaveCalibration => self.calibration_saved(outcome),
             FilesJob::SaveCameraCalibrations => self.camera_calibrations_saved(outcome),
             FilesJob::SaveActiveMachine => self.active_machine_saved(outcome),
+            FilesJob::SaveRemnants => self.remnants_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -273,6 +286,8 @@ impl AppController {
         let Some(dir) = self.libs.dir.clone() else {
             self.libs.materials = Some(MaterialLibrary::new(&self.new_library_id()));
             self.libs.art = Some(ArtLibrary::new(&self.new_library_id()));
+            self.libs.remnants =
+                Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
             self.libs.state = LoadState::Ready;
             return;
         };
@@ -313,6 +328,7 @@ impl AppController {
             FilesJob::SaveCalibration => self.libs.calibration_writer.in_flight = Some(id),
             FilesJob::SaveCameraCalibrations => self.libs.camera_writer.in_flight = Some(id),
             FilesJob::SaveActiveMachine => self.libs.active_writer.in_flight = Some(id),
+            FilesJob::SaveRemnants => self.libs.remnant_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -327,10 +343,28 @@ impl AppController {
                 calibration,
                 camera_calibrations,
                 active_machine,
+                remnants,
                 materials,
                 art,
                 thumbnails,
             })) => {
+                match remnants {
+                    Loaded::Ready(library) => self.libs.remnants = Some(library),
+                    Loaded::Missing => {
+                        self.libs.remnants = Some(burnburn_io::remnant_library::RemnantLibrary {
+                            remnants: Vec::new(),
+                            next_id: 1,
+                        });
+                    }
+                    Loaded::Unreadable(_) => {
+                        self.libs.remnants = Some(burnburn_io::remnant_library::RemnantLibrary {
+                            remnants: Vec::new(),
+                            next_id: 1,
+                        });
+                        self.libs.remnants_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match active_machine {
                     Loaded::Ready(entries) => self.restore_active_machine(entries),
                     Loaded::Missing => {}
@@ -641,6 +675,42 @@ impl AppController {
         if !self.libs.active_writer.failed {
             // The machine may have changed while the write ran.
             self.persist_active_machine();
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+    }
+
+    /// Writes the remnant library when it changed and no write is running. Nothing is written when
+    /// the file could not be read (it would replace what is in it).
+    pub(super) fn flush_remnants(&mut self) {
+        self.libs.remnant_writer.dirty = true;
+        if self.libs.remnant_writer.in_flight.is_some() || self.libs.remnants_unreadable {
+            return;
+        }
+        let (Some(dir), Some(library)) = (self.libs.dir.clone(), self.libs.remnants.clone()) else { return };
+        let task = FilesTask::SaveRemnantLibrary {
+            library: Box::new(library),
+            path: dir.join(REMNANT_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveRemnants) {
+            self.libs.remnant_writer.dirty = false;
+        }
+    }
+
+    fn remnants_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.remnant_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.remnant_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.remnant_writer.failed = true;
+                self.libs.remnant_problem = Some(crate::remnants::RemnantProblem::NotSaved);
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.remnant_writer.dirty && !self.libs.remnant_writer.failed {
+            self.flush_remnants();
         }
         AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }

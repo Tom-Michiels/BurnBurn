@@ -20,6 +20,7 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
+use burnburn_io::remnant_library::{RemnantLibrary, load_remnant_library, save_remnant_library};
 use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
@@ -44,6 +45,8 @@ pub enum FilesTask {
     SaveProfileLibrary { profiles: Vec<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the calibration proofs atomically (W09).
     SaveCalibrationLibrary { library: Box<CalibrationLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write the remnant library atomically (W07).
+    SaveRemnantLibrary { library: Box<RemnantLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the machine in use as a profile file of one machine, atomically (M01).
     SaveActiveMachine { entry: Box<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the camera calibrations (lens calibrations and workspace alignments) atomically (W04).
@@ -189,6 +192,8 @@ pub const PROFILE_LIBRARY_FILE: &str = "profiles.json";
 
 /// File name of the calibration proofs (kerf, scan offset, pointer offset; W09).
 pub const CALIBRATION_LIBRARY_FILE: &str = "calibration.json";
+/// File name of the remnant library (leftover sheets; W07).
+pub const REMNANT_LIBRARY_FILE: &str = "remnants.json";
 /// File name of the machine in use: a profile library of exactly one machine, with its settings (M01).
 pub const ACTIVE_MACHINE_FILE: &str = "active-machine.json";
 /// File name of the camera calibrations (lens calibrations and workspace alignments; W04).
@@ -209,6 +214,9 @@ impl fmt::Debug for FilesTask {
             FilesTask::ReadMachineProfile { path, .. } => write!(f, "ReadMachineProfile({})", path.display()),
             FilesTask::SaveCalibrationLibrary { library, path, .. } => {
                 write!(f, "SaveCalibrationLibrary({} to {})", library.proofs.len(), path.display())
+            }
+            FilesTask::SaveRemnantLibrary { library, path, .. } => {
+                write!(f, "SaveRemnantLibrary({} to {})", library.remnants.len(), path.display())
             }
             FilesTask::SaveActiveMachine { entry, path, .. } => {
                 write!(f, "SaveActiveMachine({} to {})", entry.profile.revision().id, path.display())
@@ -254,6 +262,7 @@ pub enum FilesOutput {
         calibration: Loaded<CalibrationLibrary>,
         camera_calibrations: Loaded<CalibrationStore>,
         active_machine: Loaded<Vec<LibraryProfile>>,
+        remnants: Loaded<RemnantLibrary>,
         materials: Loaded<MaterialLibrary>,
         art: Loaded<ArtLibrary>,
         thumbnails: Vec<(u64, ArtThumbnail)>,
@@ -263,6 +272,7 @@ pub enum FilesOutput {
     CalibrationLibrarySaved,
     CameraCalibrationsSaved,
     ActiveMachineSaved,
+    RemnantLibrarySaved,
     MachineProfileRead(Box<crate::profile_file::ProfileFile>),
     ArtLibrarySaved,
     ArtAdded {
@@ -402,11 +412,13 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                 read_library(fs.as_ref(), &dir.join(CAMERA_CALIBRATION_FILE), load_camera_calibrations);
             let active_machine =
                 read_library(fs.as_ref(), &dir.join(ACTIVE_MACHINE_FILE), load_profile_library_entries);
+            let remnants = read_library(fs.as_ref(), &dir.join(REMNANT_LIBRARY_FILE), load_remnant_library);
             Ok(FilesOutput::LibrariesLoaded {
                 profiles,
                 calibration,
                 camera_calibrations,
                 active_machine,
+                remnants,
                 materials,
                 art,
                 thumbnails,
@@ -426,6 +438,11 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             save_calibration_library(fs.as_ref(), &path, &library)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::CalibrationLibrarySaved)
+        }
+        FilesTask::SaveRemnantLibrary { library, path, fs } => {
+            save_remnant_library(fs.as_ref(), &path, &library)
+                .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
+            Ok(FilesOutput::RemnantLibrarySaved)
         }
         FilesTask::SaveActiveMachine { entry, path, fs } => {
             save_profile_library_entries(fs.as_ref(), &path, std::slice::from_ref(&*entry))
