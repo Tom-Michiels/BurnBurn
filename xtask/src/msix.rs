@@ -140,7 +140,7 @@ pub fn write_layout(spec: &MsixSpec, exe: Option<&Path>, out_dir: &Path) -> Resu
     std::fs::write(&manifest, appx_manifest(spec)).map_err(|e| io("writing", &manifest, e))?;
     for (name, size) in asset_files() {
         let path = assets.join(name);
-        let png = crate::bundle::png_rgba(size, size, &crate::bundle::draw_icon(size));
+        let png = crate::icon::logo_png(size, name == "FileIcon.png")?;
         std::fs::write(&path, png).map_err(|e| io("writing", &path, e))?;
     }
     if let Some(exe) = exe {
@@ -305,6 +305,28 @@ mod tests {
         assert!(manifest_only.join("AppxManifest.xml").is_file() && !manifest_only.join(EXECUTABLE).exists());
         // A missing executable path is an error, not a silently incomplete package.
         assert!(write_layout(&spec(), Some(&dir.join("missing.exe")), &dir.join("pkg3")).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Windows logos fill their square (the macOS plate keeps a margin) and the file icon is the page.
+    #[test]
+    fn the_logos_are_the_plate_edge_to_edge_and_the_file_icon_is_the_document() {
+        let dir = std::env::temp_dir().join(format!("burnburn-xtask-msix-logos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let out = write_layout(&spec(), None, &dir).unwrap();
+        let pixel = |name: &str, x: u32, y: u32| {
+            let png = std::fs::read(out.join("Assets").join(name)).unwrap();
+            let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png).unwrap().to_rgba8();
+            img.get_pixel(x, y).0
+        };
+        for (name, size) in [("Square150x150Logo.png", 150), ("Square44x44Logo.png", 44), ("StoreLogo.png", 50)] {
+            assert_eq!(pixel(name, 0, size / 2)[3], 255, "{name}: left edge is plate");
+            assert_eq!(pixel(name, size / 2, 0)[3], 255, "{name}: top edge is plate");
+        }
+        // The file icon is the light page (not the dark plate) with transparent surroundings.
+        assert_eq!(pixel("FileIcon.png", 2, 2)[3], 0, "outside the page");
+        let paper = pixel("FileIcon.png", 14, 40);
+        assert!(paper[0] > 200 && paper[1] > 200, "paper {paper:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

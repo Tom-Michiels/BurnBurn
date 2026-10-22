@@ -308,6 +308,7 @@ impl HostApp {
             }
         });
         let ns_app = NSApplication::sharedApplication(mtm);
+        app_host::install_app_icon(mtm);
         ns_app.setMainMenu(Some(&app.menu));
         ns_app.setDelegate(Some(app_delegate(&app._delegate)));
         // The register's bindings (and any the user changed) go into the menu; what the menu had

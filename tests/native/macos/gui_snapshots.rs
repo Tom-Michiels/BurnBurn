@@ -118,10 +118,8 @@ mod snapshots {
         s.pump(0.3);
         shot.document(&s, doc, "selection")?;
 
-        // The About box is an NSAlert: its window, laid out but never run.
-        let about = s.app.about_alert();
-        about.layout();
-        shot.window(&s, &about.window(), "about", None);
+        // About is the system's standard panel (Q5): it cannot be laid out without being shown, so
+        // no offscreen shot; its options are checked in app_panels.rs.
 
         // Cut Settings for the first layer.
         if let Some(op) = s.doc(doc).and_then(|d| d.operations.first().map(|o| o.id)) {
