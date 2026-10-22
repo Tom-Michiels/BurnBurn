@@ -292,6 +292,8 @@ pub struct ImportViewModel {
     pub busy: bool,
     /// Layers the import proposes (stroke/fill colours of a PDF, pens of a plotter file).
     pub layers: Vec<crate::files::ImportLayerRow>,
+    /// The user accepted the proposed layers: the import also creates their operations (P04).
+    pub layers_accepted: bool,
     /// LightBurn project: what was and was not taken over, per layer.
     pub lbrn2: Option<crate::files::Lbrn2ReportViewModel>,
 }

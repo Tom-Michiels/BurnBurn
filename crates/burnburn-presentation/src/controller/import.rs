@@ -3,12 +3,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use burnburn_document::process::{OperationDraft, OperationMode};
 use burnburn_document::{
     CommandOutcome, CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DocumentCommand, GeometryCommand,
     ImportItem, UndoLabel,
 };
 use burnburn_geometry::Bounds;
-use burnburn_io::import::{DxfScale, ImportDraft, ImportError, ParseError, PdfDocument, PdfKind, PdfPages};
+use burnburn_io::import::{
+    DxfScale, ImportDraft, ImportError, ImportLayer, ParseError, PdfDocument, PdfKind, PdfPages,
+};
 use burnburn_types::{CancellationSource, DocumentId, RequestId, TaskId};
 
 use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_edit, error, submit};
@@ -31,6 +34,8 @@ pub(super) struct PendingImport {
     pub(super) unit: Option<ImportUnit>,
     /// PDF/AI: the page choice and the objects of the chosen pages.
     pub(super) pdf: Option<PdfState>,
+    /// The user accepted the layers the file proposes: committing also creates their operations (P04).
+    pub(super) layers: bool,
 }
 
 /// The page choice of a PDF/AI import: what the user picked, what has been read for it, and the
@@ -76,7 +81,7 @@ impl PendingImport {
             }),
             _ => None,
         };
-        PendingImport { file, media: media_of(&parsed), bytes, parsed, unit: None, pdf }
+        PendingImport { file, media: media_of(&parsed), bytes, parsed, unit: None, pdf, layers: false }
     }
 
     /// The import in millimetres for the current decision; `ScaleRequired` while unknown. Not
@@ -134,10 +139,66 @@ fn layers_of(draft: &ImportDraft) -> Vec<ImportLayerRow> {
     for item in &draft.items {
         match rows.iter_mut().find(|r| r.name == item.name) {
             Some(row) => row.items += 1,
-            None => rows.push(ImportLayerRow { name: item.name.clone(), items: 1 }),
+            None => rows.push(ImportLayerRow { name: item.name.clone(), items: 1, layer: item.layer }),
         }
     }
     rows
+}
+
+/// The layers a draft proposes, in the order they first appear: the layer, the name of its first
+/// object and the positions of its objects in the draft. Objects of formats without a proposal
+/// (SVG, DXF) have no layer and are in no group.
+fn layer_groups(draft: &ImportDraft) -> Vec<(ImportLayer, String, Vec<usize>)> {
+    let mut groups: Vec<(ImportLayer, String, Vec<usize>)> = Vec::new();
+    for (i, item) in draft.items.iter().enumerate() {
+        let Some(layer) = item.layer else { continue };
+        match groups.iter_mut().find(|g| g.0 == layer) {
+            Some(group) => group.2.push(i),
+            None => groups.push((layer, item.name.clone(), vec![i])),
+        }
+    }
+    groups
+}
+
+/// The operation a proposed layer becomes: strokes and pens are cut lines, fills are filled areas.
+fn layer_operation(layer: ImportLayer, name: String) -> Option<OperationDraft> {
+    let mut draft = super::layers::new_layer_draft(0)?;
+    draft.name = name;
+    if matches!(layer, ImportLayer::Fill(_)) {
+        draft.mode = OperationMode::Fill(super::layers::default_fill()?);
+    }
+    Some(draft)
+}
+
+/// Commit of a PDF/AI or plotter import whose proposed layers were accepted: the objects and one
+/// operation per layer as ONE compound command, one revision, one undo step (P04). `None` when
+/// there is nothing to do differently (the plain commit applies).
+pub(super) fn commit_with_layers(
+    s: &mut Session,
+    document: DocumentId,
+    request: Option<RequestId>,
+) -> Option<AppUpdate> {
+    let pending = s.import.as_ref().filter(|i| i.layers && i.ready())?;
+    let draft = pending.draft().ok()?;
+    let groups = layer_groups(&draft);
+    if groups.is_empty() {
+        return None;
+    }
+    let asset = s.assets.add(pending.media, &pending.bytes);
+    let Ok(geometry) = draft.into_command(asset) else { return Some(error(Some(document), MessageKey::ImportFailed)) };
+    let mut steps = vec![CompoundStep::Run(CommandPayload::Edit(geometry))];
+    for (layer, name, items) in groups {
+        let Some(operation) = layer_operation(layer, name) else {
+            return Some(error(Some(document), MessageKey::ImportFailed));
+        };
+        steps.push(CompoundStep::AddOperationForItems { draft: operation, items });
+    }
+    let compound = CompoundCommand { label: CompoundLabel::ImportLayers, steps };
+    let update = apply_edit(s, document, CommandPayload::Compound(compound), request);
+    if s.doc.undo_label() == Some(UndoLabel::Compound(CompoundLabel::ImportLayers)) {
+        s.import = None;
+    }
+    Some(update)
 }
 
 fn union(a: Option<Bounds>, b: Option<Bounds>) -> Option<Bounds> {
@@ -195,6 +256,7 @@ pub(super) fn import_view(i: &PendingImport, active_machine: Option<&str>) -> Im
         page_choice,
         busy,
         layers,
+        layers_accepted: i.layers,
         lbrn2: None,
     }
 }
@@ -273,6 +335,7 @@ fn project_view(i: &PendingImport, l: &Lbrn2Import, active_machine: Option<&str>
         page_choice: None,
         busy: false,
         layers: Vec::new(),
+        layers_accepted: false,
         lbrn2: Some(Lbrn2ReportViewModel {
             app_version: d.report.app_version.clone(),
             shapes: d.items.len(),
@@ -308,6 +371,17 @@ impl AppController {
                 input: TaskInput::ParseImport { path, fs },
             };
             submit(s, &tasks, request, cancel, document)
+        })
+    }
+
+    /// Accept or take back the layers a PDF/AI or plotter file proposes (P04).
+    pub(super) fn set_import_layers(&mut self, document: DocumentId, create: bool) -> AppUpdate {
+        self.with_session(document, |s| {
+            let Some(import) = s.import.as_mut() else { return AppUpdate::default() };
+            // Only a file that proposes layers can have them accepted.
+            let proposes = import.draft().is_ok_and(|d| layer_groups(&d).len() > 0);
+            import.layers = create && proposes;
+            AppUpdate { view_changed: true, ..AppUpdate::default() }
         })
     }
 

@@ -983,6 +983,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
             CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
             CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
+            CompoundLabel::ImportLayers => ("Importeren met lagen", "Import with Layers"),
             CompoundLabel::ReplaceToFit => ("Beeld vervangen en passen", "Replace Image to Fit"),
             _ => return None,
         },
@@ -1770,6 +1771,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             CompoundLabel::MaskImage,
             CompoundLabel::ImportProject,
             CompoundLabel::ReplaceToFit,
+            CompoundLabel::ImportLayers,
         ]
         .map(UndoLabel::Compound),
     );
