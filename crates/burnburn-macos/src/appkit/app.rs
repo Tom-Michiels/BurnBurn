@@ -979,9 +979,10 @@ impl HostApp {
     pub(crate) fn redraw(&self, document: DocumentId) {
         let Some(scene) = self.controller.try_borrow().ok().and_then(|c| c.scene(document)) else { return };
         let wireframe = self.view().document(document).is_some_and(|d| d.wireframe);
-        let packet = super::canvas::canvas_packet_with(&scene, wireframe, self.display_tolerance_px.get());
         let Ok(windows) = self.windows.try_borrow() else { return };
         let Some(w) = windows.get(&document) else { return };
+        let dark = super::canvas::is_dark(&w.canvas_view);
+        let packet = super::canvas::canvas_packet_themed(&scene, wireframe, self.display_tolerance_px.get(), dark);
         if let Some(Err(e)) = w.controller.with_canvas(|canvas| canvas.draw(&packet)) {
             eprintln!("burnburn: canvas: {e}");
         }

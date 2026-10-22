@@ -122,11 +122,7 @@ impl Theme {
                 stroke: Some(accent),
                 stroke_width_pt: 1.0,
             },
-            hovered: RoleStyle {
-                fill: None,
-                stroke: Some(Rgba::new(0.85, 0.40, 0.0, 1.0)),
-                stroke_width_pt: 1.0,
-            },
+            hovered: RoleStyle { fill: None, stroke: Some(Rgba::new(0.85, 0.40, 0.0, 1.0)), stroke_width_pt: 1.0 },
             disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.62, 0.62, 0.65, 1.0)), stroke_width_pt: 1.0 },
             process_layers: LAYER_PALETTE
                 .map(|[r, g, b]| Rgba::new(f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0, 1.0)),
@@ -166,11 +162,7 @@ impl Theme {
                 stroke: Some(accent),
                 stroke_width_pt: 1.0,
             },
-            hovered: RoleStyle {
-                fill: None,
-                stroke: Some(Rgba::new(1.0, 0.65, 0.25, 1.0)),
-                stroke_width_pt: 1.0,
-            },
+            hovered: RoleStyle { fill: None, stroke: Some(Rgba::new(1.0, 0.65, 0.25, 1.0)), stroke_width_pt: 1.0 },
             disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.45, 0.45, 0.48, 1.0)), stroke_width_pt: 1.0 },
             process_layers: light.process_layers.map(lift),
             grid: Some(Rgba::new(0.20, 0.20, 0.22, 1.0)),
@@ -371,10 +363,12 @@ fn bed_of(scene: &SceneSnapshot, proj: &Projection) -> Option<(BedPx, f64, f64, 
             let [l, b] = proj.px32(Point::new(0.0, 0.0));
             let [r, t] = proj.px32(Point::new(*width_mm, *height_mm));
             let (left, right, top, bottom) = (l.min(r), l.max(r), t.min(b), t.max(b));
-            [left, right, top, bottom]
-                .iter()
-                .all(|v| v.is_finite())
-                .then_some((BedPx { left, top, right, bottom }, *width_mm, *height_mm, *origin))
+            [left, right, top, bottom].iter().all(|v| v.is_finite()).then_some((
+                BedPx { left, top, right, bottom },
+                *width_mm,
+                *height_mm,
+                *origin,
+            ))
         }
         _ => None,
     })
@@ -437,10 +431,8 @@ fn grid(
             None => (lo, hi),
         }
     };
-    let (xr, yr) = (
-        clip(top_left.x, bottom_right.x, bed.map(|b| b.1)),
-        clip(top_left.y, bottom_right.y, bed.map(|b| b.2)),
-    );
+    let (xr, yr) =
+        (clip(top_left.x, bottom_right.x, bed.map(|b| b.1)), clip(top_left.y, bottom_right.y, bed.map(|b| b.2)));
     let range = |(lo, hi): (f64, f64)| {
         let (first, last) = ((lo / spacing_mm).ceil(), (hi / spacing_mm).floor());
         let n = last - first + 1.0;

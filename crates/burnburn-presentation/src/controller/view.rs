@@ -131,6 +131,20 @@ impl AppController {
             viewport: s.viewport,
         });
         layers::style_scene(s, &snapshot, &mut scene);
+        // The machine's work area lies beneath everything, the grid included (LF2).
+        if let Some(m) = &self.machine {
+            let frame = m.profile.frame();
+            let origin = match frame.origin() {
+                burnburn_job::OriginCorner::BottomLeft => burnburn_editor::BedOrigin::BottomLeft,
+                burnburn_job::OriginCorner::TopLeft => burnburn_editor::BedOrigin::TopLeft,
+                burnburn_job::OriginCorner::TopRight => burnburn_editor::BedOrigin::TopRight,
+                burnburn_job::OriginCorner::BottomRight => burnburn_editor::BedOrigin::BottomRight,
+            };
+            scene.overlays.insert(
+                0,
+                burnburn_editor::Overlay::Bed { width_mm: frame.width_mm(), height_mm: frame.height_mm(), origin },
+            );
+        }
         scene.overlays.extend(self.camera_overlays());
         scene.overlays.extend(self.recognition_overlays());
         scene.overlays.extend(super::image::preview_overlay(s));

@@ -97,7 +97,8 @@ impl GpuContext {
     /// format, else 1 (anti-aliasing off, reported once on stderr).
     pub fn sample_count(&self, format: wgpu::TextureFormat) -> u32 {
         let flags = self.adapter.get_texture_format_features(format).flags;
-        if flags.sample_count_supported(MSAA_SAMPLES) && flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
+        if flags.sample_count_supported(MSAA_SAMPLES)
+            && flags.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
         {
             MSAA_SAMPLES
         } else {

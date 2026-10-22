@@ -231,7 +231,8 @@ fn grid_lines_stay_inside_the_bed_with_majors_apart_from_minors() {
             .unwrap_or_else(|| panic!("{name}: no bed fill"));
         let xs: Vec<f32> = fill[0].iter().map(|p| p[0]).collect();
         let ys: Vec<f32> = fill[0].iter().map(|p| p[1]).collect();
-        let extent = |v: &[f32]| (v.iter().cloned().fold(f32::MAX, f32::min), v.iter().cloned().fold(f32::MIN, f32::max));
+        let extent =
+            |v: &[f32]| (v.iter().cloned().fold(f32::MAX, f32::min), v.iter().cloned().fold(f32::MIN, f32::max));
         assert_eq!(extent(&xs), (l, r));
         assert_eq!(extent(&ys), (tp, b));
     }

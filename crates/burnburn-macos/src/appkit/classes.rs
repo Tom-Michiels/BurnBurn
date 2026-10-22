@@ -1075,6 +1075,18 @@ define_class!(
             });
         }
 
+        /// Light/dark switch (system setting or the window's own appearance): the canvas theme follows.
+        #[unsafe(method(viewDidChangeEffectiveAppearance))]
+        fn view_did_change_effective_appearance(&self) {
+            ffi_guard("viewDidChangeEffectiveAppearance", (), || {
+                // SAFETY: NSView's own implementation, no arguments, initialised instance.
+                let () = unsafe { msg_send![super(self), viewDidChangeEffectiveAppearance] };
+                if let Some(app) = self.ivars().app.upgrade() {
+                    app.redraw(self.ivars().document);
+                }
+            });
+        }
+
         /// Moved to a screen with another backing scale (Retina ↔ non-Retina) or the scale changed.
         #[unsafe(method(viewDidChangeBackingProperties))]
         fn view_did_change_backing_properties(&self) {

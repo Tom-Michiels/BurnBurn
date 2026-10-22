@@ -32,7 +32,7 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{CamPanelParts, HostApp, HostOptions, QuitOutcome, WindowParts};
 pub use app::{MenuKeyReport, app_user_dir};
-pub use canvas::{canvas_packet, canvas_packet_with};
+pub use canvas::{canvas_packet, canvas_packet_themed, canvas_packet_with, canvas_theme};
 pub use panels::camera_window::CameraParts;
 pub use panels::image::trace_batch_open_panel;
 pub use panels::laser::LaserParts;
