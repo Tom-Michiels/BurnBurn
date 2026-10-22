@@ -464,8 +464,8 @@ pub const ICO_SIZES: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
 fn pngs(svg: &str, sizes: &[u32], frame: Frame) -> Result<HashMap<u32, Vec<u8>>, String> {
     let mut out = HashMap::new();
     for &size in sizes {
-        if !out.contains_key(&size) {
-            out.insert(size, png(&render(svg, size, frame)?)?);
+        if let std::collections::hash_map::Entry::Vacant(slot) = out.entry(size) {
+            slot.insert(png(&render(svg, size, frame)?)?);
         }
     }
     Ok(out)

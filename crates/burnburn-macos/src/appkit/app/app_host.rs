@@ -12,13 +12,13 @@ use block2::RcBlock;
 use burnburn_presentation::{DiagnosticOptions, KeyBinding, PrefsViewModel};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
-use objc2::runtime::Sel;
-use objc2::{MainThreadMarker, MainThreadOnly, sel};
+use objc2::runtime::{AnyObject, Sel};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSControlStateValueOn, NSEventModifierFlags, NSMenu, NSMenuItem, NSModalResponse,
+    NSApplication, NSControlStateValueOn, NSEventModifierFlags, NSImage, NSMenu, NSMenuItem, NSModalResponse,
     NSSavePanel, NSWorkspace,
 };
-use objc2_foundation::{NSIndexSet, NSString, NSTimer, NSURL};
+use objc2_foundation::{NSAttributedString, NSData, NSDictionary, NSIndexSet, NSString, NSTimer, NSURL};
 
 use super::{HostApp, command_item};
 use crate::adapter::{MenuItem, NativeEvent, menu_item};
@@ -40,6 +40,36 @@ const PREVIEW_TICK_S: f64 = 1.0 / 30.0;
 /// project folder.
 pub fn app_user_dir() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support").join("BurnBurn"))
+}
+
+// ---- app icon ----------------------------------------------------------------------------------
+
+/// The BurnBurn icon as a 512 px PNG: `cargo xtask icon` renders it from `assets/app-icon/burnburn.svg`
+/// (a test in xtask keeps it current). Bundled runs get the full `.icns` from the bundle instead.
+const APP_ICON_PNG: &[u8] = include_bytes!("../../../../../assets/app-icon/burnburn-512.png");
+
+/// The embedded icon as an image (None only if AppKit cannot decode the PNG).
+fn app_icon_image() -> Option<Retained<NSImage>> {
+    NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(APP_ICON_PNG))
+}
+
+/// Whether the running executable sits in an `.app` bundle (then macOS already shows its `.icns`).
+fn running_from_bundle() -> bool {
+    std::env::current_exe().is_ok_and(|p| p.to_string_lossy().contains(".app/Contents/MacOS/"))
+}
+
+/// Gives an unbundled run (`cargo run`, the native tests) the BurnBurn icon in the Dock and in the
+/// application switcher instead of the generic executable icon. Does nothing inside a bundle.
+#[allow(unsafe_code)]
+pub fn install_app_icon(mtm: MainThreadMarker) {
+    if running_from_bundle() {
+        return;
+    }
+    if let Some(icon) = app_icon_image() {
+        // SAFETY: called on the main thread (the marker), with an image that outlives the call;
+        // NSApplication retains it.
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
+    }
 }
 
 // ---- menus -------------------------------------------------------------------------------------
@@ -423,35 +453,45 @@ impl HostApp {
 
     // ---- About and manual ------------------------------------------------------------------------
 
-    /// The About alert (not shown): name, version, platform and the offline promise.
-    pub fn about_alert(&self) -> Retained<NSAlert> {
+    /// Options of the standard About panel (not shown): application name, version, credits (platform
+    /// and the offline promise) and the BurnBurn icon. The panel itself supplies the layout, the
+    /// "Version" wording in the system language and the dark-mode handling.
+    pub fn about_panel_options(&self) -> Retained<NSDictionary<NSString, AnyObject>> {
         let info = burnburn_presentation::AppController::help_info();
         let t = |text| app_text(text, self.locale);
-        let alert = NSAlert::new(self.mtm);
-        alert.setMessageText(&NSString::from_str(info.app_name));
-        alert.setInformativeText(&NSString::from_str(&format!(
-            "{} {}\n{} {} {}\n\n{}",
-            t(AppText::AboutVersion),
-            info.version,
-            t(AppText::AboutPlatform),
-            info.os,
-            info.arch,
-            t(AppText::AboutOffline)
-        )));
-        alert.addButtonWithTitle(&NSString::from_str("OK"));
-        alert
+        let credits = format!("{} {} {}\n{}", t(AppText::AboutPlatform), info.os, info.arch, t(AppText::AboutOffline));
+        let credits = NSAttributedString::initWithString(NSAttributedString::alloc(), &NSString::from_str(&credits));
+        let text = |s: &str| Retained::into_super(Retained::into_super(NSString::from_str(s)));
+        let mut keys: Vec<Retained<NSString>> = Vec::new();
+        let mut values: Vec<Retained<AnyObject>> = Vec::new();
+        // An empty build number: the version line then reads "Version 0.1.0", not "0.1.0 (0.1.0)".
+        for (key, value) in [
+            ("ApplicationName", text(info.app_name)),
+            ("ApplicationVersion", text(info.version)),
+            ("Version", text("")),
+            ("Credits", Retained::into_super(Retained::into_super(credits))),
+        ] {
+            keys.push(NSString::from_str(key));
+            values.push(value);
+        }
+        if let Some(icon) = app_icon_image() {
+            keys.push(NSString::from_str("ApplicationIcon"));
+            values.push(Retained::into_super(Retained::into_super(icon)));
+        }
+        let key_refs: Vec<&NSString> = keys.iter().map(|k| &**k).collect();
+        NSDictionary::from_retained_objects(&key_refs, &values)
     }
 
+    #[allow(unsafe_code)]
     fn show_about(&self) {
-        let alert = self.about_alert();
-        if let Some(window) = self.active_document().and_then(|d| self.window(d)) {
-            if let Err(e) =
-                objc_try("showing the About sheet", || alert.beginSheetModalForWindow_completionHandler(&window, None))
-            {
-                eprintln!("burnburn: {e}");
-            }
-        } else {
-            alert.runModal();
+        let options = self.about_panel_options();
+        let app = NSApplication::sharedApplication(self.mtm);
+        // SAFETY: the dictionary maps NSString keys to NSString / NSAttributedString / NSImage
+        // objects, the types `orderFrontStandardAboutPanelWithOptions:` documents for these keys.
+        let shown =
+            objc_try("showing the About panel", || unsafe { app.orderFrontStandardAboutPanelWithOptions(&options) });
+        if let Err(e) = shown {
+            eprintln!("burnburn: {e}");
         }
     }
 
