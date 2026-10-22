@@ -21,6 +21,7 @@ fn project(objects: Vec<GeometryObject>, next_id: u64) -> Project {
         profiles: Vec::new(),
         revisions: Vec::new(),
         library_links: Vec::new(),
+        production: None,
     }
 }
 

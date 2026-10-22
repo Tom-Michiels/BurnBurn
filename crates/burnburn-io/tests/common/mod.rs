@@ -63,6 +63,7 @@ pub fn sample_project() -> Project {
         profiles: Vec::new(),
         revisions: Vec::new(),
         library_links: Vec::new(),
+        production: None,
     }
 }
 

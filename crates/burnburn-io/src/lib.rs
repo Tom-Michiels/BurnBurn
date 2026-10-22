@@ -47,7 +47,10 @@ pub use error::{LoadError, SaveError};
 pub use hash::{asset_hash, project_hash};
 pub use process_map::{MIGRATED_V1_POWER_PCT, MIGRATED_V1_SPEED_MM_S};
 pub use profile::{ProfileComparison, compare_profile};
-pub use project::{Asset, AssetStore, FrozenRevision, LibraryLink, Project, ProjectUuid};
+pub use project::{
+    AdvanceChoice, Asset, AssetStore, FrozenRevision, LibraryLink, ProductionState, Project, ProjectUuid, RowsSource,
+    SerialState,
+};
 pub use store::{
     SaveOutcome, discard_recovery, load_project, read_recovery, recovery_path, save_project,
     save_project_keeping_previous, write_recovery,

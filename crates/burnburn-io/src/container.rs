@@ -24,6 +24,8 @@ const PROFILES: &str = "profiles.json";
 const REVISIONS: &str = "revisions.json";
 /// Material-library provenance of recipes (W2-L6, C08); only present when the project has some.
 const LIBRARY_LINKS: &str = "library-links.json";
+/// Serial counter, advance policy and chosen data row (E11); only present when the project has them.
+const PRODUCTION: &str = "production.json";
 const ASSET_DIR: &str = "assets/";
 const PREVIEW_DIR: &str = "previews/";
 
@@ -88,6 +90,11 @@ pub fn encode_container(project: &Project) -> Result<Vec<u8>, SaveError> {
         zip.start_file(LIBRARY_LINKS, json).map_err(|e| enc(&e))?;
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
+    if let Some(production) = &project.production {
+        zip.start_file(PRODUCTION, json).map_err(|e| enc(&e))?;
+        zip.write_all(&serde_json::to_vec_pretty(&production_to_dto(production)).map_err(|e| enc(&e))?)
+            .map_err(|e| enc(&e))?;
+    }
     for (h, a) in project.assets.iter() {
         zip.start_file(format!("{ASSET_DIR}{}", asset_key(h)), options(CompressionMethod::Stored))
             .map_err(|e| enc(&e))?;
@@ -116,6 +123,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let mut profile_bytes = None;
     let mut revision_bytes = None;
     let mut link_bytes = None;
+    let mut production_bytes = None;
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
@@ -127,6 +135,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             PROFILES => (Some(&mut profile_bytes), MAX_JSON_BYTES),
             REVISIONS => (Some(&mut revision_bytes), MAX_JSON_BYTES),
             LIBRARY_LINKS => (Some(&mut link_bytes), MAX_JSON_BYTES),
+            PRODUCTION => (Some(&mut production_bytes), MAX_JSON_BYTES),
             n if n.starts_with(ASSET_DIR) && !n[ASSET_DIR.len()..].contains('/') => (None, MAX_ASSET_BYTES),
             n if n.starts_with(PREVIEW_DIR) && !n.contains("..") => continue,
             _ => return Err(LoadError::UnexpectedEntry(name)),
@@ -196,7 +205,15 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let schema = u32::try_from(schema).unwrap_or(u32::MAX);
     let document = document_from_dto(&dto, schema, &|h| assets.get(h).is_some())?;
     let mut project =
-        Project { uuid, document, assets, profiles: Vec::new(), revisions: Vec::new(), library_links: Vec::new() };
+        Project {
+        uuid,
+        document,
+        assets,
+        profiles: Vec::new(),
+        revisions: Vec::new(),
+        library_links: Vec::new(),
+        production: None,
+    };
     if let Some(bytes) = profile_bytes {
         let dtos: Vec<crate::profile::ProfileDto> =
             serde_json::from_slice(&bytes).map_err(|e| json_error(PROFILES, &e))?;
@@ -224,6 +241,10 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
                 revision: l.revision,
             });
         }
+    }
+    if let Some(bytes) = production_bytes {
+        let dto: ProductionDto = serde_json::from_slice(&bytes).map_err(|e| json_error(PRODUCTION, &e))?;
+        project.production = Some(production_from_dto(&dto, &project.assets)?);
     }
     if let Some(bytes) = revision_bytes {
         let dtos: Vec<RevisionDto> = serde_json::from_slice(&bytes).map_err(|e| json_error(REVISIONS, &e))?;
@@ -258,6 +279,110 @@ struct RevisionDto {
     label: String,
     project_hash: String,
     document: v1::Document,
+}
+
+/// The production counters on disk.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProductionDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    serial: Option<SerialDto>,
+    row: u64,
+    policy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rows: Option<RowsDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SerialDto {
+    start: i64,
+    end: i64,
+    advance_by: i64,
+    width: u8,
+    wrap: bool,
+    current: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RowsDto {
+    name: String,
+    /// Asset key (`sha256-<hex>`) of the CSV.
+    asset: String,
+}
+
+fn production_to_dto(p: &crate::ProductionState) -> ProductionDto {
+    ProductionDto {
+        serial: p.serial.map(|s| SerialDto {
+            start: s.start,
+            end: s.end,
+            advance_by: s.advance_by,
+            width: s.width,
+            wrap: s.wrap,
+            current: s.current,
+        }),
+        row: p.row,
+        policy: match p.policy {
+            crate::AdvanceChoice::Manual => "manual",
+            crate::AdvanceChoice::OnUploadConfirmed => "on_upload_confirmed",
+            crate::AdvanceChoice::OnJobStarted => "on_job_started",
+        }
+        .into(),
+        rows: p.rows.as_ref().map(|r| RowsDto { name: r.name.clone(), asset: asset_key(&r.asset) }),
+    }
+}
+
+fn production_from_dto(d: &ProductionDto, assets: &AssetStore) -> Result<crate::ProductionState, LoadError> {
+    let bad = |path: &str, reason: &str| LoadError::InvalidValue { path: format!("production.{path}"), reason: reason.into() };
+    let policy = match d.policy.as_str() {
+        "manual" => crate::AdvanceChoice::Manual,
+        "on_upload_confirmed" => crate::AdvanceChoice::OnUploadConfirmed,
+        "on_job_started" => crate::AdvanceChoice::OnJobStarted,
+        _ => return Err(bad("policy", "unknown advance policy")),
+    };
+    let serial = match &d.serial {
+        None => None,
+        Some(s) => {
+            if s.advance_by == 0 {
+                return Err(bad("serial.advance_by", "is zero"));
+            }
+            if (s.advance_by > 0 && s.end < s.start) || (s.advance_by < 0 && s.end > s.start) {
+                return Err(bad("serial.end", "is on the wrong side of the start"));
+            }
+            if s.width > 20 {
+                return Err(bad("serial.width", "is above 20"));
+            }
+            let delta = i128::from(s.current) - i128::from(s.start);
+            let by = i128::from(s.advance_by);
+            let last = (i128::from(s.end) - i128::from(s.start)) / by;
+            if delta % by != 0 || !(0..=last).contains(&(delta / by)) {
+                return Err(bad("serial.current", "is not a value of the series"));
+            }
+            Some(crate::SerialState {
+                start: s.start,
+                end: s.end,
+                advance_by: s.advance_by,
+                width: s.width,
+                wrap: s.wrap,
+                current: s.current,
+            })
+        }
+    };
+    let rows = match &d.rows {
+        None => None,
+        Some(r) => {
+            if r.name.trim().is_empty() {
+                return Err(bad("rows.name", "is empty"));
+            }
+            let asset = parse_asset_key(|| "production.rows.asset".to_owned(), &r.asset)?;
+            if assets.get(&asset).is_none() {
+                return Err(bad("rows.asset", "is not an asset of the project"));
+            }
+            Some(crate::RowsSource { name: r.name.clone(), asset })
+        }
+    };
+    Ok(crate::ProductionState { serial, row: d.row, policy, rows })
 }
 
 /// One library link on disk.
