@@ -10,7 +10,7 @@ een latere lane is afgerond, verwijst de status naar die lane en naar de test. A
 exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 1.99.1); clippy voor
 `x86_64-pc-windows-msvc` schoon. Windows is nooit gedraaid.
 
-## Nog open na golf 6
+## Nog open na golf 7 (titel bijgewerkt; secties hieronder zijn per lane bijgewerkt)
 
 ### Software (eerlijk nog niet gebouwd)
 
@@ -39,8 +39,8 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   3 parameterlengtes; E06 een stap *toevoegen* kan alleen als offsetketen of via Schikken ▸ Reeks… (geen boolean-/raster-/
   cirkelstap uit het paneel) en de stapel staat in het Structuurpaneel, niet in de Mac-inspecteur; E07 Omzetten naar pad en
   tekst typen werken nog niet op meerdere teksten tegelijk; E08 geen binding voor meerregelige of variabele tekst en een
-  gebonden tekst kan niet zelf verplaatst worden (de gids verplaatsen kan), en CAM weigert een geblokkeerd afgeleid object nog
-  niet (zie de G7-editor-regels); S07/P06 vaste vormen (`Fixed`) zijn niet te bewerken, geen formules in vormen, geen
+  gebonden tekst kan niet zelf verplaatst worden (de gids verplaatsen kan);
+  CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`); S07/P06 vaste vormen (`Fixed`) zijn niet te bewerken, geen formules in vormen, geen
   automatisch verdelen over platen, exemplaar draaien ontbreekt; S01 een maat die één solve door `a = b` heen stuurt convergeert
   niet in één stap, geen ellips-ellips- of ellips-cirkel-raakrelatie.
 - **Trace** (G7-trace: gebouwd, zie `docs/dev-notes/G7-trace.md`; wat blijft): T03 radiaal lensmodel zonder tangentiële termen
@@ -368,6 +368,6 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G7-editor | E06 modifierstapel (tonen, volgorde, aan/uit, getal, verwijderen, toepassen) | `StructureCommand::BakeModifier` (nieuw, additief) | `StructureViewModel.modifiers`, `StructureEdit::{ToggleModifierStep, MoveModifierStep, RemoveModifierStep, SetModifierStepValue, RemoveModifier, BakeModifier, CreateOffsetModifier}`, `EditorControl::Mod*` | `document/tests/g7_bake_modifier.rs::*`, `presentation/tests/g7_modifiers.rs::*`, native `g7_editor_panels_native::structure_panel_...` | klaar (in het Structuurpaneel); open: stappen toevoegen vanuit het paneel |
 | G7-editor | E07 meerdere teksten tegelijk | `CompoundLabel::EditTexts` (nieuw) | `TextToolbarViewModel.{count, mixed}` (`TextMixed`), `ToolbarPanel.{count, mixed}` | `presentation/tests/g7_text_many.rs::*`, `macos/tests/g7_editor_panels.rs::several_texts`, `windows/tests/g7_editor_forms.rs::several_texts` | klaar; open: Omzetten naar pad voor meerdere |
 | G7-editor | E08 tekst op pad als live binding, bevroren uitvoer in een job | `TextObject.path: PathBinding`, `TextError::GuideIsOwnOutput`, sessie volgt gidsen, `generators::BoundTextEvaluator`, `text_dto::PathBinding` | `TextPathEdit::Live`, `TextOnPathViewModel.live`, `TextToolbarViewModel.path` (`TextPathView`), `TextEdit::{PathStart, PathOffset, PathReverse, PathDistort, UnbindPath}`, `G5Panel::TextPath`, `Slot::PathLive` | `io/tests/g7_text_path_roundtrip.rs`, `document/tests/g7_text_follows_guide.rs`, `generators/tests/bound_text.rs`, `presentation/tests/g7_text_path.rs`, `scenarios/tests/g7_bound_text_job.rs`, native `g7_editor_panels_native::path_panel_...` | klaar; open: zie "Nog open" |
-| G7-editor | **voor G7-cam / integratie:** `compile`/`preflight` weigeren een geblokkeerd afgeleid object niet (`DocumentSnapshot::production_blocked` zegt "CAM must refuse") | `burnburn_cam::{compile, preflight}` moeten `production_blocked` lezen (bv. een `Finding`) | – | `scenarios/tests/g7_bound_text_job.rs::a_text_that_lost_its_guide_is_flagged_blocked_and_the_old_job_is_what_it_was` pint alleen de vlag | open (niet in de editor-lane) |
+| G7-editor | **voor G7-cam / integratie:** `compile`/`preflight` weigeren een geblokkeerd afgeleid object niet (`DocumentSnapshot::production_blocked` zegt "CAM must refuse") | `burnburn_cam::{compile, preflight}` moeten `production_blocked` lezen (bv. een `Finding`) | – | `scenarios/tests/g7_bound_text_job.rs::a_text_that_lost_its_guide_is_flagged_blocked_and_the_old_job_is_what_it_was` pint alleen de vlag | klaar (golf-7-integratie: `Finding::BlockedGeometry`, `cam/tests/blocked_geometry.rs`) |
 | G7-editor | S07/P06 platen maken/bewerken/toewijzen, variant hernoemen/verwijderen, vormen van een onderdeel bewerken | `StructureCommand::RenameVariant` (nieuw, additief) | `StructureEdit::{CreatePlate, SetPlateField, RemovePlate, AssignSelectionToPlate, SetInstancePlate, RenameVariant, RemoveVariant, AddPartShape, RemovePartShape, RenamePartShape, SetPartShapeField}`, `PartRow.shapes`, `InstanceRow.plate_id` | `document/tests/g7_variant_rename.rs::*`, `presentation/tests/g7_plates_parts.rs::*`, `macos/tests/g7_editor_panels.rs`, `windows/tests/g7_editor_forms.rs::plates_parts` | klaar |
 | G7-editor | S01 kleine as van een ellips als maat; punt-op-ellips; raaklijn aan ellips | `DimensionKind::MinorDiameter`, `SketchSolution.minors`, solver-hulpgeometrie (brandpunten) in `burnburn-sketch` | `SketchDimensionKind::MinorDiameter`, `SketchConstraintKind::MinorDiameter`, `ParamKey::MinorAxis`, `ModifyParam::MinorAxis` | `sketch/tests/g7_ellipse_relations.rs`, `io/tests/g7_sketch_ellipse_relations_roundtrip.rs`, `presentation/tests/g7_ellipse_ui.rs`, editor `constraint`/`dimension`/`overlays` | klaar; open: zie "Nog open" |

@@ -196,6 +196,21 @@ Per lane één regel resultaat (dev-notes in `docs/dev-notes/`). Windows is in d
 Stand na golf 6 (main 9335726): `cargo xtask verify` exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd; stories: 43 groen (software),
 30 deels, 1 domein, 0 gepland (`docs/user-flows/story-coverage.md`). Niets is op echte hardware of op Windows bewezen.
 
+## Golf 7 (uitgevoerd)
+
+- **G7-cam**: Tab Cut Power (plan, preview, GRBL-S; RD geweigerd), nest met aantallen per onderdeel, delen in gaten en strak
+  pakken, common-line en nerfrichting in de UI (uitvoer `Unverified`), recepten-migratie (C08); twee paneelbugs (crash bij
+  gelijke namen, spiegelcheck) opgelost.
+- **G7-werk**: kalibraties per camera bewaard (W04), herkenning met NCC en operatorbeslissing (W06), restenbibliotheek (W07),
+  orders met vrijgegeven jobs zonder venster (W01/W02), pointeroffset bij plaatsing/frame (W09), actief apparaat bewaard (M01),
+  startbevestiging (M06).
+- **G7-editor**: verlengen langs Bézier, afronden/afschuinen-opties (E05), modifierstapel (E06), meerdere teksten tegelijk (E07),
+  tekst op pad als live binding (E08), platen/onderdeelvormen/varianten (S07/P06), ellips-maten en -relaties (S01).
+- **G7-trace**: lensvervorming en wijzen in de foto (T03), beschermen en terugzetten (T05/T06), Replace to Fit (T09), recepten/
+  A/B/batch (T10), centerline-overlay (T04), lagen per kleur/pen bij PDF/HPGL (P04), Arabische tekst getest.
+- **Integratie**: preflight weigert nu de laatste omtrek van afgeleide geometrie die niet meer uitrekent (`Finding::BlockedGeometry`,
+  bugfix); Windows-updatepoort bij afsluiten. Verify op 9a269ba: 4418 geslaagd, 0 gefaald, 11 genegeerd.
+
 ## Wat overblijft
 
 - **Hardware (W1-HW, eigenaar B-2/B-3):** een geverifieerd Ruida-wire-dialect en het vrijgeven van `ScanAngle`, `GrayscaleModulation`,
