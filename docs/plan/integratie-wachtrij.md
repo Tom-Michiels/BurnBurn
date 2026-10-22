@@ -202,3 +202,12 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | W4-UI-gaten | T04: centerline als `TraceCommand` | `burnburn-trace`: `centerline_command(&CenterlineResult, …) -> TraceCommand` + `TraceDefinition` met centerline-recept (open paden) | `ApplyTraceLinked` ook in centerline-modus | `trace/tests/document_recipe::a_centerline_result_becomes_one_trace_command` (ontbreekt) | open (beeld/trace) |
 | W4-UI-gaten | S01: ellips in een schets | schets-entity `Ellipse` (center, rx, ry, rotatie) + solver-ondersteuning | `plan_commit` voor `Shape::Ellipse` | `editor::sketch::draw::an_ellipse_…` | open (sketch-domein) |
 | W4-UI-gaten | P07: bewaard profiel als actief apparaat kiezen (host) | – | host leest `AppController::known_profiles()` na het laden van de bibliotheken en laat de gebruiker het actieve apparaat kiezen (`SetMachineProfile`) | native keuzelijst (handmatig) | open (host) |
+
+## G5-tekst-api
+
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G5-tekst-api | API01: host-aansluiting desktop-automatisering | `burnburn_runtime::automation::{AutomationHost, AutomationService, AutomationEndpoint, bind_loopback}`; `Preferences::desktop_automation` | macOS/Windows-host: `AutomationHost` implementeren (open/importeer via bestaande intents, `HostStatus` uit documentstaat), luisterthread starten/stoppen volgens `PrefKey::DesktopAutomation`; scope in `docs/design/desktop-automatisering.md` | `runtime/tests/automation.rs::*` (16, protocol met fake socket + één 127.0.0.1-test) | open (host) |
+| G5-tekst-api | TX01: RTL/bidi | `burnburn_text::shape` doet UAX #9 | tekstpaneel/canvas tonen RTL ongewijzigd; uitlijning wordt niet automatisch gespiegeld | `text/tests/bidi.rs::*`, `scenarios/acc_text::tx01_right_to_left_text_is_laid_out_from_the_right` | klaar (handmatig: native weergave) |
+| G5-tekst-api | X05: CLI machineacties | `--machine <id> --intent upload\|start` verplicht naast `--allow-machine-contact`; onbekende opties en `--variant` geweigerd | – | `cli/tests/x05.rs::*` | klaar |
+| G5-tekst-api | X06: plugincontract | `burnburn_cli::plugin_manifest::{parse_plugin_output, PluginOutput, AccessRight}`, `docs/design/plugin-contract.md` | Uitbreidingen-paneel (toont `access_summary`) bestaat nog niet; geen loader (B-5) | `cli/tests/plugin_protocol.rs::*` | contract klaar, paneel en loader open |
