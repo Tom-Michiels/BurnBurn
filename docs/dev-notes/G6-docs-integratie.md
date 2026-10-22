@@ -66,3 +66,19 @@ gebeurtenis (een eerdere gebaar, een systeemgebeurtenis met de Shift die de gebr
 **Merge-breuk opgelost**: G9-cam-werk (`macos/tests/g9_cam_werk_panels.rs`, `presentation/tests/{g9_recognition,g9_part_name}.rs`)
 gebruikte nog `#[path]`-fixtures die G9-trace-infra naar `burnburn-test-support::host` verhuisde; omgezet naar
 `burnburn_test_support::host::{camera, rig}`.
+
+**Stille modus: echte invoer van de gebruiker bereikte het testvenster.** Onder volle `verify`-belasting faalde native
+`cut_settings_options` één keer: "ticking sends no intent" kreeg vijf `Pointer { phase: Move }`-intents (reproduceerbaar
+gemaakt met 30 parallelle runs; de assertie meldt nu wat er binnenkwam). Oorzaak: de muis van de gebruiker bewoog boven het
+transparante venster; de tracking-area van het canvas levert `mouseMoved` ook voor een venster dat klikken doorlaat.
+In stille modus laat `pump_until` daarom de echte gebruikersinvoer uit de wachtrij vallen (`adapter::quiet_drops_queued_event`):
+muis, toetsen, scrollen, gebaren — alleen events met een tijdstempel van de window server; de tests bouwen hun events met
+tijdstempel 0 (de palet-test zet er één in de wachtrij voor de volgfunctie van de knop) en blijven dus ongemoeid.
+
+| Test | Rood | Groen |
+|---|---|---|
+| `burnburn-macos/tests/g9_quiet_input.rs::the_users_mouse_keys_and_gestures_are_dropped` | stub `false`: 1 failed, 1 passed | 3 passed |
+| `g9_quiet_input::a_tests_own_queued_event_still_arrives` | eerste versie zonder tijdstempelregel liet native `layer_palette` falen ("Shift-click adds, got []") | met de tijdstempelregel: native `layer_palette`, `cut_settings_options`, `quiet_windows` ok (stil) |
+
+Een poging om het met een in de wachtrij geplaatste `MouseMoved` native te bewijzen slaagde ook zonder fix (zo'n event
+bereikt het canvas niet via de tracking-area) en is teruggedraaid: de regel is daarom als zuivere functie getest.

@@ -116,7 +116,10 @@ pub fn pump_until(mtm: MainThreadMarker, seconds: f64, mut done: impl FnMut() ->
         if let Some(event) =
             app.nextEventMatchingMask_untilDate_inMode_dequeue(NSEventMask::Any, Some(&step), mode, true)
         {
-            app.sendEvent(&event);
+            // Quiet native tests: the user's own mouse and keys never reach the invisible windows.
+            if !(quiet_windows() && crate::adapter::quiet_drops_queued_event(event.r#type().0, event.timestamp())) {
+                app.sendEvent(&event);
+            }
         }
         app.updateWindows();
     }

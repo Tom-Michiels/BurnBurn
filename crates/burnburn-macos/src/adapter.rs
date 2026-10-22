@@ -643,6 +643,21 @@ pub const LINE_SCROLL_PT: f64 = 10.0;
 pub const CLOSE_ALERT_BUTTONS: [CloseChoice; 3] = [CloseChoice::Save, CloseChoice::Cancel, CloseChoice::Discard];
 
 /// Normalised modifiers: Cmd is the shortcut modifier on macOS.
+/// Quiet native tests: whether an event taken from the application's queue is the user's own input
+/// (mouse, keyboard, scrolling, gestures) and must be dropped. The window server stamps every real
+/// event with the system uptime; the native tests build theirs with timestamp 0 (and mostly send
+/// them straight to a window), so only the real mouse moving over the invisible window, or a key
+/// pressed elsewhere, is dropped.
+pub fn quiet_drops_queued_event(event_type: usize, timestamp: f64) -> bool {
+    if timestamp == 0.0 {
+        return false;
+    }
+    // Mouse, keys and flags (1–12), rotate/begin/end gesture (18–20), scroll and tablet (22–24),
+    // other mouse buttons (25–27), gesture/magnify/swipe/smart magnify (29–32), pressure (34) and
+    // direct touch (37). App-kit, system and application defined events (13–16) keep running.
+    matches!(event_type, 1..=12 | 18..=20 | 22..=27 | 29..=32 | 34 | 37)
+}
+
 /// The modifier flags a button click carries: those of the click itself (a mouse-down or -up of
 /// any button). Any other current event (a key, a system or app-defined event, none at all) says
 /// nothing about this click, so it adds no modifiers — a Shift held for something else, or the

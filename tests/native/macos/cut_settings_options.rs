@@ -99,7 +99,8 @@ fn scenario() -> Result<(), String> {
         || "tab values editable once tabs are on".into(),
         enabled(CutField::TabsValue) && enabled(CutField::TabsWidth),
     )?;
-    expect(|| "ticking sends no intent".into(), s.app.take_dispatched().is_empty())?;
+    let sent = s.app.take_dispatched();
+    expect(|| format!("ticking sends no intent, got {sent:?}"), sent.is_empty())?;
     let set_text = |field: CutField, text: &str| {
         s.app.with_window(doc, |w| {
             if let Some(o) = w.cut_options.iter().find(|o| o.field == field) {
