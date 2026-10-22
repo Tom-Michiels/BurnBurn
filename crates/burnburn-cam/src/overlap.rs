@@ -127,83 +127,119 @@ fn covered_interval(a: Point, b: Point, c: Point, d: Point, tol: f64) -> Option<
     Some((start, end))
 }
 
-/// `steps` with every cut stretch that overlaps an already kept one (within `tolerance_mm`)
-/// turned into travel. A shared stretch shorter than `min_overlap_mm` stays a cut: two shapes that
-/// merely cross or touch at a corner share no line (common-line cutting, C12). `start` is where
-/// the head is before the first step.
+/// Which stretch of a shared line is kept.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Keep {
+    /// The first cut that reaches the line keeps it (Remove Overlapping Lines).
+    First,
+    /// The last cut that reaches the line keeps it: common-line cutting (contract IM32) cuts a
+    /// shared stretch as part of the shape that is cut last, so after the inner features of both.
+    Last,
+}
+
+/// The parameter intervals of the cut `from..to` of `source` that stay cut (not covered by a kept
+/// stretch of another shape for at least `min_overlap_mm`); the kept pieces are remembered.
+fn uncovered(
+    from: Point,
+    to: Point,
+    source: GeometryId,
+    tolerance_mm: f64,
+    min_overlap_mm: f64,
+    kept: &mut Kept,
+) -> Vec<(f64, f64)> {
+    let mut covered: Vec<(f64, f64)> = Vec::new();
+    for id in kept.candidates(from, to) {
+        let (c, d, other) = kept.segments[id];
+        if other == source {
+            continue;
+        }
+        if let Some(i) = covered_interval(from, to, c, d, tolerance_mm) {
+            covered.push(i);
+        }
+    }
+    let length = from.distance(to);
+    covered.retain(|(s, e)| (e - s) * length >= min_overlap_mm);
+    covered.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut pieces: Vec<(f64, f64)> = Vec::new();
+    let mut cursor = 0.0;
+    for (s, e) in covered {
+        if s > cursor {
+            pieces.push((cursor, s));
+        }
+        cursor = cursor.max(e);
+    }
+    if cursor < 1.0 {
+        pieces.push((cursor, 1.0));
+    }
+    pieces.retain(|(s, e)| (e - s) * length >= MIN_PIECE_MM);
+    for (s, e) in &pieces {
+        let (p, q) = (from.lerp(to, *s), if *e >= 1.0 { to } else { from.lerp(to, *e) });
+        kept.add(p, q, source);
+    }
+    pieces
+}
+
+/// `steps` with every cut stretch that overlaps a kept one (within `tolerance_mm`) turned into
+/// travel. A shared stretch shorter than `min_overlap_mm` stays a cut: two shapes that merely cross
+/// or touch at a corner share no line (common-line cutting, C12). `start` is where the head is
+/// before the first step. `keep` says whether the first or the last cut of a shared line stays.
 pub(crate) fn remove(
     steps: Vec<Step>,
     start: Point,
     tolerance_mm: f64,
     min_overlap_mm: f64,
+    keep: Keep,
     kept: &mut Kept,
     cancel: &CancellationToken,
 ) -> Result<Vec<Step>, CompileError> {
-    let mut out = Vec::with_capacity(steps.len());
+    // Where the head is before each step.
+    let mut from_of = Vec::with_capacity(steps.len());
     let mut at = start;
-    for step in steps {
+    for step in &steps {
+        from_of.push(at);
+        match step {
+            Step::Travel(p) => at = *p,
+            Step::Cut { to, .. } | Step::Scan { to, .. } | Step::PowerScan { to, .. } | Step::RampScan { to, .. } => {
+                at = *to;
+            }
+            Step::Dot { .. } => {}
+        }
+    }
+    // The pieces that stay cut, per step: decided first to last or last to first.
+    let mut pieces: Vec<Option<Vec<(f64, f64)>>> = vec![None; steps.len()];
+    let order: Vec<usize> = match keep {
+        Keep::First => (0..steps.len()).collect(),
+        Keep::Last => (0..steps.len()).rev().collect(),
+    };
+    for i in order {
         cancel.check()?;
+        if let Step::Cut { to, source, .. } = steps[i] {
+            pieces[i] = Some(uncovered(from_of[i], to, source, tolerance_mm, min_overlap_mm, kept));
+        }
+    }
+    let mut out = Vec::with_capacity(steps.len());
+    for (i, step) in steps.into_iter().enumerate() {
         let (to, source, tab_percent) = match step {
             Step::Cut { to, source, tab_percent } => (to, source, tab_percent),
-            Step::Travel(p) => {
-                out.push(step);
-                at = p;
-                continue;
-            }
-            Step::Scan { to, .. } | Step::PowerScan { to, .. } | Step::RampScan { to, .. } => {
-                out.push(step);
-                at = to;
-                continue;
-            }
-            Step::Dot { .. } => {
-                out.push(step);
+            other => {
+                out.push(other);
                 continue;
             }
         };
-        let from = at;
-        let mut covered: Vec<(f64, f64)> = Vec::new();
-        for id in kept.candidates(from, to) {
-            let (c, d, other) = kept.segments[id];
-            if other == source {
-                continue;
-            }
-            if let Some(i) = covered_interval(from, to, c, d, tolerance_mm) {
-                covered.push(i);
-            }
-        }
-        let length = from.distance(to);
-        covered.retain(|(s, e)| (e - s) * length >= min_overlap_mm);
-        covered.sort_by(|x, y| x.0.total_cmp(&y.0));
-        // Uncovered pieces as parameter intervals.
-        let mut pieces: Vec<(f64, f64)> = Vec::new();
-        let mut cursor = 0.0;
-        for (s, e) in covered {
-            if s > cursor {
-                pieces.push((cursor, s));
-            }
-            cursor = cursor.max(e);
-        }
-        if cursor < 1.0 {
-            pieces.push((cursor, 1.0));
-        }
+        let from = from_of[i];
         let mut head = from;
-        for (s, e) in pieces {
-            if (e - s) * length < MIN_PIECE_MM {
-                continue;
-            }
+        for (s, e) in pieces[i].take().unwrap_or_default() {
             let (p, q) = (from.lerp(to, s), if e >= 1.0 { to } else { from.lerp(to, e) });
             if head != p {
                 out.push(Step::Travel(p));
             }
             out.push(Step::Cut { to: q, source, tab_percent });
-            kept.add(p, q, source);
             head = q;
         }
         // The head ends where the original cut ended; a removed tail is travelled over.
         if head != to {
             out.push(Step::Travel(to));
         }
-        at = to;
     }
     Ok(out)
 }

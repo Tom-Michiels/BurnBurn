@@ -205,17 +205,17 @@ pub fn compile_with(
                         cancel,
                     )?;
                     // Common-line cutting of this operation (C12) names its own tolerance and minimal
-                    // overlap; otherwise the document's Remove Overlapping Lines applies.
+                    // overlap and keeps a shared stretch at the shape cut last (IM32); otherwise the document's Remove Overlapping Lines applies.
                     let overlap = unit
                         .op
                         .advanced()
                         .common_line
-                        .map(|c| (c.tolerance_mm(), c.min_overlap_mm()))
-                        .or_else(|| optimization.remove_overlapping_mm().map(|tol| (tol, 0.0)));
+                        .map(|c| (c.tolerance_mm(), c.min_overlap_mm(), overlap::Keep::Last))
+                        .or_else(|| optimization.remove_overlapping_mm().map(|tol| (tol, 0.0, overlap::Keep::First)));
                     let steps = match overlap {
-                        Some((tol, min_overlap)) => {
+                        Some((tol, min_overlap, keep)) => {
                             let kept = kept.entry((chunk.unit, pass)).or_insert_with(|| overlap::Kept::new(tol));
-                            overlap::remove(steps, before, tol, min_overlap, kept, cancel)?
+                            overlap::remove(steps, before, tol, min_overlap, keep, kept, cancel)?
                         }
                         None => steps,
                     };
