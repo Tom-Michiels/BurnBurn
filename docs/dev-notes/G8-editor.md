@@ -166,4 +166,4 @@ Document: `Tangent(ellips, cirkel)` en `(ellips, ellips)` zijn toegestaan, `Equa
 
 ## Verificatie
 
-(zie het eind van deze notitie voor de uitkomst van `cargo xtask verify`)
+Op f6fe45e: `cargo fmt --all` schoon; `cargo clippy --workspace --all-targets --locked -- -D warnings` schoon (de eerste verify-run faalde op een ongebruikte import in `editor tool/fillet.rs`, verwijderd); `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings` schoon; `cargo xtask verify` exit 0 (4513 tests geslaagd, 0 gefaald, 11 genegeerd).
