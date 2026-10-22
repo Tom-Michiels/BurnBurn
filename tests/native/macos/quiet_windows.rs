@@ -20,7 +20,7 @@ fn scenario() -> Result<(), String> {
         o.quiet_windows = true;
         o.float_windows = false;
     })?;
-    let doc = s.new_document()?;
+    s.new_document()?;
     s.menu(MenuItem::Command(CommandKey::ShowMaterialLibrary))?;
     s.pump(0.3);
     let app = NSApplication::sharedApplication(s.mtm);
