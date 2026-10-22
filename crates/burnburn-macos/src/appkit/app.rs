@@ -439,6 +439,7 @@ impl HostApp {
             Reaction::ShowOpenPanel => self.show_open_panel(),
             Reaction::ShowImportPanel => self.show_import_panel(),
             Reaction::ShowReplaceImagePanel => self.show_image_file_panel(ImageFilePanel::Replace),
+            Reaction::ShowReplaceToFitPanel => self.show_image_file_panel(ImageFilePanel::ReplaceToFit),
             Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
@@ -1114,6 +1115,14 @@ impl HostApp {
                 "replace image panel completion",
                 move |path| NativeEvent::ReplaceImageFileChosen { document, path },
             ),
+            ImageFilePanel::ReplaceToFit => show_image_open_panel(
+                self.mtm,
+                &window,
+                self.me.clone(),
+                &BITMAP_TYPES,
+                "replace to fit panel completion",
+                move |path| NativeEvent::ReplaceToFitFileChosen { document, path },
+            ),
             ImageFilePanel::Trace => show_image_open_panel(
                 self.mtm,
                 &window,
@@ -1331,6 +1340,7 @@ impl Drop for HostApp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ImageFilePanel {
     Replace,
+    ReplaceToFit,
     Trace,
 }
 
@@ -1844,6 +1854,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::MaskImage), "", false),
             sep(),
             item(c(CommandKey::ReplaceImage), "", false),
+            item(c(CommandKey::ReplaceImageToFit), "", false),
             item(c(CommandKey::RefreshImage), "", false),
             item(c(CommandKey::SaveProcessedBitmap), "", false),
             sep(),

@@ -58,6 +58,7 @@ pub enum FilePurpose {
     OpenProject,
     ImportDrawing { document: DocumentId },
     ReplaceImage { document: DocumentId },
+    ReplaceToFit { document: DocumentId },
     TraceImage { document: DocumentId },
     SaveProcessedBitmap { document: DocumentId },
     ExportRd { document: DocumentId },
@@ -142,6 +143,7 @@ pub fn on_file_chosen(vm: &burnburn_presentation::AppViewModel, purpose: &FilePu
         FilePurpose::SupportBundle { .. } => app::on_app_file_chosen(purpose, path),
         FilePurpose::ImportDrawing { .. }
         | FilePurpose::ReplaceImage { .. }
+        | FilePurpose::ReplaceToFit { .. }
         | FilePurpose::TraceImage { .. }
         | FilePurpose::SaveProcessedBitmap { .. } => image::on_image_file_chosen(vm, purpose, path),
         _ => files::on_files_file_chosen(vm, purpose, path),

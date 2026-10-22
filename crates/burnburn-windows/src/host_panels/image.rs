@@ -32,6 +32,8 @@ pub mod id {
     pub const REFRESH: u16 = B + 5;
     pub const SAVE_BITMAP: u16 = B + 6;
     pub const NO_SHEET: u16 = B + 7;
+    /// Replace to Fit (G7-trace, T09).
+    pub const REPLACE_FIT: u16 = B + 8;
 
     // Bitmap import sheet.
     pub const IMP_HEADING: u16 = B + 10;
@@ -126,6 +128,7 @@ fn command_rows(input: &ImageInput<'_>) -> Vec<Row> {
             cmd(id::ADJUST, CommandKey::AdjustImage),
             cmd(id::MASK, CommandKey::MaskImage),
             cmd(id::REPLACE, CommandKey::ReplaceImage),
+            cmd(id::REPLACE_FIT, CommandKey::ReplaceImageToFit),
         ]),
         Row::of(vec![
             cmd(id::REFRESH, CommandKey::RefreshImage),
@@ -328,6 +331,13 @@ pub fn on_image_event(input: &ImageInput<'_>, event: &PanelEvent) -> PanelReacti
                 PanelReaction::Nothing
             }
         }
+        id::REPLACE_FIT if clicked => {
+            if command_on(vm, document, CommandKey::ReplaceImageToFit) {
+                open(FilePurpose::ReplaceToFit { document }, HostText::ImageMenuImport, vec![bitmap_filter()])
+            } else {
+                PanelReaction::Nothing
+            }
+        }
         id::SAVE_BITMAP if clicked => {
             if command_on(vm, document, CommandKey::SaveProcessedBitmap) {
                 PanelReaction::Dialog(DialogRequest::Save {
@@ -408,6 +418,9 @@ pub fn on_image_file_chosen(vm: &AppViewModel, purpose: &FilePurpose, path: Chos
         FilePurpose::ImportDrawing { document } => (*document, |document, path| UiIntent::Import { document, path }),
         FilePurpose::ReplaceImage { document } => {
             (*document, |document, path| UiIntent::ReplaceImage { document, path })
+        }
+        FilePurpose::ReplaceToFit { document } => {
+            (*document, |document, path| UiIntent::ReplaceImageToFit { document, path })
         }
         FilePurpose::TraceImage { document } => {
             (*document, |document, path| UiIntent::OpenTraceSource { document, path })

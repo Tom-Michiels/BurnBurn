@@ -871,6 +871,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::CancelImageAdjust => ("Annuleer beeldaanpassing", "Cancel Image Adjustment"),
         C::MaskImage => ("Masker op beeld", "Mask Image"),
         C::ReplaceImage => ("Beeld vervangen…", "Replace Image…"),
+        C::ReplaceImageToFit => ("Beeld vervangen en passen…", "Replace to Fit…"),
         C::RefreshImage => ("Beeld vernieuwen", "Refresh Image"),
         C::SaveProcessedBitmap => ("Verwerkte bitmap bewaren…", "Save Processed Bitmap…"),
         C::SketchNew => ("Nieuwe schets", "New Sketch"),

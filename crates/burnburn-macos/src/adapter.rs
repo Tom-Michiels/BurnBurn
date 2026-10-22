@@ -440,6 +440,11 @@ pub enum NativeEvent {
         document: DocumentId,
         path: Option<PathBuf>,
     },
+    /// The Replace to Fit file panel closed: a path on OK, `None` on cancel (G7-trace, T09).
+    ReplaceToFitFileChosen {
+        document: DocumentId,
+        path: Option<PathBuf>,
+    },
     /// The Save Processed Bitmap sheet closed: a path on OK, `None` on cancel.
     BitmapSavePanelFinished {
         document: DocumentId,
@@ -547,6 +552,9 @@ pub enum Reaction {
     /// Show NSOpenPanel for the picture of Replace Image; the result comes back as
     /// [`NativeEvent::ReplaceImageFileChosen`].
     ShowReplaceImagePanel,
+    /// Show NSOpenPanel for the picture of Replace to Fit; the result comes back as
+    /// [`NativeEvent::ReplaceToFitFileChosen`].
+    ShowReplaceToFitPanel,
     /// Show NSSavePanel for Save Processed Bitmap; the result comes back as
     /// [`NativeEvent::BitmapSavePanelFinished`].
     ShowBitmapSavePanel,
@@ -636,6 +644,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::Import | MenuItem::ImportImage) => return Reaction::ShowImportPanel,
         E::Menu(MenuItem::TraceImage) => return Reaction::ShowTracePanel,
         E::Menu(MenuItem::Command(CommandKey::ReplaceImage)) => return Reaction::ShowReplaceImagePanel,
+        E::Menu(MenuItem::Command(CommandKey::ReplaceImageToFit)) => return Reaction::ShowReplaceToFitPanel,
         E::Menu(MenuItem::Command(CommandKey::SaveProcessedBitmap)) => return Reaction::ShowBitmapSavePanel,
         E::Menu(MenuItem::LaserWindow) => return Reaction::ToggleLaserPanel,
         E::Menu(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
@@ -922,6 +931,9 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         }
         E::ReplaceImageFileChosen { document, path: Some(path) } if open(document) => {
             UiIntent::ReplaceImage { document, path }
+        }
+        E::ReplaceToFitFileChosen { document, path: Some(path) } if open(document) => {
+            UiIntent::ReplaceImageToFit { document, path }
         }
         E::BitmapSavePanelFinished { document, path: Some(path) } if open(document) => {
             UiIntent::SaveProcessedBitmap { document, path }
