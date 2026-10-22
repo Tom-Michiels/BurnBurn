@@ -181,24 +181,56 @@ impl Inner {
     }
 }
 
+impl Inner {
+    /// The frozen job for `job`: frozen now from its inputs, or, for a job that was rebuilt from
+    /// the history (no inputs), the one that is on record already. Nothing is recompiled.
+    fn freeze(&mut self, job: &PreparedJob) -> Result<CompiledJobId, HistoryStoreError> {
+        let (at, fs) = (self.now(), Arc::clone(&self.fs));
+        let Some(inputs) = job.inputs.as_ref() else {
+            let id = burnburn_history::compiled_job_id(&job.plan.hash(), &job.rd_hash, &job.profile);
+            return if self.history.job(id).is_some() {
+                Ok(id)
+            } else {
+                Err(store_error("job has no frozen inputs and is not in the history"))
+            };
+        };
+        let compile = CompileRecord {
+            plan: &inputs.plan,
+            rd_file: &job.rd,
+            project: &inputs.project,
+            project_path: inputs.project_path.clone(),
+            // A prepared job never has preflight errors (presentation refuses to prepare it).
+            preflight: PreflightSummary::default(),
+            profile: &job.profile,
+        };
+        self.history.record_compiled(fs.as_ref(), compile, at).map_err(store_error)
+    }
+}
+
 impl HistoryStore for JournalHistoryStore {
+    fn record_approval(&self, job: &PreparedJob, role: Role) -> Result<(), HistoryStoreError> {
+        let mut s = self.lock();
+        let role = match role {
+            Role::Designer => HRole::Designer,
+            Role::Operator => HRole::Operator,
+        };
+        let id = s.freeze(job)?;
+        let (at, fs) = (s.now(), Arc::clone(&s.fs));
+        s.history.approve_job(fs.as_ref(), id, role, at).map_err(store_error)
+    }
+
+    fn approved_jobs(&self) -> Result<Vec<Arc<PreparedJob>>, HistoryStoreError> {
+        let s = self.lock();
+        s.history.approved_jobs().map(|id| s.prepared(id).map(Arc::new)).collect()
+    }
+
     fn record_upload(&self, record: &UploadRecord) -> Result<(ExecutionId, Recorded), HistoryStoreError> {
         let mut s = self.lock();
         if let Some(execution) = s.recorded(&record.action) {
             return Ok((execution, Recorded::AlreadyRecorded));
         }
-        let inputs = record.job.inputs.as_ref().ok_or_else(|| store_error("job has no frozen inputs"))?;
         let (at, fs) = (s.now(), Arc::clone(&s.fs));
-        let compile = CompileRecord {
-            plan: &inputs.plan,
-            rd_file: &record.job.rd,
-            project: &inputs.project,
-            project_path: inputs.project_path.clone(),
-            // A prepared job never has preflight errors (presentation refuses to prepare it).
-            preflight: PreflightSummary::default(),
-            profile: &record.job.profile,
-        };
-        let job = s.history.record_compiled(fs.as_ref(), compile, at).map_err(store_error)?;
+        let job = s.freeze(&record.job)?;
         // The job is prepared for its own setup revision; a changed machine setup is a new compile.
         let execution = s
             .history

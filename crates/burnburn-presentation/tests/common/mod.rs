@@ -81,6 +81,8 @@ pub struct RecordingHistory {
     pub executions: Mutex<Vec<RecoveredExecution>>,
     pub outcomes: Mutex<Vec<OutcomeRecord>>,
     pub orders: Mutex<StoredOrders>,
+    /// Jobs the designer released (W01): kept like the journal keeps them, rebuilt without inputs.
+    pub approvals: Mutex<Vec<Arc<burnburn_presentation::PreparedJob>>>,
 }
 
 impl RecordingHistory {
@@ -175,6 +177,26 @@ impl HistoryStore for RecordingHistory {
         Ok(RecoveredMachine { executions, handled })
     }
 
+    fn record_approval(
+        &self,
+        job: &burnburn_presentation::PreparedJob,
+        role: burnburn_presentation::Role,
+    ) -> Result<(), HistoryStoreError> {
+        self.check()?;
+        if role != burnburn_presentation::Role::Designer {
+            return Err(HistoryStoreError("only a designer approves".into()));
+        }
+        let mut approvals = self.approvals.lock().unwrap();
+        if !approvals.iter().any(|a| a.plan == job.plan) {
+            approvals.push(Arc::new(burnburn_presentation::PreparedJob { inputs: None, ..job.clone() }));
+        }
+        Ok(())
+    }
+
+    fn approved_jobs(&self) -> Result<Vec<Arc<burnburn_presentation::PreparedJob>>, HistoryStoreError> {
+        Ok(self.approvals.lock().unwrap().clone())
+    }
+
     fn record_order(&self, order: &StoredOrder) -> Result<(), HistoryStoreError> {
         self.check()?;
         let mut orders = self.orders.lock().unwrap();
@@ -249,6 +271,7 @@ pub fn history(peer: &Peer) -> Arc<RecordingHistory> {
         executions: Mutex::new(Vec::new()),
         outcomes: Mutex::new(Vec::new()),
         orders: Mutex::new(StoredOrders::default()),
+        approvals: Mutex::new(Vec::new()),
     })
 }
 

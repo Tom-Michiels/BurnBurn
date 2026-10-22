@@ -324,7 +324,9 @@ pub struct OperatorViewModel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorJobRow {
-    pub document: DocumentId,
+    /// The window the job was prepared in; `None` for a released job that comes from the history
+    /// (after a restart) and has no window.
+    pub document: Option<DocumentId>,
     pub name: String,
     pub plan: JobPlanId,
     pub rd_hash: burnburn_types::ContentHash,

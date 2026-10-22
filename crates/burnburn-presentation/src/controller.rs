@@ -434,6 +434,11 @@ pub struct AppController {
     machine_port: Option<Arc<dyn MachinePort>>,
     /// A declared model/firmware was handed to the machine port (so clearing it must reach the port too).
     declared_pushed: bool,
+    /// Plans the designer released (W01), as the history keeps them: a prepared job whose plan is
+    /// in here is approved. A changed plan has another id, so it is not.
+    approved_plans: std::collections::BTreeSet<burnburn_types::ContentHash>,
+    /// The released jobs the history holds, rebuilt from their frozen blobs (no window of their own).
+    released_jobs: Vec<Arc<crate::production::PreparedJob>>,
     /// Machine hub state: a repeat in preparation and the calibration measurements (G5).
     hub: machine_hub::HubState,
     role: Role,
@@ -500,6 +505,8 @@ impl AppController {
             machine: None,
             machine_port: None,
             declared_pushed: false,
+            approved_plans: std::collections::BTreeSet::new(),
+            released_jobs: Vec::new(),
             hub: machine_hub::HubState::default(),
             role: Role::Designer,
             orders: Vec::new(),

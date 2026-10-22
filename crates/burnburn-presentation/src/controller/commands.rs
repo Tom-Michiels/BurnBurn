@@ -150,13 +150,7 @@ impl AppController {
             }
             CommandKey::Compile => self.submit_compile(document),
             CommandKey::PrepareJob => self.submit_prepare(document),
-            CommandKey::ApproveJob => self.with_session(document, |s| match s.prepared.as_mut() {
-                Some(p) => {
-                    p.approved = true;
-                    AppUpdate { view_changed: true, ..AppUpdate::default() }
-                }
-                None => AppUpdate::default(),
-            }),
+            CommandKey::ApproveJob => self.approve_job(document),
             CommandKey::ExportRd => match self.sessions.get(&document) {
                 Some(s) if s.compiled.is_some() => AppUpdate {
                     effects: vec![HostEffect::ShowExportPanel { document, suggested_name: format!("{}.rd", s.title) }],

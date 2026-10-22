@@ -555,6 +555,11 @@ pub enum HistoryRecord {
         #[serde(with = "execution_id")]
         execution: ExecutionId,
     },
+    /// The designer released this frozen job for the operator (W01). Written once per job.
+    JobApproved {
+        job: CompiledJobId,
+        role: Role,
+    },
     /// A record of a kind this build does not know (newer writer, same schema). Kept, never
     /// counted, never written by this build.
     #[serde(skip)]
@@ -579,6 +584,7 @@ pub(crate) const KNOWN_KINDS: &[&str] = &[
     "settings-backup",
     "order-recorded",
     "order-linked",
+    "job-approved",
 ];
 
 pub const RECORD_SCHEMA: u32 = 1;

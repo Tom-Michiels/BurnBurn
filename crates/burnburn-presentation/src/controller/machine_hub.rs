@@ -209,8 +209,9 @@ impl AppController {
         if self.repeat_refusal(&job).is_some() {
             return error(Some(document), MessageKey::RepeatRefused);
         }
+        let approved = self.approved_plans.contains(&job.plan.hash());
         let Some(s) = self.sessions.get_mut(&document) else { return AppUpdate::default() };
-        s.prepared = Some(Prepared { job, approved: false, placed_from: None, record: None });
+        s.prepared = Some(Prepared { job, approved, placed_from: None, record: None });
         self.hub.repeat = None;
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }

@@ -91,6 +91,8 @@ impl AppController {
         let stored = history.orders()?;
         self.orders = stored.orders.into_iter().map(|o| Order { id: o.id, draft: o.draft, chosen: o.chosen }).collect();
         self.order_executions = stored.executions.into_iter().collect();
+        self.released_jobs = history.approved_jobs()?;
+        self.approved_plans = self.released_jobs.iter().map(|j| j.plan.hash()).collect();
         self.history = Some(history);
         Ok(())
     }
@@ -106,6 +108,36 @@ impl AppController {
 }
 
 impl AppController {
+    /// The designer releases the prepared job of `document` for the operator (W01). With a
+    /// history the release is made durable first; a release that cannot be kept is not given.
+    pub(super) fn approve_job(&mut self, document: DocumentId) -> AppUpdate {
+        let Some(job) = self.sessions.get(&document).and_then(|s| s.prepared.as_ref()).map(|p| Arc::clone(&p.job))
+        else {
+            return AppUpdate::default();
+        };
+        if let Some(history) = self.history.as_ref()
+            && history.record_approval(&job, self.role).is_err()
+        {
+            return error(Some(document), MessageKey::IntentNotRecorded);
+        }
+        self.approved_plans.insert(job.plan.hash());
+        if !self.released_jobs.iter().any(|j| j.plan == job.plan) {
+            self.released_jobs.push(Arc::clone(&job));
+        }
+        if let Some(p) = self.sessions.get_mut(&document).and_then(|s| s.prepared.as_mut()) {
+            p.approved = true;
+        }
+        AppUpdate { view_changed: true, ..AppUpdate::default() }
+    }
+
+    /// Released jobs that no window holds (they come from the history), as prepared jobs.
+    fn stored_released(&self) -> impl Iterator<Item = Prepared> + '_ {
+        self.released_jobs
+            .iter()
+            .filter(|j| !self.sessions.values().filter_map(|s| s.prepared.as_ref()).any(|p| p.job.plan == j.plan))
+            .map(|j| Prepared { job: Arc::clone(j), approved: true, placed_from: None, record: None })
+    }
+
     /// Role of the person at this controller (from configuration, never from a `UiIntent`).
     pub fn set_role(&mut self, role: Role) {
         self.role = role;
@@ -118,18 +150,26 @@ impl AppController {
     /// Compact operator view (IM31): approved jobs, machine status and orders; no editor functions.
     pub fn operator_view(&self) -> OperatorViewModel {
         let status = self.machine_port.as_ref().map(|p| p.status());
-        let jobs = self
+        let mut jobs: Vec<OperatorJobRow> = self
             .sessions
             .iter()
             .filter_map(|(id, s)| s.prepared.as_ref().filter(|p| p.approved).map(|p| (*id, p)))
             .map(|(document, p)| OperatorJobRow {
-                document,
+                document: Some(document),
                 name: p.job.name.clone(),
                 plan: p.job.plan,
                 rd_hash: p.job.rd_hash,
                 upload: status.as_ref().map(|st| self.upload_button(st, p)),
             })
             .collect();
+        // Released jobs from the history that no window holds: the operator needs no project open.
+        jobs.extend(self.stored_released().map(|p| OperatorJobRow {
+            document: None,
+            name: p.job.name.clone(),
+            plan: p.job.plan,
+            rd_hash: p.job.rd_hash,
+            upload: status.as_ref().map(|st| self.upload_button(st, &p)),
+        }));
         let orders = self.orders.iter().map(|o| self.order_view(o, status.as_ref())).collect();
         OperatorViewModel { machine: status.as_ref().map(machine_view_of), jobs, orders }
     }
@@ -202,6 +242,17 @@ impl AppController {
         sessions.find_map(|s| s.prepared.as_ref().filter(|p| p.job.plan == plan))
     }
 
+    /// The prepared job an upload action names, also when only the history holds it: a released
+    /// job after a restart is a job without a window (`document` is `None`).
+    pub(super) fn job_or_released(&self, document: Option<DocumentId>, plan: JobPlanId) -> Option<Prepared> {
+        self.job_for(document, plan).cloned().or_else(|| {
+            if document.is_some() {
+                return None;
+            }
+            self.stored_released().find(|p| p.job.plan == plan)
+        })
+    }
+
     /// Sends one machine action to the machine service. Never touches a document.
     pub(super) fn machine_action(
         &mut self,
@@ -214,7 +265,7 @@ impl AppController {
             return (error(document, MessageKey::MachineActionRefused), None);
         };
         let job = match (action.kind, action.subject) {
-            (MachineAction::Upload, ActionSubject::Job(plan)) => match self.job_for(document, plan) {
+            (MachineAction::Upload, ActionSubject::Job(plan)) => match self.job_or_released(document, plan) {
                 Some(p) if self.role == Role::Operator && !p.approved => {
                     return (error(document, MessageKey::NotAllowedForRole), None);
                 }
