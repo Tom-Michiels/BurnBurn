@@ -123,6 +123,7 @@ fn win_tokens(menu: &Submenu) -> Vec<String> {
                 MenuNode::Item(MenuItem::OffsetPanel) => out.push("Other:OffsetPanel".into()),
                 MenuNode::Item(MenuItem::StructurePanel) => out.push("Other:StructurePanel".into()),
                 MenuNode::Item(MenuItem::TracePrepPanel) => out.push("Other:TracePrepPanel".into()),
+                MenuNode::Item(MenuItem::OperatorPanel) => out.push("Other:OperatorPanel".into()),
                 MenuNode::Item(MenuItem::Host(item)) => out.push(host_token(*item)),
                 MenuNode::Separator => {}
                 MenuNode::Submenu(s) if s.id.starts_with("recent_") => out.push(format!("Dyn:{}", s.id)),

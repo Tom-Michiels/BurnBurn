@@ -448,3 +448,113 @@ pub(super) fn structure_edit_intent(
         _ => None,
     }
 }
+
+// --- The compact operator view (W08) -----------------------------------------------------------------
+
+/// The operator panel: the machine, the approved jobs with revision, size and material, and the
+/// orders with what was completed. Buttons are the controls the machine service offers.
+pub(super) fn operator_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Line>> {
+    let o = doc.operator.as_ref()?;
+    let mut lines = vec![G5Line::Heading(t(G6Text::OperatorMachineHeading, locale))];
+    match &o.machine {
+        None => lines.push(G5Line::Text(t(G6Text::OperatorNoMachine, locale))),
+        Some(m) => {
+            lines.push(G5Line::Text(g6_fmt(
+                G6Text::OperatorMachineLine,
+                locale,
+                &[&m.machine.to_string(), crate::l10n::machine_status_text(m.status, locale)],
+            )));
+            if let Some(message) = m.message {
+                lines.push(G5Line::Text(crate::l10n::message_or_key(message, locale)));
+            }
+            if let Some(name) = &m.job_name {
+                lines.push(G5Line::Text(g6_fmt(G6Text::OperatorRunning, locale, &[name])));
+            }
+            if let Some((done, total)) = m.progress {
+                lines.push(G5Line::Text(g6_fmt(
+                    G6Text::OperatorProgress,
+                    locale,
+                    &[&done.to_string(), &total.to_string()],
+                )));
+            }
+            for (index, b) in m.buttons.iter().enumerate() {
+                lines.push(button(
+                    G5Control::OperatorMachine { index },
+                    crate::l10n::message_or_key(b.label, locale),
+                    b.enabled,
+                ));
+            }
+        }
+    }
+    lines.push(G5Line::Heading(t(G6Text::OperatorJobsHeading, locale)));
+    if o.jobs.is_empty() {
+        lines.push(G5Line::Text(t(G6Text::OperatorJobsNone, locale)));
+    }
+    for (index, j) in o.jobs.iter().enumerate() {
+        let size = match j.bounds {
+            Some(b) => format!("{} × {} mm", num(b.width(), 1, locale), num(b.height(), 1, locale)),
+            None => t(G6Text::OperatorSizeUnknown, locale),
+        };
+        let material = j.material.clone().unwrap_or_else(|| t(G6Text::OperatorMaterialUnknown, locale));
+        lines.push(G5Line::Text(g6_fmt(
+            G6Text::OperatorJobLine,
+            locale,
+            &[&j.name, &j.revision.to_string(), &size, &material],
+        )));
+        if let Some(upload) = &j.upload {
+            lines.push(button(
+                G5Control::OperatorUpload { index },
+                g6_fmt(G6Text::OperatorUploadButton, locale, &[&j.name]),
+                upload.enabled,
+            ));
+        }
+    }
+    lines.push(G5Line::Heading(t(G6Text::OperatorOrdersHeading, locale)));
+    if o.orders.is_empty() {
+        lines.push(G5Line::Text(t(G6Text::OperatorOrdersNone, locale)));
+    }
+    for (index, order) in o.orders.iter().enumerate() {
+        let remnant =
+            order.remnant.as_ref().map_or_else(String::new, |r| g6_fmt(G6Text::OperatorOnRemnant, locale, &[r]));
+        lines.push(G5Line::Text(g6_fmt(
+            G6Text::OperatorOrderLine,
+            locale,
+            &[&order.name, &order.completed.to_string(), &order.quantity.to_string(), &order.part, &remnant],
+        )));
+        if order.needs_choice {
+            lines.push(G5Line::Problem(g6_fmt(G6Text::OperatorNeedsChoice, locale, &[&order.name])));
+        }
+        if let Some(upload) = &order.upload {
+            lines.push(button(
+                G5Control::OperatorOrderUpload { index },
+                g6_fmt(G6Text::OperatorOrderUploadButton, locale, &[&order.name]),
+                upload.enabled,
+            ));
+        }
+    }
+    Some(lines)
+}
+
+/// The intent of an operator control: the machine button exactly as the service offered it.
+pub(super) fn operator_intent(doc: &DocumentViewModel, document: DocumentId, control: G5Control) -> Option<UiIntent> {
+    let o = doc.operator.as_ref()?;
+    let machine = |b: &burnburn_presentation::MachineButton, document: Option<DocumentId>| {
+        b.enabled.then(|| UiIntent::Machine { document, action: b.action, seen: b.seen.clone() })
+    };
+    match control {
+        G5Control::OperatorMachine { index } => machine(o.machine.as_ref()?.buttons.get(index)?, None),
+        G5Control::OperatorUpload { index } => {
+            let job = o.jobs.get(index)?;
+            machine(job.upload.as_ref()?, Some(job.document))
+        }
+        G5Control::OperatorOrderUpload { index } => {
+            let order = o.orders.get(index)?;
+            let b = order.upload.as_ref()?;
+            b.enabled.then(|| UiIntent::UploadForOrder { order: order.id, action: b.action, seen: b.seen.clone() })
+        }
+        _ => {
+            let _ = document;
+            None
+        }
+    }
+}

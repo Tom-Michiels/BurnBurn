@@ -96,6 +96,9 @@ impl AppController {
             .map(|(document, p)| OperatorJobRow {
                 document,
                 name: p.job.name.clone(),
+                revision: p.job.plan_revision,
+                bounds: p.job.inputs.as_ref().and_then(|i| i.plan.bounds()),
+                material: p.job.inputs.as_ref().and_then(|i| plate_material(&i.project.document)),
                 plan: p.job.plan,
                 rd_hash: p.job.rd_hash,
                 upload: status.as_ref().map(|st| self.upload_button(st, p)),
@@ -306,5 +309,53 @@ pub(super) fn machine_view_of(status: &MachineStatus) -> MachineViewModel {
         progress,
         buttons,
         last_action: status.last_action.as_ref().map(|h| (h.action, h.result.is_ok())),
+    }
+}
+
+/// The material of the plates of a project when there is one and they all agree; a mix of
+/// materials (or none named) says nothing.
+fn plate_material(document: &burnburn_document::DocumentSnapshot) -> Option<String> {
+    let mut materials =
+        document.structure().plates().map(|(_, p)| p.material.trim().to_owned()).filter(|m| !m.is_empty());
+    let first = materials.next()?;
+    materials.all(|m| m == first).then_some(first)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+    use super::*;
+    use burnburn_document::structure::{Plate, StructureCommand};
+    use burnburn_document::{CommandPayload, DocumentCommand, DocumentSession};
+    use burnburn_types::{DocumentId, Length, RequestId, StableId};
+
+    fn with_plates(materials: &[&str]) -> DocumentSession {
+        let mut s = DocumentSession::new(DocumentId::from_raw(1));
+        for (i, m) in materials.iter().enumerate() {
+            let plate = Plate {
+                name: format!("Plaat {i}"),
+                width: Length::from_mm(600.0).unwrap(),
+                height: Length::from_mm(400.0).unwrap(),
+                material: (*m).to_owned(),
+                thickness: None,
+            };
+            let cmd = DocumentCommand {
+                document: s.id(),
+                expected: s.revision(),
+                request: RequestId::from_raw(i as u64 + 1),
+                payload: CommandPayload::Structure(StructureCommand::CreatePlate { plate }),
+            };
+            s.apply(cmd).unwrap();
+        }
+        s
+    }
+
+    #[test]
+    fn the_material_is_named_only_when_the_plates_agree() {
+        assert_eq!(plate_material(&with_plates(&["Berken", "Berken"]).snapshot()), Some("Berken".to_owned()));
+        assert_eq!(plate_material(&with_plates(&["Berken", "Multiplex"]).snapshot()), None, "a mix says nothing");
+        assert_eq!(plate_material(&with_plates(&[]).snapshot()), None);
+        assert_eq!(plate_material(&with_plates(&["", "  "]).snapshot()), None, "no material named");
+        assert_eq!(plate_material(&with_plates(&["Berken", ""]).snapshot()), Some("Berken".to_owned()));
     }
 }

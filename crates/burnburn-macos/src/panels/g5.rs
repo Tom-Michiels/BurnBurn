@@ -28,11 +28,19 @@ pub enum G5Panel {
     /// Beeld ▸ Beeld voorbereiden: local threshold, plane correction, masks, local corrections and
     /// the trace report of the open tracer (G6-werk, T03, T05, T06).
     TracePrep,
+    /// Venster ▸ Operatorweergave: machine, approved jobs and orders in one place (G6-werk, W08).
+    Operator,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 5] =
-        [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure, G5Panel::TracePrep];
+    pub const ALL: [G5Panel; 6] = [
+        G5Panel::Notes,
+        G5Panel::Offset,
+        G5Panel::Centerline,
+        G5Panel::Structure,
+        G5Panel::TracePrep,
+        G5Panel::Operator,
+    ];
 }
 
 /// A control of a panel. Fields, choices, checks and the note report their value; buttons only the
@@ -147,6 +155,19 @@ pub enum G5Control {
     },
     RefRemove {
         reference: u64,
+    },
+    // --- The compact operator view (G6-werk, W08).
+    /// Machine control number `index` as the machine service offers it.
+    OperatorMachine {
+        index: usize,
+    },
+    /// Upload of approved job number `index`.
+    OperatorUpload {
+        index: usize,
+    },
+    /// Upload of the job of order number `index`.
+    OperatorOrderUpload {
+        index: usize,
     },
 }
 
@@ -267,6 +288,11 @@ pub fn g5_panel(
         G5Panel::TracePrep => {
             let lines = super::g6_werk::trace_prep_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::Operator => {
+            let lines = super::g6_werk::operator_lines(doc, locale)?;
+            let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
     };
@@ -584,6 +610,9 @@ pub fn g5_intent(
         | G5Control::PrepAnchors
         | G5Control::PrepRetrace
         | G5Control::PrepRemoveCorrection { .. } => super::g6_werk::trace_prep_intent(doc, document, control, values),
+        G5Control::OperatorMachine { .. }
+        | G5Control::OperatorUpload { .. }
+        | G5Control::OperatorOrderUpload { .. } => super::g6_werk::operator_intent(doc, document, control),
         G5Control::StructDefineName
         | G5Control::StructDefine
         | G5Control::PartPlaceX { .. }

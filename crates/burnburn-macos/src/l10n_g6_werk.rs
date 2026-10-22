@@ -161,6 +161,35 @@ texts! {
     RefCandidateCaption => ("{0}: welke rand wordt bedoeld", "{0}: which edge is meant"),
     RefRebindButton => ("Kies deze rand voor {0}", "Choose this edge for {0}"),
     RefRemoveButton => ("Verwijder referentie {0}", "Remove reference {0}"),
+    // --- The compact operator view (W08).
+    OperatorTitle => ("Operatorweergave", "Operator view"),
+    OperatorMenu => ("Operatorweergave…", "Operator view…"),
+    OperatorMachineHeading => ("Machine", "Machine"),
+    OperatorNoMachine => ("Geen machine gekoppeld.", "No machine connected."),
+    OperatorMachineLine => ("{0}: {1}", "{0}: {1}"),
+    OperatorRunning => ("Job op de machine: {0}", "Job on the machine: {0}"),
+    OperatorProgress => ("Upload: {0} van {1} blokken bevestigd door de transportlaag", "Upload: {0} of {1} chunks acknowledged by the transport"),
+    OperatorJobsHeading => ("Goedgekeurde jobs", "Approved jobs"),
+    OperatorJobsNone => ("Geen goedgekeurde jobs.", "No approved jobs."),
+    OperatorJobLine => (
+        "{0}: revisie {1}, {2}, materiaal {3}",
+        "{0}: revision {1}, {2}, material {3}"
+    ),
+    OperatorSizeUnknown => ("afmeting onbekend", "size unknown"),
+    OperatorMaterialUnknown => ("onbekend", "unknown"),
+    OperatorUploadButton => ("Upload {0}", "Upload {0}"),
+    OperatorOrdersHeading => ("Orders", "Orders"),
+    OperatorOrdersNone => ("Geen orders.", "No orders."),
+    OperatorOrderLine => (
+        "{0}: {1} van {2} voltooid ({3}){4}",
+        "{0}: {1} of {2} completed ({3}){4}"
+    ),
+    OperatorOnRemnant => (" op restplaat {0}", " on remnant {0}"),
+    OperatorNeedsChoice => (
+        "{0}: meerdere goedgekeurde jobs passen; er wordt er niet vanzelf een gekozen.",
+        "{0}: several approved jobs fit; none is chosen automatically."
+    ),
+    OperatorOrderUploadButton => ("Upload voor order {0}", "Upload for order {0}"),
     // --- Why a structure edit was refused.
     ProblemNeedsSelection => (
         "Selecteer eerst de objecten waar het onderdeel van gemaakt wordt.",

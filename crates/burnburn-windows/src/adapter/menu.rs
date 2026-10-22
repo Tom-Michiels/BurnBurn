@@ -22,6 +22,8 @@ pub enum MenuItem {
     StructurePanel,
     /// Beeld: shows or hides the image preparation panel of the active window (G6-werk).
     TracePrepPanel,
+    /// Venster: shows or hides the compact operator view of the active window (G6-werk).
+    OperatorPanel,
     /// An item of the panel families (laser window, import, export, bundles, templates, images,
     /// camera, help; ids `6000..6500`): what it does is decided in [`crate::host_panels::menu`].
     Host(HostItem),
@@ -30,12 +32,19 @@ pub enum MenuItem {
 /// Every menu item the host offers. The recent-list entries are not in it: they come and go with
 /// the stored lists (as `Recent(n)` on the Mac).
 pub fn menu_items() -> Vec<MenuItem> {
-    [MenuItem::Open, MenuItem::SchikkenPanel, MenuItem::OffsetPanel, MenuItem::StructurePanel, MenuItem::TracePrepPanel]
-        .into_iter()
-        .chain(crate::host_panels::menu::items().into_iter().map(MenuItem::Host))
-        .chain(CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
-        .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
-        .collect()
+    [
+        MenuItem::Open,
+        MenuItem::SchikkenPanel,
+        MenuItem::OffsetPanel,
+        MenuItem::StructurePanel,
+        MenuItem::TracePrepPanel,
+        MenuItem::OperatorPanel,
+    ]
+    .into_iter()
+    .chain(crate::host_panels::menu::items().into_iter().map(MenuItem::Host))
+    .chain(CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
+    .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
+    .collect()
 }
 
 /// Command ids: Open is 100, commands 101 + their index in `CommandKey::ALL`. The host items use
@@ -49,6 +58,7 @@ const OFFSET_PANEL_ID: u16 = 1030;
 const STRUCTURE_PANEL_ID: u16 = 1031;
 /// The golf-6 workshop panels (G6-werk).
 const TRACE_PREP_PANEL_ID: u16 = 1032;
+const OPERATOR_PANEL_ID: u16 = 1033;
 const CAM_ID_BASE: u16 = 4000;
 
 /// `WM_COMMAND` id of a menu item (also used by the accelerator table).
@@ -60,6 +70,7 @@ pub fn command_id(item: MenuItem) -> u16 {
         MenuItem::OffsetPanel => OFFSET_PANEL_ID,
         MenuItem::StructurePanel => STRUCTURE_PANEL_ID,
         MenuItem::TracePrepPanel => TRACE_PREP_PANEL_ID,
+        MenuItem::OperatorPanel => OPERATOR_PANEL_ID,
         MenuItem::CamDialog(dialog) => CamDialog::ALL
             .iter()
             .position(|d| *d == dialog)
@@ -85,6 +96,9 @@ pub fn menu_item(id: u16) -> Option<MenuItem> {
     }
     if id == TRACE_PREP_PANEL_ID {
         return Some(MenuItem::TracePrepPanel);
+    }
+    if id == OPERATOR_PANEL_ID {
+        return Some(MenuItem::OperatorPanel);
     }
     if id == SCHIKKEN_PANEL_ID {
         return Some(MenuItem::SchikkenPanel);
@@ -184,6 +198,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         }),
         // The preparation panel has something to show while a tracer is open in the window in front.
         MenuItem::TracePrepPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.trace_prep.is_some()),
+        MenuItem::OperatorPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.operator.is_some()),
         // A dialog or panel belongs to a window; its own greying says why in words.
         MenuItem::CamDialog(_) | MenuItem::SchikkenPanel | MenuItem::OffsetPanel | MenuItem::StructurePanel => {
             vm.active.is_some()
@@ -202,6 +217,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::OffsetPanel
         | MenuItem::StructurePanel
         | MenuItem::TracePrepPanel
+        | MenuItem::OperatorPanel
         | MenuItem::Host(_) => false,
     }
 }
@@ -219,6 +235,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::StructurePanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::StructureMenu, locale).to_owned(),
         MenuItem::TracePrepPanel => {
             crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepMenu, locale).to_owned()
+        }
+        MenuItem::OperatorPanel => {
+            crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorMenu, locale).to_owned()
         }
         MenuItem::Command(key) => {
             let label = vm.commands.get(&key).map_or(MessageKey::Command(key), |c| c.label);

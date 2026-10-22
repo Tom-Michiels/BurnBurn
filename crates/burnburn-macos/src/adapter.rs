@@ -46,6 +46,8 @@ pub enum MenuItem {
     StructurePanel,
     /// Beeld ▸ Beeld voorbereiden: shows or hides the image preparation panel (G6-werk).
     TracePrepPanel,
+    /// Venster ▸ Operatorweergave: shows or hides the compact operator view (G6-werk).
+    OperatorPanel,
     /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
     RecentTemplate(usize),
     /// Archief ▸ Recente templates ▸ Wis menu.
@@ -68,6 +70,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::OffsetPanel,
         MenuItem::StructurePanel,
         MenuItem::TracePrepPanel,
+        MenuItem::OperatorPanel,
         MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
@@ -100,6 +103,7 @@ const OFFSET_PANEL_TAG: isize = 1030;
 const STRUCTURE_PANEL_TAG: isize = 1031;
 /// The golf-6 workshop panels (G6-werk).
 const TRACE_PREP_PANEL_TAG: isize = 1032;
+const OPERATOR_PANEL_TAG: isize = 1033;
 /// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
 const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
 
@@ -117,6 +121,7 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::OffsetPanel => OFFSET_PANEL_TAG,
         MenuItem::StructurePanel => STRUCTURE_PANEL_TAG,
         MenuItem::TracePrepPanel => TRACE_PREP_PANEL_TAG,
+        MenuItem::OperatorPanel => OPERATOR_PANEL_TAG,
         MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
         MenuItem::RecentTemplate(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
@@ -174,6 +179,9 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == TRACE_PREP_PANEL_TAG {
         return Some(MenuItem::TracePrepPanel);
+    }
+    if tag == OPERATOR_PANEL_TAG {
+        return Some(MenuItem::OperatorPanel);
     }
     if tag == CLEAR_RECENT_TEMPLATES_TAG {
         return Some(MenuItem::ClearRecentTemplates);
@@ -625,6 +633,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::OffsetPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Offset),
         E::Menu(MenuItem::StructurePanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Structure),
         E::Menu(MenuItem::TracePrepPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::TracePrep),
+        E::Menu(MenuItem::OperatorPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Operator),
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::Menu(MenuItem::App(action)) => return Reaction::App(action),
         E::App(event) => return crate::app_menu::translate_app(event, vm),
@@ -1011,6 +1020,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         }
         // The preparation panel has something to show while a tracer is open in the window in front.
         MenuItem::TracePrepPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.trace_prep.is_some()),
+        MenuItem::OperatorPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.operator.is_some()),
         MenuItem::ExportDiagnostics => true,
         // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
         MenuItem::CamDialog(_) => vm.active.is_some(),
@@ -1055,6 +1065,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::OffsetPanel
         | MenuItem::StructurePanel
         | MenuItem::TracePrepPanel
+        | MenuItem::OperatorPanel
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
@@ -1083,6 +1094,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::StructurePanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::StructureMenu, locale).to_owned(),
         MenuItem::TracePrepPanel => {
             crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepMenu, locale).to_owned()
+        }
+        MenuItem::OperatorPanel => {
+            crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorMenu, locale).to_owned()
         }
         MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::App(action) => action.title(locale).to_owned(),
