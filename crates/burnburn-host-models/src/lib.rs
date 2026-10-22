@@ -19,3 +19,5 @@ pub mod toolbar;
 pub mod recent;
 pub mod quit_guard;
 pub mod automation_host;
+pub mod panels;
+pub mod hub_panel;
