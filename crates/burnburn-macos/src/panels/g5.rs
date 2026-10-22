@@ -155,6 +155,8 @@ pub enum G5Control {
     CompareClear,
     BatchFiles,
     BatchRun,
+    /// Choose the files of the batch in the host's file panel (G8-trace, T10).
+    BatchChoose,
     BatchCancel,
     BatchClear,
     // --- Prepare image (G6-werk, T03, T05, T06).
@@ -795,6 +797,7 @@ pub fn g5_intent(
         | G5Control::CompareAdopt
         | G5Control::CompareClear
         | G5Control::BatchRun
+        | G5Control::BatchChoose
         | G5Control::BatchCancel
         | G5Control::BatchClear => super::g7_trace::intent(doc, document, control, values),
         G5Control::LensK1

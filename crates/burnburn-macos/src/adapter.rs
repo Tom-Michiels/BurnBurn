@@ -472,6 +472,12 @@ pub enum NativeEvent {
         document: DocumentId,
         path: Option<PathBuf>,
     },
+    /// The batch file panel of the tracer closed: the files chosen (empty on cancel), in the order the
+    /// panel gave them (G8-trace, T10).
+    TraceBatchFilesChosen {
+        document: DocumentId,
+        paths: Vec<PathBuf>,
+    },
     /// The DPI field of the bitmap import sheet committed (Return or end of editing), raw text.
     ImageDpiCommitted {
         document: DocumentId,
@@ -578,6 +584,9 @@ pub enum Reaction {
     /// Show NSOpenPanel for an image to trace; the result comes back as
     /// [`NativeEvent::TraceFileChosen`].
     ShowTracePanel,
+    /// Show NSOpenPanel with multiple selection for the files of a batch; the result comes back as
+    /// [`NativeEvent::TraceBatchFilesChosen`].
+    ShowTraceBatchPanel,
     /// Show or hide the laser panel of the active window.
     ToggleLaserPanel,
     /// Show or hide the Schikken options panel of the active window.
@@ -975,6 +984,25 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         },
         E::SchikkenControl { document, control, values } => {
             match crate::panels::schikken_intent(vm, document, control, &values) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
+        E::G5Control {
+            document,
+            panel: crate::panels::G5Panel::TracePrep,
+            control: crate::panels::G5Control::BatchChoose,
+            ..
+        } => {
+            let running = vm
+                .document(document)
+                .and_then(|d| d.trace_recipes.as_ref())
+                .and_then(|r| r.batch.as_ref())
+                .is_some_and(|b| b.running);
+            return if open(document) && !running { Reaction::ShowTraceBatchPanel } else { Reaction::Nothing };
+        }
+        E::TraceBatchFilesChosen { document, paths } if open(document) => {
+            match crate::panels::batch_files_intent(document, paths) {
                 Some(i) => i,
                 None => return Reaction::Nothing,
             }

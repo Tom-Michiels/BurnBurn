@@ -326,6 +326,9 @@ pub enum FilePick {
     CamExportRd(CamDialog),
     /// A CSV for the variable text.
     Csv,
+    /// Several pictures for a batch of traces (multiple selection); answered by
+    /// [`g5::batch_files_chosen`].
+    TraceBatch,
 }
 
 /// What a control event leads to.

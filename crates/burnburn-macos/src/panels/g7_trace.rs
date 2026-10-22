@@ -287,6 +287,7 @@ fn recipe_lines(r: &TraceRecipesViewModel, locale: Locale, out: &mut Vec<G5Line>
     out.push(G5Line::Text(t(G7Text::BatchHint, locale)));
     out.push(G5Line::Memo { control: G5Control::BatchFiles, text: String::new(), max_chars: 20_000 });
     let running = r.batch.as_ref().is_some_and(|b| b.running);
+    out.push(button(G5Control::BatchChoose, t(G7Text::BatchChoose, locale), !running));
     out.push(button(G5Control::BatchRun, t(G7Text::BatchRun, locale), !running));
     out.push(button(G5Control::BatchCancel, t(G7Text::BatchCancel, locale), running));
     if let Some(b) = &r.batch {
@@ -505,8 +506,23 @@ pub(super) fn intent(
                 .collect();
             recipe(TraceRecipeIntent::RunBatch { paths })
         }
+        // Choosing files is the host's: it shows the panel and sends `batch_files_intent`.
+        G5Control::BatchChoose => None,
         G5Control::BatchCancel => recipe(TraceRecipeIntent::CancelBatch),
         G5Control::BatchClear => recipe(TraceRecipeIntent::ClearBatch),
         _ => None,
     }
+}
+
+/// The batch that the files chosen in the host's panel are: each file once (its first place), in the
+/// order given. `None` when nothing was chosen (Cancel).
+pub fn batch_files_intent(document: DocumentId, paths: Vec<PathBuf>) -> Option<UiIntent> {
+    let mut unique: Vec<PathBuf> = Vec::with_capacity(paths.len());
+    for path in paths {
+        if !unique.contains(&path) {
+            unique.push(path);
+        }
+    }
+    (!unique.is_empty())
+        .then_some(UiIntent::TraceRecipe { document, intent: TraceRecipeIntent::RunBatch { paths: unique } })
 }

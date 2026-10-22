@@ -143,6 +143,7 @@ texts! {
         "One path per line. Every file is traced with the current settings; you get a report per file."
     ),
     BatchFilesCaption => ("Bestanden", "Files"),
+    BatchChoose => ("Kies bestanden…", "Choose files…"),
     BatchRun => ("Trace deze bestanden", "Trace these files"),
     BatchCancel => ("Annuleer de batch", "Cancel the batch"),
     BatchClear => ("Sluit het batchrapport", "Close the batch report"),
