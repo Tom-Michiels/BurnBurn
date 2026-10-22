@@ -5,7 +5,9 @@
 
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, OrderDraft, SchikkenIntent, UiIntent};
 use burnburn_types::DocumentId;
-use burnburn_windows::forms::{ControlId, ControlValue, Form, FormContext, FormLine, FormOutcome, PanelState, schikken};
+use burnburn_windows::forms::{
+    ControlId, ControlValue, Form, FormContext, FormLine, FormOutcome, PanelState, schikken,
+};
 use burnburn_windows::l10n::Locale;
 use burnburn_windows::panels::SchikkenControl as C;
 

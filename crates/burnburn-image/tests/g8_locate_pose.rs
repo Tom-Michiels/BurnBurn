@@ -314,6 +314,10 @@ fn measure_the_search_on_a_camera_sized_frame() {
         let started = Instant::now();
         let found = locate_pose(&big, &template, &params, &never()).unwrap();
         let secs = started.elapsed().as_secs_f64();
-        println!("MEASURE 1280x720, template 87x87, {label}: {} match(es), {secs:.2} s, best {:?}", found.len(), found.first());
+        println!(
+            "MEASURE 1280x720, template 87x87, {label}: {} match(es), {secs:.2} s, best {:?}",
+            found.len(),
+            found.first()
+        );
     }
 }

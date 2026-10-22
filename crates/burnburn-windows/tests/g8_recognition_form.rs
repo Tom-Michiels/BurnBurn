@@ -10,7 +10,9 @@ mod rig;
 use burnburn_presentation::{CameraWorkspaceIntent, HeadlessEditorHarness, RecognitionIntent, UiIntent};
 use burnburn_types::DocumentId;
 use burnburn_windows::forms::g5;
-use burnburn_windows::forms::{ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState};
+use burnburn_windows::forms::{
+    ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState,
+};
 use burnburn_windows::l10n::Locale;
 use burnburn_windows::panels::{G5Control as C, G5Panel as P};
 use rig::*;
@@ -99,7 +101,9 @@ fn pointing_sends_the_chosen_camera_and_name_and_shows_its_stop_while_it_lasts()
     let (mut h, doc) = rig();
     let outcome = react(&h, doc, C::RecogPoint, ControlValue::Press);
     let FormOutcome::Intent(intent) = outcome else { panic!("{outcome:?}") };
-    assert!(matches!(&intent, UiIntent::Recognition(RecognitionIntent::PointBox { device, .. }) if *device == dev("cam-A")));
+    assert!(
+        matches!(&intent, UiIntent::Recognition(RecognitionIntent::PointBox { device, .. }) if *device == dev("cam-A"))
+    );
     assert!(form(&h, doc).find(&ControlId::G5(C::RecogEndPoint)).is_none());
     h.send(intent);
     assert!(form(&h, doc).find(&ControlId::G5(C::RecogEndPoint)).is_some());

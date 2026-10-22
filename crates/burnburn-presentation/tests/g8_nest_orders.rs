@@ -7,11 +7,11 @@
 mod common;
 
 use burnburn_machine::{ControllerStatus, Reply, Request};
-use burnburn_test_support::Step;
 use burnburn_presentation::{
     CommandKey, MachineAction, NestFailure, NestPanelViewModel, OrderDraft, OrderViewModel, SchikkenIntent,
     SchikkenMessage, UiIntent,
 };
+use burnburn_test_support::Step;
 use common::*;
 
 /// The window of the designer: the rectangle of the rig and a second one, the nest panel open on both.

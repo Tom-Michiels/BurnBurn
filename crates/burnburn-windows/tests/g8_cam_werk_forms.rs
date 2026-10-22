@@ -5,7 +5,9 @@
 
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, NestPartGrain, SchikkenIntent, UiIntent};
 use burnburn_types::DocumentId;
-use burnburn_windows::forms::{ControlId, ControlValue, Form, FormContext, FormLine, FormOutcome, PanelState, schikken};
+use burnburn_windows::forms::{
+    ControlId, ControlValue, Form, FormContext, FormLine, FormOutcome, PanelState, schikken,
+};
 use burnburn_windows::l10n::Locale;
 use burnburn_windows::panels::SchikkenControl as C;
 
@@ -36,7 +38,12 @@ fn react(h: &HeadlessEditorHarness, doc: DocumentId, c: C, value: ControlValue) 
         Some(slot) => slot.1 = value.clone(),
         None => values.push((ControlId::Schikken(c), value.clone())),
     }
-    schikken::react(&ControlId::Schikken(c), &value, &values, &FormContext { vm: &vm, document: doc, locale: Locale::En })
+    schikken::react(
+        &ControlId::Schikken(c),
+        &value,
+        &values,
+        &FormContext { vm: &vm, document: doc, locale: Locale::En },
+    )
 }
 
 fn send(h: &mut HeadlessEditorHarness, outcome: FormOutcome) {
@@ -45,7 +52,9 @@ fn send(h: &mut HeadlessEditorHarness, outcome: FormOutcome) {
 }
 
 fn copy_rows(f: &Form) -> Vec<usize> {
-    (0..40).filter(|i| matches!(f.find(&ControlId::Schikken(C::NestPartCopies(*i))), Some(FormLine::Field { .. }))).collect()
+    (0..40)
+        .filter(|i| matches!(f.find(&ControlId::Schikken(C::NestPartCopies(*i))), Some(FormLine::Field { .. })))
+        .collect()
 }
 
 #[test]
@@ -53,7 +62,7 @@ fn the_form_lists_eight_parts_a_page_and_the_page_buttons_reach_the_others() {
     let (mut h, doc) = window(12);
     let f = nest_form(&h, doc);
     assert_eq!(copy_rows(&f), (0..8).collect::<Vec<_>>());
-    assert!(matches!(f.find(&ControlId::Schikken(C::NestPartsNext)), Some(_)));
+    assert!(f.find(&ControlId::Schikken(C::NestPartsNext)).is_some());
     let outcome = react(&h, doc, C::NestPartsNext, ControlValue::Press);
     let FormOutcome::Intent(UiIntent::Schikken(SchikkenIntent::SetNestOptions { input, .. })) = &outcome else {
         panic!("the page button sends the options")
@@ -71,7 +80,10 @@ fn a_grain_on_the_sheet_gives_every_part_a_choice_that_sends_its_rule() {
     send(&mut h, outcome);
     let f = nest_form(&h, doc);
     for i in 0..2 {
-        assert!(matches!(f.find(&ControlId::Schikken(C::NestPartGrain(i))), Some(FormLine::Choice { selected: 0, .. })));
+        assert!(matches!(
+            f.find(&ControlId::Schikken(C::NestPartGrain(i))),
+            Some(FormLine::Choice { selected: 0, .. })
+        ));
     }
     let outcome = react(&h, doc, C::NestPartGrain(1), ControlValue::Choice(2));
     let FormOutcome::Intent(UiIntent::Schikken(SchikkenIntent::SetNestOptions { input, .. })) = &outcome else {

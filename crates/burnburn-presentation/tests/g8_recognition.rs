@@ -293,7 +293,7 @@ fn a_copy_is_turned_and_scaled_like_the_product_it_is_put_on() {
         assert_eq!(view(&r).candidates.len(), 1, "{angle}: {:?}", view(&r));
         send(&mut r, R::Decide { index: 0, decision: D::Accepted });
         let doc = r.doc;
-    send(&mut r, R::Place { document: doc });
+        send(&mut r, R::Place { document: doc });
         assert_eq!(view(&r).problem, None);
         let target = MAP.bed([100.5, 70.5]);
         let copies = corners_of_copies(&r, original);
@@ -368,14 +368,16 @@ fn a_restored_template_finds_the_same_as_the_template_just_learned() {
     learn_named(&mut first, "Kaartje");
     show(&mut first, &[Posed(100.0, 70.0, 0.0, 1.0), upright(40.0, 90.0)]);
     find(&mut first, "80");
-    let fresh: Vec<(f64, f64, f64)> = view(&first).candidates.iter().map(|c| (c.x_px, c.y_px, c.similarity_percent)).collect();
+    let fresh: Vec<(f64, f64, f64)> =
+        view(&first).candidates.iter().map(|c| (c.x_px, c.y_px, c.similarity_percent)).collect();
     drop(first);
     let mut second = rig_on(Some(&fs));
     show(&mut second, &[Posed(100.0, 70.0, 0.0, 1.0), upright(40.0, 90.0)]);
     let id = view(&second).saved[0].id;
     send(&mut second, R::Use { id });
     find(&mut second, "80");
-    let back: Vec<(f64, f64, f64)> = view(&second).candidates.iter().map(|c| (c.x_px, c.y_px, c.similarity_percent)).collect();
+    let back: Vec<(f64, f64, f64)> =
+        view(&second).candidates.iter().map(|c| (c.x_px, c.y_px, c.similarity_percent)).collect();
     assert_eq!(fresh.len(), 2);
     assert_eq!(fresh, back);
 }
@@ -467,7 +469,8 @@ fn pointing_at_two_corners_in_the_picture_on_the_sheet_learns_the_template() {
     let p = view(&r).pointing.expect("pointing");
     assert_eq!((p.first, p.frame_px), (None, (W, H)));
     let overlays = r.h.scene(r.doc).unwrap().overlays.clone();
-    let Some(Overlay::BedImage { picture, quads, .. }) = overlays.iter().find(|o| matches!(o, Overlay::BedImage { .. }))
+    let Some(Overlay::BedImage { picture, quads, .. }) =
+        overlays.iter().find(|o| matches!(o, Overlay::BedImage { .. }))
     else {
         panic!("the camera picture to point at lies on the sheet");
     };

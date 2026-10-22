@@ -178,7 +178,7 @@ fn from_hex(text: &str) -> Option<Vec<u8>> {
         _ => None,
     };
     let bytes = text.as_bytes();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return None;
     }
     bytes.chunks(2).map(|pair| Some(digit(pair[0])? << 4 | digit(pair[1])?)).collect()

@@ -44,7 +44,11 @@ fn templates_survive_a_save_and_load_exactly_with_their_next_id() {
     let path = Path::new("/lib/recognition-templates.json");
     let lib = RecognitionLibrary { templates: vec![record(1, "Sleutelhanger"), record(4, "Plaatje")], next_id: 9 };
     save_recognition_library(&fs, path, &lib).unwrap();
-    assert_eq!(load_recognition_library(&fs, path).unwrap(), lib, "also the next id: a removed template's id stays spent");
+    assert_eq!(
+        load_recognition_library(&fs, path).unwrap(),
+        lib,
+        "also the next id: a removed template's id stays spent"
+    );
 }
 
 #[test]
@@ -60,7 +64,10 @@ fn the_file_uses_its_documented_names() {
     let t = &lib.templates[0];
     assert_eq!((t.id, t.name.as_str(), t.width, t.height), (7, "Hoek", 4, 4));
     assert_eq!(t.config, config("cam-1"));
-    assert_eq!(t.gray8, vec![0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xff]);
+    assert_eq!(
+        t.gray8,
+        vec![0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0, 0xff]
+    );
 }
 
 #[test]

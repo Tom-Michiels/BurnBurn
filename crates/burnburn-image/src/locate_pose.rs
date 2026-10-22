@@ -264,7 +264,8 @@ pub fn locate_pose(
     let max_scale = params.scales.iter().copied().fold(1.0_f64, f64::max);
     // A template that turns needs room for its diagonal; one that stays only for itself.
     let needs = if rotates { diagonal * max_scale } else { f64::from(template.width.max(template.height)) * max_scale };
-    if needs > f64::from(frame.width.min(frame.height)) && (template.width > frame.width || template.height > frame.height)
+    if needs > f64::from(frame.width.min(frame.height))
+        && (template.width > frame.width || template.height > frame.height)
     {
         return Err(LocateError::TemplateLargerThanFrame);
     }
@@ -395,9 +396,7 @@ pub fn locate_pose(
             });
         }
     }
-    refined.sort_by(|a, b| {
-        b.score.total_cmp(&a.score).then(a.y_px.total_cmp(&b.y_px)).then(a.x_px.total_cmp(&b.x_px))
-    });
+    refined.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.y_px.total_cmp(&b.y_px)).then(a.x_px.total_cmp(&b.x_px)));
     let mut kept: Vec<PoseMatch> = Vec::new();
     for m in refined {
         if separated(&kept, m.x_px, m.y_px, separation) {

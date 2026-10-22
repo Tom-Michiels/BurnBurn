@@ -42,10 +42,8 @@ fn row_with_holes(count: u32) -> DocumentSession {
         ids.push(rectangle(&mut s, x + 8.0, 3.0, 4.0, 4.0));
     }
     let op = add_op(&mut s, line_op("Snijden", 10.0, 50.0), ids);
-    let advanced = AdvancedOptions {
-        common_line: Some(CommonLine::new(mm(0.05), mm(2.0)).unwrap()),
-        ..Default::default()
-    };
+    let advanced =
+        AdvancedOptions { common_line: Some(CommonLine::new(mm(0.05), mm(2.0)).unwrap()), ..Default::default() };
     run(&mut s, CommandPayload::Process(ProcessCommand::SetAdvanced { operation: op, advanced }));
     s
 }
@@ -80,7 +78,10 @@ fn assert_shared_after_the_holes_of_both(count: u32) {
     for (at, k) in seams {
         for plate in [k - 1, k] {
             let last_hole = cuts.iter().rposition(|c| in_hole_of(c.0, plate) && in_hole_of(c.1, plate)).unwrap();
-            assert!(at > last_hole, "seam {k} (cut {at}) follows the hole of plate {plate} (cut {last_hole}): {cuts:?}");
+            assert!(
+                at > last_hole,
+                "seam {k} (cut {at}) follows the hole of plate {plate} (cut {last_hole}): {cuts:?}"
+            );
         }
     }
 }

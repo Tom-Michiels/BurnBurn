@@ -84,12 +84,30 @@ struct SettingsDto {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "kebab-case")]
 enum EventDto {
-    Operation { operation: u64, settings: usize, pass: u32 },
-    Travel { to: [f64; 2] },
-    Cut { to: [f64; 2], origin: Option<[u64; 2]> },
+    Operation {
+        operation: u64,
+        settings: usize,
+        pass: u32,
+    },
+    Travel {
+        to: [f64; 2],
+    },
+    Cut {
+        to: [f64; 2],
+        origin: Option<[u64; 2]>,
+    },
     /// A cut at its own power, a fraction of the rated power (a tab, C04).
-    CutPower { to: [f64; 2], power: f64, origin: Option<[u64; 2]> },
-    Scan { from: [f64; 2], to: [f64; 2], overscan_mm: f64, origin: Option<[u64; 2]> },
+    CutPower {
+        to: [f64; 2],
+        power: f64,
+        origin: Option<[u64; 2]>,
+    },
+    Scan {
+        from: [f64; 2],
+        to: [f64; 2],
+        overscan_mm: f64,
+        origin: Option<[u64; 2]>,
+    },
 }
 
 fn origin_name(o: OriginCorner) -> &'static str {

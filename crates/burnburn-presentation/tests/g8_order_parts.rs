@@ -83,7 +83,11 @@ fn a_part_in_two_released_jobs_waits_for_the_operators_choice() {
     // A second job with the same part, a different plan (a different width).
     let mut r = rig();
     r.h.controller().attach_history(shared.clone()).unwrap();
-    r.h.send(UiIntent::CommitField { document: r.doc, field: burnburn_presentation::FieldKey::Width, text: "100".into() });
+    r.h.send(UiIntent::CommitField {
+        document: r.doc,
+        field: burnburn_presentation::FieldKey::Width,
+        text: "100".into(),
+    });
     prepare(&mut r.h, r.doc);
     r.h.invoke(r.doc, CommandKey::ApproveJob);
     let second = r.h.document(r.doc).unwrap().job.unwrap();

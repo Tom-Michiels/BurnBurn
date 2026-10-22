@@ -427,8 +427,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             let active_machine =
                 read_library(fs.as_ref(), &dir.join(ACTIVE_MACHINE_FILE), load_profile_library_entries);
             let remnants = read_library(fs.as_ref(), &dir.join(REMNANT_LIBRARY_FILE), load_remnant_library);
-            let recognition =
-                read_library(fs.as_ref(), &dir.join(RECOGNITION_LIBRARY_FILE), load_recognition_library);
+            let recognition = read_library(fs.as_ref(), &dir.join(RECOGNITION_LIBRARY_FILE), load_recognition_library);
             Ok(FilesOutput::LibrariesLoaded(Box::new(LoadedLibraries {
                 profiles,
                 calibration,

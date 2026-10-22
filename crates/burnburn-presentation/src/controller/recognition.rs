@@ -13,9 +13,7 @@ use burnburn_image::GrayImage;
 use burnburn_image::PixelRect;
 use burnburn_image::calib::CameraConfigKey;
 use burnburn_image::locate::{LocateError, LocateParams, check_template, crop_gray, gray_of_source};
-use burnburn_types::{
-    Angle, CancellationSource, ContentHash, DocumentId, HashDomain, RequestId, RevisionId, TaskId,
-};
+use burnburn_types::{Angle, CancellationSource, ContentHash, DocumentId, HashDomain, RequestId, RevisionId, TaskId};
 
 use super::clipboard::{bounds_of, items_of};
 use super::{AppController, AppUpdate, apply_edit};
@@ -482,8 +480,7 @@ impl AppController {
         let a = angle_deg.to_radians();
         let origin = self.bed_of(config, pixel)?;
         let along = self.bed_of(config, [pixel[0] + ANGLE_PROBE_PX, pixel[1]])?;
-        let turned =
-            self.bed_of(config, [pixel[0] + ANGLE_PROBE_PX * a.cos(), pixel[1] + ANGLE_PROBE_PX * a.sin()])?;
+        let turned = self.bed_of(config, [pixel[0] + ANGLE_PROBE_PX * a.cos(), pixel[1] + ANGLE_PROBE_PX * a.sin()])?;
         let heading = |p: [f64; 2]| (p[1] - origin[1]).atan2(p[0] - origin[0]);
         Some((heading(turned) - heading(along)).to_degrees())
     }

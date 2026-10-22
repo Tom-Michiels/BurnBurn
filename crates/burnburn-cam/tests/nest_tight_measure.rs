@@ -34,12 +34,14 @@ fn bracket() -> Path {
 
 fn disc(diameter: f64) -> Path {
     let r = diameter / 2.0;
-    poly(&(0..72)
-        .map(|k| {
-            let a = f64::from(k) * std::f64::consts::TAU / 72.0;
-            (r + r * a.cos(), r + r * a.sin())
-        })
-        .collect::<Vec<_>>())
+    poly(
+        &(0..72)
+            .map(|k| {
+                let a = f64::from(k) * std::f64::consts::TAU / 72.0;
+                (r + r * a.cos(), r + r * a.sin())
+            })
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// A slot (stadium) of 60 x 20.
@@ -63,13 +65,15 @@ fn triangle() -> Path {
 
 /// A 12-pointed star of 56 mm across.
 fn star() -> Path {
-    poly(&(0..24)
-        .map(|k| {
-            let a = f64::from(k) * std::f64::consts::TAU / 24.0;
-            let r = if k % 2 == 0 { 28.0 } else { 20.0 };
-            (28.0 + r * a.cos(), 28.0 + r * a.sin())
-        })
-        .collect::<Vec<_>>())
+    poly(
+        &(0..24)
+            .map(|k| {
+                let a = f64::from(k) * std::f64::consts::TAU / 24.0;
+                let r = if k % 2 == 0 { 28.0 } else { 20.0 };
+                (28.0 + r * a.cos(), 28.0 + r * a.sin())
+            })
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn fixture(scale: u32) -> Vec<NestPart> {

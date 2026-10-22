@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use burnburn_image::GrayImage;
 use burnburn_image::locate::{LocateError, LocateMatch, LocateParams, locate};
-pub use burnburn_image::locate_pose::{PoseMatch, PoseParams};
 use burnburn_image::locate_pose::locate_pose;
+pub use burnburn_image::locate_pose::{PoseMatch, PoseParams};
 use burnburn_types::CancellationToken;
 
 use crate::camera::CameraDeviceId;

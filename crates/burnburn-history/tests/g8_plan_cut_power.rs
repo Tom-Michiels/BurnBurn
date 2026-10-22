@@ -7,8 +7,8 @@ mod common;
 
 use burnburn_history::{HistoryError, decode_plan, encode_plan};
 use burnburn_job::{
-    JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings,
-    OriginCorner, PlanEvent, PlanMode, PlanSource, PowerRatio, SourceRef,
+    JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
+    PlanSource, PowerRatio, SourceRef,
 };
 use burnburn_types::{ContentHash, GeometryId, HashDomain, OperationId, RevisionId, StableId};
 use common::*;

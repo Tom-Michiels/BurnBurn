@@ -13,10 +13,7 @@ use burnburn_job::{
     JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
     PlanSource, PowerRatio, ProfileRevision,
 };
-use burnburn_machine::MachineId;
-use burnburn_presentation::{
-    ActionId, ActionSubject, HistoryStore, JobInputs, MachineAction, PreparedJob, Role, UploadRecord,
-};
+use burnburn_presentation::{HistoryStore, JobInputs, PreparedJob, Role};
 use burnburn_runtime::{JournalHistoryStore, WallClock};
 use burnburn_types::{ContentHash, DocumentId, HashDomain, OperationId, RevisionId, StableId};
 
