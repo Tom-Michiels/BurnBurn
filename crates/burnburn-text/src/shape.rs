@@ -165,7 +165,9 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
         for (i, g) in raw.glyphs.iter().enumerate() {
             pens.push(pen);
             pen += g.advance;
-            if raw.glyphs.get(i + 1).is_some_and(|next| next.cluster != g.cluster) {
+            if raw.glyphs.get(i + 1).is_some_and(|next| next.cluster != g.cluster)
+                && !joined_letters(&obj.content, g.cluster, raw.glyphs.get(i + 1).map_or(g.cluster, |n| n.cluster))
+            {
                 pen += layout.letter_spacing_mm;
             }
         }
@@ -219,6 +221,35 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
         }
     }
     Ok(out)
+}
+
+/// Whether the clusters starting at byte `a` and `b` of `content` are letters of a cursive script
+/// (Arabic, Syriac, N'Ko, Mandaic, Mongolian): their letters join, so spacing between them would
+/// tear the word apart. Spaces, digits and punctuation are not letters and take the spacing.
+fn joined_letters(content: &str, a: usize, b: usize) -> bool {
+    let cursive = |at: usize| content.get(at..).and_then(|s| s.chars().next()).is_some_and(is_cursive_letter);
+    cursive(a) && cursive(b)
+}
+
+fn is_cursive_letter(ch: char) -> bool {
+    let c = u32::from(ch);
+    let in_script = matches!(
+        c,
+        0x0600..=0x06FF | 0x0700..=0x074F | 0x0750..=0x077F | 0x07C0..=0x07FF | 0x0840..=0x085F | 0x0860..=0x086F
+            | 0x08A0..=0x08FF | 0x1800..=0x18AF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF
+    );
+    in_script && ch.is_alphabetic() && !ch.is_numeric()
+}
+
+/// Characters that are never drawn and that fonts rarely map: joiners, directional marks, word
+/// joiner, zero width space, byte order mark, variation selectors, soft hyphen. They go to the
+/// shaper with the text around them (a joiner changes how its neighbours are drawn) and are never
+/// reported as missing, whichever font draws the run.
+fn is_default_ignorable(ch: char) -> bool {
+    matches!(u32::from(ch),
+        0x00AD | 0x034F | 0x061C | 0x115F..=0x1160 | 0x17B4..=0x17B5 | 0x180B..=0x180F
+            | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F | 0x3164
+            | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xE0000..=0xE0FFF)
 }
 
 struct RawGlyph {
@@ -328,7 +359,14 @@ fn shape_line(
             }
             let i = span.start + j;
             let end = i + ch.len_utf8();
-            match chain.iter().position(|f| f.has_glyph(ch)) {
+            // An invisible format character stays in the run before it (or, first in the line, in
+            // the run of the main font) whatever the fonts map.
+            let font = if is_default_ignorable(ch) {
+                Some(logical.last().map_or(0, |l| l.0))
+            } else {
+                chain.iter().position(|f| f.has_glyph(ch))
+            };
+            match font {
                 Some(font) => match logical.last_mut() {
                     Some((f, r, _)) if *f == font && r.end == i => r.end = end,
                     _ => logical.push((font, i..end, rtl)),
