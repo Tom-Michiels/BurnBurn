@@ -7,8 +7,8 @@ use burnburn_document::process::{
 };
 use burnburn_geometry::{Bounds, OffsetError, OffsetJoin, Path, Point, Vector, math, offset};
 use burnburn_job::{
-    JobPlan, JobPlanBuilder, MachinePoint, MachineProfile, OperationSettings, PlanEvent, PlanMode, PlanSource,
-    PowerRatio, ScanAxis, ScanLine, SourceRef,
+    AppliedCalibration, AppliedKind, Calibration, Feature, JobPlan, JobPlanBuilder, MachinePoint, MachineProfile,
+    OperationSettings, PlanEvent, PlanMode, PlanSource, PowerRatio, ScanAxis, ScanLine, SourceRef, Support,
 };
 use burnburn_types::{CancellationToken, GeometryId, OperationId, StableId};
 
@@ -96,6 +96,8 @@ pub fn compile_with(
     let process = snapshot.process();
     let order = process.execution_order().map_err(CompileError::Order)?;
     let mut units = Vec::new();
+    // Measured values the compile used (W09), noted in the plan once it is being built.
+    let mut applied: Vec<AppliedCalibration> = Vec::new();
     for id in order {
         cancel.check()?;
         let Some(op) = process.operation(id) else { continue };
@@ -107,6 +109,7 @@ pub fn compile_with(
         let mut blocks = vec![(op.mode(), op.settings(), a.line)];
         blocks.extend(a.sub_operations.iter().map(|s| (s.mode, s.settings, LineOptions::default())));
         for (mode, settings, line) in blocks {
+            let mode = calibrated_kerf(snapshot, op, mode, profile, &mut applied)?;
             let contours = contours_for(snapshot, op, mode, options, cancel)?;
             let grouping = match mode {
                 OperationMode::Fill(f) => f.grouping(),
@@ -143,6 +146,10 @@ pub fn compile_with(
     if let Some(rotary) = profile.rotary() {
         plan = plan.with_rotary(*rotary);
     }
+    for a in applied {
+        plan.note_calibration(a);
+    }
+    let calibration = profile.calibration();
 
     // Settings blocks are registered per unit, in unit order, before any motion: chunks of one
     // unit may be interleaved with chunks of another, but each keeps the same block.
@@ -222,11 +229,11 @@ pub fn compile_with(
                 OperationMode::Fill(f) => {
                     let steps = fill_steps(unit.op, &chunk, &f, effective_angle(&f), &mut head, cancel)?;
                     if let Some((second, angle)) = hatch {
-                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
+                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block, calibration)?;
                         plan.push(PlanEvent::OperationBoundary { operation: id, settings: second, pass })?;
                         let steps = fill_steps(unit.op, &chunk, &f, angle, &mut head, cancel)?;
                         let block = OperationSettings { mode: fill_mode(&f, angle), ..block };
-                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block)?;
+                        emit(&mut plan, &frame, &steps, id, f.overscan().mm(), &block, calibration)?;
                         continue;
                     }
                     (steps, f.overscan().mm())
@@ -236,7 +243,7 @@ pub fn compile_with(
                 }
                 _ => return Err(CompileError::UnsupportedMode { operation: id }),
             };
-            emit(&mut plan, &frame, &steps, id, overscan, &block)?;
+            emit(&mut plan, &frame, &steps, id, overscan, &block, calibration)?;
         }
     }
     Ok(plan.finish()?)
@@ -487,9 +494,14 @@ fn emit(
     operation: OperationId,
     overscan_mm: f64,
     settings: &OperationSettings,
+    calibration: &Calibration,
 ) -> Result<(), CompileError> {
     let origin = |geometry| Some(SourceRef { geometry, operation });
     let (lo, hi) = (settings.min_power.get(), settings.max_power.get());
+    // The return rows of a bidirectional scan along a machine axis move back by the scan offset
+    // measured at this speed (W09).
+    let offset = scan_offset_for(settings, calibration);
+    let mut shifted = false;
     for step in steps {
         match *step {
             Step::Travel(to) => {
@@ -505,11 +517,25 @@ fn emit(
             Step::Scan { from, to, source }
             | Step::PowerScan { from, to, source, .. }
             | Step::RampScan { from, to, source, .. } => {
-                let from = frame.to_machine(from)?;
+                let (mut from, mut to) = (frame.to_machine(from)?, frame.to_machine(to)?);
+                if let Some((axis, back_mm, _)) = &offset {
+                    let along = match axis {
+                        ScanAxis::X => to.x_mm() - from.x_mm(),
+                        ScanAxis::Y => to.y_mm() - from.y_mm(),
+                    };
+                    if along < 0.0 {
+                        let moved = |p: MachinePoint| match axis {
+                            ScanAxis::X => MachinePoint::new(p.x_mm() - back_mm, p.y_mm()),
+                            ScanAxis::Y => MachinePoint::new(p.x_mm(), p.y_mm() - back_mm),
+                        };
+                        (from, to) = (moved(from)?, moved(to)?);
+                        shifted = true;
+                    }
+                }
                 if from != plan.position() {
                     plan.push(PlanEvent::Travel { to: from })?;
                 }
-                let line = ScanLine { from, to: frame.to_machine(to)?, overscan_mm };
+                let line = ScanLine { from, to, overscan_mm };
                 plan.push(match *step {
                     Step::PowerScan { level, .. } => {
                         // Black (0) burns at maximum power, white (255) would be minimum.
@@ -522,7 +548,71 @@ fn emit(
             }
         }
     }
+    if shifted && let Some((_, value_mm, proofs)) = offset {
+        plan.note_calibration(AppliedCalibration {
+            operation,
+            kind: AppliedKind::ScanOffset { speed_mm_s: settings.speed_mm_s },
+            value_mm,
+            proofs,
+        });
+    }
     Ok(())
+}
+
+/// The scan axis and the measured offset for a bidirectional scan at this speed, if there is
+/// one. Angled scans have no machine axis to shift along and get none; neither does a speed
+/// outside the measured ones.
+fn scan_offset_for(
+    settings: &OperationSettings,
+    calibration: &Calibration,
+) -> Option<(ScanAxis, f64, Vec<burnburn_job::ProofRef>)> {
+    let axis = match settings.mode {
+        PlanMode::Scan { axis, bidirectional: true, .. } => axis,
+        PlanMode::GrayscaleScan { bidirectional: true, .. } => ScanAxis::X,
+        _ => return None,
+    };
+    let at = calibration.scan_offset_at(settings.speed_mm_s)?;
+    Some((axis, at.offset_mm, at.proofs))
+}
+
+/// A Line operation without a typed kerf takes the kerf measured for the material of its recipe
+/// (W09). A typed kerf is never replaced, and without a recipe or a measurement nothing changes.
+/// The measured kerf needs the same capability as a typed one.
+fn calibrated_kerf(
+    snapshot: &DocumentSnapshot,
+    op: &Operation,
+    mode: OperationMode,
+    profile: &MachineProfile,
+    applied: &mut Vec<AppliedCalibration>,
+) -> Result<OperationMode, CompileError> {
+    let OperationMode::Line { kerf } = mode else { return Ok(mode) };
+    if !kerf.is_none() {
+        return Ok(mode);
+    }
+    let Some(recipe) = op.recipe().and_then(|r| snapshot.process().recipe(r.recipe)) else { return Ok(mode) };
+    let Some(measured) = profile.calibration().kerf_for(recipe.material()) else { return Ok(mode) };
+    if measured.kerf_mm == 0.0 {
+        return Ok(mode);
+    }
+    let support = profile.capabilities().support(Feature::KerfCompensation);
+    if support != Support::Supported {
+        return Err(CompileError::UnsupportedFeature {
+            operation: op.id(),
+            feature: Feature::KerfCompensation,
+            support,
+        });
+    }
+    let width = burnburn_types::Length::from_mm(measured.kerf_mm)
+        .ok()
+        .and_then(|w| burnburn_document::process::Kerf::width(w).ok())
+        .ok_or(CompileError::UnsupportedMode { operation: op.id() })?;
+    applied.push(AppliedCalibration {
+        operation: op.id(),
+        kind: AppliedKind::Kerf { material: recipe.material().to_owned() },
+        value_mm: measured.kerf_mm,
+        proofs: vec![measured.proof.clone()],
+    });
+    Ok(OperationMode::Line { kerf: width })
 }
 
 fn placement_offset(units: &[Unit<'_>], placement: Placement) -> Vector {

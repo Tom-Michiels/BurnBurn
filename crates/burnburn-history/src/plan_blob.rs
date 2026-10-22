@@ -5,7 +5,7 @@
 //! in for another plan.
 
 use burnburn_job::{
-    JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
+    AppliedCalibration, AppliedKind, ProofRef, JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
     PlanSource, PowerRatio, ProfileRevision, ScanAxis, ScanLine, SettingsIndex, SourceRef,
 };
 use burnburn_types::{ContentHash, GeometryId, OperationId, RevisionId, StableId};
@@ -25,6 +25,26 @@ struct PlanDto {
     start: [f64; 2],
     settings: Vec<SettingsDto>,
     events: Vec<EventDto>,
+    /// The measured values the plan was made with (W09). Absent for a plan made without any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    calibration: Vec<AppliedDto>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AppliedDto {
+    operation: u64,
+    #[serde(flatten)]
+    kind: AppliedKindDto,
+    value_mm: f64,
+    /// `(id, date)` of each proof the value came from.
+    proofs: Vec<(u64, String)>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "applied", rename_all = "kebab-case")]
+enum AppliedKindDto {
+    Kerf { material: String },
+    ScanOffset { speed_mm_s: f64 },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -145,6 +165,19 @@ pub fn encode_plan(plan: &JobPlan) -> Result<Vec<u8>, HistoryError> {
         start: pt(plan.start()),
         settings,
         events,
+        calibration: plan
+            .calibration()
+            .iter()
+            .map(|a| AppliedDto {
+                operation: a.operation.raw(),
+                kind: match &a.kind {
+                    AppliedKind::Kerf { material } => AppliedKindDto::Kerf { material: material.clone() },
+                    AppliedKind::ScanOffset { speed_mm_s } => AppliedKindDto::ScanOffset { speed_mm_s: *speed_mm_s },
+                },
+                value_mm: a.value_mm,
+                proofs: a.proofs.iter().map(|p| (p.id, p.date.clone())).collect(),
+            })
+            .collect(),
     };
     serde_json::to_vec(&dto).map_err(|_| HistoryError::PlanBlob("plan not encodable"))
 }
@@ -215,6 +248,17 @@ pub fn decode_plan(bytes: &[u8], expected: &ContentHash) -> Result<JobPlan, Hist
             },
         };
         b.push(event).map_err(|_| bad("event"))?;
+    }
+    for a in dto.calibration {
+        b.note_calibration(AppliedCalibration {
+            operation: OperationId::from_raw(a.operation),
+            kind: match a.kind {
+                AppliedKindDto::Kerf { material } => AppliedKind::Kerf { material },
+                AppliedKindDto::ScanOffset { speed_mm_s } => AppliedKind::ScanOffset { speed_mm_s },
+            },
+            value_mm: a.value_mm,
+            proofs: a.proofs.into_iter().map(|(id, date)| ProofRef { id, date }).collect(),
+        });
     }
     let plan = b.finish().map_err(|_| bad("plan"))?;
     let recorded = hash_from_hex(&dto.id).ok_or(bad("plan id"))?;
