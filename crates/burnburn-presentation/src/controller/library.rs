@@ -10,6 +10,7 @@ mod bundle;
 mod export;
 mod material;
 mod profile_keep;
+mod search;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -72,6 +73,16 @@ pub(super) enum FilesJob {
         document: DocumentId,
         serial: u64,
     },
+    /// The project search panel read a folder (the newest `serial` counts).
+    SearchProjects {
+        document: DocumentId,
+        serial: u64,
+    },
+    /// A frozen revision opens as a window `document`, asked for from window `from`.
+    OpenRevision {
+        document: DocumentId,
+        from: DocumentId,
+    },
 }
 
 /// Window state of the file panels (never document data).
@@ -81,6 +92,7 @@ pub(super) struct FilesUi {
     pub(in crate::controller) art: Option<art::ArtUi>,
     pub(in crate::controller) bundle: Option<bundle::BundleUi>,
     pub(in crate::controller) export: Option<export::ExportUi>,
+    pub(in crate::controller) search: Option<search::SearchUi>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -166,6 +178,13 @@ impl AppController {
             | FilesIntent::MoveArtItem { .. }
             | FilesIntent::RemoveArtItem { .. }
             | FilesIntent::PlaceArt { .. }) => self.art_intent(intent),
+            intent @ (FilesIntent::OpenSearch { .. }
+            | FilesIntent::CloseSearch { .. }
+            | FilesIntent::SetSearchFolder { .. }
+            | FilesIntent::SetSearchQuery { .. }
+            | FilesIntent::RescanSearch { .. }
+            | FilesIntent::OpenFoundProject { .. }
+            | FilesIntent::OpenFoundRevision { .. }) => self.search_intent(intent),
             intent @ (FilesIntent::OpenExport { .. }
             | FilesIntent::SetExportOptions { .. }
             | FilesIntent::SetExportAcknowledged { .. }
@@ -201,6 +220,8 @@ impl AppController {
             FilesJob::ReadBundle { document, serial } => self.bundle_read(document, serial, outcome),
             FilesJob::WriteBundle { document, serial } => self.bundle_written(document, serial, outcome),
             FilesJob::WriteTemplates { document, serial } => self.bundle_templates_written(document, serial, outcome),
+            FilesJob::SearchProjects { document, serial } => self.search_scanned(document, serial, outcome),
+            FilesJob::OpenRevision { document, from } => self.search_revision_opened(document, from, outcome),
         }
     }
 
@@ -437,5 +458,6 @@ pub(super) fn files_view(
         art: art::panel_view(s, libs),
         bundle: bundle::panel_view(s, machine, libs, recent_templates),
         export: export::panel_view(s),
+        search: search::panel_view(s),
     }
 }

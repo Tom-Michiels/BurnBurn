@@ -1017,6 +1017,8 @@ pub enum CommandKey {
     TextOnPath,
     /// Tekenen ▸ Streepjescode…: the barcode dialog (type, payload, size, readability).
     BarcodeNew,
+    /// Archief ▸ Zoek projecten…: the project search panel (P08).
+    SearchProjects,
     /// Tekenen ▸ Doos of scharnier…: the generator dialog (finger-jointed box, living hinge).
     GeneratorNew,
     /// Bewerken ▸ Bewerk generator…: the selected generated object (box, hinge or barcode) opens
@@ -1182,6 +1184,7 @@ impl CommandKey {
         CommandKey::CenterFinder,
         CommandKey::TextOnPath,
         CommandKey::BarcodeNew,
+        CommandKey::SearchProjects,
         CommandKey::GeneratorNew,
         CommandKey::GeneratorEdit,
         CommandKey::SaveAsTemplate,

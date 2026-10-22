@@ -267,6 +267,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
         (CommandKey::ShowMaterialLibrary, Some(s)) => (true, s.files.material.is_some()),
         (CommandKey::ShowArtLibrary, Some(s)) => (true, s.files.art.is_some()),
+        (CommandKey::SearchProjects, Some(s)) => (true, s.files.search.is_some()),
         (CommandKey::ShowNotes, Some(s)) => (true, s.notes_open),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),

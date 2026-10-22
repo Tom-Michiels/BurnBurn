@@ -1255,6 +1255,14 @@ fn files_pair(m: burnburn_presentation::FilesMessage) -> Option<(&'static str, &
             "An option holds an unusable value; the last good options stay in use.",
         ),
         F::ExportWriteFailed => ("Het bestand kon niet geschreven worden.", "The file could not be written."),
+        F::RevisionMissing => (
+            "Dit project heeft geen bevroren revisie met dat nummer; er is geen venster geopend.",
+            "This project has no frozen revision with that number; no window was opened.",
+        ),
+        F::RevisionOpenFailed => (
+            "Het project van deze revisie kon niet gelezen worden; er is geen venster geopend.",
+            "The project of this revision could not be read; no window was opened.",
+        ),
         _ => return None,
     })
 }

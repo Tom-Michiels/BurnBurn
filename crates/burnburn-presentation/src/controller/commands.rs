@@ -134,6 +134,14 @@ impl AppController {
                     crate::files::FilesIntent::OpenArtLibrary { document }
                 })
             }
+            CommandKey::SearchProjects => {
+                let open = self.sessions.get(&document).is_some_and(|s| s.files.search.is_some());
+                self.files(if open {
+                    crate::files::FilesIntent::CloseSearch { document }
+                } else {
+                    crate::files::FilesIntent::OpenSearch { document }
+                })
+            }
             CommandKey::ShowNotes => self.with_session(document, |s| super::notes::toggle(s, document)),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),

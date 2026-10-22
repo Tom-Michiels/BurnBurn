@@ -30,6 +30,7 @@ mod notes;
 mod offset;
 mod production;
 mod schikken;
+mod search_panel;
 mod structure_panel;
 mod task;
 mod text_panel;
@@ -106,6 +107,7 @@ pub use generator_panel::{
     GeneratorPreview, GeneratorProblem,
 };
 pub use grbl::{GcodeExportViewModel, GrblFinding};
+pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
 pub use grbl_panel::{
     GRBL_START_NEEDS, GrblConsoleView, GrblControl, GrblControlKind, GrblEntryKind, GrblIntent, GrblJobFailure,
     GrblJobState, GrblJobView, GrblMachineState, GrblMacroRow, GrblPort, GrblRefusalKind, GrblTranscriptRow,
