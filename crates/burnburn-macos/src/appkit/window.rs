@@ -501,7 +501,7 @@ impl DocWindow {
     ) {
         let Some(doc) = vm.document(document) else { return };
         let locale = self.locale;
-        let title = window_title(vm, document);
+        let title = burnburn_host_models::l10n_names::display_name(&window_title(vm, document), locale);
         if self.window.title().to_string() != title {
             self.window.setTitle(&NSString::from_str(&title));
         }
@@ -561,7 +561,8 @@ impl DocWindow {
         {
             set_text(label, text);
         }
-        self.plan_labels[0].setToolTip((!panel.id_tooltip.is_empty()).then(|| NSString::from_str(&panel.id_tooltip)).as_deref());
+        self.plan_labels[0]
+            .setToolTip((!panel.id_tooltip.is_empty()).then(|| NSString::from_str(&panel.id_tooltip)).as_deref());
         set_text(&self.plan_calibration, &panel.calibration.join("; "));
         self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);
@@ -604,7 +605,12 @@ impl DocWindow {
             self.strip.refresh(&vm.toolbar);
         }
 
-        if self.controller.set_labels(object_labels(vm, document)) {
+        if self.controller.set_labels(
+            object_labels(vm, document)
+                .iter()
+                .map(|l| burnburn_host_models::l10n_names::display_name(l, locale))
+                .collect(),
+        ) {
             let table = self.table.clone();
             if let Err(e) = super::objc_try("reloading the object table", || table.reloadData()) {
                 eprintln!("burnburn: {e}");

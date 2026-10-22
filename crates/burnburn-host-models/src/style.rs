@@ -174,7 +174,8 @@ pub enum Space {
 }
 
 impl Space {
-    pub const ALL: [Space; 6] = [Space::Hairline, Space::Tight, Space::Control, Space::Group, Space::Section, Space::Page];
+    pub const ALL: [Space; 6] =
+        [Space::Hairline, Space::Tight, Space::Control, Space::Group, Space::Section, Space::Page];
 
     /// The distance in points.
     pub fn points(self) -> f64 {

@@ -851,7 +851,7 @@ fn barcode_panel(b: &BarcodeDialogViewModel, locale: Locale) -> BarcodePanel {
         types,
         symbology: b.types.iter().position(|t| t.symbology == b.symbology).unwrap_or(0),
         payload: b.payload.clone(),
-        payload_hint: b.payload_hint.to_owned(),
+        payload_hint: crate::l10n_names::payload_hint_text(b.payload_hint, locale),
         create_title: text_text(if b.editing { TextText::Apply } else { TextText::Create }, locale).to_owned(),
         module: b.module.clone(),
         min_module: b.min_module.clone(),

@@ -8,8 +8,9 @@
 // Platform-free models shared with the macOS host live in `burnburn-host-models` (ADR 0009; they were
 // compiled from the macOS sources through `#[path]` before). Only `app_view` has a host gevel.
 pub use burnburn_host_models::{
-    app_text, automation_host, hub_panel, l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor,
-    l10n_g7_trace, l10n_g7_werk, l10n_machine, panels, panels_files, panels_image, quit_guard, recent, toolbar,
+    app_text, automation_host, format, hub_panel, l10n, l10n_files, l10n_g5, l10n_g6, l10n_g6_werk, l10n_g7_editor,
+    l10n_g7_trace, l10n_g7_werk, l10n_machine, l10n_names, panels, panels_files, panels_image, quit_guard, recent,
+    style, toolbar,
 };
 
 pub mod adapter;

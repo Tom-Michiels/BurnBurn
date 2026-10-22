@@ -140,7 +140,10 @@ pub fn import_details(import: &ImportViewModel, locale: Locale) -> String {
     if !import.layers.is_empty() {
         lines.push(t(T::LayersHeader, locale).to_owned());
         for layer in &import.layers {
-            lines.push(fill(t(T::LayerLine, locale), &[&layer.name, &crate::format::format_count(layer.items, crate::format::Noun::Object, locale)]));
+            lines.push(fill(
+                t(T::LayerLine, locale),
+                &[&layer.name, &crate::format::format_count(layer.items, crate::format::Noun::Object, locale)],
+            ));
         }
     }
     let Some(report) = &import.lbrn2 else { return lines.join("\n") };

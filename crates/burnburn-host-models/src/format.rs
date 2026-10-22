@@ -189,9 +189,11 @@ mod tests {
 
     #[test]
     fn a_formatted_length_parses_back_to_the_same_physical_value() {
-        for (mm, unit) in
-            [(1.5, LengthPreference::Millimeters), (38.1, LengthPreference::Inches), (0.25, LengthPreference::Millimeters)]
-        {
+        for (mm, unit) in [
+            (1.5, LengthPreference::Millimeters),
+            (38.1, LengthPreference::Inches),
+            (0.25, LengthPreference::Millimeters),
+        ] {
             for locale in [Locale::Nl, Locale::En] {
                 let text = format_length(mm, unit, locale);
                 let back = parse_length(&text).expect("parses").mm();
