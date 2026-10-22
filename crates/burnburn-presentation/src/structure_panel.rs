@@ -83,12 +83,28 @@ pub struct ReferenceRow {
     pub status: ReferenceStatus,
 }
 
+/// What the chosen plate could not include as it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlateIssueRow {
+    /// An operation of the plate also names an object that is on another plate (or none); that
+    /// target is left out of this plate's plan.
+    TargetOffPlate { operation: String, object: u64 },
+    /// Derived geometry on the plate whose owner did not evaluate: production is refused.
+    Blocked { object: u64 },
+}
+
 /// Everything the structure panel shows; empty lists for a document without structure.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StructureViewModel {
     pub parts: Vec<PartRow>,
     pub plates: Vec<PlateRow>,
     pub references: Vec<ReferenceRow>,
+    /// The plate Compile uses (`None`: the whole design).
+    pub compile_plate: Option<u64>,
+    /// The plate the shown plan was compiled for (`None`: the whole design).
+    pub plan_plate: Option<u64>,
+    /// What the chosen plate left out or blocks.
+    pub plate_issues: Vec<PlateIssueRow>,
 }
 
 /// An edit of one instance, each one undo step.

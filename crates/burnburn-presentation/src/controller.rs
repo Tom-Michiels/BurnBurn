@@ -208,6 +208,11 @@ struct Session {
     doc: DocumentSession,
     /// Palette colours and canvas visibility of the operations (window state, see `layers`).
     layers: layers::LayerState,
+    /// The plate Compile uses, and the plate each compile in flight was started for (P06).
+    compile_plate: Option<burnburn_document::structure::PlateId>,
+    compile_plates: BTreeMap<TaskId, Option<burnburn_document::structure::PlateId>>,
+    /// The plate the plan in `compiled` was made for.
+    plan_plate: Option<burnburn_document::structure::PlateId>,
     /// The open repair preview (E09; window state).
     repair: repair_preview::RepairState,
     /// Offset options and the open preview (E05; window state).
@@ -306,6 +311,9 @@ impl Session {
             doc,
             layers: layers::LayerState::default(),
             notes_open: false,
+            compile_plate: None,
+            compile_plates: BTreeMap::new(),
+            plan_plate: None,
             repair: repair_preview::RepairState::default(),
             offset: offset_preview::OffsetState::default(),
             editor: Editor::new(),
@@ -539,6 +547,9 @@ impl AppController {
             }
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
+            }
+            UiIntent::ChoosePlate { document, plate } => {
+                self.with_session(document, |s| structure::choose_plate(s, document, plate))
             }
             UiIntent::Structure { document, edit } => {
                 let request = self.next_id::<RequestId>();
@@ -907,6 +918,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::PreviewOffset { document, .. }
         | UiIntent::PreviewRepair { document, .. }
         | UiIntent::Structure { document, .. }
+        | UiIntent::ChoosePlate { document, .. }
         | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }

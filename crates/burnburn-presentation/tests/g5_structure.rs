@@ -240,3 +240,122 @@ fn a_reference_to_a_deleted_object_shows_a_broken_link() {
     assert_eq!(refs[0].name, "Rand");
     assert_eq!(refs[0].status, ReferenceStatus::Broken { reason: burnburn_presentation::BrokenReason::ObjectMissing });
 }
+
+
+// ---------------------------------------------------------------------------------------------
+// P06: compileren met alleen de gekozen plaat
+// ---------------------------------------------------------------------------------------------
+
+use burnburn_document::process::{
+    Kerf, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessCommand, ProcessSettings, Speed,
+};
+
+fn cut_draft() -> OperationDraft {
+    let p = PowerPercent::new(20.0).unwrap();
+    OperationDraft {
+        name: "Snijden".into(),
+        mode: OperationMode::Line { kerf: Kerf::NONE },
+        settings: ProcessSettings {
+            speed: Speed::mm_per_s(100.0).unwrap(),
+            power: PowerRange::new(p, p).unwrap(),
+            passes: Passes::new(1).unwrap(),
+            air_assist: true,
+        },
+        output_enabled: true,
+    }
+}
+
+/// Two rectangles (10 x 10 on plate A, 30 x 30 on plate B), one cut operation on both.
+fn two_plates() -> (HeadlessEditorHarness, DocumentId, [u64; 2]) {
+    let mut s = DocumentSession::new(DocumentId::from_raw(1));
+    let rect = |s: &mut DocumentSession, x: f64, size: f64, name: &str| {
+        let r = Rect::new(burnburn_geometry::Point::new(x, 0.0), mm(size), mm(size)).unwrap();
+        run(s, CommandPayload::CreateRectangle { rect: r, name: name.into() }).changes.created[0]
+    };
+    let (a, b) = (rect(&mut s, 0.0, 10.0, "klein"), rect(&mut s, 100.0, 30.0, "groot"));
+    let plate = |s: &mut DocumentSession, name: &str| {
+        let out = run(
+            s,
+            st(StructureCommand::CreatePlate {
+                plate: Plate {
+                    name: name.into(),
+                    width: mm(600.0),
+                    height: mm(400.0),
+                    material: "Berken".into(),
+                    thickness: None,
+                },
+            }),
+        );
+        let StructureChange::Plate(p) = out.changes.structure[0] else { panic!() };
+        p
+    };
+    let (pa, pb) = (plate(&mut s, "Plaat A"), plate(&mut s, "Plaat B"));
+    run(&mut s, st(StructureCommand::AssignToPlate { objects: vec![a], plate: Some(pa) }));
+    run(&mut s, st(StructureCommand::AssignToPlate { objects: vec![b], plate: Some(pb) }));
+    run(&mut s, CommandPayload::Process(ProcessCommand::AddOperation { draft: cut_draft(), targets: vec![a, b] }));
+    let mut h = HeadlessEditorHarness::new();
+    h.fs().create_dir_all_for_test(std::path::Path::new("/work"));
+    let path = PathBuf::from("/work/platen.burnburn");
+    save_project(h.fs(), &path, &Project::new(ProjectUuid::from_bytes([4; 16]), (*s.snapshot()).clone())).unwrap();
+    h.send(UiIntent::Open { path });
+    let doc = h
+        .run_tasks()
+        .iter()
+        .flat_map(|u| u.effects.clone())
+        .find_map(|e| match e {
+            HostEffect::OpenWindow { document } => Some(document),
+            _ => None,
+        })
+        .expect("opened");
+    h.send(UiIntent::SetMachineProfile {
+        profile: Box::new(
+            burnburn_job::MachineProfile::new(
+                "research-1500x900",
+                1,
+                burnburn_job::MachineFrame::new(1500.0, 900.0, burnburn_job::OriginCorner::BottomLeft).unwrap(),
+                1000.0,
+                400.0,
+                burnburn_job::PowerRatio::new(0.0).unwrap(),
+                burnburn_job::PowerRatio::new(1.0).unwrap(),
+            )
+            .unwrap(),
+        ),
+        ruida: burnburn_ruida::RuidaProfile {
+            magic: burnburn_ruida::Magic::FIXTURE_0X88,
+            overscan: burnburn_ruida::OverscanPolicy::ControllerManaged,
+        },
+    });
+    (h, doc, [pa.raw(), pb.raw()])
+}
+
+fn compiled_cut_length(h: &mut HeadlessEditorHarness, doc: DocumentId) -> f64 {
+    h.invoke(doc, CommandKey::Compile);
+    h.run_tasks();
+    vm(h, doc).plan.expect("a plan").preview.cut_length_mm
+}
+
+/// A plate compiles on its own: only its objects reach the plan (the perimeters 40, 120 and 160 mm
+/// are the oracle), the choice is shown, and what the plate left out is reported.
+#[test]
+fn compiling_uses_only_the_chosen_plate_and_reports_what_it_left_out() {
+    let (mut h, doc, [a, b]) = two_plates();
+    assert!((compiled_cut_length(&mut h, doc) - 160.0).abs() < 1e-6, "no plate chosen: the whole design");
+    assert_eq!(vm(&h, doc).structure.compile_plate, None);
+
+    h.send(UiIntent::ChoosePlate { document: doc, plate: Some(a) });
+    assert_eq!(vm(&h, doc).structure.compile_plate, Some(a));
+    assert!(vm(&h, doc).plan.is_none(), "the plan of another choice is not shown as the current one");
+    assert!((compiled_cut_length(&mut h, doc) - 40.0).abs() < 1e-6, "plate A: the small square");
+    assert_eq!(vm(&h, doc).structure.plan_plate, Some(a));
+    let issues = vm(&h, doc).structure.plate_issues;
+    assert_eq!(issues.len(), 1, "the operation also names an object that is on another plate: {issues:?}");
+
+    h.send(UiIntent::ChoosePlate { document: doc, plate: Some(b) });
+    assert!((compiled_cut_length(&mut h, doc) - 120.0).abs() < 1e-6, "plate B: the big square");
+
+    h.send(UiIntent::ChoosePlate { document: doc, plate: None });
+    assert!((compiled_cut_length(&mut h, doc) - 160.0).abs() < 1e-6);
+    // A plate that does not exist is refused and changes nothing.
+    h.send(UiIntent::ChoosePlate { document: doc, plate: Some(999_999) });
+    assert_eq!(vm(&h, doc).structure.compile_plate, None);
+}

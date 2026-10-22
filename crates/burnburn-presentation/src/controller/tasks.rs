@@ -164,11 +164,13 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
+                s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
+                s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record });
                 update.scenes_changed.push(document);
             }

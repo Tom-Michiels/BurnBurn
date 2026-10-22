@@ -278,6 +278,12 @@ pub enum UiIntent {
         document: DocumentId,
         edit: crate::centerline_panel::CenterlineEdit,
     },
+    /// The plate Compile uses (P06); `None` compiles the whole design. A plate that does not exist
+    /// is refused. The plan shown so far is dropped: it belongs to the other choice.
+    ChoosePlate {
+        document: DocumentId,
+        plate: Option<u64>,
+    },
     /// An edit of a part instance in the structure panel (S07).
     Structure {
         document: DocumentId,

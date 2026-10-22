@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use burnburn_document::structure::{
-    BreakReason, PartInstance, PartInstanceId, RefStatus, StructureCommand, effective_parameters,
+    BreakReason, PartInstance, PartInstanceId, PlateId, PlateIssue, RefStatus, StructureCommand, effective_parameters,
 };
 use burnburn_document::{CommandPayload, DerivedOwner, DocumentSnapshot, EvalDiagnosis, EvalStatus};
 use burnburn_geometry::Point;
@@ -14,7 +14,7 @@ use burnburn_types::{DocumentId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length};
 use crate::structure_panel::{
-    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateRow, ReferenceRow, ReferenceStatus,
+    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow, ReferenceStatus,
     StructureEdit, StructureViewModel,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
@@ -96,7 +96,31 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
             },
         })
         .collect();
-    StructureViewModel { parts, plates, references }
+    let compile_plate = s.compile_plate.filter(|p| layer.plate(*p).is_some());
+    let plate_issues = compile_plate
+        .and_then(|p| snapshot.plate_view(p).ok())
+        .map(|view| {
+            view.issues
+                .iter()
+                .filter_map(|issue| match issue {
+                    PlateIssue::TargetOffPlate { operation, geometry } => Some(PlateIssueRow::TargetOffPlate {
+                        operation: snapshot.process().operation(*operation).map(|o| o.name().to_owned())?,
+                        object: geometry.raw(),
+                    }),
+                    PlateIssue::Blocked(geometry) => Some(PlateIssueRow::Blocked { object: geometry.raw() }),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    StructureViewModel {
+        parts,
+        plates,
+        references,
+        compile_plate: compile_plate.map(StableId::raw),
+        plan_plate: s.plan_plate.map(StableId::raw),
+        plate_issues,
+    }
 }
 
 fn refused(s: &mut Session, document: DocumentId, message: MessageKey) -> AppUpdate {
@@ -160,4 +184,33 @@ pub(super) fn edit(
         CommandPayload::Structure(StructureCommand::SetInstance { instance, value: new }),
         request,
     )
+}
+
+/// Chooses the plate Compile uses. The plan shown so far belonged to the other choice and goes;
+/// compiles in flight for it are cancelled. A plate that does not exist is refused.
+pub(super) fn choose_plate(s: &mut Session, document: DocumentId, plate: Option<u64>) -> AppUpdate {
+    let chosen = match plate {
+        None => None,
+        Some(raw) => {
+            let id = PlateId::from_raw(raw);
+            if s.doc.snapshot().structure().plate(id).is_none() {
+                return refused(s, document, MessageKey::CommandRejected);
+            }
+            Some(id)
+        }
+    };
+    if s.compile_plate == chosen {
+        return AppUpdate::redraw(document);
+    }
+    s.compile_plate = chosen;
+    for (kind, older) in s.pending.values() {
+        if *kind == crate::task::TaskKind::Compile {
+            older.cancel();
+        }
+    }
+    s.compile_plates.clear();
+    s.compiled = None;
+    s.plan_plate = None;
+    s.problem = None;
+    AppUpdate { view_changed: true, scenes_changed: vec![document], ..AppUpdate::default() }
 }
