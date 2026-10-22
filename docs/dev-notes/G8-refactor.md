@@ -54,7 +54,7 @@ path-attrs: 27 crates, 674 source files, no #[path] leaves its own crate
   eerste stap: geen mislukte tests; windows + host-models ook na stap 2.
 - `cargo clippy --workspace --all-targets --locked -- -D warnings` en
   `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings`: schoon.
-- Volledige `cargo xtask verify`: zie het eindrapport van de lane (uitkomst hieronder aangevuld).
+- Volledige `cargo xtask verify` (fmt, clippy, tests, perf-guard, doctests; native tests stil): exit 0, 4690 tests geslaagd, 0 gefaald, 13 genegeerd (som van alle `test result`-regels), inclusief `layers` en `path-attrs` groen.
 
 ## Niet gedaan / vervolg
 
