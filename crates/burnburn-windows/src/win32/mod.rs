@@ -79,6 +79,8 @@ use crate::forms::{
 };
 use crate::tasks::{TaskInbox, task_channel};
 
+mod panels_bridge;
+
 /// Posted by workers to the message window: task outcomes are waiting.
 const WM_TASKS_DONE: u32 = WM_APP + 1;
 /// Posted after a caught panic: autosave unsaved work into recovery files.
@@ -194,6 +196,8 @@ fn react_for(document: Option<DocumentId>, reaction: Reaction) -> bool {
 
 fn apply(update: AppUpdate) {
     for effect in &update.effects {
+        // W4-L8b: RD export, template and bundle dialogs, recent lists.
+        crate::win32_panels::manager::effect(effect);
         match effect {
             HostEffect::OpenWindow { document } => open_window(*document),
             HostEffect::CloseWindow { document } => {
@@ -323,6 +327,7 @@ fn refresh() {
     for frame in frames {
         layout(frame);
     }
+    crate::win32_panels::manager::refresh();
 }
 
 /// Create, update and remove the panels of `document` so that they are `wanted`.
@@ -534,6 +539,14 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
     let default = || unsafe { DefWindowProcW(hwnd, message, wparam, lparam) };
     guard("frame_proc", LRESULT(0), || {
         let Some(document) = document_of(hwnd) else { return default() };
+        // W4-L8b: the menu ids 6000..=7999 belong to the panel families.
+        if message == msg::WM_COMMAND
+            && ((wparam.0 >> 16) & 0xFFFF) <= 1
+            && crate::host_panels::ids::RANGE.contains(&((wparam.0 & 0xFFFF) as u16))
+            && crate::win32_panels::manager::handle_menu((wparam.0 & 0xFFFF) as u16)
+        {
+            return LRESULT(0);
+        }
         match message {
             msg::WM_SIZE => {
                 layout(hwnd);
@@ -541,6 +554,7 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
             }
             WM_INITMENUPOPUP => {
                 refresh_popup(HMENU(wparam.0 as *mut _), &view(), system_locale());
+                crate::win32_panels::manager::refresh_menu_state(HMENU(wparam.0 as *mut _));
                 return LRESULT(0);
             }
             WM_DESTROY => {
@@ -959,6 +973,7 @@ pub fn run_app() -> ExitCode {
             });
         }
     });
+    panels_bridge::install();
     dispatch(UiIntent::NewDocument);
     dispatch(UiIntent::CheckRecovery);
     let mut message = MSG::default();

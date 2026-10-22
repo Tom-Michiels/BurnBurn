@@ -490,6 +490,7 @@ dependencies = [
  "burnburn-image",
  "burnburn-io",
  "burnburn-job",
+ "burnburn-machine",
  "burnburn-presentation",
  "burnburn-render",
  "burnburn-ruida",

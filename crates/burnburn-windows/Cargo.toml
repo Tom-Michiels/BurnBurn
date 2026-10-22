@@ -46,8 +46,10 @@ burnburn-types = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
-# Machine profiles with blocked features for the Cut Settings tests.
+# Machine profiles with blocked features for the Cut Settings tests; the laser/camera/file panel
+# tests (W4-L8b) drive a real controller over fake ports (no laser, no camera).
 burnburn-job = { workspace = true }
+burnburn-machine = { workspace = true }
 burnburn-ruida = { workspace = true }
 # Text panels: a font source with several faces and the OFL test fonts.
 burnburn-test-support = { workspace = true }

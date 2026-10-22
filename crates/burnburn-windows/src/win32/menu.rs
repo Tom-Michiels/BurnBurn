@@ -63,6 +63,8 @@ pub(super) fn build_menu(vm: &AppViewModel, locale: Locale) -> Option<HMENU> {
         fill(popup, &items, vm, locale)?;
         append(bar, MF_POPUP, popup.0 as usize, &title);
     }
+    // W4-L8b: the panel families' popups (ids 6000..=7999).
+    crate::win32_panels::manager::append_menus(bar);
     Some(bar)
 }
 

@@ -33,3 +33,12 @@ pub mod toolbar;
 
 #[cfg(windows)]
 pub mod win32;
+
+// W4-L8b: panel families (laser, image, files, camera, app) as plain data, plus the Windows
+// `app_view` (shared Mac file) and the Win32 panel layer. The shared Mac files above are L8a's.
+pub mod app_menu;
+#[path = "../../burnburn-macos/src/app_view.rs"]
+pub mod app_view;
+pub mod host_panels;
+#[cfg(windows)]
+pub mod win32_panels;
