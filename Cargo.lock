@@ -271,6 +271,7 @@ name = "burnburn-io"
 version = "0.1.0"
 dependencies = [
  "burnburn-document",
+ "burnburn-gcode",
  "burnburn-geometry",
  "burnburn-job",
  "burnburn-types",

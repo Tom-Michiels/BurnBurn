@@ -17,7 +17,7 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
-use burnburn_io::profile_library::{load_profile_library, save_profile_library};
+use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
 use burnburn_job::MachineProfile;
@@ -38,7 +38,7 @@ pub enum FilesTask {
     /// Write the whole material library atomically.
     SaveMaterialLibrary { library: Box<MaterialLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the machine profiles a bundle brought in atomically (P07).
-    SaveProfileLibrary { profiles: Vec<burnburn_job::MachineProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    SaveProfileLibrary { profiles: Vec<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the whole art library atomically.
     SaveArtLibrary { library: Box<ArtLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Add a drawing to a copy of the art library (the file is read and proven to import here);
@@ -210,7 +210,7 @@ pub enum FilesOutput {
         path: PathBuf,
     },
     LibrariesLoaded {
-        profiles: Loaded<Vec<burnburn_job::MachineProfile>>,
+        profiles: Loaded<Vec<LibraryProfile>>,
         materials: Loaded<MaterialLibrary>,
         art: Loaded<ArtLibrary>,
         thumbnails: Vec<(u64, ArtThumbnail)>,
@@ -324,7 +324,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                     }
                 }
             }
-            let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library);
+            let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library_entries);
             Ok(FilesOutput::LibrariesLoaded { profiles, materials, art, thumbnails })
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
@@ -333,7 +333,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             Ok(FilesOutput::MaterialLibrarySaved)
         }
         FilesTask::SaveProfileLibrary { profiles, path, fs } => {
-            save_profile_library(fs.as_ref(), &path, &profiles)
+            save_profile_library_entries(fs.as_ref(), &path, &profiles)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::ProfileLibrarySaved)
         }

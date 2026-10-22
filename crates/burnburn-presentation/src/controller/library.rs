@@ -119,12 +119,14 @@ pub(super) struct Libraries {
     art_busy: usize,
     /// Machine profiles a bundle brought in (the active machine is kept by the controller).
     profiles: Vec<Arc<burnburn_job::MachineProfile>>,
+    /// GRBL dialect settings of those machines, by machine id (no entry: a Ruida machine).
+    dialects: BTreeMap<String, burnburn_gcode::GrblProfile>,
     /// The profile library file could not be read: it is kept as it is and never written (P07).
     profiles_unreadable: bool,
     profile_writer: Writer,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
-    kept: Vec<Arc<burnburn_job::MachineProfile>>,
+    kept: Vec<(Arc<burnburn_job::MachineProfile>, Option<burnburn_gcode::GrblProfile>)>,
     /// Colours of the layer palette, slot by slot (the host owns the palette).
     palette: Vec<[u8; 3]>,
 }
@@ -266,9 +268,18 @@ impl AppController {
                     // Profiles of this session (an import before the first read) stay; the file's win on equal ids.
                     Loaded::Ready(stored) => {
                         let session = std::mem::take(&mut self.libs.profiles);
-                        self.libs.profiles = stored.into_iter().map(Arc::new).collect();
+                        let session_dialects = std::mem::take(&mut self.libs.dialects);
+                        for entry in stored {
+                            if let Some(grbl) = entry.grbl {
+                                self.libs.dialects.insert(entry.profile.revision().id.clone(), grbl);
+                            }
+                            self.libs.profiles.push(Arc::new(entry.profile));
+                        }
                         for p in session {
                             if !self.libs.profiles.iter().any(|k| k.revision().id == p.revision().id) {
+                                if let Some(grbl) = session_dialects.get(&p.revision().id) {
+                                    self.libs.dialects.insert(p.revision().id.clone(), grbl.clone());
+                                }
                                 self.libs.profiles.push(p);
                             }
                         }
@@ -335,7 +346,15 @@ impl AppController {
         }
         let Some(dir) = self.libs.dir.clone() else { return Vec::new() };
         let task = FilesTask::SaveProfileLibrary {
-            profiles: self.libs.profiles.iter().map(|p| (**p).clone()).collect(),
+            profiles: self
+                .libs
+                .profiles
+                .iter()
+                .map(|p| burnburn_io::profile_library::LibraryProfile {
+                    profile: (**p).clone(),
+                    grbl: self.libs.dialects.get(&p.revision().id).cloned(),
+                })
+                .collect(),
             path: dir.join(PROFILE_LIBRARY_FILE),
             fs: Arc::clone(&self.ports.fs),
         };

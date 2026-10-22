@@ -9,6 +9,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use burnburn_gcode::{GrblProfile, PowerMode, WorkCoordinate};
 use burnburn_job::MachineProfile;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +18,11 @@ use crate::fs::FileSystem;
 use crate::profile::{ProfileDto, profile_from_dto, profile_to_dto};
 use crate::store::write_atomic;
 
-pub const PROFILE_LIBRARY_SCHEMA: u32 = 1;
+/// The newest schema this version reads and writes. Schema 1 has profiles only; schema 2 adds the
+/// `dialects` section (GRBL settings per machine). A library without dialects is still written as
+/// schema 1, byte-identical to earlier versions.
+pub const PROFILE_LIBRARY_SCHEMA: u32 = 2;
+const SCHEMA_PLAIN: u32 = 1;
 const FORMAT: &str = "burnburn-profile-library";
 const MAX_PROFILES: usize = 1_000;
 const MAX_BYTES: u64 = 16 << 20;
@@ -28,6 +33,71 @@ struct FileDto {
     format: String,
     schema: u32,
     profiles: Vec<ProfileDto>,
+    /// Dialect settings per machine id (schema 2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dialects: Vec<DialectDto>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DialectDto {
+    id: String,
+    grbl: GrblDto,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GrblDto {
+    max_spindle: u32,
+    laser_mode: bool,
+    power_mode: String,
+    air_assist: bool,
+    work_coordinate: Option<String>,
+    decimals: u8,
+}
+
+fn grbl_to_dto(g: &GrblProfile) -> GrblDto {
+    GrblDto {
+        max_spindle: g.max_spindle,
+        laser_mode: g.laser_mode,
+        power_mode: match g.power_mode {
+            PowerMode::Constant => "constant",
+            PowerMode::Dynamic => "dynamic",
+        }
+        .to_owned(),
+        air_assist: g.air_assist,
+        work_coordinate: g.work_coordinate.map(|w| format!("{w:?}")),
+        decimals: g.decimals,
+    }
+}
+
+fn grbl_from_dto(i: usize, d: &GrblDto) -> Result<GrblProfile, LoadError> {
+    let bad = |field: &str, reason: String| LoadError::InvalidValue { path: format!("dialects[{i}].grbl.{field}"), reason };
+    let power_mode = match d.power_mode.as_str() {
+        "constant" => PowerMode::Constant,
+        "dynamic" => PowerMode::Dynamic,
+        other => return Err(bad("power_mode", format!("unknown power mode {other:?}"))),
+    };
+    let work_coordinate = match d.work_coordinate.as_deref() {
+        None => None,
+        Some("G54") => Some(WorkCoordinate::G54),
+        Some("G55") => Some(WorkCoordinate::G55),
+        Some("G56") => Some(WorkCoordinate::G56),
+        Some("G57") => Some(WorkCoordinate::G57),
+        Some("G58") => Some(WorkCoordinate::G58),
+        Some("G59") => Some(WorkCoordinate::G59),
+        Some(other) => return Err(bad("work_coordinate", format!("unknown work coordinate system {other:?}"))),
+    };
+    let grbl = GrblProfile {
+        max_spindle: d.max_spindle,
+        laser_mode: d.laser_mode,
+        power_mode,
+        air_assist: d.air_assist,
+        work_coordinate,
+        decimals: d.decimals,
+    };
+    grbl.validate().map_err(|e| bad("max_spindle", e.to_string()))?;
+    Ok(grbl)
 }
 
 fn json_error(e: &serde_json::Error) -> LoadError {
@@ -39,8 +109,22 @@ fn json_error(e: &serde_json::Error) -> LoadError {
     }
 }
 
-/// Bytes → profiles, fully validated.
+/// One machine of the profile library: its profile and, for a GRBL machine, the dialect settings.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LibraryProfile {
+    pub profile: MachineProfile,
+    /// `None` is a Ruida machine.
+    pub grbl: Option<GrblProfile>,
+}
+
+/// Bytes → profiles, fully validated. The dialect settings of GRBL machines are not part of the
+/// result; use [`decode_profile_library_entries`] for them.
 pub fn decode_profile_library(bytes: &[u8]) -> Result<Vec<MachineProfile>, LoadError> {
+    Ok(decode_profile_library_entries(bytes)?.into_iter().map(|e| e.profile).collect())
+}
+
+/// Bytes → machines with their dialect settings, fully validated.
+pub fn decode_profile_library_entries(bytes: &[u8]) -> Result<Vec<LibraryProfile>, LoadError> {
     let loose: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| json_error(&e))?;
     if loose.get("format").and_then(serde_json::Value::as_str) != Some(FORMAT) {
         return Err(LoadError::NotAProject);
@@ -69,17 +153,46 @@ pub fn decode_profile_library(bytes: &[u8]) -> Result<Vec<MachineProfile>, LoadE
                 reason: format!("duplicate machine {:?}", profile.revision().id),
             });
         }
-        out.push(profile);
+        out.push(LibraryProfile { profile, grbl: None });
+    }
+    let mut dialect_ids = BTreeSet::new();
+    for (i, d) in dto.dialects.iter().enumerate() {
+        let grbl = grbl_from_dto(i, &d.grbl)?;
+        let Some(entry) = out.iter_mut().find(|e| e.profile.revision().id == d.id) else {
+            return Err(LoadError::InvalidValue {
+                path: format!("dialects[{i}].id"),
+                reason: format!("settings for unknown machine {:?}", d.id),
+            });
+        };
+        if !dialect_ids.insert(d.id.clone()) {
+            return Err(LoadError::InvalidValue {
+                path: format!("dialects[{i}].id"),
+                reason: format!("two sets of settings for machine {:?}", d.id),
+            });
+        }
+        entry.grbl = Some(grbl);
     }
     Ok(out)
 }
 
-/// Profiles → bytes (compact JSON).
+/// Profiles → bytes (compact JSON), without dialect settings (schema 1).
 pub fn encode_profile_library(profiles: &[MachineProfile]) -> Result<Vec<u8>, SaveError> {
+    let entries: Vec<LibraryProfile> =
+        profiles.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None }).collect();
+    encode_profile_library_entries(&entries)
+}
+
+/// Machines → bytes (compact JSON). Schema 2 only when a machine has dialect settings.
+pub fn encode_profile_library_entries(entries: &[LibraryProfile]) -> Result<Vec<u8>, SaveError> {
+    let dialects: Vec<DialectDto> = entries
+        .iter()
+        .filter_map(|e| e.grbl.as_ref().map(|g| DialectDto { id: e.profile.revision().id.clone(), grbl: grbl_to_dto(g) }))
+        .collect();
     let dto = FileDto {
         format: FORMAT.to_owned(),
-        schema: PROFILE_LIBRARY_SCHEMA,
-        profiles: profiles.iter().map(profile_to_dto).collect(),
+        schema: if dialects.is_empty() { SCHEMA_PLAIN } else { PROFILE_LIBRARY_SCHEMA },
+        profiles: entries.iter().map(|e| profile_to_dto(&e.profile)).collect(),
+        dialects,
     };
     serde_json::to_vec(&dto).map_err(|e| SaveError::Encode(e.to_string()))
 }
@@ -98,4 +211,23 @@ pub fn save_profile_library(fs: &dyn FileSystem, path: &Path, profiles: &[Machin
 pub fn load_profile_library(fs: &dyn FileSystem, path: &Path) -> Result<Vec<MachineProfile>, LoadError> {
     let bytes = fs.read(path, MAX_BYTES).map_err(LoadError::Fs)?;
     decode_profile_library(&bytes)
+}
+/// Atomic save of machines with their dialect settings; like [`save_profile_library`] the bytes
+/// are decoded again first, so an invalid file is never written.
+pub fn save_profile_library_entries(
+    fs: &dyn FileSystem,
+    path: &Path,
+    entries: &[LibraryProfile],
+) -> Result<(), SaveError> {
+    let bytes = encode_profile_library_entries(entries)?;
+    decode_profile_library_entries(&bytes).map_err(|e| SaveError::Invalid(e.to_string()))?;
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs.create_dir_all(dir).map_err(SaveError::Fs)?;
+    }
+    write_atomic(fs, path, &bytes)
+}
+
+pub fn load_profile_library_entries(fs: &dyn FileSystem, path: &Path) -> Result<Vec<LibraryProfile>, LoadError> {
+    let bytes = fs.read(path, MAX_BYTES).map_err(LoadError::Fs)?;
+    decode_profile_library_entries(&bytes)
 }

@@ -50,7 +50,7 @@ fn a_newer_schema_is_reported_and_a_foreign_or_damaged_file_is_refused() {
     let bytes = fs.read(path, 1 << 20).unwrap();
     let text = String::from_utf8(bytes).unwrap();
     let newer = text.replace(
-        &format!("\"schema\":{PROFILE_LIBRARY_SCHEMA}"),
+        "\"schema\":1",
         &format!("\"schema\":{}", PROFILE_LIBRARY_SCHEMA + 1),
     );
     assert_ne!(newer, text, "the fixture has a schema field to bump (compact JSON)");

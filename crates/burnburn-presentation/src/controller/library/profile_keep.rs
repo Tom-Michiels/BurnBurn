@@ -18,18 +18,25 @@ impl AppController {
     /// Makes `new` the active machine. The machine it replaces is kept in the profile library,
     /// unless nothing about it changes.
     pub(in crate::controller) fn replace_active_machine(&mut self, new: Machine) {
+        // The known machines are listed from the library: read it as soon as a machine is in use.
+        self.ensure_libraries();
         if let Some(old) = self.machine.as_ref()
             && old.profile.revision() != new.profile.revision()
         {
-            let old = Arc::clone(&old.profile);
-            self.keep_profile(old);
+            let (profile, grbl) = (Arc::clone(&old.profile), old.grbl.clone());
+            self.keep_profile(profile, grbl);
         }
         self.machine = Some(new);
     }
 
-    /// Keeps `profile` in the profile library (written once the library has been read).
-    pub(in crate::controller) fn keep_profile(&mut self, profile: Arc<burnburn_job::MachineProfile>) {
-        self.libs.kept.push(profile);
+    /// Keeps `profile` in the profile library with its GRBL dialect settings, if it has any
+    /// (written once the library has been read).
+    pub(in crate::controller) fn keep_profile(
+        &mut self,
+        profile: Arc<burnburn_job::MachineProfile>,
+        grbl: Option<burnburn_gcode::GrblProfile>,
+    ) {
+        self.libs.kept.push((profile, grbl));
         self.ensure_libraries();
         if self.libs.state == LoadState::Ready {
             self.merge_kept_profiles();
@@ -42,7 +49,11 @@ impl AppController {
         if kept.is_empty() {
             return;
         }
-        for p in kept {
+        for (p, grbl) in kept {
+            match grbl {
+                Some(grbl) => self.libs.dialects.insert(p.revision().id.clone(), grbl),
+                None => self.libs.dialects.remove(&p.revision().id),
+            };
             match self.libs.profiles.iter_mut().find(|k| k.revision().id == p.revision().id) {
                 Some(slot) => *slot = p,
                 None => self.libs.profiles.push(p),
@@ -51,7 +62,8 @@ impl AppController {
         self.flush_profiles();
     }
 
-    /// Makes the known profile `id` the active machine; the dialect stays as it was.
+    /// Makes the known profile `id` the active machine. A GRBL machine of the library comes back
+    /// with its dialect settings; any other keeps the Ruida settings of the machine in use.
     pub(in crate::controller) fn choose_machine_profile(&mut self, id: &str) -> AppUpdate {
         let Some(profile) = self.known_profiles().into_iter().find(|p| p.revision().id == id) else {
             return error(None, MessageKey::UnknownMachineProfile);
@@ -61,9 +73,12 @@ impl AppController {
                 RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
                 |m| m.ruida,
             );
-        // The profile library keeps machine profiles only, no GRBL dialect settings: a chosen
-        // library profile is driven as Ruida until GRBL settings are given again (open, G5).
-        self.replace_active_machine(Machine { profile, ruida, grbl: None });
+        // The active machine listed first is the machine in use: its own settings are current.
+        let grbl = match self.machine.as_ref().filter(|m| m.profile.revision().id == id) {
+            Some(active) => active.grbl.clone(),
+            None => self.libs.dialects.get(id).cloned(),
+        };
+        self.replace_active_machine(Machine { profile, ruida, grbl });
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
 }
