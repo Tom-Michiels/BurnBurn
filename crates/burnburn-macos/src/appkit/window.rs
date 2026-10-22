@@ -420,7 +420,12 @@ impl DocWindow {
         window.setToolbar(Some(&toolbar));
 
         window.center();
-        if options.float_windows {
+        if options.quiet_windows {
+            // Quiet native tests: in the window list (views lay out, events can be sent), but
+            // invisible, click-through and without taking the focus from the user's app.
+            super::quiet_window(&window);
+            window.orderFrontRegardless();
+        } else if options.float_windows {
             // A test process cannot take focus from the user's frontmost app; float the window
             // above it so it is really on screen (Metal presents nothing for an occluded window).
             window.setLevel(NSFloatingWindowLevel);

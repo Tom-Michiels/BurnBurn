@@ -19,6 +19,8 @@ Iedere rol heeft een eigen eigenaarsgebied. Werk buiten je gebied gaat via een n
 - Volg `AGENTS.md` en `research/implementatieplan/`. TDD: test eerst, rode fase waarnemen, dan groen, dan refactor.
 - Log iedere cyclus in `docs/dev-notes/IMxx.md` (formaat: `docs/dev-notes/README.md`). Alleen echt uitgevoerde commando's.
 - Rust: `export PATH="$HOME/.cargo/bin:$PATH"`; toolchain staat vast in `rust-toolchain.toml` (1.99.1).
+- `cargo xtask verify` draait de native macOS-tests stil (transparante vensters, geen focus; `BURNBURN_NATIVE_QUIET=1`);
+  `cargo xtask verify --native` toont ze zoals vroeger.
 - Werk met `cargo test -p <jouw-crate>` en eigen `CARGO_TARGET_DIR=target/<rol>` om lockwachten te vermijden.
 - Root `Cargo.toml` alleen uitbreiden in `[workspace.dependencies]` met één regel per crate, alfabetisch;
   workspace-leden komen automatisch via `crates/*`.

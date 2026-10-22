@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask, NSNormalWindowLevel, NSWindow};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub use app::{CamPanelParts, HostApp, HostOptions, QuitOutcome, WindowParts};
@@ -68,6 +68,38 @@ pub fn pump_events(mtm: MainThreadMarker, seconds: f64) {
     pump_until(mtm, seconds, || false);
 }
 
+/// Quiet native tests (`HostOptions::quiet_windows`): set once by the host, read by the event pump.
+static QUIET_WINDOWS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turns quiet mode on for every window this process shows from now on (tests only).
+pub(crate) fn set_quiet_windows(quiet: bool) {
+    QUIET_WINDOWS.store(quiet, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn quiet_windows() -> bool {
+    QUIET_WINDOWS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Makes `window` invisible to the user without closing it: fully transparent, clicks go through
+/// to the apps below, normal level (never floating above the user's work).
+pub(crate) fn quiet_window(window: &NSWindow) {
+    window.setAlphaValue(0.0);
+    window.setIgnoresMouseEvents(true);
+    window.setLevel(NSNormalWindowLevel);
+}
+
+/// In quiet mode: every window of the application (panels, sheets, alerts the host opened since
+/// the last pass) is made quiet.
+fn quiet_all_windows(app: &NSApplication) {
+    if quiet_windows() {
+        for window in app.windows().iter() {
+            if window.alphaValue() != 0.0 || !window.ignoresMouseEvents() {
+                quiet_window(&window);
+            }
+        }
+    }
+}
+
 /// Run the event loop until `done()` or `seconds` elapsed; returns whether `done()` became true.
 #[allow(unsafe_code)]
 pub fn pump_until(mtm: MainThreadMarker, seconds: f64, mut done: impl FnMut() -> bool) -> bool {
@@ -76,6 +108,7 @@ pub fn pump_until(mtm: MainThreadMarker, seconds: f64, mut done: impl FnMut() ->
     // SAFETY: reading an immutable Foundation constant.
     let mode = unsafe { NSDefaultRunLoopMode };
     while deadline.timeIntervalSinceNow() > 0.0 {
+        quiet_all_windows(&app);
         if done() {
             return true;
         }

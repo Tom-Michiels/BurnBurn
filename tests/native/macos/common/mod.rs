@@ -43,9 +43,11 @@ pub fn start_with(change: impl FnOnce(&mut HostOptions)) -> Result<Session, Stri
     prepare_application(mtm, NSApplicationActivationPolicy::Accessory);
     let dir = std::env::temp_dir().join(format!("burnburn-native-{}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // `cargo xtask verify` runs the native tests quietly unless `--native` is given.
+    let quiet = std::env::var_os("BURNBURN_NATIVE_QUIET").is_some_and(|v| v != "0");
     let mut options = HostOptions {
         quit_when_last_window_closes: false,
-        float_windows: true,
+        float_windows: !quiet,
         locale: Some(burnburn_macos::l10n::Locale::Nl),
         // Never let a test's quit flow end the test process: the host records the outcome.
         terminate_on_quit: false,
@@ -55,6 +57,7 @@ pub fn start_with(change: impl FnOnce(&mut HostOptions)) -> Result<Session, Stri
         // Never the user's clipboard or recent-projects list.
         private_pasteboard: true,
         recent_projects_file: None,
+        quiet_windows: quiet,
     };
     change(&mut options);
     let app = HostApp::new(mtm, Arc::new(burnburn_io::std_fs::StdFileSystem), options);

@@ -28,3 +28,24 @@ schets die niet meer oplost kon dus in een job/RD-export belanden.
 
 - Een preflight-fout blokkeert export/upload al (`PlanViewModel.errors == 0` is de poort), dus geen extra route nodig.
 - Het preflight-paneel toont de bevinding met het object als bron ("Toon bron"), op beide hosts via het gedeelde model.
+
+# Golf 8 — stille native tests (22-10-2026, op verzoek van de eigenaar)
+
+Native macOS-tests zetten vensters boven de apps van de gebruiker (`float_windows`) en maakten de computer tijdens
+`cargo xtask verify` onbruikbaar. macOS kent geen virtueel scherm (geen Xvfb), dus: een stille modus.
+
+- `HostOptions::quiet_windows` (tests: `BURNBURN_NATIVE_QUIET=1`): elk venster van de host is volledig transparant
+  (`alphaValue = 0`), laat klikken door (`ignoresMouseEvents`), blijft op normaal niveau en de test-app wordt nooit actief.
+  Het documentvenster wordt zo geopend; panelen, sheets en alerts maakt de event-pomp (`pump_until`) bij elke ronde stil.
+- `cargo xtask verify` zet `BURNBURN_NATIVE_QUIET=1` op alle cargo-stappen; `cargo xtask verify --native` toont de
+  vensters zoals vroeger (voor een echte zichtbaarheids-/focuscontrole vóór een release).
+
+| Test | Rood | Groen |
+|---|---|---|
+| native `quiet_windows` (`tests/native/macos/quiet_windows.rs`) | `cargo test -p burnburn-macos --test quiet_windows --locked` met het veld zonder effect: FAILED "Naamloos: transparent (alpha 1)" | na implementatie: ok |
+| `xtask tests::verify_runs_native_tests_quietly_unless_native_is_asked` | met `verify_env` → leeg: 1 failed | 3 passed (`cargo test -p xtask verify_`) |
+
+- Volledige macOS-crate stil gedraaid (`BURNBURN_NATIVE_QUIET=1 cargo test -p burnburn-macos --locked --no-fail-fast`):
+  523 geslaagd, 0 gefaald, geen overgeslagen schermcontroles (transparante vensters tellen voor de window server als
+  zichtbaar; Metal presenteert gewoon).
+- Beperking: of een venster er voor een mens goed uitziet en echt de focus krijgt, toetst alleen `--native` (en handmatig).

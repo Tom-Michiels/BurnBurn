@@ -81,6 +81,10 @@ pub struct HostOptions {
     /// Where Archief ▸ Recente projecten is stored (read at start, written on every change);
     /// `None`: the list is neither read nor stored.
     pub recent_projects_file: Option<PathBuf>,
+    /// Quiet native tests (`BURNBURN_NATIVE_QUIET=1`): every window of the host is fully
+    /// transparent, lets clicks through to the apps below and stays at the normal level, so the
+    /// computer stays usable while the tests run. On-screen checks then report SKIPPED.
+    pub quiet_windows: bool,
 }
 
 impl HostOptions {
@@ -97,6 +101,7 @@ impl HostOptions {
             autosave_interval_s: Some(crate::lifecycle::AUTOSAVE_INTERVAL_S),
             private_pasteboard: false,
             recent_projects_file: support.as_deref().map(crate::recent::recent_projects_file),
+            quiet_windows: false,
         }
     }
 }
@@ -199,6 +204,7 @@ impl HostApp {
     /// Create the app object, its controller (with `fs` for save/open tasks), the main menu and
     /// the application delegate.
     pub fn new(mtm: MainThreadMarker, fs: Arc<dyn FileSystem>, options: HostOptions) -> Rc<HostApp> {
+        super::set_quiet_windows(options.quiet_windows);
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {
             dispatch2::DispatchQueue::main().exec_async(|| {
                 CURRENT.with(|current| {

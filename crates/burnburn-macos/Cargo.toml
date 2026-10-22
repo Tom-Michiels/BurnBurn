@@ -304,3 +304,8 @@ objc2-core-media = { workspace = true, optional = true, features = ["std", "objc
 objc2-core-video = { workspace = true, optional = true, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-foundation = { workspace = true, features = ["std", "block2", "NSDictionary", "NSError", "NSArray", "NSAttributedString", "NSDate", "NSLocale", "NSRange", "NSValue", "NSGeometry", "NSIndexSet", "NSNotification", "NSObjCRuntime", "NSObject", "NSRunLoop", "NSString", "NSTimeZone", "NSTimer", "NSURL", "NSData"] }
 objc2-app-kit = { workspace = true, features = ["std", "block2", "objc2-core-foundation", "NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSActionCell", "NSAlert", "NSApplication", "NSImageRep", "NSImage", "NSImageView", "NSImageCell", "NSBox", "NSBitmapImageRep", "NSAppearance", "NSAttributedString", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSColorSpace", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSParagraphStyle", "NSPopUpButton", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScrollView", "NSSegmentedControl", "NSSplitView", "NSTableColumn", "NSTableView", "NSText", "NSTextField", "NSTextFieldCell", "NSTextInputClient", "NSTextInputContext", "NSTextView", "NSToolbar", "NSToolbarItem", "NSTrackingArea", "NSUserInterfaceItemIdentification", "NSView", "NSWindow", "NSPasteboard", "NSSlider", "NSSliderCell", "NSWorkspace"] }
+
+[[test]]
+name = "quiet_windows"
+path = "../../tests/native/macos/quiet_windows.rs"
+harness = false

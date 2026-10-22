@@ -13,7 +13,8 @@ use std::process::{Command, ExitCode};
 
 const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|bundle|msix-layout|gen-trace-corpus|help>
 
-  verify            cargo fmt --check, layers, workspace-deps, clippy -D warnings, tests, the 100k performance guard (work counts, no clock) and doc tests (all --locked)
+  verify            cargo fmt --check, layers, workspace-deps, clippy -D warnings, tests, the 100k performance guard (work counts, no clock) and doc tests (all --locked);
+                    native macOS tests run quietly (transparent windows, no focus taken) unless --native
   layers            check crate layering and forbidden dependencies against docs/design/layers.toml
   workspace-deps    every crate dependency must be `{ workspace = true, ... }`
   bundle            macOS: build BurnBurn.app [--release] [--zip] [--dmg] [--sign-adhoc] (dist files in <target>/<profile>/dist/)
@@ -23,7 +24,7 @@ const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|bundle|msi
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("verify") => verify(),
+        Some("verify") => verify(&args[1..]),
         Some("layers") => check_layers(),
         Some("bundle") => bundle::run(&root(), args.get(1..).unwrap_or_default()),
         Some("msix-layout") => msix::run(&root(), args.get(1..).unwrap_or_default()),
@@ -62,10 +63,17 @@ fn verify_steps() -> Vec<Vec<&'static str>> {
     ]
 }
 
+/// Environment of the cargo steps of `verify`: quiet native tests (transparent windows that let
+/// clicks through, no floating, no focus taken) unless `--native` asks for visible windows.
+fn verify_env(args: &[String]) -> Vec<(&'static str, &'static str)> {
+    if args.iter().any(|a| a == "--native") { Vec::new() } else { vec![("BURNBURN_NATIVE_QUIET", "1")] }
+}
+
 /// The checks of `research/implementatieplan/01-test-driven-design.md` § CI.
-fn verify() -> Result<(), String> {
+fn verify(args: &[String]) -> Result<(), String> {
+    let env = verify_env(args);
     for (i, step) in verify_steps().iter().enumerate() {
-        run(step)?;
+        run_with(step, &env)?;
         if i == 0 {
             println!("$ cargo xtask layers");
             check_layers()?;
@@ -154,10 +162,16 @@ fn gen_trace_corpus() -> Result<(), String> {
     Ok(())
 }
 
-fn run(args: &[&str]) -> Result<(), String> {
+fn run_with(args: &[&str], env: &[(&str, &str)]) -> Result<(), String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    println!("$ cargo {}", args.join(" "));
-    let status = Command::new(cargo).args(args).current_dir(root()).status().map_err(|e| e.to_string())?;
+    let shown: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v} ")).collect();
+    println!("$ {}cargo {}", shown.concat(), args.join(" "));
+    let status = Command::new(cargo)
+        .args(args)
+        .envs(env.iter().copied())
+        .current_dir(root())
+        .status()
+        .map_err(|e| e.to_string())?;
     if status.success() { Ok(()) } else { Err(format!("`cargo {}` failed ({status})", args.join(" "))) }
 }
 
@@ -185,6 +199,13 @@ mod tests {
             Some(&"perf_guard_"),
             "the general run skips it: {general:?}"
         );
+    }
+
+    /// Quiet by default (the computer stays usable); `--native` shows the windows as before.
+    #[test]
+    fn verify_runs_native_tests_quietly_unless_native_is_asked() {
+        assert_eq!(verify_env(&[]), vec![("BURNBURN_NATIVE_QUIET", "1")]);
+        assert_eq!(verify_env(&["--native".to_owned()]), Vec::<(&str, &str)>::new());
     }
 
     /// Wall-clock benchmarks stay out of `verify`: no step asks for ignored tests.
