@@ -468,3 +468,56 @@ fn every_text_has_both_languages_with_the_same_placeholders() {
         assert_eq!(placeholders(nl), placeholders(en), "{t:?}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The menu and the event route (adapter)
+// ---------------------------------------------------------------------------------------------
+
+mod adapter {
+    use super::*;
+    use burnburn_macos::adapter::{
+        MenuItem, NativeEvent, Reaction, menu_enabled, menu_item, menu_items, menu_tag, menu_title, translate,
+    };
+
+    /// The two panels that wait for a menu item have their own tags, titles and reactions; they need a
+    /// window; ShowNotes is an ordinary command and lives in the File menu of both hosts.
+    #[test]
+    fn the_panel_menu_items_have_tags_titles_and_reactions_and_need_a_window() {
+        let mut h = HeadlessEditorHarness::new();
+        let empty = h.view();
+        let items = [(MenuItem::OffsetPanel, G5Panel::Offset), (MenuItem::StructurePanel, G5Panel::Structure)];
+        for (item, panel) in items {
+            assert!(menu_items().contains(&item));
+            assert_eq!(menu_item(menu_tag(item)), Some(item), "{item:?}");
+            assert!(!menu_enabled(item, &empty), "{item:?} needs a window");
+            assert_eq!(translate(NativeEvent::Menu(item), &empty), Reaction::ToggleG5Panel(panel));
+        }
+        h.new_document().unwrap();
+        let vm = h.view();
+        assert!(items.iter().all(|(i, _)| menu_enabled(*i, &vm)));
+        assert_eq!(menu_title(MenuItem::OffsetPanel, &vm, Locale::En), "Offset and Repair…");
+        assert_eq!(menu_title(MenuItem::StructurePanel, &vm, Locale::Nl), "Structuur…");
+        let mut tags: Vec<isize> = menu_items().iter().map(|i| menu_tag(*i)).collect();
+        let before = tags.len();
+        tags.sort_unstable();
+        tags.dedup();
+        assert_eq!(tags.len(), before, "every menu tag is unique");
+        assert!(menu_enabled(MenuItem::Command(CommandKey::ShowNotes), &vm), "Show Notes works with a window");
+        assert_eq!(menu_title(MenuItem::Command(CommandKey::ShowNotes), &vm, Locale::Nl), "Notities tonen");
+    }
+
+    /// A control event becomes the intent of the headless model; an unchanged value becomes nothing.
+    #[test]
+    fn a_control_event_becomes_the_intent_of_the_model_and_nothing_when_unchanged() {
+        let (h, doc, [_, _, plain]) = structure_project();
+        let c = C::Variant { instance: plain };
+        let event = |value: &str| NativeEvent::G5Control {
+            document: doc,
+            panel: G5Panel::Structure,
+            control: c,
+            values: vec![(c, value.to_owned())],
+        };
+        assert_eq!(translate(event("0"), &h.view()), Reaction::Nothing);
+        assert!(matches!(translate(event("1"), &h.view()), Reaction::Intent(UiIntent::Structure { .. })));
+    }
+}

@@ -34,6 +34,7 @@ mod app_host;
 mod cam_host;
 mod camera_host;
 mod files_host;
+mod g5_host;
 pub use app_host::{MenuKeyReport, app_user_dir};
 mod laser_host;
 pub use cam_host::CamPanelParts;
@@ -423,6 +424,7 @@ impl HostApp {
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
             Reaction::ToggleSchikkenPanel => self.toggle_schikken_panel(),
+            Reaction::ToggleG5Panel(panel) => self.toggle_g5_panel(panel),
             Reaction::ShowDiagnosticsPanel => self.show_diagnostics_panel(),
             Reaction::App(action) => self.perform_app_action(action),
         }
@@ -1568,6 +1570,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::Save), "s", false),
             item(c(CommandKey::SaveAs), "s", true),
             plain(CommandKey::SaveAsTemplate),
+            plain(CommandKey::ShowNotes),
         ],
     ));
     main.addItem(&submenu(
@@ -1785,7 +1788,12 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         mtm,
         target,
         locale,
-        vec![plain(CommandKey::ShowMaterialLibrary), plain(CommandKey::ShowArtLibrary)],
+        vec![
+            plain(CommandKey::ShowMaterialLibrary),
+            plain(CommandKey::ShowArtLibrary),
+            item(MenuItem::OffsetPanel, "", false),
+            item(MenuItem::StructurePanel, "", false),
+        ],
     ));
     main.addItem(&app_host::help_menu(mtm, target, locale));
     debug_assert!(menu_items().iter().all(|i| menu_tag(*i) >= 1));

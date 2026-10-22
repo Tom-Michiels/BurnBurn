@@ -40,6 +40,10 @@ pub enum MenuItem {
     CamDialog(burnburn_presentation::CamDialog),
     /// Schikken ▸ Schikkenpaneel: shows or hides the options panel of the active window.
     SchikkenPanel,
+    /// Venster ▸ Offset en reparatie: shows or hides that panel of the active window (G5-native).
+    OffsetPanel,
+    /// Venster ▸ Structuur: shows or hides the structure panel of the active window (G5-native).
+    StructurePanel,
     /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
     RecentTemplate(usize),
     /// Archief ▸ Recente templates ▸ Wis menu.
@@ -59,6 +63,8 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::ExportDiagnostics,
         MenuItem::ClearRecent,
         MenuItem::SchikkenPanel,
+        MenuItem::OffsetPanel,
+        MenuItem::StructurePanel,
         MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
@@ -86,6 +92,9 @@ const RECENT_TAG_SLOTS: isize = 64;
 /// which share a container with buttons carrying menu tags.
 const CAM_TAG_BASE: isize = 4000;
 const CLEAR_RECENT_TEMPLATES_TAG: isize = 1008;
+/// The golf-5 panels (G5-native); far from 1009+ so parallel lanes keep their own tags.
+const OFFSET_PANEL_TAG: isize = 1030;
+const STRUCTURE_PANEL_TAG: isize = 1031;
 /// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
 const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
 
@@ -100,6 +109,8 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::ExportDiagnostics => DIAGNOSTICS_TAG,
         MenuItem::ClearRecent => CLEAR_RECENT_TAG,
         MenuItem::SchikkenPanel => SCHIKKEN_PANEL_TAG,
+        MenuItem::OffsetPanel => OFFSET_PANEL_TAG,
+        MenuItem::StructurePanel => STRUCTURE_PANEL_TAG,
         MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
         MenuItem::RecentTemplate(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
@@ -148,6 +159,12 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == SCHIKKEN_PANEL_TAG {
         return Some(MenuItem::SchikkenPanel);
+    }
+    if tag == OFFSET_PANEL_TAG {
+        return Some(MenuItem::OffsetPanel);
+    }
+    if tag == STRUCTURE_PANEL_TAG {
+        return Some(MenuItem::StructurePanel);
     }
     if tag == CLEAR_RECENT_TEMPLATES_TAG {
         return Some(MenuItem::ClearRecentTemplates);
@@ -470,6 +487,14 @@ pub enum NativeEvent {
         control: crate::panels::SchikkenControl,
         values: Vec<(crate::panels::SchikkenControl, String)>,
     },
+    /// A control of one of the golf-5 panels (notes, offset and repair, centre-line decisions,
+    /// structure) was used. `values` are all of that panel's values at that moment.
+    G5Control {
+        document: DocumentId,
+        panel: crate::panels::G5Panel,
+        control: crate::panels::G5Control,
+        values: Vec<(crate::panels::G5Control, String)>,
+    },
     /// A shape or tool option row of the inspector edited (Return or end of editing), raw text;
     /// a checkbox sends `1` or `0`.
     ParamCommitted {
@@ -510,6 +535,8 @@ pub enum Reaction {
     ToggleLaserPanel,
     /// Show or hide the Schikken options panel of the active window.
     ToggleSchikkenPanel,
+    /// Show or hide one of the golf-5 panels (offset and repair, structure) of the active window.
+    ToggleG5Panel(crate::panels::G5Panel),
     /// Ask which private data may go into the diagnostic report, then show a save panel; the answer
     /// comes back as [`NativeEvent::DiagnosticsPanelFinished`].
     ShowDiagnosticsPanel,
@@ -581,6 +608,8 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::Command(CommandKey::SaveProcessedBitmap)) => return Reaction::ShowBitmapSavePanel,
         E::Menu(MenuItem::LaserWindow) => return Reaction::ToggleLaserPanel,
         E::Menu(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
+        E::Menu(MenuItem::OffsetPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Offset),
+        E::Menu(MenuItem::StructurePanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Structure),
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::Menu(MenuItem::App(action)) => return Reaction::App(action),
         E::App(event) => return crate::app_menu::translate_app(event, vm),
@@ -882,6 +911,12 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                 None => return Reaction::Nothing,
             }
         }
+        E::G5Control { document, panel, control, values } => {
+            match crate::panels::g5_intent(vm, document, panel, control, &values) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
         E::ParamCommitted { document, section, slot, text } => {
             match crate::panels::param_intent(vm, document, section, slot, &text) {
                 Some(i) => i,
@@ -952,7 +987,9 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         // Importing needs a document window to import into.
         MenuItem::Import | MenuItem::ImportImage | MenuItem::TraceImage => vm.active.is_some(),
         // The laser panel belongs to a window; the diagnostic export reads the journal only.
-        MenuItem::LaserWindow | MenuItem::SchikkenPanel => vm.active.is_some(),
+        MenuItem::LaserWindow | MenuItem::SchikkenPanel | MenuItem::OffsetPanel | MenuItem::StructurePanel => {
+            vm.active.is_some()
+        }
         MenuItem::ExportDiagnostics => true,
         // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
         MenuItem::CamDialog(_) => vm.active.is_some(),
@@ -994,6 +1031,8 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::TraceImage
         | MenuItem::LaserWindow
         | MenuItem::SchikkenPanel
+        | MenuItem::OffsetPanel
+        | MenuItem::StructurePanel
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
@@ -1018,6 +1057,8 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         }
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
+        MenuItem::OffsetPanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::OffsetMenu, locale).to_owned(),
+        MenuItem::StructurePanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::StructureMenu, locale).to_owned(),
         MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::App(action) => action.title(locale).to_owned(),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).

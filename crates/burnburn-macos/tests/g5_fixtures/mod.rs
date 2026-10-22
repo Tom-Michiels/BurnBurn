@@ -204,7 +204,7 @@ fn bracket() -> PartDefinition {
 
 /// A saved project with the part "Beugel", three instances (klein on plate A, kapot on plate A,
 /// plain), plate A (600 x 400 mm) and a reference to an object that was deleted afterwards.
-pub fn structure_project() -> (HeadlessEditorHarness, DocumentId, [u64; 3]) {
+pub fn structure_snapshot() -> (DocumentSnapshot, [u64; 3]) {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     let out = run(&mut s, st(StructureCommand::DefinePart { definition: bracket() }));
     let StructureChange::Definition(def) = out.changes.structure[0] else { panic!() };
@@ -246,11 +246,16 @@ pub fn structure_project() -> (HeadlessEditorHarness, DocumentId, [u64; 3]) {
         }),
     );
     run(&mut s, CommandPayload::Delete { targets: vec![object] });
+    ((*s.snapshot()).clone(), [klein, kapot, plain])
+}
 
+/// As [`structure_snapshot`], saved on the harness's fake filesystem and opened in a window.
+pub fn structure_project() -> (HeadlessEditorHarness, DocumentId, [u64; 3]) {
+    let (snapshot, ids) = structure_snapshot();
     let mut h = HeadlessEditorHarness::new();
     h.fs().create_dir_all_for_test(FsPath::new("/work"));
     let path = PathBuf::from("/work/onderdelen.burnburn");
-    save_project(h.fs(), &path, &Project::new(ProjectUuid::from_bytes([3; 16]), (*s.snapshot()).clone())).unwrap();
+    save_project(h.fs(), &path, &Project::new(ProjectUuid::from_bytes([3; 16]), snapshot)).unwrap();
     let doc = open_window(&mut h, path);
-    (h, doc, [klein, kapot, plain])
+    (h, doc, ids)
 }

@@ -32,6 +32,7 @@ use super::panels::inspector::{InspectorControlsWidgets, transform_block};
 use super::panels::laser::{LaserSection, laser_section};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
+use super::panels::g5::{G5Section, g5_section};
 use super::panels::schikken::{SchikkenSection, schikken_section};
 use super::panels::shapes::{ShapesSection, shapes_section};
 use super::panels::sketch::{SketchSection, sketch_section};
@@ -89,6 +90,8 @@ pub(crate) struct DocWindow {
     pub(crate) shapes: ShapesSection,
     /// The Schikken panel: options, dialogs and panels of the arrange flows (W3-UI-schikken).
     pub(crate) schikken: SchikkenSection,
+    /// The golf-5 panels: notes, offset and repair, centre-line decisions, structure (G5-native).
+    pub(crate) g5: Vec<G5Section>,
     /// The text toolbar, the text-on-path sheet, the variable-text panel and the barcode sheet.
     pub(crate) text: TextSection,
     pub(crate) variable: VariableSection,
@@ -162,6 +165,7 @@ impl DocWindow {
         let sketch = sketch_section(mtm, locale);
         let shapes = shapes_section(mtm, app.clone(), document, locale);
         let schikken = schikken_section(mtm, app.clone(), document, locale);
+        let g5: Vec<G5Section> = crate::panels::G5Panel::ALL.iter().map(|p| g5_section(mtm, app.clone(), document, *p)).collect();
         let text = text_section(mtm, app.clone(), document, locale);
         let variable = variable_section(mtm, app.clone(), document, locale);
         let barcode = barcode_section(mtm, app.clone(), document, locale);
@@ -418,6 +422,7 @@ impl DocWindow {
             sketch,
             shapes,
             schikken,
+            g5,
             text,
             variable,
             barcode,
@@ -520,6 +525,7 @@ impl DocWindow {
         self.refresh_sketch(vm, document);
         self.refresh_shapes(vm, document);
         self.refresh_schikken(vm, document);
+        self.refresh_g5(vm, document);
         self.refresh_text(vm, document);
         self.refresh_variable(vm, document);
         self.refresh_barcode(vm, document);
@@ -659,6 +665,10 @@ impl Drop for DocWindow {
         self.shapes.hide(&self.window);
         self.schikken.clear_targets();
         self.schikken.hide();
+        for section in &mut self.g5 {
+            section.clear_targets();
+            section.hide();
+        }
         self.text.clear_targets();
         self.text.hide(&self.window);
         self.variable.clear_targets();
