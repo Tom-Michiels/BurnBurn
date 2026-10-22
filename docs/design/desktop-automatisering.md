@@ -46,9 +46,30 @@ Eén datagram is één verzoek (UTF-8, maximaal 1100 bytes, eindigend op een opt
 en `IMPORT` hebben geen schade bij herhaling behalve een tweede import; `LOADFILE` is idempotent zolang het document
 niet is gewijzigd. De client controleert met `STATUS` voordat hij `IMPORT` herhaalt.
 
+## Host-aansluiting (G5-native)
+
+Gedeelde code: `crates/burnburn-macos/src/automation_host.rs` (door de Windows-crate via `#[path]` meegecompileerd).
+
+- `ChannelHost` is de `AutomationHost` van de luisterthread: `status()` leest de laatste status die de UI-thread
+  publiceerde (na elke refresh), `load`/`import` geven een `Job` aan de UI-thread en wachten maximaal 20 s op het antwoord.
+  Een bestand dat niet bestaat wordt hier al `ERR:NOTFOUND` (via de geïnjecteerde bestandssysteempoort).
+- `AutomationPump` draait op de UI-thread en wordt na elke update en elke wake-up gestapt. Hij start één job tegelijk
+  met gewone intents: `LOADFILE` = `UiIntent::Open` (een nieuw venster; een schoon document blijft staan, er wordt niets
+  vervangen), `IMPORT` = `UiIntent::Import` + `Invoke(CommitImport)` zodra de preview klaar is (één undo-stap). Een
+  tekening zonder eenheid kan alleen de gebruiker beslissen: de preview wordt geannuleerd en het antwoord is `ERR:FORMAT`.
+  Een mislukte taak (`ShowError`) is `ERR:FAILED`; een job die de luisteraar opgaf of de tijdslimiet haalt wordt gedropt.
+- `AutomationRuntime` start de luisterthread (UDP op 127.0.0.1, leestimeout 100 ms) alleen zolang de voorkeur aan staat,
+  stopt hem bij uitzetten en bij afsluiten (thread gejoind, poort weer vrij). Een poort die bezet is laat automatisering
+  uit en meldt waarom; het wordt pas opnieuw geprobeerd nadat de voorkeur uit en weer aan is gezet.
+- Nooit een machineactie: de pomp stuurt alleen `Open`, `Import`, `CommitImport` en `CancelImport`. De tests leggen elke
+  verzonden intent vast (`sent`) en keuren alleen die vier goed; machinewerkwoorden blijven `ERR:FORBIDDEN`.
+
+Tests: `crates/burnburn-macos/tests/automation_host.rs`, `crates/burnburn-windows/tests/automation_host.rs`, native
+`tests/native/macos/automation.rs`.
+
 ## Open
 
-- Host-aansluiting: de macOS- en Windows-host moeten `AutomationHost` implementeren (open/importeer via de bestaande
-  intents), een luisterthread starten wanneer de voorkeur aan staat en `HostStatus` uit de documentstaat vullen. Zie
-  `docs/plan/integratie-wachtrij.md` (regel G5-tekst-api).
+- Een echte client buiten het proces en de Windows-run van de wiring (`win32/mod.rs`): handmatig/onbevestigd.
+- `LOADFILE` opent in een nieuw venster in plaats van het huidige document te vervangen (de trait zegt "in place"); een
+  leeg schoon venster blijft dus naast het geopende project staan.
 - Echte compatibiliteit met LightBurn-clients: niet geverifieerd.

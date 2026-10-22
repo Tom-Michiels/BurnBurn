@@ -482,6 +482,30 @@ fn tracer_edits_presets_and_the_suggestion_become_their_intents() {
     );
 }
 
+/// "Pas toe als trace" (T02, G5-native): the tracer offers it next to Apply, it follows the command's
+/// enablement (a trace opened for editing replaces its outputs in place), and a click is the command.
+#[test]
+fn the_tracer_offers_apply_as_a_re_editable_trace_next_to_apply() {
+    let (mut vm, doc) = vm_with(|d| d.tracer = Some(tracer_model()));
+    enable(&mut vm, &[CommandKey::ApplyTrace, CommandKey::CloseTracer]);
+    let s = spec(&vm, doc);
+    let linked = s.control(id::TR_APPLY_LINKED).expect("the button is there");
+    assert_eq!(linked.text, "Pas toe als trace");
+    assert!(!linked.enabled, "off while the command is off");
+    assert!(s.control(id::TR_APPLY).unwrap().enabled);
+    let (mut vm, doc) = vm_with(|d| d.tracer = Some(tracer_model()));
+    enable(&mut vm, &[CommandKey::ApplyTrace, CommandKey::ApplyTraceLinked, CommandKey::CloseTracer]);
+    assert!(spec(&vm, doc).control(id::TR_APPLY_LINKED).unwrap().enabled);
+    assert_eq!(
+        only_intent(react(&vm, doc, click(id::TR_APPLY_LINKED, PanelValues::default()))),
+        UiIntent::Invoke { document: Some(doc), command: CommandKey::ApplyTraceLinked }
+    );
+    // Off: a click does nothing.
+    let (mut off, doc2) = vm_with(|d| d.tracer = Some(tracer_model()));
+    enable(&mut off, &[CommandKey::ApplyTrace, CommandKey::CloseTracer]);
+    assert_eq!(react(&off, doc2, click(id::TR_APPLY_LINKED, PanelValues::default())), PanelReaction::Nothing);
+}
+
 #[test]
 fn a_sheet_of_a_window_that_is_gone_reaches_nothing() {
     let (vm, _) = vm_with(|d| d.image.import = Some(import_model()));
