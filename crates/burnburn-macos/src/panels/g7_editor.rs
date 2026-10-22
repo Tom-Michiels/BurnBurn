@@ -66,6 +66,18 @@ pub enum EditorControl {
     ModAddStep {
         modifier: u64,
     },
+    // --- Parts and plates (G8, S07/P06).
+    /// The angle of an instance in degrees: typing another turns it about its middle.
+    InstanceRotation {
+        instance: u64,
+    },
+    /// Turns an instance by a quarter more.
+    InstanceTurn {
+        instance: u64,
+    },
+    /// The space between parts for the automatic distribution, and the button that distributes.
+    PlatesGap,
+    PlatesDistribute,
     /// A new chain on the selection with the step as its first.
     ModNewChain,
     // --- Plates (P06).
@@ -219,6 +231,11 @@ fn plate_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
     }
     lines.push(button(EditorControl::NewPlateMake, t(G7Text::NewPlateMake, locale), true));
 
+    lines.push(G5Line::Heading(t(G7Text::DistributeHeading, locale)));
+    lines.push(G5Line::Text(t(G7Text::DistributeHint, locale)));
+    lines.push(field(EditorControl::PlatesGap, t(G7Text::DistributeGap, locale), "5".to_owned()));
+    lines.push(button(EditorControl::PlatesDistribute, t(G7Text::DistributeButton, locale), true));
+
     if s.parts.iter().any(|p| !p.instances.is_empty()) {
         lines.push(G5Line::Heading(t(G7Text::InstancePlatesHeading, locale)));
         for part in &s.parts {
@@ -233,6 +250,16 @@ fn plate_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
                     options,
                     selected,
                 });
+                lines.push(field(
+                    EditorControl::InstanceRotation { instance: instance.id },
+                    g7_fmt(G7Text::InstanceRotationCaption, locale, &[&instance.id.to_string(), &part.name]),
+                    instance.rotation.clone(),
+                ));
+                lines.push(button(
+                    EditorControl::InstanceTurn { instance: instance.id },
+                    g7_fmt(G7Text::InstanceTurnButton, locale, &[&instance.id.to_string()]),
+                    true,
+                ));
             }
         }
     }
@@ -687,6 +714,23 @@ pub(super) fn editor_intent(
         | EditorControl::ModNewCenterX
         | EditorControl::ModNewCenterY
         | EditorControl::ModNewSweep => None,
+        EditorControl::PlatesGap => None,
+        EditorControl::InstanceRotation { instance } => {
+            let current = doc.structure.parts.iter().flat_map(|p| p.instances.iter()).find(|i| i.id == instance)?;
+            let degrees = typed(control)?;
+            (degrees.trim() != current.rotation).then_some(UiIntent::Structure {
+                document,
+                edit: StructureEdit::RotateInstance { instance, degrees, relative: false },
+            })
+        }
+        EditorControl::InstanceTurn { instance } => {
+            doc.structure.parts.iter().flat_map(|p| p.instances.iter()).find(|i| i.id == instance)?;
+            structure(document, StructureEdit::RotateInstance { instance, degrees: "90".into(), relative: true })
+        }
+        EditorControl::PlatesDistribute => structure(
+            document,
+            StructureEdit::DistributeOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
+        ),
         EditorControl::ModAddStep { modifier } => {
             chain(modifier)?;
             structure(document, StructureEdit::AddModifierStep { modifier, step: new_step(values) })

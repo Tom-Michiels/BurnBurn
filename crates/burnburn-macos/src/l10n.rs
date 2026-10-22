@@ -1003,6 +1003,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ReplaceToFit => ("Beeld vervangen en passen", "Replace Image to Fit"),
             CompoundLabel::EditTexts => ("Teksten wijzigen", "Edit Texts"),
             CompoundLabel::ConvertTexts => ("Teksten omzetten naar pad", "Convert Texts to Path"),
+            CompoundLabel::DistributeOverPlates => ("Over platen verdelen", "Distribute over Plates"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1803,6 +1804,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             CompoundLabel::ImportLayers,
             CompoundLabel::EditTexts,
             CompoundLabel::ConvertTexts,
+            CompoundLabel::DistributeOverPlates,
         ]
         .map(UndoLabel::Compound),
     );

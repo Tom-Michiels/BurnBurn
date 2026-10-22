@@ -32,6 +32,8 @@ pub struct InstanceRow {
     pub plate: Option<String>,
     /// The same plate by id (G7-editor), for the choice that moves the instance.
     pub plate_id: Option<u64>,
+    /// The turn of the instance in degrees, counter-clockwise (G8-editor).
+    pub rotation: String,
     pub status: InstanceStatus,
 }
 
@@ -441,6 +443,18 @@ pub enum StructureEdit {
     BakeModifier {
         modifier: u64,
     },
+    /// Turns an instance about the middle of its outline (G8-editor): to the angle typed, or by it
+    /// when `relative`. Degrees, counter-clockwise; one undo step.
+    RotateInstance {
+        instance: u64,
+        degrees: String,
+        relative: bool,
+    },
+    /// Puts every instance that is on no plate on a plate where it fits (rows, tallest first), `gap`
+    /// mm apart; one undo step. Refused as a whole when one of them finds no room (G8-editor, P06).
+    DistributeOverPlates {
+        gap: String,
+    },
     /// A chain with one offset step on the selected object; the distance as typed.
     CreateOffsetModifier {
         distance: String,
@@ -505,4 +519,12 @@ pub enum StructureProblem {
     NeedsOperands,
     /// A sweep is a non-zero angle of at most 360 degrees.
     InvalidSweep,
+    /// The text of a shape number is neither a number, a parameter nor a formula over parameters.
+    BadFormula,
+    /// Distributing needs plates.
+    NoPlates,
+    /// Every instance is on a plate already.
+    NothingToDistribute,
+    /// At least one instance fits on no plate; nothing was moved.
+    NoRoomOnPlates,
 }
