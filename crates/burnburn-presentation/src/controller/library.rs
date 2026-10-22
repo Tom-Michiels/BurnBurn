@@ -24,7 +24,8 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ART_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
+    ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE,
+    PROFILE_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -45,6 +46,7 @@ pub(super) enum FilesJob {
     SaveMaterials,
     SaveArt,
     SaveProfiles,
+    SaveCalibration,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -127,6 +129,9 @@ pub(super) struct Libraries {
     /// The profile library file could not be read: it is kept as it is and never written (P07).
     profiles_unreadable: bool,
     profile_writer: Writer,
+    /// The calibration file could not be read: it is kept as it is and never written (W09).
+    calibration_unreadable: bool,
+    calibration_writer: Writer,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
     kept: Vec<(Arc<burnburn_job::MachineProfile>, super::machine::Extras)>,
@@ -199,6 +204,7 @@ impl AppController {
             FilesJob::SaveMaterials => self.material_saved(outcome),
             FilesJob::SaveArt => self.art_saved(outcome),
             FilesJob::SaveProfiles => self.profiles_saved(outcome),
+            FilesJob::SaveCalibration => self.calibration_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -258,6 +264,7 @@ impl AppController {
             FilesJob::SaveMaterials => self.libs.material_writer.in_flight = Some(id),
             FilesJob::SaveArt => self.libs.art_writer.in_flight = Some(id),
             FilesJob::SaveProfiles => self.libs.profile_writer.in_flight = Some(id),
+            FilesJob::SaveCalibration => self.libs.calibration_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -267,7 +274,19 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { profiles, materials, art, thumbnails })) => {
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { profiles, calibration, materials, art, thumbnails })) => {
+                match calibration {
+                    Loaded::Ready(library) => {
+                        if self.proofs_loaded(library) {
+                            self.libs.calibration_writer.dirty = true;
+                        }
+                    }
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.calibration_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match profiles {
                     // Profiles of this session (an import before the first read) stay; the file's win on equal ids.
                     Loaded::Ready(stored) => {
@@ -317,6 +336,11 @@ impl AppController {
                 self.libs.thumbnails = thumbnails.into_iter().map(|(id, t)| (id, Arc::new(t))).collect();
                 self.libs.state = LoadState::Ready;
                 self.merge_kept_profiles();
+                // Proofs recorded before the file was read wait for it, then both are written.
+                if self.libs.calibration_writer.dirty {
+                    effects.extend(self.flush_calibration());
+                }
+                self.refresh_calibration();
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
             _ => self.libs.state = LoadState::NotLoaded,
@@ -388,6 +412,46 @@ impl AppController {
         }
         if self.libs.profile_writer.dirty && !self.libs.profile_writer.failed {
             effects.extend(self.flush_profiles());
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
+    }
+
+    /// Writes the calibration proofs when they changed and no write is running. Nothing is written
+    /// before the file has been read (it would drop what is in it) or when it could not be read.
+    pub(super) fn flush_calibration(&mut self) -> Vec<HostEffect> {
+        self.libs.calibration_writer.dirty = true;
+        self.ensure_libraries();
+        if self.libs.state != LoadState::Ready
+            || self.libs.calibration_writer.in_flight.is_some()
+            || self.libs.calibration_unreadable
+        {
+            return Vec::new();
+        }
+        let Some(dir) = self.libs.dir.clone() else { return Vec::new() };
+        let task = FilesTask::SaveCalibrationLibrary {
+            library: Box::new(self.calibration_file()),
+            path: dir.join(CALIBRATION_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveCalibration) {
+            self.libs.calibration_writer.dirty = false;
+        }
+        Vec::new()
+    }
+
+    fn calibration_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.calibration_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.calibration_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.calibration_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.calibration_writer.dirty && !self.libs.calibration_writer.failed {
+            effects.extend(self.flush_calibration());
         }
         AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }

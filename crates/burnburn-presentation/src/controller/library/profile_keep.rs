@@ -19,9 +19,16 @@ use crate::view_model::MessageKey;
 impl AppController {
     /// Makes `new` the active machine. The machine it replaces is kept in the profile library,
     /// unless nothing about it changes.
-    pub(in crate::controller) fn replace_active_machine(&mut self, new: Machine) {
+    pub(in crate::controller) fn replace_active_machine(&mut self, mut new: Machine) {
         // The known machines are listed from the library: read it as soon as a machine is in use.
         self.ensure_libraries();
+        // Whatever profile comes in carries the measurements of its machine (W09).
+        let calibration = self.calibration_of(&new.profile.revision().id);
+        if calibration != *new.profile.calibration()
+            && let Ok(profile) = (*new.profile).clone().with_calibration(calibration)
+        {
+            new.profile = Arc::new(profile);
+        }
         if let Some(old) = self.machine.as_ref()
             && old.profile.revision() != new.profile.revision()
         {

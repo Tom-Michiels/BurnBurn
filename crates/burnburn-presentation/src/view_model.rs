@@ -447,6 +447,8 @@ pub struct PlanViewModel {
     /// What the GRBL backend refuses of this plan (empty on a Ruida machine); each one is also
     /// counted in `errors`.
     pub grbl: Vec<crate::GrblFinding>,
+    /// The measured values the compiler used for this plan, with the proofs they came from (W09).
+    pub calibration: Vec<burnburn_job::AppliedCalibration>,
     pub errors: usize,
     pub warnings: usize,
 }

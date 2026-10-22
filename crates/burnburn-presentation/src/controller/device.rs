@@ -587,6 +587,11 @@ impl AppController {
             }
         };
         let declared = Declared::of(draft.text(DialogField::Model), draft.text(DialogField::Firmware));
+        // The dialog edits the machine, not its measurements: they stay on the new revision.
+        let profile = match base.as_ref() {
+            Some(b) => profile.with_calibration(b.calibration().clone()).unwrap_or_else(|_| (*b.as_ref()).clone()),
+            None => profile,
+        };
         let unchanged =
             base.as_ref().is_some_and(|b| b.revision().content == profile.revision().content) && base_grbl == grbl;
         self.device.draft = None;
