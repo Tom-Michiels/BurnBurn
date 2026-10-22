@@ -16,6 +16,7 @@ pub mod calib;
 pub mod camera;
 pub mod l10n;
 pub mod l10n_files;
+pub mod l10n_g5;
 pub mod lifecycle;
 pub mod panels;
 pub mod panels_files;

@@ -24,6 +24,8 @@ pub mod tasks;
 pub mod app_text;
 #[path = "../../burnburn-macos/src/l10n_files.rs"]
 pub mod l10n_files;
+#[path = "../../burnburn-macos/src/l10n_g5.rs"]
+pub mod l10n_g5;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]
 pub mod panels;
 #[path = "../../burnburn-macos/src/panels_files.rs"]
