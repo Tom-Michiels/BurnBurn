@@ -32,6 +32,10 @@ pub struct ContourSettings {
 /// How near (pixels) a protected corner has to be to a vertex of an outline to name it.
 pub const CORNER_REACH_PX: f64 = 3.0;
 
+/// How far (pixels) a protected corner is looked up for a local re-trace with another threshold, where the
+/// outline may have moved; there the sharpest turn of at least 5 degrees counts, not the nearest vertex.
+pub const SHIFTED_CORNER_REACH_PX: f64 = 8.0;
+
 impl Default for ContourSettings {
     fn default() -> Self {
         ContourSettings { diagonal: DiagonalPolicy::Connect, min_area_mm2: 0.0, keep: Vec::new(), corners: Vec::new() }

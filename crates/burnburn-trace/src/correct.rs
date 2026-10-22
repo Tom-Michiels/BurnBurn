@@ -16,6 +16,7 @@ use crate::contour::{self, ContourKind};
 use crate::error::TraceError;
 use crate::fit::{self, FitParams, Fitted};
 use crate::recipe::TraceRecipe;
+use crate::recipe::{CORNER_REACH_PX, SHIFTED_CORNER_REACH_PX};
 use crate::result::{ContourId, ContourOrigin, Outlines, TraceResult, TracedContour, bounds_of, fit_params, summarize};
 
 /// Identity of one local correction within a trace lineage (1, 2, … in application order).
@@ -244,13 +245,17 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
     let correction = CorrectionId(prev.corrections.last().map_or(1, |r| r.id.0 + 1));
     // Protected corners of the recipe keep their node in the area too: they are anchors, placed
     // exactly on the vertex of the outline that they name.
-    let anchors_mm: Vec<Point> = req
-        .anchors
-        .iter()
-        .map(|a| a.at_px)
-        .chain(req.recipe.contour.corners.iter().copied())
-        .map(|p| frame.to_mm(p))
-        .collect();
+    // The corner was stored where the vertex was in the trace it was protected in; with another threshold
+    // the outline here may have moved, so each corner is looked up again among the vertices (see
+    // `resolve_corners`) and the anchor sits on the vertex that was found.
+    let window_mm = req.recipe.fit.corner_window_px * frame.mm_per_px();
+    let (corner_vertices, corners_unmatched) = resolve_corners(
+        &req.recipe.contour.corners,
+        kept.iter().map(|&i| outlines.raws[i].0.as_slice()),
+        &frame,
+        window_mm,
+    );
+    let anchors_mm: Vec<Point> = req.anchors.iter().map(|a| frame.to_mm(a.at_px)).chain(corner_vertices).collect();
     let anchor_reach = frame.mm_per_px();
     let base_params = fit_params(&req.recipe, &prev.scale);
     let fixed_nodes: usize = plan
@@ -371,7 +376,7 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
     let recipe_key = correction_chain_key(prev.base_key, &corrections).map_err(|_| TraceError::NonFinite)?;
     let (components, mut stats) = summarize(&contours, &prev.scale);
     stats.keep_unmatched = outlines.keep_unmatched;
-    stats.corners_unmatched = outlines.corners_unmatched;
+    stats.corners_unmatched = corners_unmatched;
     Ok(TraceResult {
         task: req.task,
         source_revision: prev.source_revision,
@@ -484,6 +489,51 @@ impl Frame {
         let (x, y) = self.to_px(p);
         x >= 0.0 && y >= 0.0 && region.contains_pixel(x.floor() as u32, y.floor() as u32)
     }
+}
+
+/// Turn (degrees) below which a vertex is not a corner candidate when a protected corner is looked up
+/// beyond the plain reach.
+const SHIFTED_CORNER_MIN_TURN_DEG: f64 = 5.0;
+
+/// The vertices of `outlines` that the protected `corners` (adjusted pixels) name, and how many name none.
+/// A vertex within [`CORNER_REACH_PX`] of the stored place is the one (the nearest, as in the base trace).
+/// Otherwise the outline may have moved (another local threshold): the sharpest turn within
+/// [`SHIFTED_CORNER_REACH_PX`] with at least 5 degrees of turn is taken, and if there is none the corner is
+/// counted as unmatched, never guessed further away.
+fn resolve_corners<'a>(
+    corners: &[[f64; 2]],
+    outlines: impl Iterator<Item = &'a [Point]> + Clone,
+    frame: &Frame,
+    window_mm: f64,
+) -> (Vec<Point>, usize) {
+    if corners.is_empty() {
+        return (Vec::new(), 0);
+    }
+    let turns: Vec<(&[Point], Vec<f64>)> = outlines.map(|pts| (pts, fit::turn_cosines(pts, window_mm))).collect();
+    let min_turn_cos = SHIFTED_CORNER_MIN_TURN_DEG.to_radians().cos();
+    let (mut found, mut unmatched) = (Vec::new(), 0);
+    for corner in corners {
+        let at = frame.to_mm(*corner);
+        let (near, wide) = (CORNER_REACH_PX * frame.mm_per_px(), SHIFTED_CORNER_REACH_PX * frame.mm_per_px());
+        let mut nearest: Option<(f64, Point)> = None;
+        let mut sharpest: Option<(f64, f64, Point)> = None; // (turn cosine, distance, vertex)
+        for (pts, cosines) in &turns {
+            for (p, &cos) in pts.iter().zip(cosines) {
+                let d = p.distance(at);
+                if d <= near && nearest.is_none_or(|n| d < n.0) {
+                    nearest = Some((d, *p));
+                }
+                if d <= wide && cos <= min_turn_cos && sharpest.is_none_or(|s| (cos, d) < (s.0, s.1)) {
+                    sharpest = Some((cos, d, *p));
+                }
+            }
+        }
+        match (nearest, sharpest) {
+            (Some((_, p)), _) | (None, Some((_, _, p))) => found.push(p),
+            (None, None) => unmatched += 1,
+        }
+    }
+    (found, unmatched)
 }
 
 /// Anchors within `reach` of the outline, as (nearest point index, exact anchor position).

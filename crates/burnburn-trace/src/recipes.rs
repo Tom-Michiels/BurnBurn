@@ -2,6 +2,7 @@
 //! per-image problem report, and re-applying a recorded local correction to a new base result
 //! only when its bindings still hold.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use burnburn_image::SourceImage;
@@ -46,6 +47,11 @@ pub struct RecipeComparison {
     pub a_result: Arc<TraceResult>,
     pub b_result: Arc<TraceResult>,
     pub corrections: CompareCorrections,
+    /// Corrections that do not bind on variant B and were not relinked (G9): the operator may link them
+    /// to B's contours with [`compare_recipes_corrected_relinking`].
+    pub b_unbound: Vec<UnboundCorrection>,
+    /// Corrections the operator linked to B's contours although their bindings no longer held.
+    pub b_relinked: Vec<usize>,
 }
 
 pub fn compare_recipes(
@@ -67,6 +73,8 @@ pub fn compare_recipes(
         a_result,
         b_result,
         corrections: CompareCorrections::default(),
+        b_unbound: Vec::new(),
+        b_relinked: Vec::new(),
     })
 }
 
@@ -81,20 +89,39 @@ pub fn compare_recipes_corrected(
     task: TaskId,
     cancel: &CancellationToken,
 ) -> Result<RecipeComparison, TraceError> {
-    let run = |recipe: &TraceRecipe| -> Result<(Arc<TraceResult>, usize), TraceError> {
+    compare_recipes_corrected_relinking(source, a, b, records, &BTreeSet::new(), task, cancel)
+}
+
+/// As [`compare_recipes_corrected`], and the corrections at the indices in `relink_b` are linked to the
+/// contours of variant B even where their bindings no longer hold ([`relink_correction`]).
+pub fn compare_recipes_corrected_relinking(
+    source: &Arc<SourceImage>,
+    a: &TraceRecipe,
+    b: &TraceRecipe,
+    records: &[CorrectionRecord],
+    relink_b: &BTreeSet<usize>,
+    task: TaskId,
+    cancel: &CancellationToken,
+) -> Result<RecipeComparison, TraceError> {
+    let run = |recipe: &TraceRecipe, relink: &BTreeSet<usize>| -> Result<CorrectionReplay, TraceError> {
         let req =
             TraceRequest { task, source_revision: RevisionId::INITIAL, source: source.clone(), recipe: recipe.clone() };
         let base = Arc::new(trace(&req, cancel)?);
-        let replay = replay_corrections(&base, source, records, task, cancel)?;
-        Ok((replay.result, replay.applied))
+        replay_corrections_relinking(&base, source, records, relink, task, cancel)
     };
-    let ((a_result, a_applied), (b_result, b_applied)) = (run(a)?, run(b)?);
+    let (a_replay, b_replay) = (run(a, &BTreeSet::new())?, run(b, relink_b)?);
     Ok(RecipeComparison {
-        a: summary(&a_result)?,
-        b: summary(&b_result)?,
-        a_result,
-        b_result,
-        corrections: CompareCorrections { stored: records.len(), a_applied, b_applied },
+        a: summary(&a_replay.result)?,
+        b: summary(&b_replay.result)?,
+        corrections: CompareCorrections {
+            stored: records.len(),
+            a_applied: a_replay.applied,
+            b_applied: b_replay.applied,
+        },
+        b_unbound: b_replay.unbound,
+        b_relinked: b_replay.relinked,
+        a_result: a_replay.result,
+        b_result: b_replay.result,
     })
 }
 
@@ -274,6 +301,8 @@ pub struct CorrectionReplay {
     pub unbound: Vec<UnboundCorrection>,
     /// Corrections the retrace itself refused, with the reason.
     pub failed: Vec<(usize, TraceError)>,
+    /// Indices of the corrections that were linked to the new contours by [`relink_correction`].
+    pub relinked: Vec<usize>,
 }
 
 /// Applies `records` to `base` one after the other.
@@ -284,8 +313,21 @@ pub fn replay_corrections(
     task: TaskId,
     cancel: &CancellationToken,
 ) -> Result<CorrectionReplay, TraceError> {
+    replay_corrections_relinking(base, source, records, &BTreeSet::new(), task, cancel)
+}
+
+/// As [`replay_corrections`]; a correction at an index in `relink` that does not bind is linked to the
+/// contours now in its area by [`relink_correction`] instead of being reported as unbound.
+pub fn replay_corrections_relinking(
+    base: &Arc<TraceResult>,
+    source: &Arc<SourceImage>,
+    records: &[CorrectionRecord],
+    relink: &BTreeSet<usize>,
+    task: TaskId,
+    cancel: &CancellationToken,
+) -> Result<CorrectionReplay, TraceError> {
     let mut result = Arc::clone(base);
-    let (mut applied, mut unbound, mut failed) = (0, Vec::new(), Vec::new());
+    let (mut applied, mut unbound, mut failed, mut relinked) = (0, Vec::new(), Vec::new(), Vec::new());
     for (index, record) in records.iter().enumerate() {
         match reapply_correction(record, &result, source, task, cancel) {
             Ok(Reapplied::Applied(next)) => {
@@ -293,11 +335,98 @@ pub fn replay_corrections(
                 applied += 1;
             }
             Ok(Reapplied::NeedsRebind { lost, new_in_region }) => {
-                unbound.push(UnboundCorrection { index, lost, new_in_region });
+                if relink.contains(&index) {
+                    match relink_correction(record, &result, source, task, cancel) {
+                        Ok(next) => {
+                            result = Arc::new(*next.result);
+                            applied += 1;
+                            relinked.push(index);
+                        }
+                        Err(e @ TraceError::Cancelled(_)) => return Err(e),
+                        Err(e) => failed.push((index, e)),
+                    }
+                } else {
+                    unbound.push(UnboundCorrection { index, lost, new_in_region });
+                }
             }
             Err(e @ TraceError::Cancelled(_)) => return Err(e),
             Err(e) => failed.push((index, e)),
         }
     }
-    Ok(CorrectionReplay { result, applied, unbound, failed })
+    Ok(CorrectionReplay { result, applied, unbound, failed, relinked })
+}
+
+/// A correction linked to other contours than the ones it was made on.
+#[derive(Debug, Clone)]
+pub struct Relinked {
+    pub result: Box<TraceResult>,
+    /// Protected contours of the record that found a contour in the new base.
+    pub protected_kept: usize,
+    /// Protected contours of the record without a counterpart now (the correction no longer protects them).
+    pub protected_lost: usize,
+}
+
+/// Applies `record` to `new_base` although its bindings no longer hold (the operator decided). The
+/// region, local recipe and anchors are the record's; each protected contour is looked up again by
+/// kind and bounds (not by id: ids belong to one trace), and one without a counterpart is dropped and
+/// counted in [`Relinked::protected_lost`].
+pub fn relink_correction(
+    record: &CorrectionRecord,
+    new_base: &Arc<TraceResult>,
+    source: &Arc<SourceImage>,
+    task: TaskId,
+    cancel: &CancellationToken,
+) -> Result<Relinked, TraceError> {
+    cancel.check()?;
+    if source.content_hash() != new_base.source_hash {
+        return Err(TraceError::CorrectionMismatch("source"));
+    }
+    let bindings: Vec<&ContourBinding> = record.touched.iter().chain(&record.untouched_in_region).collect();
+    let mut protected = BTreeSet::new();
+    let (mut kept, mut lost) = (0, 0);
+    for id in &record.protected {
+        let found = bindings.iter().find(|b| b.id == *id).and_then(|b| counterpart(b, new_base, &protected));
+        match found {
+            Some(found) => {
+                protected.insert(found);
+                kept += 1;
+            }
+            None => lost += 1,
+        }
+    }
+    let req = CorrectionRequest {
+        task,
+        previous: new_base.clone(),
+        source: source.clone(),
+        region: record.region.clone(),
+        recipe: record.recipe.clone(),
+        anchors: record.anchors.clone(),
+        protected,
+        node_target: record.node_target,
+    };
+    let result = retrace_region(&req, cancel)?;
+    Ok(Relinked { result: Box::new(result), protected_kept: kept, protected_lost: lost })
+}
+
+/// The contour of `base` that is the same kind as `b`, overlaps its bounds by at least half and has an
+/// area within a quarter of it (the best overlap wins, a contour in `taken` never).
+fn counterpart(b: &ContourBinding, base: &TraceResult, taken: &BTreeSet<ContourId>) -> Option<ContourId> {
+    base.contours
+        .iter()
+        .filter(|c| c.kind == b.kind && !taken.contains(&c.id))
+        .filter(|c| (c.area_mm2 - b.area_mm2).abs() <= 0.25 * b.area_mm2.max(1e-12))
+        .filter_map(|c| Some((overlap(&bounds_of(&c.source_points), &b.bounds)?, c.id)))
+        .filter(|(iou, _)| *iou >= 0.5)
+        .max_by(|x, y| x.0.total_cmp(&y.0).then(y.1.cmp(&x.1)))
+        .map(|(_, id)| id)
+}
+
+/// Intersection over union of two boxes; `None` when they are degenerate or apart.
+fn overlap(a: &burnburn_geometry::Bounds, b: &burnburn_geometry::Bounds) -> Option<f64> {
+    let inter_w = (a.max().x.min(b.max().x) - a.min().x.max(b.min().x)).max(0.0);
+    let inter_h = (a.max().y.min(b.max().y) - a.min().y.max(b.min().y)).max(0.0);
+    let area = |x: &burnburn_geometry::Bounds| (x.max().x - x.min().x) * (x.max().y - x.min().y);
+    let inter = inter_w * inter_h;
+    let union = area(a) + area(b) - inter;
+    (union > 0.0).then_some(inter / union)
 }

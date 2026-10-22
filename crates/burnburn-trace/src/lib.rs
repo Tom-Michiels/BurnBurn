@@ -45,11 +45,12 @@ pub use preview::{
     ComparisonPreview, DeviationMap, DeviationSummary, SegmentDeviation, comparison_preview, deviation_map,
     deviation_summary,
 };
-pub use recipe::{CORNER_REACH_PX, ContourSettings, ENGINE_VERSION, FitSettings, TraceRecipe};
+pub use recipe::{CORNER_REACH_PX, ContourSettings, ENGINE_VERSION, FitSettings, SHIFTED_CORNER_REACH_PX, TraceRecipe};
 pub use recipes::{
     BatchItem, BatchOutcome, BatchProblem, BatchReport, CompareCorrections, CorrectionReplay, Reapplied,
-    RecipeComparison, RecipeSummary, UnboundCorrection, compare_recipes, compare_recipes_corrected, reapply_correction,
-    replay_corrections, trace_batch,
+    RecipeComparison, RecipeSummary, Relinked, UnboundCorrection, compare_recipes, compare_recipes_corrected,
+    compare_recipes_corrected_relinking, reapply_correction, relink_correction, replay_corrections,
+    replay_corrections_relinking, trace_batch,
 };
 pub use result::{
     ContourId, ContourOrigin, RemovedFeature, TraceObserver, TraceRequest, TraceResult, TraceStage, TraceStats,
