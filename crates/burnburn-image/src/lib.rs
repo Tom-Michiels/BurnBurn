@@ -14,6 +14,7 @@ mod error;
 mod gray;
 mod lens;
 pub mod locate;
+pub mod locate_pose;
 mod mask;
 mod perspective;
 mod prepare;
