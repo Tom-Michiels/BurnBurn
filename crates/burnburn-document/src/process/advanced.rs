@@ -27,6 +27,8 @@ pub enum TabPlacement {
 pub struct TabSpec {
     placement: TabPlacement,
     width_mm: f64,
+    /// Percentage of the operation's power the tabs are cut with; `None` leaves them uncut.
+    cut_power_percent: Option<f64>,
 }
 
 impl TabSpec {
@@ -36,7 +38,7 @@ impl TabSpec {
         if !(1..=Self::MAX_COUNT).contains(&count) {
             return Err(ProcessError::OutOfRange { field: "tab count" });
         }
-        Ok(TabSpec { placement: TabPlacement::Count(count), width_mm: positive(width, "tab width")? })
+        Ok(TabSpec { placement: TabPlacement::Count(count), width_mm: positive(width, "tab width")?, cut_power_percent: None })
     }
 
     /// Tabs every `spacing` of contour length. The spacing must exceed the tab width.
@@ -46,7 +48,7 @@ impl TabSpec {
         if spacing_mm <= width_mm {
             return Err(ProcessError::OutOfRange { field: "tab spacing" });
         }
-        Ok(TabSpec { placement: TabPlacement::Spacing(spacing_mm), width_mm })
+        Ok(TabSpec { placement: TabPlacement::Spacing(spacing_mm), width_mm, cut_power_percent: None })
     }
 
     pub fn placement(&self) -> TabPlacement {
@@ -62,6 +64,27 @@ impl TabSpec {
     }
     pub fn width_mm(&self) -> f64 {
         self.width_mm
+    }
+
+    /// The same tabs, cut at `percent` of the operation's power instead of skipped (C04).
+    pub fn with_cut_power(mut self, percent: f64) -> Result<Self, ProcessError> {
+        // 0 is "skip" (leave it unset) and 100 would be no tab at all.
+        if !(percent.is_finite() && percent > 0.0 && percent < 100.0) {
+            return Err(ProcessError::OutOfRange { field: "tab cut power" });
+        }
+        self.cut_power_percent = Some(percent);
+        Ok(self)
+    }
+
+    /// The same tabs, skipped again.
+    pub fn without_cut_power(mut self) -> Self {
+        self.cut_power_percent = None;
+        self
+    }
+
+    /// The share of the operation's power the tabs are cut with, or `None` when they are skipped.
+    pub fn cut_power_percent(&self) -> Option<f64> {
+        self.cut_power_percent
     }
 }
 

@@ -151,10 +151,18 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
         sub_operations.push(v1::SubOperationDto { mode: mode_to_dto(s.mode)?, settings: settings_to_dto(&s.settings) });
     }
     Ok(Some(v1::Advanced {
-        tabs: a.line.tabs.map(|t| match t.placement() {
-            TabPlacement::Count(n) => v1::Tabs { count: Some(n), spacing_mm: None, width_mm: v1::Num(t.width_mm()) },
-            TabPlacement::Spacing(s) => {
-                v1::Tabs { count: None, spacing_mm: Some(v1::Num(s)), width_mm: v1::Num(t.width_mm()) }
+        tabs: a.line.tabs.map(|t| {
+            let cut_power_percent = t.cut_power_percent().map(v1::Num);
+            match t.placement() {
+                TabPlacement::Count(n) => {
+                    v1::Tabs { count: Some(n), spacing_mm: None, width_mm: v1::Num(t.width_mm()), cut_power_percent }
+                }
+                TabPlacement::Spacing(s) => v1::Tabs {
+                    count: None,
+                    spacing_mm: Some(v1::Num(s)),
+                    width_mm: v1::Num(t.width_mm()),
+                    cut_power_percent,
+                },
             }
         }),
         lead_in_mm: a.line.lead_in.map(|l| v1::Num(l.length_mm())),
@@ -477,7 +485,15 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
                     return Err(invalid(&at("tabs"), "exactly one of count and spacing_mm is required"));
                 }
             };
-            Some(spec.map_err(|e| invalid(&at("tabs"), e))?)
+            let spec = spec.map_err(|e| invalid(&at("tabs"), e))?;
+            let spec = match t.cut_power_percent {
+                None => spec,
+                Some(p) => {
+                    let percent = num(&at("tabs.cut_power_percent"), p)?;
+                    spec.with_cut_power(percent).map_err(|e| invalid(&at("tabs.cut_power_percent"), e))?
+                }
+            };
+            Some(spec)
         }
     };
     let lead = |f: &'static str,

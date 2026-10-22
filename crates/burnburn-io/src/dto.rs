@@ -504,6 +504,10 @@ pub mod v1 {
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub spacing_mm: Option<Num>,
         pub width_mm: Num,
+        /// Tab Cut Power (C04): percentage of the operation's power the tabs are cut with; absent
+        /// = the tabs are skipped (every file written before it).
+        #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
+        pub cut_power_percent: Option<Num>,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

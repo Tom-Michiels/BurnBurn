@@ -167,12 +167,18 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
 
 /// `tag("advanced-ext")` + tab spacing (optional `f64` spacing, then width) + lead in and lead
 /// out (`u64` 0 | 1 + style tag + `f64` angle) + dot mode (`u64` 0 | 1 + `f64` spacing + `f64`
-/// dwell); written only when a later option is set. Spacing-based tabs are written *only* here
+/// dwell) + optional `tag("tab-cut-power")` + `f64` percent; written only when a later option is set. Spacing-based tabs are written *only* here
 /// (the earlier tab field then reads "no tabs"), so they never collide with counted tabs.
 fn encode_line_extensions(line: &LineOptions, out: &mut CanonicalWriter) {
     let lead_is_plain = |l: Option<Lead>| l.is_none_or(|l| l.style() == LeadStyle::Line && l.angle_deg() == 90.0);
     let spaced = line.tabs.filter(|t| matches!(t.placement(), TabPlacement::Spacing(_)));
-    if spaced.is_none() && lead_is_plain(line.lead_in) && lead_is_plain(line.lead_out) && line.dot.is_none() {
+    let tab_power = line.tabs.and_then(|t| t.cut_power_percent());
+    if spaced.is_none()
+        && lead_is_plain(line.lead_in)
+        && lead_is_plain(line.lead_out)
+        && line.dot.is_none()
+        && tab_power.is_none()
+    {
         return;
     }
     out.tag("advanced-ext");
@@ -204,6 +210,11 @@ fn encode_line_extensions(line: &LineOptions, out: &mut CanonicalWriter) {
             out.f64(d.spacing_mm());
             out.f64(d.dwell_ms());
         }
+    }
+    // Tab cut power (C04): written last and only when set, so every earlier project keeps its hash.
+    if let Some(percent) = tab_power {
+        out.tag("tab-cut-power");
+        out.f64(percent);
     }
 }
 
