@@ -16,6 +16,7 @@ mod field;
 mod files;
 mod files_task;
 mod grbl;
+mod grbl_panel;
 mod harness;
 mod image_panel;
 mod image_task;
@@ -64,6 +65,11 @@ pub use catalog::{
 };
 pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
+pub use burnburn_gcode::SerialError as GrblSerialError;
+pub use burnburn_gcode::SerialPort as GrblSerialPort;
+/// The GRBL backend's vocabulary, so hosts need no gcode dependency of their own.
+pub use burnburn_gcode::console::{ConsoleError, MacroError};
+pub use burnburn_gcode::grbl::CommandRefusal as GrblCommandRefusal;
 pub use controller::{
     AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
     LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
@@ -84,6 +90,11 @@ pub use files::{
     MaterialRow, TemplateScope,
 };
 pub use grbl::{GcodeExportViewModel, GrblFinding};
+pub use grbl_panel::{
+    GRBL_START_NEEDS, GrblConsoleView, GrblControl, GrblControlKind, GrblEntryKind, GrblIntent, GrblJobFailure,
+    GrblJobState, GrblJobView, GrblMachineState, GrblMacroRow, GrblPort, GrblRefusalKind, GrblTranscriptRow,
+    GrblUnknownReason, GrblViewModel, GrblWhy,
+};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,

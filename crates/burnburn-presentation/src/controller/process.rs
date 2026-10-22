@@ -137,6 +137,16 @@ impl AppController {
     /// errors — with its RD bytes. The job never follows later edits.
     pub(super) fn submit_prepare(&mut self, document: DocumentId) -> AppUpdate {
         let Some(machine) = self.machine.clone() else { return error(Some(document), MessageKey::NoMachineProfile) };
+        if machine.grbl.is_some() {
+            // Upload and start stay refused for GRBL until a controller has proven them.
+            return error(
+                Some(document),
+                MessageKey::LaserRefused(crate::laser::LaserWhy::NotVerified {
+                    feature: crate::LiveFeature::FileUpload,
+                    needs: crate::grbl_panel::GRBL_START_NEEDS,
+                }),
+            );
+        }
         let Some(id) = self.next_id::<TaskId>() else { return error(Some(document), MessageKey::PrepareFailed) };
         if self.placement_stale(document) {
             return error(Some(document), MessageKey::LaserRefused(crate::laser::LaserWhy::PlacementStale));

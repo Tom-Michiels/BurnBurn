@@ -272,7 +272,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::ApplyTraceLinked, Some(s)) => (super::trace_link::apply_enabled(s), false),
         (CommandKey::TraceEdit, Some(s)) => (super::trace_link::selected_trace(s).is_some(), false),
         (CommandKey::CloseTracer, Some(s)) => (s.tracer.is_some(), false),
-        (CommandKey::PrepareJob, Some(s)) => (preparable(s, machine), false),
+        (CommandKey::PrepareJob, Some(s)) => (!is_grbl && preparable(s, machine), false),
         (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
         (CommandKey::ToolTrim, Some(s)) => (true, s.trim_mode),
         (

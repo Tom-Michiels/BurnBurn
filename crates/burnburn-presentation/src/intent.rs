@@ -105,6 +105,8 @@ pub enum UiIntent {
         document: DocumentId,
         path: PathBuf,
     },
+    /// A control of the GRBL laser window (G5-grbl-ui): console, macros, jog, home, unlock.
+    Grbl(crate::grbl_panel::GrblIntent),
     /// Location chosen in the G-code save panel (G5-grbl-ui).
     ExportGcode {
         document: DocumentId,

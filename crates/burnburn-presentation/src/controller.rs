@@ -43,6 +43,7 @@ mod device;
 mod document;
 mod fields;
 mod geometry;
+mod grbl;
 mod history_panel;
 mod image;
 mod import;
@@ -150,6 +151,10 @@ pub enum HostEffect {
     ShowExportPanel {
         document: DocumentId,
         suggested_name: String,
+    },
+    /// The GRBL macros changed: the host stores this text form (`GrblIntent::LoadMacros` reads it).
+    GrblMacrosChanged {
+        text: String,
     },
     /// Save panel for a G-code export (never the project file). The host answers with
     /// `UiIntent::ExportGcode`.
@@ -435,6 +440,8 @@ pub struct AppController {
     opening_paths: BTreeMap<TaskId, PathBuf>,
     /// Device Settings: the draft of the machine profile dialog (app-wide, like the profile).
     device: device::DeviceState,
+    /// The GRBL window: driver over the host's serial port, console and macros (G5-grbl-ui).
+    grbl_panel: grbl::GrblPanel,
     /// Preferences, shortcuts, history, preview and support panels (W3-UI-app).
     app: app_panels::AppPanels,
 }
@@ -477,6 +484,7 @@ impl AppController {
             bundle_serial: 0,
             opening_paths: BTreeMap::new(),
             device: device::DeviceState::default(),
+            grbl_panel: grbl::GrblPanel::default(),
             app: app_panels::AppPanels::default(),
         }
     }
@@ -570,6 +578,7 @@ impl AppController {
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
             UiIntent::ExportRd { document, path } => self.export_rd(document, path),
             UiIntent::ExportGcode { document, path } => self.export_gcode(document, path),
+            UiIntent::Grbl(intent) => self.grbl_intent(intent),
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
             UiIntent::SetTraceRecipe { document, recipe } => self.set_trace_recipe(document, *recipe),
             UiIntent::Machine { document, action, seen } => self.machine_action(document, action, seen, None).0,
