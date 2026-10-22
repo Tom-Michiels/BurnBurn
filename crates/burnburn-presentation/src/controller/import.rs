@@ -3,13 +3,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use burnburn_document::process::ProcessCommand;
-use burnburn_document::{CommandOutcome, CommandPayload, DocumentCommand, GeometryCommand, ImportItem};
+use burnburn_document::{
+    CommandOutcome, CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DocumentCommand, GeometryCommand,
+    ImportItem, UndoLabel,
+};
 use burnburn_geometry::Bounds;
 use burnburn_io::import::{DxfScale, ImportDraft, ImportError, ParseError, PdfDocument, PdfKind, PdfPages};
 use burnburn_types::{CancellationSource, DocumentId, RequestId, TaskId};
 
-use super::{AppController, AppUpdate, Session, after_change, apply_command, error, submit};
+use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_edit, error, submit};
 use crate::files::{
     FilesMessage, ImportKind, ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState, Lbrn2LayerRow,
     Lbrn2ReportViewModel, Lbrn2Warning,
@@ -361,41 +363,33 @@ impl AppController {
         })
     }
 
-    /// Commit of a LightBurn project: the shapes (one entry), then one operation per layer the
-    /// process model can express, then each embedded bitmap as an image object with its image
-    /// operation. The document has no command for all of it at once, so undo goes step by step.
+    /// Commit of a LightBurn project: the shapes, one operation per layer the process model can
+    /// express, and each embedded bitmap as an image object with its image operation, as ONE
+    /// compound command: one revision, one undo step (G5-UI-gaten P04).
     pub(super) fn commit_project_import(&mut self, document: DocumentId) -> AppUpdate {
-        let wanted = self.sessions.get(&document).and_then(|s| s.import.as_ref()).map_or(0, |i| match &i.parsed {
-            ParsedImport::Lbrn2(l) => 2 + l.draft.cut_settings.len() + 2 * l.draft.report.assets.len(),
-            _ => 0,
-        });
-        let mut requests = (0..wanted).map(|_| self.next_id::<RequestId>()).collect::<Vec<_>>().into_iter();
+        let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let Some(pending) = s.import.clone() else { return AppUpdate::default() };
             let ParsedImport::Lbrn2(project) = &pending.parsed else { return AppUpdate::default() };
-            let mut update = AppUpdate::default();
-            let mut next = || requests.next().flatten();
-            let mut run = |s: &mut Session, payload: CommandPayload, update: &mut AppUpdate| {
-                let outcome = apply_with_outcome(s, document, payload, next());
-                merge(update, outcome.0);
-                outcome.1
-            };
-
+            let mut steps = Vec::new();
+            // Creation order inside the compound: item i of the project is position i.
+            let mut created = 0usize;
             if !project.draft.items.is_empty() {
                 let asset = s.assets.add(pending.media, &pending.bytes);
                 let Ok(geometry) = project.draft.geometry_command(asset) else {
                     return error(Some(document), MessageKey::ImportFailed);
                 };
-                let Some(outcome) = run(s, CommandPayload::Edit(geometry), &mut update) else { return update };
-                match project.draft.operation_commands(&outcome.changes.created) {
-                    Ok(commands) => {
-                        for command in commands {
-                            run(s, CommandPayload::Process(command), &mut update);
-                        }
+                steps.push(CompoundStep::Run(CommandPayload::Edit(geometry)));
+                created = project.draft.items.len();
+                for p in &project.draft.cut_settings {
+                    let Some(draft) = p.draft.clone() else { continue };
+                    let items: Vec<usize> = p.items.iter().copied().filter(|i| *i < created).collect();
+                    if !items.is_empty() {
+                        steps.push(CompoundStep::AddOperationForItems { draft, items });
                     }
-                    Err(_) => merge(&mut update, error(Some(document), MessageKey::ImportFailed)),
                 }
             }
+            let mut sources = Vec::new();
             for (a, source) in project.importable_images() {
                 let note = &project.draft.report.assets[a];
                 let (Some(bitmap), Some(frame)) = (note.data.as_ref(), note.placement.clone()) else { continue };
@@ -406,22 +400,29 @@ impl AppController {
                 let asset = s.assets.add(media, &bitmap.bytes);
                 let item =
                     ImportItem { name: format!("Beeld {}", a + 1), entity: Some(note.entity.clone()), path: frame };
-                let import = GeometryCommand::Import { asset, items: vec![item] };
-                let Some(outcome) = run(s, CommandPayload::Edit(import), &mut update) else { continue };
-                s.image.sources.insert(source.content_hash(), Arc::clone(source));
-                let operation = note
-                    .cut_index
-                    .and_then(|index| project.draft.image_operation(index, source.content_hash()))
-                    .zip(outcome.changes.created.first().copied());
-                if let Some((draft, target)) = operation {
-                    run(
-                        s,
-                        CommandPayload::Process(ProcessCommand::AddOperation { draft, targets: vec![target] }),
-                        &mut update,
-                    );
+                steps.push(CompoundStep::Run(CommandPayload::Edit(GeometryCommand::Import { asset, items: vec![item] })));
+                let position = created;
+                created += 1;
+                sources.push(source);
+                if let Some(draft) =
+                    note.cut_index.and_then(|index| project.draft.image_operation(index, source.content_hash()))
+                {
+                    steps.push(CompoundStep::AddOperationForItems { draft, items: vec![position] });
                 }
             }
-            s.import = None;
+            if steps.is_empty() {
+                s.import = None;
+                return AppUpdate { view_changed: true, ..AppUpdate::default() };
+            }
+            let compound = CompoundCommand { label: CompoundLabel::ImportProject, steps };
+            let update = apply_edit(s, document, CommandPayload::Compound(compound), request);
+            if s.doc.undo_label() == Some(UndoLabel::Compound(CompoundLabel::ImportProject)) {
+                for source in sources {
+                    s.image.sources.insert(source.content_hash(), Arc::clone(source));
+                }
+                s.import = None;
+            }
+            let mut update = update;
             update.view_changed = true;
             update
         })

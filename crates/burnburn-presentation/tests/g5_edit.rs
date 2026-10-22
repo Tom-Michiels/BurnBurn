@@ -104,3 +104,43 @@ fn notes_beyond_the_limit_are_refused_without_touching_the_document() {
     assert_eq!(vm(&h, doc).revision, revision);
     assert!(vm(&h, doc).notes.is_some(), "the panel stays open");
 }
+
+// ---------------------------------------------------------------------------------------------
+// P04: LBRN2-import als een undo-stap
+// ---------------------------------------------------------------------------------------------
+
+fn lbrn2_session(name: &str) -> (HeadlessEditorHarness, DocumentId) {
+    use burnburn_io::fs::FileSystem;
+    let bytes = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../research/lightburn/fixtures").join(name),
+    )
+    .unwrap();
+    let mut h = HeadlessEditorHarness::new();
+    h.fs().create_dir_all_for_test(std::path::Path::new("/in"));
+    let path = std::path::PathBuf::from(format!("/in/{name}"));
+    let temp = h.fs().create_temp_in(std::path::Path::new("/in"), ".fixture").unwrap();
+    h.fs().write_all(&temp, &bytes).unwrap();
+    h.fs().replace(&temp, &path).unwrap();
+    let doc = h.new_document().unwrap();
+    h.send(UiIntent::Import { document: doc, path });
+    h.run_tasks();
+    (h, doc)
+}
+
+/// A LightBurn project with shapes, a layer operation and an embedded bitmap is one history entry:
+/// one undo takes everything away, one redo brings everything back.
+#[test]
+fn a_lbrn2_import_with_a_bitmap_is_one_undo_step() {
+    let (mut h, doc) = lbrn2_session("gray-ramp-grayscale.lbrn2");
+    h.invoke(doc, CommandKey::CommitImport);
+    assert_eq!(vm(&h, doc).objects.len(), 1);
+    assert_eq!(vm(&h, doc).operations.len(), 1);
+    assert_eq!(vm(&h, doc).undo, Some(UndoLabel::Compound(burnburn_document::CompoundLabel::ImportProject)));
+    h.invoke(doc, CommandKey::Undo);
+    assert!(vm(&h, doc).objects.is_empty(), "one undo removes the frame");
+    assert!(vm(&h, doc).operations.is_empty(), "and the operation");
+    assert!(vm(&h, doc).undo.is_none(), "nothing of the import is left on the undo stack");
+    h.invoke(doc, CommandKey::Redo);
+    assert_eq!(vm(&h, doc).objects.len(), 1);
+    assert_eq!(vm(&h, doc).operations.len(), 1);
+}

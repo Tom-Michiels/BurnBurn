@@ -969,6 +969,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
         UndoLabel::Compound(c) => match c {
             CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
             CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
+            CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1687,7 +1688,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(UndoLabel::Edit),
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
-    undo.extend([CompoundLabel::ImportImage, CompoundLabel::MaskImage].map(UndoLabel::Compound));
+    undo.extend([CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound));
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend(
         [

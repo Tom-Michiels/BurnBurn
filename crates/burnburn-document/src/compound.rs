@@ -13,6 +13,8 @@ pub enum CompoundLabel {
     ImportImage,
     /// Mask Image: the shapes become the targets and the settings are updated.
     MaskImage,
+    /// A LightBurn project: shapes, layer operations and bitmaps in one step (P04).
+    ImportProject,
 }
 
 /// One step of a compound command.
@@ -24,6 +26,9 @@ pub enum CompoundStep {
     /// Adds an operation that targets the geometry created by the earlier steps of this compound
     /// (the caller cannot know those ids in advance).
     AddOperationForCreated { draft: OperationDraft },
+    /// Adds an operation that targets some of the geometry created so far by this compound, by
+    /// position in creation order (an import maps its items to layers before the ids exist).
+    AddOperationForItems { draft: OperationDraft, items: Vec<usize> },
 }
 
 /// Several steps applied as one transaction: all of them or none.
@@ -43,4 +48,6 @@ pub enum CompoundError {
     Nested,
     /// `AddOperationForCreated` without geometry created by an earlier step.
     NothingCreated,
+    /// `AddOperationForItems` names an item no earlier step created, or none.
+    UnknownItem,
 }

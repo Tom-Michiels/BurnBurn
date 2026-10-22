@@ -200,3 +200,54 @@ fn mask_image_assign_unassign_and_update_are_one_undo_step() {
     assert_eq!(op.targets(), &[shape], "one redo restores the mask");
     assert_eq!(op.name(), "Beeld (masker)");
 }
+
+#[test]
+fn an_import_project_compound_targets_items_by_position_and_is_one_undo_step() {
+    let mut s = session();
+    let rect = |x: f64| Path::rectangle(Rect::new(Point::new(x, 0.0), mm(10.0), mm(10.0)).unwrap());
+    let item = |name: &str, x: f64| ImportItem { name: name.into(), entity: None, path: rect(x) };
+    let geometry = CommandPayload::Edit(GeometryCommand::Import {
+        asset: ContentHash::of(HashDomain::Asset, &[3]),
+        items: vec![item("a", 0.0), item("b", 20.0), item("c", 40.0)],
+    });
+    let frame = frame_import();
+    let compound = CompoundCommand {
+        label: CompoundLabel::ImportProject,
+        steps: vec![
+            CompoundStep::Run(geometry),
+            CompoundStep::AddOperationForItems { draft: image_draft("L1", 1), items: vec![0, 2] },
+            CompoundStep::Run(frame),
+            CompoundStep::AddOperationForItems { draft: image_draft("L2", 2), items: vec![3] },
+        ],
+    };
+    let out = run(&mut s, CommandPayload::Compound(compound)).unwrap();
+    assert_eq!(out.undo_label, UndoLabel::Compound(CompoundLabel::ImportProject));
+    let snap = s.snapshot();
+    let ops: Vec<_> = snap.process().operations().collect();
+    assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0].targets().len(), 2, "items 0 and 2");
+    assert_eq!(ops[1].targets().len(), 1, "the frame made by the later step");
+    assert_eq!(ops[0].targets()[0], out.changes.created[0]);
+    assert_eq!(ops[0].targets()[1], out.changes.created[2]);
+    assert_eq!(ops[1].targets()[0], out.changes.created[3]);
+    s.undo(s.revision()).unwrap();
+    assert_eq!(s.snapshot().objects().count(), 0);
+    assert_eq!(s.snapshot().process().operations().count(), 0);
+}
+
+#[test]
+fn an_item_that_was_not_created_refuses_the_whole_compound() {
+    let mut s = session();
+    let before = s.revision();
+    let compound = CompoundCommand {
+        label: CompoundLabel::ImportProject,
+        steps: vec![
+            CompoundStep::Run(frame_import()),
+            CompoundStep::AddOperationForItems { draft: image_draft("L", 1), items: vec![0, 5] },
+        ],
+    };
+    let err = run(&mut s, CommandPayload::Compound(compound)).unwrap_err();
+    assert_eq!(err, CommandError::Compound(CompoundError::UnknownItem));
+    assert_eq!(s.revision(), before);
+    assert_eq!(s.snapshot().objects().count(), 0, "nothing of the first step stays");
+}

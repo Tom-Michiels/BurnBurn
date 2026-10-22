@@ -428,6 +428,17 @@ impl Txn {
                     return Err(CommandError::Compound(CompoundError::Nested));
                 }
                 CompoundStep::Run(payload) => self.execute(payload)?,
+                CompoundStep::AddOperationForItems { draft, items } => {
+                    let created = &self.changes.created[first_created..];
+                    let targets: Vec<GeometryId> = items.iter().filter_map(|i| created.get(*i).copied()).collect();
+                    if items.is_empty() || targets.len() != items.len() {
+                        return Err(CommandError::Compound(CompoundError::UnknownItem));
+                    }
+                    self.execute(CommandPayload::Process(crate::process::ProcessCommand::AddOperation {
+                        draft,
+                        targets,
+                    }))?;
+                }
                 CompoundStep::AddOperationForCreated { draft } => {
                     let targets = self.changes.created[first_created..].to_vec();
                     if targets.is_empty() {
