@@ -17,4 +17,4 @@ pub mod tess;
 
 pub use input::Rgba;
 pub use packet::{ImageCell, Primitive, RenderPacket};
-pub use scene::{LAYER_COLOURS, RoleStyle, Theme, build_packet, size_px};
+pub use scene::{LAYER_COLOURS, RoleStyle, Theme, build_packet, contrast_ratio, delta_e, size_px};

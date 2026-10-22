@@ -150,6 +150,8 @@ fn the_gpu_draws_the_picture_beneath_the_design_with_the_requested_opacity() {
     };
     let mut theme = Theme::light();
     theme.grid = None;
+    // The expected pixels below are written against a white canvas (LF2: the light theme's canvas is now a quiet grey).
+    theme.background = Rgba::new(1.0, 1.0, 1.0, 1.0);
     theme.design.fill = Some(Rgba::new(0.5, 0.5, 0.5, 1.0));
     theme.design.stroke = None;
 

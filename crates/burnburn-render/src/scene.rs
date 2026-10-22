@@ -5,7 +5,7 @@
 //! used for CAM). The camera origin is subtracted in `f64` before narrowing to `f32` (ADR 0003).
 //! Colours and widths are a theme decision; the scene only carries semantic roles.
 
-use burnburn_editor::{CompareSide, Overlay, SceneSnapshot, StyleRole, Viewport};
+use burnburn_editor::{BedOrigin, CompareSide, Overlay, SceneSnapshot, StyleRole, Viewport};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
@@ -79,8 +79,15 @@ pub struct Theme {
     /// Stroke colour per layer-palette slot (presentation's `LAYER_SLOTS`); hosts draw the
     /// palette buttons in the same colours. Higher slots cycle.
     pub process_layers: [Rgba; LAYER_COLOURS],
-    /// `None` hides the grid.
+    /// Minor grid lines; `None` hides the grid.
     pub grid: Option<Rgba>,
+    /// Major grid lines (every n-th, see `Overlay::Grid::major_every`).
+    pub grid_major: Rgba,
+    /// The work area (bed) surface and its border; outside the bed the canvas shows `background`.
+    pub bed_fill: Rgba,
+    pub bed_border: Rgba,
+    /// The mark on the bed corner that is the machine origin.
+    pub origin: Rgba,
     pub selection: Rgba,
     pub selection_width_pt: f64,
     pub preview: Rgba,
@@ -102,31 +109,85 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// The light appearance: a quiet grey canvas with a white bed, dark ink, no grey fills.
     pub fn light() -> Self {
-        let ink = Rgba::new(0.2, 0.2, 0.2, 1.0);
-        let accent = Rgba::new(0.0, 0.48, 1.0, 1.0);
-        let paper = Some(Rgba::new(0.93, 0.93, 0.95, 1.0));
+        let ink = Rgba::new(0.13, 0.13, 0.15, 1.0);
+        let accent = Rgba::new(0.0, 0.40, 0.85, 1.0);
         Theme {
-            background: Rgba::new(1.0, 1.0, 1.0, 1.0),
-            design: RoleStyle { fill: paper, stroke: Some(ink), stroke_width_pt: 1.0 },
-            selected: RoleStyle { fill: paper, stroke: Some(accent), stroke_width_pt: 1.0 },
-            hovered: RoleStyle { fill: paper, stroke: Some(Rgba::new(0.35, 0.6, 1.0, 1.0)), stroke_width_pt: 1.0 },
-            disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.7, 0.7, 0.7, 1.0)), stroke_width_pt: 1.0 },
+            background: Rgba::new(0.88, 0.88, 0.90, 1.0),
+            // Closed shapes are outlines: a fill means something (see `selected`).
+            design: RoleStyle { fill: None, stroke: Some(ink), stroke_width_pt: 1.0 },
+            selected: RoleStyle {
+                fill: Some(Rgba::new(accent.r, accent.g, accent.b, 0.08)),
+                stroke: Some(accent),
+                stroke_width_pt: 1.0,
+            },
+            hovered: RoleStyle {
+                fill: None,
+                stroke: Some(Rgba::new(0.85, 0.40, 0.0, 1.0)),
+                stroke_width_pt: 1.0,
+            },
+            disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.62, 0.62, 0.65, 1.0)), stroke_width_pt: 1.0 },
             process_layers: LAYER_PALETTE
                 .map(|[r, g, b]| Rgba::new(f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0, 1.0)),
-            grid: Some(Rgba::new(0.9, 0.9, 0.92, 1.0)),
+            grid: Some(Rgba::new(0.91, 0.91, 0.93, 1.0)),
+            grid_major: Rgba::new(0.78, 0.78, 0.82, 1.0),
+            bed_fill: Rgba::new(1.0, 1.0, 1.0, 1.0),
+            bed_border: Rgba::new(0.45, 0.45, 0.50, 1.0),
+            origin: Rgba::new(0.85, 0.20, 0.10, 1.0),
             selection: accent,
             selection_width_pt: 1.0,
-            preview: Rgba::new(0.0, 0.48, 1.0, 0.8),
+            preview: Rgba::new(0.55, 0.15, 0.80, 0.9),
             compare_a: Rgba::new(0.1, 0.1, 0.1, 1.0),
             compare_b: Rgba::new(0.9, 0.1, 0.1, 1.0),
-            rubber_band_fill: Rgba::new(0.0, 0.48, 1.0, 0.12),
+            rubber_band_fill: Rgba::new(0.0, 0.40, 0.85, 0.12),
             handle_size_pt: 6.0,
             snap: Rgba::new(0.85, 0.0, 0.6, 1.0),
             issue: Rgba::new(0.9, 0.1, 0.1, 1.0),
             sketch: Rgba::new(0.0, 0.4, 0.45, 1.0),
             sketch_dimension: Rgba::new(0.1, 0.45, 0.15, 1.0),
             tolerance_px: DISPLAY_TOLERANCE_PX,
+        }
+    }
+
+    /// The dark appearance: dark canvas, light ink, every other colour lifted until it reads against
+    /// the dark bed (WCAG 3:1 at least).
+    pub fn dark() -> Self {
+        let light = Self::light();
+        let bed = Rgba::new(0.15, 0.15, 0.17, 1.0);
+        let lift = |c: Rgba| lift_to_contrast(c, bed, 3.2);
+        let accent = Rgba::new(0.35, 0.65, 1.0, 1.0);
+        let ink = Rgba::new(0.93, 0.93, 0.94, 1.0);
+        Theme {
+            background: Rgba::new(0.09, 0.09, 0.10, 1.0),
+            design: RoleStyle { fill: None, stroke: Some(ink), stroke_width_pt: 1.0 },
+            selected: RoleStyle {
+                fill: Some(Rgba::new(accent.r, accent.g, accent.b, 0.12)),
+                stroke: Some(accent),
+                stroke_width_pt: 1.0,
+            },
+            hovered: RoleStyle {
+                fill: None,
+                stroke: Some(Rgba::new(1.0, 0.65, 0.25, 1.0)),
+                stroke_width_pt: 1.0,
+            },
+            disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.45, 0.45, 0.48, 1.0)), stroke_width_pt: 1.0 },
+            process_layers: light.process_layers.map(lift),
+            grid: Some(Rgba::new(0.20, 0.20, 0.22, 1.0)),
+            grid_major: Rgba::new(0.30, 0.30, 0.33, 1.0),
+            bed_fill: bed,
+            bed_border: Rgba::new(0.50, 0.50, 0.55, 1.0),
+            origin: Rgba::new(1.0, 0.40, 0.35, 1.0),
+            selection: accent,
+            preview: Rgba::new(0.75, 0.50, 1.0, 0.9),
+            compare_a: Rgba::new(0.9, 0.9, 0.9, 1.0),
+            compare_b: Rgba::new(1.0, 0.40, 0.40, 1.0),
+            rubber_band_fill: Rgba::new(accent.r, accent.g, accent.b, 0.18),
+            snap: lift(light.snap),
+            issue: lift(light.issue),
+            sketch: lift(light.sketch),
+            sketch_dimension: lift(light.sketch_dimension),
+            ..light
         }
     }
 
@@ -159,6 +220,51 @@ impl Theme {
             _ => self.design,
         }
     }
+}
+
+fn linear(v: f32) -> f64 {
+    let v = f64::from(v.clamp(0.0, 1.0));
+    if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+}
+
+fn relative_luminance(c: Rgba) -> f64 {
+    0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
+}
+
+/// WCAG 2.x contrast ratio (1..=21) between two opaque colours given as sRGB.
+pub fn contrast_ratio(a: Rgba, b: Rgba) -> f64 {
+    let (la, lb) = (relative_luminance(a), relative_luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// CIE L*a*b* (D65) of an opaque sRGB colour.
+fn lab(c: Rgba) -> [f64; 3] {
+    let (r, g, b) = (linear(c.r), linear(c.g), linear(c.b));
+    let x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
+    let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+    let z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883;
+    let f = |t: f64| if t > 216.0 / 24389.0 { t.cbrt() } else { (24389.0 / 27.0 * t + 16.0) / 116.0 };
+    let (fx, fy, fz) = (f(x), f(y), f(z));
+    [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+}
+
+/// CIE76 colour difference between two opaque sRGB colours (about 2.3 is just noticeable).
+pub fn delta_e(a: Rgba, b: Rgba) -> f64 {
+    let (a, b) = (lab(a), lab(b));
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
+/// `c` mixed towards white in small steps until it has `min` contrast against `against`.
+fn lift_to_contrast(c: Rgba, against: Rgba, min: f64) -> Rgba {
+    let mut out = c;
+    for step in 0..=20 {
+        let t = step as f32 / 20.0;
+        out = Rgba::new(c.r + (1.0 - c.r) * t, c.g + (1.0 - c.g) * t, c.b + (1.0 - c.b) * t, c.a);
+        if contrast_ratio(out, against) >= min {
+            break;
+        }
+    }
+    out
 }
 
 /// The drawable size in whole device pixels (rounded, at least one).
@@ -247,8 +353,75 @@ fn marker(out: &mut Vec<Primitive>, at: Point, size_pt: f64, fill: Rgba, stroke:
     out.push(Primitive::Stroke { points_px: square, closed: true, width_px: proj.scale as f32, color: stroke });
 }
 
-/// Grid hairlines every `spacing_mm`, centred on device pixels, across the visible area.
-fn grid(out: &mut Vec<Primitive>, spacing_mm: f64, color: Rgba, proj: &Projection, size: [u32; 2]) {
+/// A work area in device pixels: left, top, right and bottom edges.
+#[derive(Clone, Copy)]
+struct BedPx {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+/// The bed overlay, if the scene has one: its pixel rectangle, world size and origin corner.
+fn bed_of(scene: &SceneSnapshot, proj: &Projection) -> Option<(BedPx, f64, f64, BedOrigin)> {
+    scene.overlays.iter().find_map(|o| match o {
+        Overlay::Bed { width_mm, height_mm, origin }
+            if width_mm.is_finite() && height_mm.is_finite() && *width_mm > 0.0 && *height_mm > 0.0 =>
+        {
+            let [l, b] = proj.px32(Point::new(0.0, 0.0));
+            let [r, t] = proj.px32(Point::new(*width_mm, *height_mm));
+            let (left, right, top, bottom) = (l.min(r), l.max(r), t.min(b), t.max(b));
+            [left, right, top, bottom]
+                .iter()
+                .all(|v| v.is_finite())
+                .then_some((BedPx { left, top, right, bottom }, *width_mm, *height_mm, *origin))
+        }
+        _ => None,
+    })
+}
+
+/// The bed surface.
+fn bed(out: &mut Vec<Primitive>, area: BedPx, theme: &Theme) {
+    let BedPx { left, top, right, bottom } = area;
+    let rect = vec![[left, top], [right, top], [right, bottom], [left, bottom]];
+    out.push(Primitive::Fill { contours_px: vec![rect], color: theme.bed_fill });
+}
+
+/// The bed border and the mark on the origin corner, drawn over the grid.
+fn origin_mark(out: &mut Vec<Primitive>, area: BedPx, origin: BedOrigin, theme: &Theme, scale: f64) {
+    let BedPx { left, top, right, bottom } = area;
+    let rect = vec![[left, top], [right, top], [right, bottom], [left, bottom]];
+    out.push(Primitive::Stroke { points_px: rect, closed: true, width_px: scale as f32, color: theme.bed_border });
+    // The origin: an L along the two bed edges that meet in the corner, 24 pt long.
+    let arm = (24.0 * scale) as f32;
+    let (x, dx) = match origin {
+        BedOrigin::BottomLeft | BedOrigin::TopLeft => (left, 1.0),
+        BedOrigin::TopRight | BedOrigin::BottomRight => (right, -1.0),
+    };
+    let (y, dy) = match origin {
+        BedOrigin::TopLeft | BedOrigin::TopRight => (top, 1.0),
+        BedOrigin::BottomLeft | BedOrigin::BottomRight => (bottom, -1.0),
+    };
+    out.push(Primitive::Stroke {
+        points_px: vec![[x + dx * arm, y], [x, y], [x, y + dy * arm]],
+        closed: false,
+        width_px: (2.0 * scale) as f32,
+        color: theme.origin,
+    });
+}
+
+/// Grid hairlines every `spacing_mm`, centred on device pixels, across the visible area (or only
+/// inside the bed when there is one). Every `major_every`-th line counted from the world origin is
+/// drawn in the major colour; 0 draws none.
+fn grid(
+    out: &mut Vec<Primitive>,
+    (spacing_mm, major_every): (f64, u32),
+    theme: &Theme,
+    minor: Rgba,
+    proj: &Projection,
+    size: [u32; 2],
+    bed: Option<(BedPx, f64, f64)>,
+) {
     if !(spacing_mm.is_finite() && spacing_mm > 0.0) {
         return;
     }
@@ -256,28 +429,55 @@ fn grid(out: &mut Vec<Primitive>, spacing_mm: f64, color: Rgba, proj: &Projectio
     let s = proj.scale;
     let top_left = proj.camera.points_to_world(&proj.viewport, [0.0, 0.0]);
     let bottom_right = proj.camera.points_to_world(&proj.viewport, [w / s, h / s]);
-    let range = |a: f64, b: f64| {
+    // World ranges to draw: the visible area, clipped to the bed.
+    let clip = |a: f64, b: f64, bed_max: Option<f64>| {
         let (lo, hi) = (a.min(b), a.max(b));
+        match bed_max {
+            Some(max) => (lo.max(0.0), hi.min(max)),
+            None => (lo, hi),
+        }
+    };
+    let (xr, yr) = (
+        clip(top_left.x, bottom_right.x, bed.map(|b| b.1)),
+        clip(top_left.y, bottom_right.y, bed.map(|b| b.2)),
+    );
+    let range = |(lo, hi): (f64, f64)| {
         let (first, last) = ((lo / spacing_mm).ceil(), (hi / spacing_mm).floor());
         let n = last - first + 1.0;
         (n.is_finite() && n >= 0.0 && n <= MAX_GRID_LINES as f64).then_some((first as i64, last as i64))
     };
-    let (Some((x0, x1)), Some((y0, y1))) = (range(top_left.x, bottom_right.x), range(top_left.y, bottom_right.y))
-    else {
+    let (Some((x0, x1)), Some((y0, y1))) = (range(xr), range(yr)) else {
         return;
     };
     let crisp = |v: f64| (v.floor() + 0.5) as f32;
+    let colour = |k: i64| {
+        if major_every > 0 && k.rem_euclid(i64::from(major_every)) == 0 { theme.grid_major } else { minor }
+    };
     let (wf, hf) = (w as f32, h as f32);
+    let (y_from, y_to, x_from, x_to) = match bed {
+        Some((b, ..)) => (b.top.max(0.0), b.bottom.min(hf), b.left.max(0.0), b.right.min(wf)),
+        None => (0.0, hf, 0.0, wf),
+    };
     for k in x0..=x1 {
         let x = crisp(proj.px(Point::new(k as f64 * spacing_mm, 0.0))[0]);
         if (0.0..wf).contains(&x) {
-            out.push(Primitive::Stroke { points_px: vec![[x, 0.0], [x, hf]], closed: false, width_px: 1.0, color });
+            out.push(Primitive::Stroke {
+                points_px: vec![[x, y_from], [x, y_to]],
+                closed: false,
+                width_px: 1.0,
+                color: colour(k),
+            });
         }
     }
     for k in y0..=y1 {
         let y = crisp(proj.px(Point::new(0.0, k as f64 * spacing_mm))[1]);
         if (0.0..hf).contains(&y) {
-            out.push(Primitive::Stroke { points_px: vec![[0.0, y], [wf, y]], closed: false, width_px: 1.0, color });
+            out.push(Primitive::Stroke {
+                points_px: vec![[x_from, y], [x_to, y]],
+                closed: false,
+                width_px: 1.0,
+                color: colour(k),
+            });
         }
     }
 }
@@ -344,10 +544,20 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             bed_image(&mut out, picture, quads, *opacity, &proj);
         }
     }
+    // The bed (work area) is a surface beneath the grid; outside it the canvas shows its background.
+    let bed_area = bed_of(scene, &proj);
+    if let Some((area, ..)) = bed_area {
+        bed(&mut out, area, theme);
+    }
     for overlay in &scene.overlays {
-        if let (Overlay::Grid { spacing_mm }, Some(color)) = (overlay, theme.grid) {
-            grid(&mut out, *spacing_mm, color, &proj, size);
+        if let (Overlay::Grid { spacing_mm, major_every }, Some(color)) = (overlay, theme.grid) {
+            let inside = bed_area.map(|(a, w, h, _)| (a, w, h));
+            grid(&mut out, (*spacing_mm, *major_every), theme, color, &proj, size, inside);
         }
+    }
+    // The origin mark is drawn over the grid, as the first thing above it.
+    if let Some((area, _, _, origin)) = bed_area {
+        origin_mark(&mut out, area, origin, theme, proj.scale);
     }
     for item in &scene.items {
         draw_path(&mut out, flatten(&item.path, &item.transform, &proj), theme.role(item.role), proj.scale);
@@ -404,11 +614,11 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
                 draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
             }
             Overlay::Handle { at, .. } => {
-                marker(&mut out, *at, theme.handle_size_pt, theme.background, theme.selection, &proj);
+                marker(&mut out, *at, theme.handle_size_pt, theme.bed_fill, theme.selection, &proj);
             }
             // A selected node is a larger hollow marker, so it stands out from the filled ones.
             Overlay::Node { at, selected: true, .. } => {
-                marker(&mut out, *at, theme.handle_size_pt * 1.2, theme.background, theme.selection, &proj);
+                marker(&mut out, *at, theme.handle_size_pt * 1.2, theme.bed_fill, theme.selection, &proj);
             }
             Overlay::Node { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt * 0.8, theme.selection, theme.selection, &proj);
@@ -418,7 +628,7 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::ReshapeHandle { at, active, invalid, .. } => {
                 let size = theme.handle_size_pt * if *active { 1.4 } else { 1.0 };
                 let (fill, line) =
-                    if *invalid { (theme.issue, theme.issue) } else { (theme.background, theme.selection) };
+                    if *invalid { (theme.issue, theme.issue) } else { (theme.bed_fill, theme.selection) };
                 marker(&mut out, *at, size, fill, line, &proj);
             }
             Overlay::TangentCandidate { path, chosen } => {

@@ -131,7 +131,7 @@ impl SurfaceCanvas {
             .ok_or(CanvasError::Surface("not supported by the adapter".into()))?;
         config.format = format;
         config.present_mode = wgpu::PresentMode::Fifo;
-        Ok((CanvasRenderer::new(&ctx.device, format), config))
+        Ok((CanvasRenderer::new(&ctx.device, format, ctx.sample_count(format)), config))
     }
 
     /// Frames presented so far.

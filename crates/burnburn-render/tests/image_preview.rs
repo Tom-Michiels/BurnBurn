@@ -82,7 +82,9 @@ fn an_image_preview_is_painted_above_the_design_and_below_the_selection_marks() 
         vec![Overlay::SelectionBounds { bounds }, preview(&[0, 255, 255, 0], 1.0)],
     );
 
-    let packet = build_packet(&s, &Theme::light());
+    let mut theme = Theme::light();
+    theme.design.fill = Some(Rgba::new(0.5, 0.5, 0.5, 1.0));
+    let packet = build_packet(&s, &theme);
 
     let found = bitmaps(&packet.primitives);
     assert_eq!(found.len(), 1);
@@ -137,6 +139,8 @@ fn the_gpu_draws_the_preview_above_the_object_fill() {
     let Some(ctx) = context().unwrap() else { return };
     let mut theme = Theme::light();
     theme.grid = None;
+    // These pixel expectations assume a white canvas and a filled object (LF2: the light theme now has a grey canvas and no fills).
+    theme.background = Rgba::new(1.0, 1.0, 1.0, 1.0);
     theme.design.fill = Some(Rgba::new(0.5, 0.5, 0.5, 1.0));
     theme.design.stroke = None;
     let s = scene(vec![rect_item(-10.0, -10.0, 20.0, 20.0)], vec![preview(&[0, 255, 255, 0], 1.0)]);
