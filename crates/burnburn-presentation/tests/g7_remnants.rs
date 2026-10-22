@@ -195,7 +195,10 @@ fn placing_draws_the_sheet_and_its_zones_in_the_window_where_a_nest_can_use_them
     let (zw, zh, x1, y1) = size_of(&mut h, objects[1].id);
     assert_eq!((zw.as_str(), zh.as_str()), ("20", "20"));
     let diff = |a: &str, b: &str| a.parse::<f64>().unwrap() - b.parse::<f64>().unwrap();
-    assert!((diff(&x1, &x0) - 20.0).abs() < 1e-6 && (diff(&y1, &y0) - 20.0).abs() < 1e-6, "zone 20 mm in from the corner");
+    assert!(
+        (diff(&x1, &x0) - 20.0).abs() < 1e-6 && (diff(&y1, &y0) - 20.0).abs() < 1e-6,
+        "zone 20 mm in from the corner"
+    );
 
     // The contour is a closed object, so the nest offers it as a sheet.
     h.send(UiIntent::Remnant(RemnantIntent::Place { document: doc, id: 9999 }));

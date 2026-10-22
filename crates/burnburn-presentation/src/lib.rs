@@ -29,8 +29,8 @@ mod nest_task;
 mod notes;
 mod offset;
 mod production;
-mod remnants;
 pub mod profile_file;
+mod remnants;
 mod schikken;
 mod search_panel;
 mod start_confirm;
@@ -146,9 +146,9 @@ pub use production::{
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
 };
+pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
-pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use start_confirm::{START_NEEDS, StartConfirmViewModel, StartEvidence};
 pub use structure_panel::{
     BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,

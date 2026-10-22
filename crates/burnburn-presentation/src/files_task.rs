@@ -20,8 +20,8 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
-use burnburn_io::remnant_library::{RemnantLibrary, load_remnant_library, save_remnant_library};
 use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
+use burnburn_io::remnant_library::{RemnantLibrary, load_remnant_library, save_remnant_library};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
 use burnburn_job::MachineProfile;

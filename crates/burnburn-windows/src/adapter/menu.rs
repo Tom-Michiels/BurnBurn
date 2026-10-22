@@ -24,6 +24,8 @@ pub enum MenuItem {
     TracePrepPanel,
     /// Venster: shows or hides the compact operator view of the active window (G6-werk).
     OperatorPanel,
+    /// Venster: shows or hides the remnant library panel of the active window (G7-werk).
+    RemnantsPanel,
     /// An item of the panel families (laser window, import, export, bundles, templates, images,
     /// camera, help; ids `6000..6500`): what it does is decided in [`crate::host_panels::menu`].
     Host(HostItem),
@@ -39,6 +41,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::StructurePanel,
         MenuItem::TracePrepPanel,
         MenuItem::OperatorPanel,
+        MenuItem::RemnantsPanel,
     ]
     .into_iter()
     .chain(crate::host_panels::menu::items().into_iter().map(MenuItem::Host))
@@ -59,6 +62,8 @@ const STRUCTURE_PANEL_ID: u16 = 1031;
 /// The golf-6 workshop panels (G6-werk).
 const TRACE_PREP_PANEL_ID: u16 = 1032;
 const OPERATOR_PANEL_ID: u16 = 1033;
+/// The golf-7 workshop panels (G7-werk), the macOS tag.
+const REMNANTS_PANEL_ID: u16 = 1070;
 const CAM_ID_BASE: u16 = 4000;
 
 /// `WM_COMMAND` id of a menu item (also used by the accelerator table).
@@ -71,6 +76,7 @@ pub fn command_id(item: MenuItem) -> u16 {
         MenuItem::StructurePanel => STRUCTURE_PANEL_ID,
         MenuItem::TracePrepPanel => TRACE_PREP_PANEL_ID,
         MenuItem::OperatorPanel => OPERATOR_PANEL_ID,
+        MenuItem::RemnantsPanel => REMNANTS_PANEL_ID,
         MenuItem::CamDialog(dialog) => CamDialog::ALL
             .iter()
             .position(|d| *d == dialog)
@@ -99,6 +105,9 @@ pub fn menu_item(id: u16) -> Option<MenuItem> {
     }
     if id == OPERATOR_PANEL_ID {
         return Some(MenuItem::OperatorPanel);
+    }
+    if id == REMNANTS_PANEL_ID {
+        return Some(MenuItem::RemnantsPanel);
     }
     if id == SCHIKKEN_PANEL_ID {
         return Some(MenuItem::SchikkenPanel);
@@ -200,9 +209,11 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::TracePrepPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.trace_prep.is_some()),
         MenuItem::OperatorPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.operator.is_some()),
         // A dialog or panel belongs to a window; its own greying says why in words.
-        MenuItem::CamDialog(_) | MenuItem::SchikkenPanel | MenuItem::OffsetPanel | MenuItem::StructurePanel => {
-            vm.active.is_some()
-        }
+        MenuItem::CamDialog(_)
+        | MenuItem::SchikkenPanel
+        | MenuItem::OffsetPanel
+        | MenuItem::StructurePanel
+        | MenuItem::RemnantsPanel => vm.active.is_some(),
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -218,6 +229,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::StructurePanel
         | MenuItem::TracePrepPanel
         | MenuItem::OperatorPanel
+        | MenuItem::RemnantsPanel
         | MenuItem::Host(_) => false,
     }
 }
@@ -238,6 +250,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         }
         MenuItem::OperatorPanel => {
             crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorMenu, locale).to_owned()
+        }
+        MenuItem::RemnantsPanel => {
+            crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RemnantsMenu, locale).to_owned()
         }
         MenuItem::Command(key) => {
             let label = vm.commands.get(&key).map_or(MessageKey::Command(key), |c| c.label);

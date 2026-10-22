@@ -100,7 +100,10 @@ fn remnants_that_say_nothing_usable_are_refused() {
         assert!(refused(RemnantRecord { thickness_mm: t, ..remnant(1, "x") }), "thickness {t}");
     }
     assert!(refused(RemnantRecord { contour: vec![[0.0, 0.0], [1.0, 0.0]], ..remnant(1, "x") }), "two points");
-    assert!(refused(RemnantRecord { contour: vec![[0.0, 0.0], [5.0, 0.0], [10.0, 0.0]], ..remnant(1, "x") }), "no area");
+    assert!(
+        refused(RemnantRecord { contour: vec![[0.0, 0.0], [5.0, 0.0], [10.0, 0.0]], ..remnant(1, "x") }),
+        "no area"
+    );
     assert!(
         refused(RemnantRecord { contour: vec![[0.0, 0.0], [10.0, 10.0], [10.0, 0.0], [0.0, 10.0]], ..remnant(1, "x") }),
         "a bow tie is not a sheet"

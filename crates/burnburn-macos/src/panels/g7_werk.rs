@@ -2,13 +2,16 @@
 //! plain [`G5Line`]s and [`G5Control`]s as the golf-5 panels, so both hosts draw it without code of
 //! their own. It shows what presentation says is about to be started and sends exactly that.
 
-use burnburn_presentation::{DocumentViewModel, START_NEEDS, StartConfirmViewModel, StartEvidence, UiIntent};
+use burnburn_presentation::{
+    DocumentViewModel, RemnantIntent, RemnantLinkStatus, RemnantProblem, START_NEEDS, StartConfirmViewModel,
+    StartEvidence, UiIntent,
+};
 use burnburn_types::DocumentId;
 
 use crate::l10n::Locale;
 use crate::l10n_g7_werk::{G7Text, g7_fmt, g7_text};
 
-use super::g5::{G5Control, G5Line};
+use super::g5::{G5Control, G5Line, index_of, value_of};
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
 fn num(value: f64, decimals: usize, locale: Locale) -> String {
@@ -98,6 +101,149 @@ pub(super) fn start_confirm_intent(
             Some(UiIntent::ConfirmStart { document: Some(document), action: c.action, seen: c.seen.clone() })
         }
         G5Control::StartCancel => doc.start_confirm.as_ref().map(|_| UiIntent::CancelStart),
+        _ => None,
+    }
+}
+
+// --- The remnant library (W07) ---------------------------------------------------------------------
+
+fn problem_text(problem: RemnantProblem, locale: Locale) -> String {
+    let text = match problem {
+        RemnantProblem::NotReady => G7Text::ProblemNotReady,
+        RemnantProblem::Unreadable => G7Text::ProblemUnreadable,
+        RemnantProblem::NeedsSelection => G7Text::ProblemNeedsSelection,
+        RemnantProblem::NoClosedOutline => G7Text::ProblemNoClosedOutline,
+        RemnantProblem::NeedsName => G7Text::ProblemNeedsName,
+        RemnantProblem::NeedsMaterial => G7Text::ProblemNeedsMaterial,
+        RemnantProblem::InvalidThickness => G7Text::ProblemInvalidThickness,
+        RemnantProblem::InvalidDate => G7Text::ProblemInvalidDate,
+        RemnantProblem::NameTaken => G7Text::ProblemNameTaken,
+        RemnantProblem::ZoneOutsideSheet => G7Text::ProblemZoneOutside,
+        RemnantProblem::NotASheet => G7Text::ProblemNotASheet,
+        RemnantProblem::Unknown => G7Text::ProblemUnknown,
+        // A problem this build has no words for is still a problem, not a success.
+        _ => G7Text::ProblemNotSaved,
+    };
+    t(text, locale)
+}
+
+fn field(control: G5Control, caption: G7Text, locale: Locale) -> G5Line {
+    G5Line::Field { control, caption: t(caption, locale), text: String::new() }
+}
+
+/// The remnant panel: the kept remnants, the form that keeps the selection, and the remnant of each
+/// order. It always has something to show: an empty library says so.
+pub(super) fn remnants_lines(
+    doc: &DocumentViewModel,
+    locale: Locale,
+    draft: &[(G5Control, String)],
+) -> Option<Vec<G5Line>> {
+    let _ = draft;
+    let remnants = &doc.remnants;
+    let mut lines = vec![G5Line::Heading(t(G7Text::RemnantsHeading, locale))];
+    if remnants.rows.is_empty() {
+        lines.push(G5Line::Text(t(G7Text::RemnantsNone, locale)));
+    }
+    for r in &remnants.rows {
+        lines.push(G5Line::Text(g7_fmt(
+            G7Text::RemnantLine,
+            locale,
+            &[
+                &r.name,
+                &r.material,
+                &num(r.thickness_mm, 3, locale),
+                &num(r.width_mm, 1, locale),
+                &num(r.height_mm, 1, locale),
+                &num(r.usable_cm2, 1, locale),
+                &r.zones.to_string(),
+                &r.date,
+            ],
+        )));
+        if !r.note.is_empty() {
+            lines.push(G5Line::Text(g7_fmt(G7Text::RemnantNote, locale, &[&r.note])));
+        }
+        lines.push(G5Line::Button {
+            control: G5Control::RemnantPlace { id: r.id },
+            title: g7_fmt(G7Text::RemnantPlaceButton, locale, &[&r.name]),
+            enabled: true,
+        });
+        lines.push(G5Line::Button {
+            control: G5Control::RemnantRemove { id: r.id },
+            title: g7_fmt(G7Text::RemnantRemoveButton, locale, &[&r.name]),
+            enabled: true,
+        });
+    }
+    if let Some(problem) = remnants.problem {
+        lines.push(G5Line::Problem(problem_text(problem, locale)));
+    }
+    lines.push(G5Line::Heading(t(G7Text::SaveHeading, locale)));
+    lines.push(G5Line::Text(t(G7Text::SaveHint, locale)));
+    lines.push(field(G5Control::RemnantName, G7Text::CaptionName, locale));
+    lines.push(field(G5Control::RemnantMaterial, G7Text::CaptionMaterial, locale));
+    lines.push(field(G5Control::RemnantThickness, G7Text::CaptionThickness, locale));
+    lines.push(field(G5Control::RemnantNote, G7Text::CaptionNote, locale));
+    lines.push(field(G5Control::RemnantDate, G7Text::CaptionDate, locale));
+    lines.push(G5Line::Button { control: G5Control::RemnantSave, title: t(G7Text::SaveButton, locale), enabled: true });
+    if let Some(o) = doc.operator.as_ref().filter(|o| !o.orders.is_empty()) {
+        lines.push(G5Line::Heading(t(G7Text::OrdersHeading, locale)));
+        for (index, order) in o.orders.iter().enumerate() {
+            let mut options = vec![t(G7Text::OrderNoRemnant, locale)];
+            options.extend(remnants.rows.iter().map(|r| r.name.clone()));
+            let selected = order
+                .remnant
+                .as_ref()
+                .and_then(|name| remnants.rows.iter().position(|r| &r.name == name))
+                .map_or(0, |i| i + 1);
+            lines.push(G5Line::Choice {
+                control: G5Control::RemnantOrder { index },
+                caption: g7_fmt(G7Text::OrderCaption, locale, &[&order.name]),
+                options,
+                selected,
+            });
+            match (&order.remnant, &order.remnant_link) {
+                (Some(name), Some(RemnantLinkStatus::Missing)) => {
+                    lines.push(G5Line::Problem(g7_fmt(G7Text::OrderLinkMissing, locale, &[name, &order.name])))
+                }
+                (Some(_), Some(RemnantLinkStatus::Known { material, material_matches: Some(false), .. })) => {
+                    lines.push(G5Line::Problem(g7_fmt(G7Text::OrderLinkMismatch, locale, &[&order.name, material])));
+                }
+                _ => {}
+            }
+        }
+        lines.push(G5Line::Text(t(G7Text::OrderLinkNote, locale)));
+    }
+    Some(lines)
+}
+
+/// What a control of the remnant panel asks for. Typed text goes on unparsed; presentation says what
+/// is wrong with it.
+pub(super) fn remnants_intent(
+    doc: &DocumentViewModel,
+    document: DocumentId,
+    control: G5Control,
+    values: &[(G5Control, String)],
+) -> Option<UiIntent> {
+    let typed = |c: G5Control| value_of(values, c).unwrap_or_default().to_owned();
+    match control {
+        G5Control::RemnantSave => Some(UiIntent::Remnant(RemnantIntent::SaveFromSelection {
+            document,
+            name: typed(G5Control::RemnantName),
+            material: typed(G5Control::RemnantMaterial),
+            thickness: typed(G5Control::RemnantThickness),
+            note: typed(G5Control::RemnantNote),
+            date: typed(G5Control::RemnantDate),
+        })),
+        G5Control::RemnantPlace { id } => Some(UiIntent::Remnant(RemnantIntent::Place { document, id })),
+        G5Control::RemnantRemove { id } => Some(UiIntent::Remnant(RemnantIntent::Remove { id })),
+        G5Control::RemnantOrder { index } => {
+            let order = doc.operator.as_ref()?.orders.get(index)?;
+            let choice = index_of(values, control)?;
+            let remnant = match choice {
+                0 => None,
+                n => Some(doc.remnants.rows.get(n - 1)?.name.clone()),
+            };
+            Some(UiIntent::SetOrderRemnant { order: order.id, remnant })
+        }
         _ => None,
     }
 }

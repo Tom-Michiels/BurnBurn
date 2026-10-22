@@ -36,10 +36,12 @@ pub enum G5Panel {
     Operator,
     /// The confirmation before a start: opens by itself while the view model has one (G7-werk, M06).
     StartConfirm,
+    /// Venster ▸ Restplaten: the remnant library and the remnant of an order (G7-werk, W07).
+    Remnants,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 9] = [
+    pub const ALL: [G5Panel; 10] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -49,6 +51,7 @@ impl G5Panel {
         G5Panel::TracePrep,
         G5Panel::Operator,
         G5Panel::StartConfirm,
+        G5Panel::Remnants,
     ];
 }
 
@@ -198,6 +201,25 @@ pub enum G5Control {
     // --- The confirmation before a start (G7-werk, M06).
     StartConfirm,
     StartCancel,
+    // --- The remnant library (G7-werk, W07).
+    RemnantName,
+    RemnantMaterial,
+    RemnantThickness,
+    RemnantNote,
+    RemnantDate,
+    /// Keep the selection as a remnant.
+    RemnantSave,
+    /// Draw remnant `id` in the window.
+    RemnantPlace {
+        id: u64,
+    },
+    RemnantRemove {
+        id: u64,
+    },
+    /// The remnant of order number `index` (a choice: none, or a remnant of the library).
+    RemnantOrder {
+        index: usize,
+    },
 }
 
 /// One line of a panel.
@@ -338,6 +360,11 @@ pub fn g5_panel(
         G5Panel::Operator => {
             let lines = super::g6_werk::operator_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::Remnants => {
+            let lines = super::g7_werk::remnants_lines(doc, locale, draft)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RemnantsTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
         G5Panel::StartConfirm => {
@@ -666,6 +693,15 @@ pub fn g5_intent(
         G5Control::StartConfirm | G5Control::StartCancel => {
             super::g7_werk::start_confirm_intent(doc, document, control)
         }
+        G5Control::RemnantName
+        | G5Control::RemnantMaterial
+        | G5Control::RemnantThickness
+        | G5Control::RemnantNote
+        | G5Control::RemnantDate
+        | G5Control::RemnantSave
+        | G5Control::RemnantPlace { .. }
+        | G5Control::RemnantRemove { .. }
+        | G5Control::RemnantOrder { .. } => super::g7_werk::remnants_intent(doc, document, control, values),
         G5Control::StructDefineName
         | G5Control::StructDefine
         | G5Control::PartPlaceX { .. }

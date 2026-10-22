@@ -25,8 +25,8 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, REMNANT_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
-    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
+    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
+    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE, REMNANT_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -351,16 +351,12 @@ impl AppController {
                 match remnants {
                     Loaded::Ready(library) => self.libs.remnants = Some(library),
                     Loaded::Missing => {
-                        self.libs.remnants = Some(burnburn_io::remnant_library::RemnantLibrary {
-                            remnants: Vec::new(),
-                            next_id: 1,
-                        });
+                        self.libs.remnants =
+                            Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
                     }
                     Loaded::Unreadable(_) => {
-                        self.libs.remnants = Some(burnburn_io::remnant_library::RemnantLibrary {
-                            remnants: Vec::new(),
-                            next_id: 1,
-                        });
+                        self.libs.remnants =
+                            Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
                         self.libs.remnants_unreadable = true;
                         effects.push(unreadable());
                     }

@@ -222,7 +222,8 @@ impl AppController {
             for (name, points) in outlines {
                 let Some(path) = polygon_path(points, shift) else { continue };
                 let request = requests.pop().flatten();
-                let step = apply_edit(s, document, CommandPayload::Edit(GeometryCommand::CreatePath { path, name }), request);
+                let step =
+                    apply_edit(s, document, CommandPayload::Edit(GeometryCommand::CreatePath { path, name }), request);
                 update.view_changed |= step.view_changed;
                 update.effects.extend(step.effects);
                 for d in step.scenes_changed {
@@ -250,11 +251,10 @@ impl AppController {
                     self.libs.remnant_problem = Some(problem);
                     return changed();
                 }
-                let found = self
-                    .libs
-                    .remnants
-                    .as_ref()
-                    .and_then(|l| l.remnants.iter().find(|r| r.name.trim().to_lowercase() == wanted.to_lowercase()));
+                let found =
+                    self.libs.remnants.as_ref().and_then(|l| {
+                        l.remnants.iter().find(|r| r.name.trim().to_lowercase() == wanted.to_lowercase())
+                    });
                 match found {
                     Some(r) => Some(r.name.clone()),
                     None => {

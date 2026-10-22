@@ -1883,6 +1883,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(MenuItem::OffsetPanel, "", false),
             item(MenuItem::StructurePanel, "", false),
             item(MenuItem::OperatorPanel, "", false),
+            item(MenuItem::RemnantsPanel, "", false),
         ],
     ));
     main.addItem(&app_host::help_menu(mtm, target, locale));
