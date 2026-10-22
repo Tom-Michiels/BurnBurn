@@ -468,6 +468,8 @@ fn text_field_name(field: TextField, locale: Locale) -> String {
         TextField::VSpace => tr("Regelafstand", "Line spacing", locale),
         TextField::Height => tr("Hoogte", "Height", locale),
         TextField::PathStart => tr("Start op pad", "Start on the path", locale),
+        TextField::Position => tr("Positie", "Position", locale),
+        TextField::Count => tr("Aantal", "Count", locale),
         _ => tr("Afstand tot pad", "Distance from the path", locale),
     }
 }

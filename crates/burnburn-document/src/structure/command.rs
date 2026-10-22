@@ -305,6 +305,16 @@ pub(crate) fn check_definition(d: &PartDefinition) -> Result<(), StructureError>
                 check(radius, "radius", true)?;
             }
             PartShape::Fixed(_) => {}
+            PartShape::Fitted { path, x, y, width, height } => {
+                // An outline without an extent in both directions has no box to fit.
+                if !path.bounds().is_some_and(|b| b.width() > 0.0 && b.height() > 0.0) {
+                    return Err(StructureError::InvalidValue { field: "path" });
+                }
+                check(x, "x", false)?;
+                check(y, "y", false)?;
+                check(width, "width", true)?;
+                check(height, "height", true)?;
+            }
         }
     }
     for v in d.variants.values() {

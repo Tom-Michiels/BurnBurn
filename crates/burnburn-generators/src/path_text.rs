@@ -174,6 +174,51 @@ pub fn guide_frame_at(
     Ok(GuideLine { pts: &pts, cumulative: &cumulative }.frame_at(finite("at", at)?))
 }
 
+/// Like [`guide_frame_at`], with the direction of the drawn curve there (its true tangent, in
+/// the direction of travel) instead of the direction of the chord of its flattening. Beyond
+/// either end the point continues straight, along the tangent of that end.
+pub fn guide_tangent_at(
+    guide: &Path,
+    tolerance: &ProductionTolerance,
+    reverse: bool,
+    at: f64,
+) -> Result<(Point, Vector), GenError> {
+    let (pts, cumulative, total) = flatten_guide(guide, tolerance, reverse)?;
+    let line = GuideLine { pts: &pts, cumulative: &cumulative };
+    let at = finite("at", at)?;
+    let (point, _) = line.frame_at(at);
+    // The tangent is looked up at the nearest place of the curve itself, on the flattened guide
+    // within the guide: past an end it is the end's tangent.
+    let (on_curve, chord) = line.frame_at(at.clamp(0.0, total));
+    let direction = curve_direction(guide, on_curve, chord).unwrap_or(chord);
+    Ok((point, direction))
+}
+
+/// The unit tangent of the first outline of `guide` at the place nearest to `near`, turned to the
+/// side `chord` runs. `None` when the outline has no usable derivative there.
+fn curve_direction(guide: &Path, near: Point, chord: Vector) -> Option<Vector> {
+    let first = guide.subpaths().first()?;
+    let outline = Path::from_subpaths(vec![first.clone()]);
+    let nearest = outline.nearest(near)?;
+    let index = nearest.at.segment;
+    let mut from = first.start();
+    for seg in first.segments().iter().take(index) {
+        from = seg.end();
+    }
+    let derivative = match first.segments().get(index) {
+        Some(seg) => seg.derivative(from, nearest.t),
+        // The closing line of a closed outline.
+        None if first.is_closed() => first.start() - from,
+        None => return None,
+    };
+    let length = derivative.length();
+    if !(length > 1e-12) {
+        return None;
+    }
+    let unit = derivative * (1.0 / length);
+    Some(if unit.dot(chord) < 0.0 { unit * -1.0 } else { unit })
+}
+
 /// The largest start at which `text` still fits on `guide`: the guide's length less the span of
 /// the text. `TextLongerThanPath` when it does not fit at any start.
 pub fn text_room(

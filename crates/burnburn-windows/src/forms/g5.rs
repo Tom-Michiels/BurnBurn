@@ -25,14 +25,11 @@ fn panel_values(values: &FormValues) -> Vec<(G5Control, String)> {
         .collect()
 }
 
-/// The form of `panel`, or `None` when it has nothing to show or waits for its menu item.
-fn form(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues, panel: G5Panel) -> Option<Form> {
-    if !(g5_opens_by_itself(panel) || state.g5_shown.contains(&panel)) {
-        return None;
-    }
-    let model = g5_panel(ctx.vm, ctx.document, panel, ctx.locale, &panel_values(values))?;
+/// The form lines of the lines of a panel model: also how the stack of the selection joins the
+/// inspector form (G9-editor).
+pub(super) fn form_lines(model_lines: Vec<G5Line>) -> Vec<FormLine> {
     let mut lines: Vec<FormLine> = Vec::new();
-    for line in model.lines {
+    for line in model_lines {
         let id = |c: G5Control| ControlId::G5(c);
         match line {
             G5Line::Heading(t) => lines.push(FormLine::Heading(t)),
@@ -75,6 +72,16 @@ fn form(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues, panel: G
             }
         }
     }
+    lines
+}
+
+/// The form of `panel`, or `None` when it has nothing to show or waits for its menu item.
+fn form(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues, panel: G5Panel) -> Option<Form> {
+    if !(g5_opens_by_itself(panel) || state.g5_shown.contains(&panel)) {
+        return None;
+    }
+    let model = g5_panel(ctx.vm, ctx.document, panel, ctx.locale, &panel_values(values))?;
+    let lines = form_lines(model.lines);
     Some(Form { kind: FormKind::G5(panel), title: model.title, placement: Placement::Floating, lines })
 }
 
@@ -82,7 +89,12 @@ fn form(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues, panel: G
 /// while a centre-line trace is open, and the panels the menu asked for. `values` are the controls'
 /// values now (the notes panel counts what is typed).
 pub fn forms(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues) -> Vec<Form> {
-    G5Panel::ALL.iter().filter_map(|panel| form(ctx, state, values, *panel)).collect()
+    // The stack of the selection is a section of the inspector form (G9-editor, E06).
+    G5Panel::ALL
+        .iter()
+        .filter(|panel| **panel != G5Panel::Stack)
+        .filter_map(|panel| form(ctx, state, values, *panel))
+        .collect()
 }
 
 /// The intent (or follow-up) of a control event of panel `panel`.

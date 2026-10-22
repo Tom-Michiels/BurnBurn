@@ -63,6 +63,7 @@ mod notes;
 mod offset_preview;
 mod order_dialog;
 mod path_lock;
+mod plate_nest;
 mod preflight_dialog;
 mod prefs;
 mod preview;
@@ -325,6 +326,8 @@ struct Session {
     cam: process::CamState,
     /// The nest panel (Quick Nest, Nest Selected) and its result (window state).
     nest: nest::NestState,
+    /// A distribute-and-nest run over the plates that awaits its answer (G9-editor).
+    plate_nest: Option<plate_nest::PlateRun>,
     /// The Print and Cut and Center Finder panels (window state).
     registration: registration::RegState,
     /// Text toolbar refusals and the text-on-path dialog (window state).
@@ -404,6 +407,7 @@ impl Session {
             arrange: arrange::ArrangeState::default(),
             cam: process::CamState::default(),
             nest: nest::NestState::default(),
+            plate_nest: None,
             registration: registration::RegState::default(),
             text: text::TextState::default(),
             variable: variable::VariableState::default(),
@@ -639,6 +643,9 @@ impl AppController {
             }
             UiIntent::ChoosePlate { document, plate } => {
                 self.with_session(document, |s| structure::choose_plate(s, document, plate))
+            }
+            UiIntent::Structure { document, edit: crate::StructureEdit::DistributeAndNestOverPlates { gap } } => {
+                self.distribute_and_nest(document, gap)
             }
             UiIntent::Structure { document, edit } => {
                 let request = self.next_id::<RequestId>();
@@ -1004,12 +1011,26 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             image::sync(s);
             AppUpdate::redraw(document)
         }
-        Err(_) => {
-            s.messages.push(StatusMessage { key: MessageKey::CommandRejected });
-            let mut update = error(Some(document), MessageKey::CommandRejected);
+        Err(refusal) => {
+            let key = refusal_key(&s.doc.snapshot(), &refusal);
+            s.messages.push(StatusMessage { key });
+            let mut update = error(Some(document), key);
             update.view_changed = true;
             update
         }
+    }
+}
+
+/// The words for a refused command: a turn, scale or shear of a text that follows a guide says
+/// why it cannot be done (G9-editor, E08); everything else is the general refusal.
+fn refusal_key(snapshot: &burnburn_document::DocumentSnapshot, refusal: &CommandError) -> MessageKey {
+    match refusal {
+        CommandError::DerivedObject { owner: burnburn_document::DerivedOwner::Text(text) }
+            if snapshot.text(*text).is_some_and(|t| t.path.is_some()) =>
+        {
+            MessageKey::BoundTextFollowsGuide
+        }
+        _ => MessageKey::CommandRejected,
     }
 }
 

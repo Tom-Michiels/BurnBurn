@@ -767,6 +767,11 @@ pub enum MessageKey {
     Field(FieldKey),
     InvalidLength(FieldError),
     CommandRejected,
+    /// An extension of a Bézier end went straight along its end tangent, for this reason (G9-editor).
+    ExtendedStraight(burnburn_geometry::ExtendNote),
+    /// A text that follows a guide cannot be turned, scaled or sheared on its own (G9-editor, E08):
+    /// it follows its guide; move it, change its start and distance, or turn the guide.
+    BoundTextFollowsGuide,
     /// A structure edit (part, variant, reference) was refused for this reason (G6-werk).
     Structure(crate::structure_panel::StructureProblem),
     SaveFailed,

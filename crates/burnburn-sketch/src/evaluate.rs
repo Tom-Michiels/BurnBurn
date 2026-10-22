@@ -12,6 +12,7 @@ use burnburn_document::sketch::{
 use burnburn_geometry::{GeometryError, Path, Point};
 use burnburn_types::{CancellationToken, Cancelled};
 
+use crate::contact_seed::{Oval, touch_distances};
 use crate::param::{Dim, ExprError, ExprErrorKind, Expression, ParameterError, Parameters, Value, Values};
 use crate::solver::{self, Along, Constraint, ConstraintState, Coordinate, Entity, Flip, Problem, SolveError, Solver};
 
@@ -291,6 +292,20 @@ struct Builder<'a> {
     /// The other branch: which axis of an ellipse carries the foci is decided the other way round
     /// (the retry of an evaluation that did not converge, G8-editor).
     flip: bool,
+    /// Where the contact of an ellipse with another curve is started from (G9-editor).
+    guess: ContactGuess,
+}
+
+/// Where the contact point of two touching curves starts. The solver finds the touch from a point
+/// near it; which point is near depends on how the curves lie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContactGuess {
+    /// Where the curves are closest now; when the boundaries cross it is the support point.
+    Closest,
+    /// On the first ellipse, where its outline faces the other curve's centre.
+    Support,
+    /// On the first ellipse, on the far side from the other curve's centre.
+    SupportAway,
 }
 
 impl Builder<'_> {
@@ -509,7 +524,8 @@ impl Builder<'_> {
 /// What an ellipse touches in the contact relation.
 #[derive(Clone, Copy)]
 enum Contact {
-    Circle(EntityId),
+    /// A circle or an arc (G9-editor): the full circle through the arc counts.
+    Round(EntityId),
     Ellipse(EntityId),
 }
 
@@ -518,21 +534,22 @@ impl Builder<'_> {
     /// and the unit direction of `ellipse` there.
     fn contact_guess(&self, ellipse: EntityId, other: Contact) -> Option<(Point, (f64, f64))> {
         const N: usize = 360;
+        if self.guess != ContactGuess::Closest {
+            return self.support_guess(ellipse, other, self.guess == ContactGuess::SupportAway);
+        }
         let own = self.ellipse_samples(ellipse, N)?;
         let (at, index) = match other {
-            Contact::Circle(circle) => {
-                let DocEntity::Circle { center, radius } = self.sketch.entity(circle)?.entity else { return None };
-                let radius = self.sketch.solution().and_then(|s| s.radii.get(&circle).copied()).unwrap_or(radius);
-                let o = self.at(self.e(center)?)?;
+            Contact::Round(circle) => {
+                let (centre, radius) = self.round_curve(circle)?;
                 // The sample whose distance from the circle's centre is nearest to the radius.
                 let (i, _) = own
                     .iter()
                     .enumerate()
-                    .map(|(i, p)| (i, (p.distance(o) - radius).abs()))
+                    .map(|(i, p)| (i, (p.distance(centre) - radius).abs()))
                     .min_by(|x, y| x.1.total_cmp(&y.1))?;
-                let d = own[i].distance(o);
-                let dir = if d > 0.0 { ((own[i].x - o.x) / d, (own[i].y - o.y) / d) } else { (1.0, 0.0) };
-                (Point::new(o.x + dir.0 * radius, o.y + dir.1 * radius), i)
+                let d = own[i].distance(centre);
+                let dir = if d > 0.0 { ((own[i].x - centre.x) / d, (own[i].y - centre.y) / d) } else { (1.0, 0.0) };
+                (Point::new(centre.x + dir.0 * radius, centre.y + dir.1 * radius), i)
             }
             Contact::Ellipse(second) => {
                 let theirs = self.ellipse_samples(second, N)?;
@@ -545,6 +562,12 @@ impl Builder<'_> {
                         }
                     }
                 }
+                // Outlines that cross have no "closest" place to start from: the touch is where
+                // the first ellipse faces the other one (G9-editor).
+                let spacing = (0..N).map(|i| own[i].distance(own[(i + 1) % N])).fold(0.0, f64::max);
+                if best.0 < 2.0 * spacing {
+                    return self.support_guess(ellipse, other, false);
+                }
                 (own[best.1].lerp(theirs[best.2], 1.0), best.1)
             }
         };
@@ -552,6 +575,102 @@ impl Builder<'_> {
         let (dx, dy) = (next.x - prev.x, next.y - prev.y);
         let l = (dx * dx + dy * dy).sqrt();
         (l > 0.0).then_some((at, (dx / l, dy / l)))
+    }
+
+    /// An ellipse as plain numbers, with the semi-axes as dimensioned (the sizes it is going to have).
+    fn oval(&self, ellipse: EntityId) -> Option<Oval> {
+        let (centre, u, _, a, b) = self.ellipse_geometry(ellipse)?;
+        let a = self.major_dimension(ellipse).filter(|v| *v > 0.0).unwrap_or(a);
+        Some(Oval { centre, u, a, b })
+    }
+
+    /// Where the second ellipse of each ellipse-ellipse touch can start from when the two lie deep
+    /// in each other: slid along the line between the centres to where they stop crossing. For each
+    /// place the ellipse and the shift of its centre, nearest to where it is drawn first.
+    fn contact_seeds(&self) -> Vec<(EntityId, (f64, f64))> {
+        let mut found: Vec<(f64, EntityId, (f64, f64))> = Vec::new();
+        for (_, c) in self.sketch.constraints() {
+            let SketchConstraint::Relation(Relation::Tangent(first, second)) = c else { continue };
+            let (Some(g1), Some(g2)) = (self.oval(*first), self.oval(*second)) else { continue };
+            let (dx, dy) = (g2.centre.x - g1.centre.x, g2.centre.y - g1.centre.y);
+            let drawn = (dx * dx + dy * dy).sqrt();
+            let directions = if drawn > 1e-9 { vec![(dx / drawn, dy / drawn)] } else { vec![g1.u, (-g1.u.0, -g1.u.1)] };
+            for dir in directions {
+                for d in touch_distances(&g1, &g2, dir) {
+                    let target = Point::new(g1.centre.x + dir.0 * d, g1.centre.y + dir.1 * d);
+                    found.push(((d - drawn).abs(), *second, (target.x - g2.centre.x, target.y - g2.centre.y)));
+                }
+            }
+        }
+        found.sort_by(|x, y| x.0.total_cmp(&y.0));
+        found.into_iter().map(|(_, e, shift)| (e, shift)).collect()
+    }
+
+    /// Moves the starting places of an ellipse (its centre and the end of its major axis).
+    fn shift_ellipse(&mut self, ellipse: EntityId, shift: (f64, f64)) {
+        let Some(SketchEntity { entity: DocEntity::Ellipse { center, major, .. }, .. }) = self.sketch.entity(ellipse)
+        else {
+            return;
+        };
+        for point in [*center, *major] {
+            if let Some(id) = self.e(point)
+                && let Some(Entity::Point { at }) = self.problem.entities.get_mut(id.index())
+            {
+                *at = Point::new(at.x + shift.0, at.y + shift.1);
+            }
+        }
+    }
+
+    /// The centre and radius of a circle or an arc as they are now.
+    fn round_curve(&self, id: EntityId) -> Option<(Point, f64)> {
+        match self.sketch.entity(id)?.entity {
+            DocEntity::Circle { center, radius } => {
+                let radius = self.sketch.solution().and_then(|s| s.radii.get(&id).copied()).unwrap_or(radius);
+                Some((self.at(self.e(center)?)?, radius))
+            }
+            DocEntity::Arc { center, start, .. } => {
+                let centre = self.at(self.e(center)?)?;
+                Some((centre, centre.distance(self.at(self.e(start)?)?)))
+            }
+            _ => None,
+        }
+    }
+
+    /// The centre of the other curve of a contact.
+    fn other_centre(&self, other: Contact) -> Option<Point> {
+        match other {
+            Contact::Round(id) => self.round_curve(id).map(|(c, _)| c),
+            Contact::Ellipse(id) => self.ellipse_geometry(id).map(|g| g.0),
+        }
+    }
+
+    /// The support point of `ellipse` in the direction of the other curve's centre (or away from
+    /// it) and the direction of the ellipse there: the place where the two outlines face each
+    /// other, which is where they touch when they are pushed apart (or the one inside the other is
+    /// pushed against it) along the line between them.
+    fn support_guess(&self, ellipse: EntityId, other: Contact, away: bool) -> Option<(Point, (f64, f64))> {
+        let (c, u, v, a, b) = self.ellipse_geometry(ellipse)?;
+        let toward = self.other_centre(other)?;
+        let (dx, dy) = (toward.x - c.x, toward.y - c.y);
+        let l = (dx * dx + dy * dy).sqrt();
+        let mut d = if l > 1e-9 { (dx / l, dy / l) } else { u };
+        if away {
+            d = (-d.0, -d.1);
+        }
+        // A hair off the line between the centres: exactly on an axis the two focus directions of
+        // the contact point coincide, a degenerate start for the normal construction.
+        const TILT: f64 = 0.03;
+        d = (d.0 * TILT.cos() - d.1 * TILT.sin(), d.0 * TILT.sin() + d.1 * TILT.cos());
+        let (du, dv) = (d.0 * u.0 + d.1 * u.1, d.0 * v.0 + d.1 * v.1);
+        let k = (a * a * du * du + b * b * dv * dv).sqrt();
+        if !(k > 0.0) {
+            return None;
+        }
+        let p = Point::new(
+            c.x + (a * a * du * u.0 + b * b * dv * v.0) / k,
+            c.y + (a * a * du * u.1 + b * b * dv * v.1) / k,
+        );
+        Some((p, (-d.1, d.0)))
     }
 
     /// The normal of `ellipse` at the point `t` on it, as a line through `t`: it runs along the
@@ -605,9 +724,13 @@ impl Builder<'_> {
         let normal = self.ellipse_normal(t, ellipse, out)?;
         out.push(Constraint::Perpendicular(l, normal));
         match other {
-            Contact::Circle(circle) => {
+            Contact::Round(circle) => {
                 let c = self.e(circle)?;
-                let DocEntity::Circle { center, .. } = self.sketch.entity(circle)?.entity else { return None };
+                let (DocEntity::Circle { center, .. } | DocEntity::Arc { center, .. }) =
+                    self.sketch.entity(circle)?.entity
+                else {
+                    return None;
+                };
                 let radius_line = self.line(self.e(center)?, t);
                 out.push(Constraint::PointOn { point: t, curve: c });
                 out.push(Constraint::Perpendicular(l, radius_line));
@@ -641,17 +764,18 @@ fn relation(b: &mut Builder<'_>, r: Relation, out: &mut Vec<Constraint>) -> Opti
     let e = |id: EntityId| b.index.of.get(&id).copied();
     let is_ellipse =
         |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
-    let is_circle =
-        |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Circle { .. }, .. }));
+    let is_circle = |id: EntityId| {
+        matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Circle { .. } | DocEntity::Arc { .. }, .. }))
+    };
     match r {
         Relation::Tangent(a, c) if is_ellipse(a) && is_ellipse(c) => {
             return b.ellipse_contact(a, Contact::Ellipse(c), out);
         }
         Relation::Tangent(a, c) if is_ellipse(a) && is_circle(c) => {
-            return b.ellipse_contact(a, Contact::Circle(c), out);
+            return b.ellipse_contact(a, Contact::Round(c), out);
         }
         Relation::Tangent(a, c) if is_ellipse(c) && is_circle(a) => {
-            return b.ellipse_contact(c, Contact::Circle(a), out);
+            return b.ellipse_contact(c, Contact::Round(a), out);
         }
         _ => {}
     }
@@ -716,18 +840,61 @@ pub fn evaluate_sketch(
     solver: &dyn Solver,
     cancel: &CancellationToken,
 ) -> Result<Evaluation, Cancelled> {
-    let first = evaluate_branch(sketch, solver, cancel, false)?;
+    let first = evaluate_branch(sketch, solver, cancel, false, ContactGuess::Closest, None)?;
     let has_ellipse = sketch.entities().any(|(_, e)| matches!(e.entity, DocEntity::Ellipse { .. }));
     if has_ellipse && matches!(first.health, Health::NotConverged | Health::Conflict) {
         // Which axis of an ellipse is the longer one is a branch the solver cannot jump (G8-editor,
-        // S01): when this one failed, the same sketch with the roles decided the other way round
-        // gets a go, and is taken when it holds.
-        let second = evaluate_branch(sketch, solver, cancel, true)?;
-        if second.health.is_valid() {
-            return Ok(second);
+        // S01), and a touch between curves that lie deep in each other has no obvious place to start
+        // from (G9-editor): when this attempt failed, the same sketch with the roles decided the
+        // other way round and with the touch started where the outlines face each other gets a go,
+        // and the first that holds is taken.
+        let touching =
+            sketch.constraints().any(|(_, c)| matches!(c, SketchConstraint::Relation(Relation::Tangent(..))));
+        let mut attempts: Vec<(bool, ContactGuess, Option<Seed>)> = vec![(true, ContactGuess::Closest, None)];
+        if touching {
+            // Curves that lie deep in each other: start from where they stop crossing (nearest to
+            // the drawn place first), then from where their outlines face each other.
+            for seed in contact_seed_shifts(sketch).into_iter().take(4) {
+                attempts.push((false, ContactGuess::Closest, Some(seed)));
+                attempts.push((true, ContactGuess::Closest, Some(seed)));
+            }
+            attempts.extend([
+                (false, ContactGuess::Support, None),
+                (false, ContactGuess::SupportAway, None),
+                (true, ContactGuess::Support, None),
+                (true, ContactGuess::SupportAway, None),
+            ]);
+        }
+        for (flip, guess, seed) in attempts {
+            let next = evaluate_branch(sketch, solver, cancel, flip, guess, seed)?;
+            if next.health.is_valid() {
+                return Ok(next);
+            }
         }
     }
     Ok(first)
+}
+
+/// A place to start an ellipse from: the ellipse and the shift of its centre (G9-editor).
+type Seed = (EntityId, (f64, f64));
+
+/// The places the second ellipse of a touch can start from when the two lie deep in each other,
+/// nearest to the drawn place first.
+fn contact_seed_shifts(sketch: &Sketch) -> Vec<Seed> {
+    let Ok(params) = Parameters::from_definitions(sketch.parameters().iter()).and_then(|p| p.evaluate()) else {
+        return Vec::new();
+    };
+    let Some((problem, index)) = lower(sketch) else { return Vec::new() };
+    let builder = Builder {
+        sketch,
+        params: &params,
+        problem,
+        index,
+        ellipses: BTreeMap::new(),
+        flip: false,
+        guess: ContactGuess::Closest,
+    };
+    builder.contact_seeds()
 }
 
 /// One attempt of [`evaluate_sketch`]; `flip` decides the roles of the axes of the ellipses the
@@ -737,6 +904,8 @@ fn evaluate_branch(
     solver: &dyn Solver,
     cancel: &CancellationToken,
     flip: bool,
+    guess: ContactGuess,
+    seed: Option<Seed>,
 ) -> Result<Evaluation, Cancelled> {
     cancel.check()?;
     let mut diagnostics: BTreeMap<ConstraintId, Diagnosis> =
@@ -769,7 +938,10 @@ fn evaluate_branch(
     let Some((problem, index)) = lower(sketch) else {
         return Ok(failed(diagnostics, None, None));
     };
-    let mut builder = Builder { sketch, params: &params, problem, index, ellipses: BTreeMap::new(), flip };
+    let mut builder = Builder { sketch, params: &params, problem, index, ellipses: BTreeMap::new(), flip, guess };
+    if let Some((ellipse, shift)) = seed {
+        builder.shift_ellipse(ellipse, shift);
+    }
     // The document constraint each solver constraint belongs to. One constraint of the document can
     // be several in the solver (an ellipse needs its auxiliary geometry tied down as well).
     let mut to_sketch: Vec<ConstraintId> = Vec::new();

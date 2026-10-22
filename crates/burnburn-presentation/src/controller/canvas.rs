@@ -265,6 +265,20 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
         ToolStep::Commit(edit) => {
             s.tool_measurement = None;
             let reshaped = matches!(edit, EditCommit::Reshape(_));
+            // A Bézier that had to go straight says why (G9-editor, S01).
+            let went_straight = match &edit {
+                EditCommit::Extend { note, .. }
+                    if matches!(
+                        note,
+                        burnburn_geometry::ExtendNote::StraightTurns
+                            | burnburn_geometry::ExtendNote::StraightTooFar
+                            | burnburn_geometry::ExtendNote::StraightMisses
+                    ) =>
+                {
+                    Some(*note)
+                }
+                _ => None,
+            };
             let kind = name_kind(&edit);
             let name = kind.map(|k| s.next_name(k)).unwrap_or_default();
             let snapshot = s.doc.snapshot();
@@ -281,7 +295,11 @@ pub(super) fn handle_step(s: &mut Session, document: DocumentId, step: ToolStep,
                     if reshaped {
                         super::reshape::leave(s);
                     }
-                    after_change(s, document, Ok(outcome))
+                    let update = after_change(s, document, Ok(outcome));
+                    if let Some(note) = went_straight {
+                        s.messages.push(StatusMessage { key: MessageKey::ExtendedStraight(note) });
+                    }
+                    update
                 }
                 // "Nothing to change" is said in words; a real refusal stays a rejected command.
                 Err(e) if shapes::is_nothing_to_do(&e) => shapes::failed_commit(s, document, e),

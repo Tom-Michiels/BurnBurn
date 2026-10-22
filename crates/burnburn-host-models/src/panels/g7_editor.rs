@@ -62,6 +62,13 @@ pub enum EditorControl {
     ModNewCenterX,
     ModNewCenterY,
     ModNewSweep,
+    // --- A linear series and a series along a path (G9-editor).
+    ModNewLinearCount,
+    ModNewStepX,
+    ModNewStepY,
+    ModNewPathCount,
+    /// The copies of a series along a path turn with the path (a check).
+    ModNewPathOrient,
     /// Appends the step to chain `modifier`.
     ModAddStep {
         modifier: u64,
@@ -78,6 +85,8 @@ pub enum EditorControl {
     /// The space between parts for the automatic distribution, and the button that distributes.
     PlatesGap,
     PlatesDistribute,
+    /// Distributes and lets the nest lay the instances on their plates (G9-editor).
+    PlatesDistributeNest,
     /// A new chain on the selection with the step as its first.
     ModNewChain,
     // --- Plates (P06).
@@ -138,6 +147,13 @@ pub enum EditorControl {
     /// A choice: rigid, then warp.
     TextPathDistort,
     TextPathUnbind,
+    // --- The content of the selected texts (G9, E07).
+    /// Where to insert or delete (characters from the start; negative from the end; empty is the end).
+    TextEditPosition,
+    TextEditInsert,
+    TextEditInsertGo,
+    TextEditCount,
+    TextEditDeleteGo,
 }
 
 fn t(text: G7Text, locale: Locale) -> String {
@@ -235,6 +251,8 @@ fn plate_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
     lines.push(G5Line::Text(t(G7Text::DistributeHint, locale)));
     lines.push(field(EditorControl::PlatesGap, t(G7Text::DistributeGap, locale), "5".to_owned()));
     lines.push(button(EditorControl::PlatesDistribute, t(G7Text::DistributeButton, locale), true));
+    lines.push(G5Line::Text(t(G7Text::DistributeNestHint, locale)));
+    lines.push(button(EditorControl::PlatesDistributeNest, t(G7Text::DistributeNestButton, locale), true));
 
     if s.parts.iter().any(|p| !p.instances.is_empty()) {
         lines.push(G5Line::Heading(t(G7Text::InstancePlatesHeading, locale)));
@@ -366,7 +384,7 @@ pub(super) fn modifier_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Li
 }
 
 /// The kinds of step the add block offers, in the order of its choice (see [`new_step`]).
-const NEW_KINDS: [G7Text; 7] = [
+const NEW_KINDS: [G7Text; 9] = [
     G7Text::NewKindOffset,
     G7Text::NewKindUnion,
     G7Text::NewKindDifference,
@@ -374,6 +392,8 @@ const NEW_KINDS: [G7Text; 7] = [
     G7Text::NewKindXor,
     G7Text::NewKindGrid,
     G7Text::NewKindCircle,
+    G7Text::NewKindLinear,
+    G7Text::NewKindPath,
 ];
 
 /// The "add a step" block: the kind, the numbers of every kind, a button per chain in `chains`
@@ -397,9 +417,18 @@ fn add_step_lines(s: &StructureViewModel, chains: Vec<&ModifierRow>, locale: Loc
         (EditorControl::ModNewCenterX, G7Text::NewCenterX, "0"),
         (EditorControl::ModNewCenterY, G7Text::NewCenterY, "0"),
         (EditorControl::ModNewSweep, G7Text::NewSweep, "360"),
+        (EditorControl::ModNewLinearCount, G7Text::NewLinearCount, "3"),
+        (EditorControl::ModNewStepX, G7Text::NewStepX, "20"),
+        (EditorControl::ModNewStepY, G7Text::NewStepY, "0"),
+        (EditorControl::ModNewPathCount, G7Text::NewPathCount, "4"),
     ] {
         lines.push(field(control, t(caption, locale), default.to_owned()));
     }
+    lines.push(G5Line::Check {
+        control: G5Control::Editor(EditorControl::ModNewPathOrient),
+        caption: t(G7Text::NewPathOrient, locale),
+        on: true,
+    });
     for chain in chains {
         lines.push(button(
             EditorControl::ModAddStep { modifier: chain.id },
@@ -431,6 +460,16 @@ fn new_step(values: &[(G5Control, String)]) -> NewModifierStep {
             center_x: text(EditorControl::ModNewCenterX),
             center_y: text(EditorControl::ModNewCenterY),
             sweep: text(EditorControl::ModNewSweep),
+        },
+        7 => NewModifierStep::Linear {
+            count: text(EditorControl::ModNewLinearCount),
+            step_x: text(EditorControl::ModNewStepX),
+            step_y: text(EditorControl::ModNewStepY),
+        },
+        8 => NewModifierStep::Path {
+            count: text(EditorControl::ModNewPathCount),
+            // Untouched, the copies turn with the path (the check is shown on).
+            orient: flag_of(values, G5Control::Editor(EditorControl::ModNewPathOrient)).unwrap_or(true),
         },
         _ => NewModifierStep::Offset { distance: text(EditorControl::ModNewDistance) },
     }
@@ -545,6 +584,40 @@ pub(super) fn text_path_lines(doc: &DocumentViewModel, locale: Locale) -> Option
     });
     lines.push(button(EditorControl::TextPathUnbind, t(G7Text::TextPathUnbind, locale), true));
     if let Some(issue) = doc.text_toolbar.as_ref().and_then(|b| b.issue) {
+        lines.push(G5Line::Problem(super::text::text_issue_text(issue, locale)));
+    }
+    Some(lines)
+}
+
+/// The panel of the content of the selected text(s) (G9-editor, E07). `None` when no text is selected.
+pub(super) fn text_content_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Line>> {
+    const SHOWN: usize = 6;
+    const PREVIEW_CHARS: usize = 40;
+    let bar = doc.text_toolbar.as_ref()?;
+    let mut lines = vec![G5Line::Text(g7_fmt(G7Text::TextContentTexts, locale, &[&bar.contents.len().to_string()]))];
+    for (n, content) in bar.contents.iter().take(SHOWN).enumerate() {
+        let mut preview: String = content.chars().take(PREVIEW_CHARS).collect();
+        if content.chars().count() > PREVIEW_CHARS {
+            preview.push('…');
+        }
+        let chars = content.chars().count().to_string();
+        let number = (n + 1).to_string();
+        // A variable text: the sample it resolves to for the next job, beside the template.
+        lines.push(G5Line::Text(match bar.samples.get(n).and_then(Option::as_ref) {
+            Some(sample) => g7_fmt(G7Text::TextContentRowSample, locale, &[&number, &preview, &chars, sample]),
+            None => g7_fmt(G7Text::TextContentRow, locale, &[&number, &preview, &chars]),
+        }));
+    }
+    if bar.contents.len() > SHOWN {
+        lines.push(G5Line::Text(g7_fmt(G7Text::TextContentMore, locale, &[&(bar.contents.len() - SHOWN).to_string()])));
+    }
+    lines.push(G5Line::Text(t(G7Text::TextContentHint, locale)));
+    lines.push(field(EditorControl::TextEditPosition, t(G7Text::TextContentPosition, locale), String::new()));
+    lines.push(field(EditorControl::TextEditInsert, t(G7Text::TextContentInsert, locale), String::new()));
+    lines.push(button(EditorControl::TextEditInsertGo, t(G7Text::TextContentInsertGo, locale), true));
+    lines.push(field(EditorControl::TextEditCount, t(G7Text::TextContentCount, locale), "1".to_owned()));
+    lines.push(button(EditorControl::TextEditDeleteGo, t(G7Text::TextContentDeleteGo, locale), true));
+    if let Some(issue) = bar.issue {
         lines.push(G5Line::Problem(super::text::text_issue_text(issue, locale)));
     }
     Some(lines)
@@ -731,10 +804,34 @@ pub(super) fn editor_intent(
             document,
             StructureEdit::DistributeOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
         ),
+        EditorControl::TextEditPosition | EditorControl::TextEditInsert | EditorControl::TextEditCount => None,
+        EditorControl::TextEditInsertGo => doc.text_toolbar.as_ref().map(|_| UiIntent::Text {
+            document,
+            edit: TextEdit::InsertAt {
+                position: typed(EditorControl::TextEditPosition).unwrap_or_default(),
+                text: typed(EditorControl::TextEditInsert).unwrap_or_default(),
+            },
+        }),
+        EditorControl::TextEditDeleteGo => doc.text_toolbar.as_ref().map(|_| UiIntent::Text {
+            document,
+            edit: TextEdit::DeleteAt {
+                position: typed(EditorControl::TextEditPosition).unwrap_or_default(),
+                count: typed(EditorControl::TextEditCount).unwrap_or_default(),
+            },
+        }),
+        EditorControl::PlatesDistributeNest => structure(
+            document,
+            StructureEdit::DistributeAndNestOverPlates { gap: typed(EditorControl::PlatesGap).unwrap_or_default() },
+        ),
         EditorControl::ModAddStep { modifier } => {
             chain(modifier)?;
             structure(document, StructureEdit::AddModifierStep { modifier, step: new_step(values) })
         }
+        EditorControl::ModNewLinearCount
+        | EditorControl::ModNewStepX
+        | EditorControl::ModNewStepY
+        | EditorControl::ModNewPathCount
+        | EditorControl::ModNewPathOrient => None,
         EditorControl::ModNewChain => (doc.structure.selected > 0).then(|| UiIntent::Structure {
             document,
             edit: StructureEdit::CreateModifierChain { step: new_step(values) },

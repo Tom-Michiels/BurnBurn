@@ -22,7 +22,7 @@ use crate::task::TaskError;
 /// Flattening accuracy of the outlines the raster is made from (mm).
 const OUTLINE_TOLERANCE_MM: f64 = 0.02;
 /// Space between two sheets laid side by side (mm).
-const SHEET_GAP_MM: f64 = 10.0;
+pub(crate) const SHEET_GAP_MM: f64 = 10.0;
 /// Candidate positions tried in total before the rest is reported as not placed.
 const CANDIDATE_BUDGET: u64 = 40_000_000;
 
@@ -76,12 +76,105 @@ pub struct NestJob {
     /// Count the edges the parts share.
     common_line: bool,
     skipped: Vec<NestSkippedRow>,
+    /// Further nests run after this one with their own parts and sheets, in one task: the plates
+    /// of "distribute and nest" (G9-editor). Their placements and rows are added to the output.
+    then: Vec<NestJob>,
 }
 
 impl NestJob {
     pub fn part_count(&self) -> usize {
-        self.parts.len()
+        self.parts.len() + self.then.iter().map(NestJob::part_count).sum::<usize>()
     }
+}
+
+/// A plate as the nest of "distribute and nest" sees it: where its sheet lies and what goes on it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlateSheet {
+    /// Left edge of the sheet in the document (mm); the sheet spans `origin_x..origin_x + width`
+    /// and `0..height`.
+    pub origin_x: f64,
+    pub width: f64,
+    pub height: f64,
+    /// The parts on the plate: the objects of each instance move as one body.
+    pub bodies: Vec<Vec<GeometryId>>,
+}
+
+/// One nest per plate with parts, run one after the other in a single job. Everything else that is
+/// closed and visible is in the way, as in a nest of the selection. `settings` supply the rules
+/// (rotations, mirror, raster step, spacing); the sheets are the plates.
+pub fn build_plate_job(
+    snapshot: &DocumentSnapshot,
+    plates: &[PlateSheet],
+    settings: &NestSettings,
+) -> Result<NestJob, BuildError> {
+    let rotations = RotationSet::new(settings.rotations.degrees()).map_err(|_| BuildError::Geometry)?;
+    let length = |mm: f64| Length::from_mm(mm).map_err(|_| BuildError::Geometry);
+    let moving: Vec<GeometryId> = plates.iter().flat_map(|p| p.bodies.iter().flatten().copied()).collect();
+    let keep_out: Vec<Path> = snapshot
+        .draw_order()
+        .into_iter()
+        .filter(|id| !moving.contains(id) && !snapshot.is_hidden(*id))
+        .filter_map(|id| snapshot.object(id))
+        .filter(|o| is_closed(o.path()))
+        .map(|o| o.path().as_ref().clone())
+        .collect();
+    let mut jobs: Vec<NestJob> = Vec::new();
+    for (index, plate) in plates.iter().enumerate().filter(|(_, p)| !p.bodies.is_empty()) {
+        let parts: Vec<NestPart> = plate
+            .bodies
+            .iter()
+            .enumerate()
+            .map(|(i, members)| {
+                let subpaths = members
+                    .iter()
+                    .filter_map(|id| snapshot.object(*id))
+                    .flat_map(|o| o.path().subpaths().iter().cloned())
+                    .collect();
+                NestPart {
+                    key: PartKey(i as u32),
+                    outline: Path::from_subpaths(subpaths),
+                    count: 1,
+                    rotations: rotations.clone(),
+                    grain_deg: None,
+                }
+            })
+            .collect();
+        let rect = Rect::new(Point::new(plate.origin_x, 0.0), length(plate.width)?, length(plate.height)?)
+            .map_err(|_| BuildError::Geometry)?;
+        let stock = Stock {
+            id: StockId(index as u32),
+            outline: Path::rectangle(rect),
+            keep_out: keep_out.clone(),
+            grain_deg: None,
+        };
+        jobs.push(NestJob {
+            parts,
+            members: plate.bodies.clone(),
+            stocks: vec![stock],
+            options: NestOptions {
+                mirror: match settings.mirror {
+                    NestMirror::Forbidden => MirrorPolicy::Forbidden,
+                    NestMirror::Allowed => MirrorPolicy::Allowed,
+                },
+            },
+            params: NestParams {
+                spacing: length(settings.padding_mm)?,
+                edge_margin: length(settings.edge_buffer_mm)?,
+                step: length(settings.step_mm)?,
+                tolerance: ProductionTolerance::new(length(OUTLINE_TOLERANCE_MM)?).map_err(|_| BuildError::Geometry)?,
+                max_candidates: CANDIDATE_BUDGET,
+                basis: UtilisationBasis::StockArea,
+            },
+            packing: Packing::Grid,
+            common_line: false,
+            skipped: Vec::new(),
+            then: Vec::new(),
+        });
+    }
+    let mut jobs = jobs.into_iter();
+    let mut first = jobs.next().ok_or(BuildError::NothingToNest)?;
+    first.then = jobs.collect();
+    Ok(first)
 }
 
 /// One part's place on the sheet.
@@ -469,11 +562,28 @@ pub fn build_job(
         packing: if settings.tight || settings.common_line { Packing::Tight } else { Packing::Grid },
         common_line: settings.common_line,
         skipped,
+        then: Vec::new(),
     })
 }
 
 /// Runs the job. Cancellation is checked inside the packing; a cancelled job gives no result.
 pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput, TaskError> {
+    let mut output = run_one(job, cancel)?;
+    for next in &job.then {
+        let more = run_nest(next, cancel)?;
+        output.placements.extend(more.placements);
+        output.unplaced.extend(more.unplaced);
+        output.skipped.extend(more.skipped);
+        output.mirrored += more.mirrored;
+        output.sheets.extend(more.sheets);
+        output.parts.extend(more.parts);
+        output.complete_sets = output.complete_sets.min(more.complete_sets);
+        output.utilisation = (output.utilisation + more.utilisation) / 2.0;
+    }
+    Ok(output)
+}
+
+fn run_one(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput, TaskError> {
     let result =
         nest_packed(&job.parts, &job.stocks, &job.params, &job.options, job.packing, cancel).map_err(|e| match e {
             NestError::Cancelled => TaskError::Cancelled,
@@ -565,6 +675,7 @@ mod tests {
             options: NestOptions { mirror: policy },
             packing: Packing::Grid,
             common_line: false,
+            then: Vec::new(),
             params: NestParams {
                 spacing: mm(0.0),
                 edge_margin: mm(0.0),

@@ -45,23 +45,27 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   niet meer); dezelfde naam in meer jobs vraagt de keuze van de operator. Open blijft: bij W09 het bewijs van de tekenconventie van de pointeroffset op een
   machine; bij W06 de snelheid en kwaliteit op echte camerabeelden (de kanteling is een zoekbenadering, geen gemeten perspectief), spookposes bij een lage
   drempel en het uiterlijk van het wijzen met de muis (alleen headless geoefend).
-- **Editor** (G7-editor en G8-editor hebben E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md` en
-  `docs/dev-notes/G8-editor.md`; wat blijft):
+- **Editor** (G7-editor, G8-editor en G9-editor hebben E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md`,
+  `docs/dev-notes/G8-editor.md` en `docs/dev-notes/G9-editor.md`; wat blijft):
   E05 afronden/afschuinen tussen krommen is numeriek (Newton op de twee parameters); een straal die op geen van beide zijden past
-  is `TooLarge`, een hoek tussen twee bogen met een raaklijn-continu gladde overgang is geen hoek; verlengen van een Bézier voorbij
-  3 parameterlengtes gaat recht door langs de eindraaklijn (geen verdere kubiek); E06 de stapel staat in een zwevend paneel dat
-  vanzelf opent, niet ingebouwd in de vaste inspecteurkolom van het venster, en de native AppKit-test dekt het Stapelpaneel
-  niet; een lineaire reeks of een reeks langs een pad toevoegen kan alleen via Schikken ▸ Reeks…; E07 typen voegt tekens toe
-  aan elke geselecteerde tekst (geen wissen of invoegen midden in de tekst voor meerdere); E08 een gebonden tekst verplaatsen
-  past alleen de startafstand aan (de component langs de gids; een verplaatsing dwars op de gids, draaien en schalen worden
-  geweigerd), de richting is die van de eerste koorde van de gevlakte gids (binnen 0,02 rad), en de variabele tekst toont in het
-  document de sjabloon gebogen (de job bevat de opgeloste tekst); S07/P06 formules kennen `+ - * /`, haakjes en parameters
-  (geen functies), een vaste vorm kent alleen een doos (geen parameters of formules), het verdelen over platen kiest de plaat
-  met rijen van de bounding box (hoogste eerst, kwartslag toegestaan) en legt niets neer: de nest bepaalt de plek, een
-  instantie zonder uitvoer telt als zonder ruimte; S01 de ellips-ellipsraakrelatie convergeert wanneer de getekende ellipsen
-  hooguit enkele mm van elkaar liggen (getest tot 4 mm tussenruimte en een lichte overlap, niet bij diepe overlap), een boog
-  raakt een ellips niet, en een schets met een ellips die niet convergeert wordt één keer opnieuw opgelost met omgekeerde
-  asrol.
+  is `TooLarge`, een hoek tussen twee bogen met een raaklijn-continu gladde overgang is geen hoek. E06 de stapel zit sinds G9 in de
+  inspecteurkolom (Mac: onderaan een scrollende kolom, komt in beeld als hij opent; Windows: sectie van het inspecteurformulier),
+  met een native test (stil); het uiterlijk is niet bekeken, de Win32-sectie is nooit gedraaid. E07 invoegen en wissen midden in
+  de tekst kan voor meerdere teksten via het paneel "Tekst bewerken" met één regel voor alle teksten (tekens vanaf het begin, negatief
+  vanaf het eind, voorbij het einde is het einde); er is nog steeds geen cursor in de tekst op het canvas, en een samengesteld teken
+  kan worden gesplitst (tekens zijn Unicode-scalaarwaarden); het paneel opent vanzelf bij elke tekstselectie, uiterlijk niet bekeken.
+  E08 een gebonden tekst dwars op de gids verplaatsen past de afstand tot de gids aan, de richting is de echte raaklijn, draaien,
+  schalen en schuinen van alleen de tekst worden geweigerd met uitleg (draai de gids mee of maak de tekst los); de omtrek van een
+  variabele tekst op het canvas is nog de sjabloon gebogen, de opgeloste voorbeeldwaarde staat ernaast in de werkbalk en het paneel
+  (passen op de voorbeeldwaarde wordt niet gecontroleerd). S07/P06 formules kennen functies (`min max abs round floor ceil sqrt pow
+  clamp pi`), een vaste vorm kan een doos met parameters of formules hebben (`PartShape::Fitted`, de vorm wordt van zijn eigen doos
+  gerekt; een vaste vorm kent nog geen parameters binnen in het pad zelf), "Verdeel en nest" legt per plaat de exemplaren met de
+  bestaande nest (platen naast elkaar vanaf de oorsprong, kwartslagen, niet spiegelen; de platen zijn geen objecten op het canvas).
+  S01 de ellips-ellipsraakrelatie convergeert nu ook bij diepe overlap (startplaatsen langs de middenlijn; bij twee even ver
+  verwijderde oplossingen is de keuze willekeurig en wordt dat niet gemeld), een boog raakt een ellips (als zijn hele cirkel: het
+  raakpunt hoeft niet op de boogspan te liggen), een Bézier wordt tot 3 parameterlengtes altijd en tot 30 als stabiele kubiek
+  verlengd, daarna recht langs de eindraaklijn met de reden in de statusregel (drempels 3, 30 en 75 graden zijn een keuze, niet
+  gemeten); een schets met een ellips die niet convergeert wordt nog steeds opnieuw opgelost met omgekeerde asrol.
   CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`).
 - **Trace** (G7-trace, G8-trace en G9-trace-infra: gebouwd, zie `docs/dev-notes/G7-trace.md`, `G8-trace.md` en `G9-trace-infra.md`; wat blijft): het
   uiterlijk en het gevoel van de aanwijsstanden (foto op het blad, kwast, beschermen van contouren en hoeken, de omtrekken van A/B,

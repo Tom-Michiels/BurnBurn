@@ -379,6 +379,8 @@ pub fn react(
     aux: &FormAux<'_>,
 ) -> FormOutcome {
     match kind {
+        // A control of the stack section of the inspector: the stack panel's own intent (G9-editor).
+        FormKind::Inspector if matches!(id, ControlId::G5(_)) => g5::react(G5Panel::Stack, id, values, ctx),
         FormKind::Inspector => inspector::react(id, value, ctx),
         FormKind::Layers => layers::react(id, value, values, ctx, aux.state),
         FormKind::CutSettings => cut_settings::react(id, value, values, ctx),

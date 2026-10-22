@@ -35,6 +35,8 @@ use crate::panels_image::BitmapImage;
 const PANEL_WIDTH: f64 = 440.0;
 const MARGIN: f64 = 12.0;
 const CAPTION_WIDTH: f64 = 200.0;
+/// The caption of a field in the narrow inspector column.
+const NARROW_CAPTION_WIDTH: f64 = 96.0;
 const ROW_HEIGHT: f64 = 28.0;
 const HEADING_HEIGHT: f64 = 24.0;
 const TEXT_LINE_HEIGHT: f64 = 16.0;
@@ -43,6 +45,10 @@ const MEMO_HEIGHT: f64 = 160.0;
 const IMAGE_SIZE: f64 = 96.0;
 /// The panel never grows beyond this; the content scrolls instead.
 const MAX_HEIGHT: f64 = 640.0;
+/// The stack of the selection in the inspector column is at most this high; its content scrolls.
+const STACK_HEIGHT: f64 = 340.0;
+/// Space around the stack in the inspector column.
+const INSPECTOR_GAP: f64 = 8.0;
 
 /// The widget of one line, and what was last copied into it.
 enum Widget {
@@ -131,7 +137,7 @@ fn is_check(control: G5Control) -> bool {
         G5Control::OffsetKeepSources
             | G5Control::ContourProtect { .. }
             | G5Control::ContourKeep { .. }
-            | G5Control::Editor(E::ModStepOn { .. } | E::TextPathReverse)
+            | G5Control::Editor(E::ModStepOn { .. } | E::TextPathReverse | E::ModNewPathOrient)
     )
 }
 
@@ -170,6 +176,21 @@ pub(crate) struct G5Section {
     /// The menu item asked for the panel (notes and centre-line decisions open by themselves).
     pub(crate) requested: bool,
     pub(crate) shown: bool,
+    /// The width the lines are laid out for: the panel's, or the inspector column's.
+    width: f64,
+    /// The width of the caption beside a field or pop-up.
+    caption_width: f64,
+    /// `Some`: the panel is a section of the inspector column of the document window (the stack of
+    /// the selection, G9-editor, E06): where it lies, and not a floating panel.
+    embedded: Option<Embedded>,
+}
+
+/// Where an embedded section lies in its host view.
+#[derive(Debug, Clone, Copy)]
+struct Embedded {
+    x: f64,
+    y: f64,
+    max_height: f64,
 }
 
 pub(crate) fn g5_section(
@@ -215,7 +236,54 @@ pub(crate) fn g5_section(
         widgets: Vec::new(),
         requested: false,
         shown: false,
+        width: PANEL_WIDTH,
+        caption_width: CAPTION_WIDTH,
+        embedded: None,
     }
+}
+
+/// Puts the stack of the selection into the inspector column of the document window (G9-editor,
+/// E06): the column gets a scroll view so that the stack, which sits below everything the column
+/// already holds, can be reached whatever the height of the window. Returns the view that replaces
+/// the inspector in the split view.
+#[allow(unsafe_code)]
+pub(crate) fn embed_stack(
+    mtm: MainThreadMarker,
+    inspector: &NSView,
+    sections: &mut [G5Section],
+    column_width: f64,
+    window_height: f64,
+) -> Retained<NSScrollView> {
+    // The lowest thing the column holds, then room below it for the stack.
+    let lowest = inspector.subviews().iter().map(|v| v.frame().origin.y).fold(f64::INFINITY, f64::min);
+    let lowest = if lowest.is_finite() { lowest } else { 0.0 };
+    let needed = (window_height - lowest) + INSPECTOR_GAP + STACK_HEIGHT + INSPECTOR_GAP;
+    let total = needed.max(window_height);
+    let shift = total - window_height;
+    if shift > 0.0 {
+        // The column is laid out from the top: grow it at the bottom.
+        for v in inspector.subviews().iter() {
+            let f = v.frame();
+            v.setFrameOrigin(NSPoint::new(f.origin.x, f.origin.y + shift));
+        }
+    }
+    inspector.setFrameSize(NSSize::new(column_width, total));
+    if let Some(section) = sections.iter_mut().find(|s| s.panel_kind == G5Panel::Stack) {
+        section.embed(
+            mtm,
+            inspector,
+            Embedded { x: INSPECTOR_GAP, y: INSPECTOR_GAP, max_height: STACK_HEIGHT },
+            column_width - 2.0 * INSPECTOR_GAP,
+        );
+    }
+    let wrapper = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(0.0, 0.0, column_width, window_height));
+    wrapper.setHasVerticalScroller(true);
+    wrapper.setDrawsBackground(false);
+    wrapper.setAutohidesScrollers(true);
+    wrapper.setDocumentView(Some(inspector));
+    // The column starts at its top.
+    inspector.scrollPoint(NSPoint::new(0.0, total));
+    wrapper
 }
 
 impl G5Section {
@@ -244,10 +312,25 @@ impl G5Section {
     }
 
     pub(crate) fn hide(&mut self) {
-        if self.shown {
+        if self.embedded.is_some() {
+            self.shown = false;
+            self.scroll.setHidden(true);
+        } else if self.shown {
             self.shown = false;
             self.panel.orderOut(None);
         }
+    }
+
+    /// Makes the section part of `host` instead of a floating panel (G9-editor, E06).
+    fn embed(&mut self, mtm: MainThreadMarker, host: &NSView, at: Embedded, width: f64) {
+        self.width = width;
+        self.caption_width = NARROW_CAPTION_WIDTH;
+        self.embedded = Some(at);
+        // The scroll view is the panel's content view until it moves into the host.
+        self.panel.setContentView(Some(&NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0))));
+        self.scroll.setFrame(rect(at.x, at.y, width, 1.0));
+        self.scroll.setHidden(true);
+        host.addSubview(&self.scroll);
     }
 
     /// The visible widgets of the panel, in line order, for tests that drive them like a user.
@@ -309,7 +392,7 @@ impl G5Section {
         self.widgets.clear();
         let any: &AnyObject = self.target.as_ref();
         let mut controls: Vec<(G5Control, Retained<NSView>)> = Vec::new();
-        let full = PANEL_WIDTH - 2.0 * MARGIN;
+        let full = self.width - 2.0 * MARGIN;
         for line in lines {
             match line {
                 G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) => {
@@ -343,9 +426,10 @@ impl G5Section {
                     self.widgets.push(Widget::Memo { scroll, text, pushed });
                 }
                 G5Line::Field { control, .. } => {
-                    let caption = label(mtm, "", rect(MARGIN, 0.0, CAPTION_WIDTH, 20.0));
+                    let caption = label(mtm, "", rect(MARGIN, 0.0, self.caption_width, 20.0));
                     caption.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-                    let f = field(mtm, rect(MARGIN + CAPTION_WIDTH + 6.0, 0.0, full - CAPTION_WIDTH - 6.0, 24.0));
+                    let f =
+                        field(mtm, rect(MARGIN + self.caption_width + 6.0, 0.0, full - self.caption_width - 6.0, 24.0));
                     // SAFETY: the target is weak; the section keeps it and clears it before it goes.
                     unsafe { f.setTarget(Some(any)) };
                     // SAFETY: `g5Control:` takes the sender (`v@:@`).
@@ -361,11 +445,11 @@ impl G5Section {
                     self.widgets.push(Widget::Field { caption, field: f, pushed });
                 }
                 G5Line::Choice { control, options, .. } => {
-                    let caption = label(mtm, "", rect(MARGIN, 0.0, CAPTION_WIDTH, 20.0));
+                    let caption = label(mtm, "", rect(MARGIN, 0.0, self.caption_width, 20.0));
                     caption.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
                     let popup = NSPopUpButton::initWithFrame_pullsDown(
                         NSPopUpButton::alloc(mtm),
-                        rect(MARGIN + CAPTION_WIDTH + 6.0, 0.0, full - CAPTION_WIDTH - 6.0, 26.0),
+                        rect(MARGIN + self.caption_width + 6.0, 0.0, full - self.caption_width - 6.0, 26.0),
                         false,
                     );
                     for o in options {
@@ -420,7 +504,7 @@ impl G5Section {
 
     /// Copies the lines into the widgets and lays them out from the top. Returns the content height.
     fn fill(&mut self, lines: &[G5Line], locale: Locale) -> f64 {
-        let full = PANEL_WIDTH - 2.0 * MARGIN;
+        let full = self.width - 2.0 * MARGIN;
         let wrapped = |t: &str, width: f64| {
             let chars_per_line = (width / 6.5).max(10.0) as usize;
             t.chars().count().div_ceil(chars_per_line).max(1) as f64
@@ -433,7 +517,7 @@ impl G5Section {
                 G5Line::Text(t) | G5Line::Problem(t) => wrapped(t, full) * TEXT_LINE_HEIGHT + 6.0,
                 G5Line::Memo { .. } => MEMO_HEIGHT + 8.0,
                 G5Line::Field { caption, .. } | G5Line::Choice { caption, .. } => {
-                    (wrapped(caption, CAPTION_WIDTH) * TEXT_LINE_HEIGHT + 8.0).max(ROW_HEIGHT)
+                    (wrapped(caption, self.caption_width) * TEXT_LINE_HEIGHT + 8.0).max(ROW_HEIGHT)
                 }
                 G5Line::Check { .. } | G5Line::Button { .. } => ROW_HEIGHT,
                 G5Line::Image(_) => IMAGE_SIZE + 8.0,
@@ -467,11 +551,11 @@ impl G5Section {
                     ))));
                 }
                 (G5Line::Field { caption, text, .. }, Widget::Field { caption: c, field, pushed }) => {
-                    c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, *height - 4.0));
+                    c.setFrame(rect(MARGIN, y + 2.0, self.caption_width, *height - 4.0));
                     field.setFrame(rect(
-                        MARGIN + CAPTION_WIDTH + 6.0,
+                        MARGIN + self.caption_width + 6.0,
                         y + (*height - 24.0) / 2.0,
-                        full - CAPTION_WIDTH - 6.0,
+                        full - self.caption_width - 6.0,
                         24.0,
                     ));
                     set_text(c, caption);
@@ -483,11 +567,11 @@ impl G5Section {
                     field.setAccessibilityLabel(Some(&NSString::from_str(caption)));
                 }
                 (G5Line::Choice { caption, options, selected, .. }, Widget::Choice { caption: c, popup, pushed }) => {
-                    c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, *height - 4.0));
+                    c.setFrame(rect(MARGIN, y + 2.0, self.caption_width, *height - 4.0));
                     popup.setFrame(rect(
-                        MARGIN + CAPTION_WIDTH + 6.0,
+                        MARGIN + self.caption_width + 6.0,
                         y + (*height - 26.0) / 2.0,
-                        full - CAPTION_WIDTH - 6.0,
+                        full - self.caption_width - 6.0,
                         26.0,
                     ));
                     set_text(c, caption);
@@ -540,6 +624,42 @@ impl DocWindow {
             if section.shown && app_active && !section.panel.isVisible() && !g5_opens_by_itself(kind) {
                 section.shown = false;
                 section.requested = false;
+            }
+            if let Some(at) = section.embedded {
+                let model = if vm.active == Some(document) { g5_panel(vm, document, kind, locale, &[]) } else { None };
+                let Some(model) = model else {
+                    section.hide();
+                    continue;
+                };
+                // The title leads the lines: there is no panel title to carry it.
+                let mut lines = vec![G5Line::Heading(model.title.clone())];
+                lines.extend(model.lines);
+                let shape: Vec<Shape> = lines.iter().map(shape_of).collect();
+                if shape != section.shape {
+                    section.rebuild(mtm, &lines);
+                    section.shape = shape;
+                }
+                let total = section.fill(&lines, locale);
+                let height = total.min(at.max_height);
+                let was_shown = section.shown;
+                section.shown = true;
+                let (scroll, content) = (section.scroll.clone(), section.content.clone());
+                let width = section.width;
+                if let Err(e) = crate::appkit::objc_try("showing the stack in the inspector", || {
+                    content.setFrameSize(NSSize::new(width, total));
+                    scroll.setFrame(rect(at.x, at.y, width, height));
+                    scroll.setHidden(false);
+                    if !was_shown {
+                        content.scrollPoint(NSPoint::new(0.0, total));
+                    }
+                    // A stack that appears with the selection is brought into view in the column.
+                    if !was_shown {
+                        scroll.scrollRectToVisible(scroll.bounds());
+                    }
+                }) {
+                    eprintln!("burnburn: {e}");
+                }
+                continue;
             }
             let wanted = vm.active == Some(document) && (g5_opens_by_itself(kind) || section.requested);
             // A panel nobody asked for is not even built (the structure lines are not cheap).

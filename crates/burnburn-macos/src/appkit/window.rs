@@ -172,7 +172,7 @@ impl DocWindow {
         let sketch = sketch_section(mtm, locale);
         let shapes = shapes_section(mtm, app.clone(), document, locale);
         let schikken = schikken_section(mtm, app.clone(), document, locale);
-        let g5: Vec<G5Section> =
+        let mut g5: Vec<G5Section> =
             crate::panels::G5Panel::ALL.iter().map(|p| g5_section(mtm, app.clone(), document, *p)).collect();
         let text = text_section(mtm, app.clone(), document, locale);
         let variable = variable_section(mtm, app.clone(), document, locale);
@@ -294,7 +294,10 @@ impl DocWindow {
         centre.setPosition_ofDividerAtIndex(h - STRIP_HEIGHT, 0);
         split.addSubview(&scroll);
         split.addSubview(&centre);
-        split.addSubview(&inspector);
+        // The inspector column carries the stack of the selection at its foot (G9-editor, E06) and
+        // scrolls when the window is lower than the column.
+        let inspector_column = super::panels::g5::embed_stack(mtm, &inspector, &mut g5, INSPECTOR_WIDTH, h);
+        split.addSubview(&inspector_column);
         split.adjustSubviews();
         // The tool strip sits above the split view; the content view holds both.
         let tool_strip = ToolStrip::new(mtm, app, document, target, locale, CONTENT_SIZE.width);

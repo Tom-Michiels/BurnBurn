@@ -76,8 +76,8 @@ texts! {
     ),
     AddStepHeading => ("Stap toevoegen", "Add a step"),
     AddStepHint => (
-        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten.",
-        "Fill in the numbers of the kind; a boolean step combines with the other selected objects."
+        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten, een reeks langs een pad volgt het andere geselecteerde object.",
+        "Fill in the numbers of the kind; a boolean step combines with the other selected objects, a series along a path follows the other selected object."
     ),
     NewKindCaption => ("Soort stap", "Kind of step"),
     NewKindOffset => ("Offset", "Offset"),
@@ -87,6 +87,13 @@ texts! {
     NewKindXor => ("Boolean: exclusieve of", "Boolean: xor"),
     NewKindGrid => ("Raster", "Grid"),
     NewKindCircle => ("Cirkel", "Circle"),
+    NewKindLinear => ("Lineaire reeks", "Linear series"),
+    NewKindPath => ("Reeks langs een pad", "Series along a path"),
+    NewLinearCount => ("Lineaire reeks: aantal", "Linear series: count"),
+    NewStepX => ("Lineaire reeks: stap x (mm)", "Linear series: step x (mm)"),
+    NewStepY => ("Lineaire reeks: stap y (mm)", "Linear series: step y (mm)"),
+    NewPathCount => ("Reeks langs pad: aantal", "Series along a path: count"),
+    NewPathOrient => ("Reeks langs pad: kopieen draaien mee met het pad", "Series along a path: copies turn with the path"),
     NewDistance => ("Offset: afstand (mm)", "Offset: distance (mm)"),
     NewColumns => ("Raster: kolommen", "Grid: columns"),
     NewRows => ("Raster: rijen", "Grid: rows"),
@@ -110,9 +117,31 @@ texts! {
     ),
     DistributeGap => ("Tussenruimte (mm)", "Space between parts (mm)"),
     DistributeButton => ("Verdeel exemplaren zonder plaat", "Distribute instances without a plate"),
+    TextContentTitle => ("Tekst bewerken", "Edit text"),
+    TextContentTexts => ("Geselecteerde teksten ({0}):", "Selected texts ({0}):"),
+    TextContentRow => ("{0}: «{1}» ({2} tekens)", "{0}: \"{1}\" ({2} characters)"),
+    TextContentRowSample => (
+        "{0}: «{1}» wordt «{3}» ({2} tekens in de sjabloon)",
+        "{0}: \"{1}\" becomes \"{3}\" ({2} characters in the template)"
+    ),
+    TextContentMore => ("… en {0} meer", "... and {0} more"),
+    TextContentHint => (
+        "Een positie telt tekens vanaf het begin van elke tekst; een negatieve telt vanaf het eind, leeg is het eind, en voorbij het eind van een kortere tekst is dat zijn eind. Alle teksten veranderen in één stap.",
+        "A position counts characters from the start of each text; a negative one counts from its end, empty is the end, and beyond the end of a shorter text is its end. All texts change in one step."
+    ),
+    TextContentPosition => ("Positie (tekens)", "Position (characters)"),
+    TextContentInsert => ("Invoegen: tekst", "Insert: text"),
+    TextContentInsertGo => ("Voeg in op de positie", "Insert at the position"),
+    TextContentCount => ("Wissen: aantal tekens", "Delete: number of characters"),
+    TextContentDeleteGo => ("Wis vanaf de positie", "Delete from the position"),
+    DistributeNestButton => ("Verdeel en nest", "Distribute and nest"),
+    DistributeNestHint => (
+        "Verdeel en nest kiest de plaat net zo en laat het nesten daarna bepalen waar elk exemplaar op de plaat ligt (ook gedraaid). De platen liggen naast elkaar vanaf de oorsprong van het document, 10 mm uit elkaar. Het nesten loopt op de achtergrond.",
+        "Distribute and nest picks the plate the same way and then lets the nest decide where each instance lies on its plate (also turned). The plates lie side by side from the origin of the document, 10 mm apart. The nest runs in the background."
+    ),
     ProblemBadFormula => (
-        "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel.",
-        "That is no number, parameter name or formula over the parameters of the part."
+        "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel (+ - * /, haakjes en min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; scheid argumenten met ; of ,).",
+        "That is no number, parameter name or formula over the parameters of the part (+ - * /, brackets and min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; separate arguments with ; or ,)."
     ),
     ProblemNoPlates => ("Er zijn nog geen platen om over te verdelen.", "There are no plates to distribute over yet."),
     ProblemNothingToDistribute => (

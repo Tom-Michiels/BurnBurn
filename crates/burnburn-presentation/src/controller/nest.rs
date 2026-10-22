@@ -59,7 +59,7 @@ fn nest_pending(s: &Session) -> bool {
     s.pending.values().any(|(kind, _)| *kind == TaskKind::Nest)
 }
 
-fn cancel_running(s: &mut Session) {
+pub(super) fn cancel_running(s: &mut Session) {
     for (kind, source) in s.pending.values() {
         if *kind == TaskKind::Nest {
             source.cancel();
@@ -117,6 +117,15 @@ fn body_is_part(snapshot: &burnburn_document::DocumentSnapshot, body: &[Geometry
 
 fn failure(f: NestFailure) -> Option<SchikkenMessage> {
     Some(SchikkenMessage::Nest(f))
+}
+
+/// The rules of the nest of "distribute and nest" (G9-editor): the defaults of the panel, with
+/// `gap_mm` between the parts and no margin at the edge of the plate.
+pub(super) fn plate_settings(gap_mm: f64) -> Option<NestSettings> {
+    let mut settings = parse(&NestInput::default()).ok()?;
+    settings.padding_mm = gap_mm;
+    settings.edge_buffer_mm = 0.0;
+    Some(settings)
 }
 
 /// The state of the run: derived, so a task that was dropped as outdated can never leave it stuck.
@@ -405,6 +414,9 @@ pub(super) fn finished(
     update: &mut AppUpdate,
 ) {
     update.scenes_changed.push(document);
+    if super::plate_nest::owns(s, task) {
+        return super::plate_nest::finished(s, document, result, update);
+    }
     let Some(panel) = s.nest.panel.as_mut().filter(|p| p.task == Some(task)) else { return };
     panel.task = None;
     match result {

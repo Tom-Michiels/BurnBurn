@@ -1353,6 +1353,24 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             FieldError::NotPositive => ("De maat moet groter dan 0 zijn.", "The size must be greater than 0."),
         },
         M::CommandRejected => ("De wijziging is geweigerd.", "The change was rejected."),
+        M::ExtendedStraight(note) => match note {
+            burnburn_geometry::ExtendNote::StraightTurns => (
+                "Verlengd langs de eindraaklijn: de kromme zelf draait voor de grens meer dan 75 graden weg van haar einde.",
+                "Extended along the end tangent: the curve itself turns more than 75 degrees away from its end before the boundary.",
+            ),
+            burnburn_geometry::ExtendNote::StraightTooFar => (
+                "Verlengd langs de eindraaklijn: de grens ligt meer dan 30 parameterlengtes verder, te ver om de kromme zelf te volgen.",
+                "Extended along the end tangent: the boundary is more than 30 parameter lengths away, too far to follow the curve itself.",
+            ),
+            _ => (
+                "Verlengd langs de eindraaklijn: de kromme zelf ontmoet de grens niet.",
+                "Extended along the end tangent: the curve itself never meets the boundary.",
+            ),
+        },
+        M::BoundTextFollowsGuide => (
+            "Een tekst op een pad volgt zijn gids en kan niet los worden gedraaid, geschaald of geschuind. Verplaats hem langs of dwars op het pad, pas Start en Afstand aan, draai of schaal de gids met de tekst, of maak de tekst eerst los.",
+            "Text on a path follows its guide and cannot be turned, scaled or sheared on its own. Move it along or across the path, change Start and Distance, turn or scale the guide together with the text, or release the text first.",
+        ),
         M::InvalidCutField(f) => {
             let (nl, en) = (cut_caption(f, Locale::Nl), cut_caption(f, Locale::En));
             return Some(match locale {
@@ -1986,6 +2004,10 @@ pub fn known_message_keys() -> Vec<MessageKey> {
     keys.extend([IssueKind::OpenContour, IssueKind::SelfIntersection].map(MessageKey::Issue));
     keys.extend([
         MessageKey::CommandRejected,
+        MessageKey::BoundTextFollowsGuide,
+        MessageKey::ExtendedStraight(burnburn_geometry::ExtendNote::StraightTurns),
+        MessageKey::ExtendedStraight(burnburn_geometry::ExtendNote::StraightTooFar),
+        MessageKey::ExtendedStraight(burnburn_geometry::ExtendNote::StraightMisses),
         MessageKey::SaveFailed,
         MessageKey::OpenFailed,
         MessageKey::SaveNewerFileOnDisk,

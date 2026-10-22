@@ -219,6 +219,32 @@ fn new_step(
             burnburn_geometry::array::circular_array(&circular).map_err(array_error)?;
             Ok(Modifier::CircularArray(circular))
         }
+        NewModifierStep::Linear { count, step_x, step_y } => {
+            let count = typed_count(&count)?;
+            let step = Vector::new(typed_position(&step_x)?, typed_position(&step_y)?);
+            // The same limit as the other arrays: not more copies than the document can hold.
+            let probe = burnburn_geometry::array::GridArray {
+                columns: count,
+                rows: 1,
+                pitch_x: Length::from_mm(step.x).map_err(|_| MessageKey::CommandRejected)?,
+                pitch_y: Length::from_mm(step.y).map_err(|_| MessageKey::CommandRejected)?,
+            };
+            burnburn_geometry::array::grid_array(&probe).map_err(array_error)?;
+            Ok(Modifier::LinearArray { count, step })
+        }
+        NewModifierStep::Path { count, orient } => {
+            let count = typed_count(&count)?;
+            let along = *operands.first().ok_or(problem(StructureProblem::NeedsOperands))?;
+            let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
+            let guide = snapshot.object(along).ok_or(problem(StructureProblem::UnknownObject))?;
+            burnburn_geometry::array::path_array(
+                guide.path(),
+                &burnburn_geometry::array::PathArray { count, orient },
+                &tolerance,
+            )
+            .map_err(array_error)?;
+            Ok(Modifier::PathArray { count, along, orient })
+        }
     }
 }
 
@@ -369,6 +395,15 @@ fn shapes_view(def: &PartDefinition) -> Vec<PartShapeRow> {
                             (ShapeField::Height, format_mm(b.height())),
                         ]
                     }),
+                ),
+                PartShape::Fitted { x, y, width, height, .. } => (
+                    PartShapeKind::Fixed,
+                    vec![
+                        (ShapeField::X, dim_text(x)),
+                        (ShapeField::Y, dim_text(y)),
+                        (ShapeField::Width, dim_text(width)),
+                        (ShapeField::Height, dim_text(height)),
+                    ],
                 ),
                 _ => (PartShapeKind::Fixed, Vec::new()),
             };
@@ -777,14 +812,36 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
         }
         StructureEdit::SetPartShapeField { definition, shape, field, text } => {
             let (id, mut value) = definition_of(definition)?;
-            if let Some(NamedShape { shape: PartShape::Fixed(path), .. }) = value.shapes.get(&shape) {
-                let moved = fixed_shape_edit(path, field, &text)?;
-                if let Some(slot) = value.shapes.get_mut(&shape) {
-                    slot.shape = PartShape::Fixed(moved);
-                }
-                return Ok(StructureCommand::SetPartDefinition { definition: id, value });
-            }
             let known = value.parameters.keys().any(|p| *p == text.trim());
+            if let Some(NamedShape { shape: PartShape::Fixed(path), .. }) = value.shapes.get(&shape) {
+                // A parameter name or a formula makes the box of the outline follow the parameters
+                // (G9-editor): the fixed outline becomes a fitted one and the code below sets the
+                // number. A plain number moves or stretches the outline itself.
+                let box_field = matches!(field, ShapeField::X | ShapeField::Y | ShapeField::Width | ShapeField::Height);
+                let parametric = known || (looks_like_formula(&text) && parse_length(&text).is_err());
+                if parametric && box_field {
+                    let b = path.bounds().ok_or(problem(StructureProblem::NoSuchField))?;
+                    if !(b.width() > 0.0 && b.height() > 0.0) {
+                        return Err(problem(StructureProblem::NoSuchField));
+                    }
+                    let fitted = PartShape::Fitted {
+                        path: path.clone(),
+                        x: Dim::Mm(b.min().x),
+                        y: Dim::Mm(b.min().y),
+                        width: Dim::Mm(b.width()),
+                        height: Dim::Mm(b.height()),
+                    };
+                    if let Some(slot) = value.shapes.get_mut(&shape) {
+                        slot.shape = fitted;
+                    }
+                } else {
+                    let moved = fixed_shape_edit(path, field, &text)?;
+                    if let Some(slot) = value.shapes.get_mut(&shape) {
+                        slot.shape = PartShape::Fixed(moved);
+                    }
+                    return Ok(StructureCommand::SetPartDefinition { definition: id, value });
+                }
+            }
             let positioned = matches!(field, ShapeField::X | ShapeField::Y);
             let dim = if known {
                 Dim::Param(text.trim().to_owned())
@@ -801,10 +858,16 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             };
             let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
             let target = match (&mut slot.shape, field) {
-                (PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. }, ShapeField::X) => x,
-                (PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. }, ShapeField::Y) => y,
-                (PartShape::Rectangle { width, .. }, ShapeField::Width) => width,
-                (PartShape::Rectangle { height, .. }, ShapeField::Height) => height,
+                (
+                    PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. } | PartShape::Fitted { x, .. },
+                    ShapeField::X,
+                ) => x,
+                (
+                    PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. } | PartShape::Fitted { y, .. },
+                    ShapeField::Y,
+                ) => y,
+                (PartShape::Rectangle { width, .. } | PartShape::Fitted { width, .. }, ShapeField::Width) => width,
+                (PartShape::Rectangle { height, .. } | PartShape::Fitted { height, .. }, ShapeField::Height) => height,
                 (PartShape::Circle { radius, .. }, ShapeField::Radius) => radius,
                 _ => return Err(problem(StructureProblem::NoSuchField)),
             };
@@ -860,9 +923,9 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             let (id, _) = chain_of(layer, modifier)?;
             Ok(StructureCommand::BakeModifier { modifier: id })
         }
-        StructureEdit::RotateInstance { .. } | StructureEdit::DistributeOverPlates { .. } => {
-            Err(MessageKey::CommandRejected)
-        }
+        StructureEdit::RotateInstance { .. }
+        | StructureEdit::DistributeOverPlates { .. }
+        | StructureEdit::DistributeAndNestOverPlates { .. } => Err(MessageKey::CommandRejected),
         StructureEdit::AddModifierStep { modifier, step } => {
             let (id, mut chain) = chain_of(layer, modifier)?;
             let own = DerivedOwner::Modifier(id);
@@ -880,6 +943,8 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
                 NewModifierStep::Boolean { .. } => "Boolean",
                 NewModifierStep::Grid { .. } => "Raster",
                 NewModifierStep::Circle { .. } => "Cirkel",
+                NewModifierStep::Linear { .. } => "Reeks",
+                NewModifierStep::Path { .. } => "Padreeks",
             };
             let made = new_step(&snapshot, source, &selected[1..], step)?;
             let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
@@ -970,17 +1035,23 @@ fn rotate_instance(
     )
 }
 
-/// Puts every instance that is on no plate on a plate where it fits (G8-editor, P06): one undo
-/// step for all of them, or a refusal that changes nothing.
-fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<RequestId>) -> AppUpdate {
+/// The plan of a distribution over the plates: the gap and which instance goes to which plate.
+pub(super) struct DistributionPlan {
+    pub gap: f64,
+    pub assigned: Vec<(PartInstanceId, PlateId)>,
+}
+
+/// Plans the distribution of the instances that are on no plate (G8-editor, P06), or says why
+/// there is none: no plates, nothing to do, a bad gap, or an instance without room.
+pub(super) fn plan_distribution(s: &Session, gap: &str) -> Result<DistributionPlan, MessageKey> {
     use burnburn_document::structure::{Footprint, PlateRoom, distribute_over_plates};
     let gap = if gap.trim().is_empty() {
         0.0
     } else {
         match parse_position(gap) {
             Ok(v) if v.mm() >= 0.0 => v.mm(),
-            Ok(_) => return refused(s, document, MessageKey::InvalidLength(crate::field::FieldError::NotPositive)),
-            Err(e) => return refused(s, document, MessageKey::InvalidLength(e)),
+            Ok(_) => return Err(MessageKey::InvalidLength(crate::field::FieldError::NotPositive)),
+            Err(e) => return Err(MessageKey::InvalidLength(e)),
         }
     };
     let snapshot = s.doc.snapshot();
@@ -988,10 +1059,10 @@ fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<
     let plates: Vec<PlateRoom> =
         layer.plates().map(|(id, p)| PlateRoom { id, width: p.width.mm(), height: p.height.mm() }).collect();
     if plates.is_empty() {
-        return refused(s, document, problem(StructureProblem::NoPlates));
+        return Err(problem(StructureProblem::NoPlates));
     }
     if layer.instances().all(|(_, i)| i.plate.is_some()) {
-        return refused(s, document, problem(StructureProblem::NothingToDistribute));
+        return Err(problem(StructureProblem::NothingToDistribute));
     }
     let items: Vec<Footprint> = layer
         .instances()
@@ -1002,8 +1073,20 @@ fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<
         .collect();
     let plan = distribute_over_plates(&plates, &items, gap);
     if !plan.unplaced.is_empty() {
-        return refused(s, document, problem(StructureProblem::NoRoomOnPlates));
+        return Err(problem(StructureProblem::NoRoomOnPlates));
     }
+    Ok(DistributionPlan { gap, assigned: plan.assigned })
+}
+
+/// Puts every instance that is on no plate on a plate where it fits (G8-editor, P06): one undo
+/// step for all of them, or a refusal that changes nothing.
+fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<RequestId>) -> AppUpdate {
+    let plan = match plan_distribution(s, gap) {
+        Ok(plan) => plan,
+        Err(message) => return refused(s, document, message),
+    };
+    let snapshot = s.doc.snapshot();
+    let layer = snapshot.structure();
     let steps: Vec<CompoundStep> = plan
         .assigned
         .iter()

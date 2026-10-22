@@ -20,6 +20,10 @@ pub enum TextField {
     PathStart,
     /// Distance of the baseline from the guide (mm, may be negative).
     PathOffset,
+    /// Where in the text to insert or delete: a whole number of characters (G9-editor, E07).
+    Position,
+    /// How many characters to delete: a whole number, not negative.
+    Count,
 }
 
 /// Why a toolbar control is off or why the last input was refused. Hosts show it in words.
@@ -120,6 +124,11 @@ pub struct TextToolbarViewModel {
     pub issue: Option<TextIssue>,
     /// The text follows a guide path (live binding), and how (G7-editor, E08).
     pub path: Option<TextPathView>,
+    /// The content of every selected text, in id order (G9-editor, E07).
+    pub contents: Vec<String>,
+    /// For each of those texts: what a variable text resolves to for the next job (the sample
+    /// next to the template); `None` for a text that is not variable or has no record yet.
+    pub samples: Vec<Option<String>>,
 }
 
 /// Whether a text bound to a path can follow it now.
@@ -182,6 +191,19 @@ pub enum TextEdit {
     PathDistort(Distort),
     /// The text stops following its guide and returns to its own place.
     UnbindPath,
+    /// Inserts `text` into every selected text at `position` (G9-editor, E07). The position is a
+    /// whole number of characters counted from the start of each text; a negative one counts
+    /// from its end, an empty one is the end, and a position beyond a shorter text is its end.
+    InsertAt {
+        position: String,
+        text: String,
+    },
+    /// Deletes `count` characters after `position` (counted as for `InsertAt`) from every selected
+    /// text; a text with fewer characters left loses what there is.
+    DeleteAt {
+        position: String,
+        count: String,
+    },
 }
 
 /// The text-on-path dialog, open after `CommandKey::TextOnPath`.

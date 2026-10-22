@@ -262,6 +262,19 @@ pub enum NewModifierStep {
         center_y: String,
         sweep: String,
     },
+    /// `count` copies (the original included), each `step_x`, `step_y` further than the one before
+    /// (G9-editor).
+    Linear {
+        count: String,
+        step_x: String,
+        step_y: String,
+    },
+    /// `count` copies along another object's path, which is the first other selected object; they
+    /// turn with the path when `orient` is set (G9-editor).
+    Path {
+        count: String,
+        orient: bool,
+    },
 }
 
 /// Everything the structure panel shows; empty lists for a document without structure.
@@ -453,6 +466,13 @@ pub enum StructureEdit {
     /// Puts every instance that is on no plate on a plate where it fits (rows, tallest first), `gap`
     /// mm apart; one undo step. Refused as a whole when one of them finds no room (G8-editor, P06).
     DistributeOverPlates {
+        gap: String,
+    },
+    /// Like `DistributeOverPlates`, and then the nest decides where each instance lies on its plate
+    /// (G9-editor). The plates lie side by side from the origin of the document, in the order of the
+    /// plates, 10 mm apart. Runs in the background; one undo step when the answer is applied; an
+    /// answer of an older revision is dropped.
+    DistributeAndNestOverPlates {
         gap: String,
     },
     /// A chain with one offset step on the selected object; the distance as typed.

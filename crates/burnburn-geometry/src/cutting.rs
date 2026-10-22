@@ -4,7 +4,7 @@ use std::f64::consts::TAU;
 
 use crate::ring::{Ring, make_subpath};
 use crate::{
-    EllipticalArc, EndpointRef, ExtendError, Path, Point, Segment, Subpath, TrimError,
+    EllipticalArc, EndpointRef, ExtendError, ExtendNote, Path, Point, Segment, Subpath, TrimError, Vector,
     intersect::segment_intersections, query::segments_of,
 };
 use burnburn_types::Angle;
@@ -77,6 +77,11 @@ impl Path {
     /// their direction, arcs along their circle or ellipse, a Bézier along its own polynomial
     /// for up to three parameter lengths and straight along its end tangent beyond that).
     pub fn extend_end(&self, end: EndpointRef, boundaries: &[&Path]) -> Result<Path, ExtendError> {
+        self.extend_end_noted(end, boundaries).map(|(path, _)| path)
+    }
+
+    /// Like [`Path::extend_end`], and says what the extension did that is worth telling (G9-editor).
+    pub fn extend_end_noted(&self, end: EndpointRef, boundaries: &[&Path]) -> Result<(Path, ExtendNote), ExtendError> {
         let (si, at_end) = match end {
             EndpointRef::Start(s) => (s, false),
             EndpointRef::End(s) => (s, true),
@@ -87,7 +92,7 @@ impl Path {
         }
         let seg = if at_end { sp.segments().last() } else { sp.segments().first() };
         match seg.ok_or(ExtendError::NoSuchEnd)? {
-            Segment::Line { .. } => self.extend_line(end, boundaries),
+            Segment::Line { .. } => self.extend_line(end, boundaries).map(|path| (path, ExtendNote::Plain)),
             Segment::Arc(arc) => {
                 let longer = extended_arc(arc, at_end, boundaries)?;
                 let mut segs = sp.segments().to_vec();
@@ -103,11 +108,11 @@ impl Path {
                     start = longer.start_point();
                 }
                 let rebuilt = Subpath::new(start, segs, false).map_err(|_| ExtendError::NoBoundaryAhead)?;
-                Ok(replace_subpath(self, si, vec![rebuilt]))
+                Ok((replace_subpath(self, si, vec![rebuilt]), ExtendNote::Plain))
             }
             Segment::Cubic { .. } => {
-                let rebuilt = extended_cubic_subpath(sp, at_end, boundaries)?;
-                Ok(replace_subpath(self, si, vec![rebuilt]))
+                let (rebuilt, note) = extended_cubic_subpath(sp, at_end, boundaries)?;
+                Ok((replace_subpath(self, si, vec![rebuilt]), note))
             }
         }
     }
@@ -150,9 +155,21 @@ fn replace_subpath(path: &Path, index: usize, pieces: Vec<Subpath>) -> Path {
     Path::from_subpaths(out)
 }
 
-/// How far past its end a Bézier is followed, in curve parameter (the polynomial runs on past
-/// `t = 1`; far beyond that it no longer says anything about the drawn shape).
+/// How far past its end a Bézier is always followed, in curve parameter (the polynomial runs on
+/// past `t = 1`; this far it still says what the drawn shape does).
 const BEZIER_REACH: f64 = 3.0;
+
+/// How far it is followed when that is stable (G9-editor): the cubic keeps its heading within
+/// [`MAX_TURN_COS`] of its end tangent all the way to the boundary. Beyond this the end continues
+/// straight along the end tangent.
+const BEZIER_FAR_REACH: f64 = 30.0;
+
+/// How far a boundary is looked for beyond [`BEZIER_FAR_REACH`], only to tell "too far" from
+/// "never met".
+const BEZIER_SEARCH_REACHES: [f64; 3] = [60.0, 100.0, 300.0];
+
+/// A followed cubic may turn at most this far from its end heading (cosine of 75 degrees).
+const MAX_TURN_COS: f64 = 0.258_819_045_102_520_8;
 
 /// The point of the control polygon's blossom for parameters `u`, `v`, `w` (de Casteljau with a
 /// different parameter per level; any real parameters, also outside `[0, 1]`).
@@ -167,9 +184,54 @@ fn cubic_over(poly: [Point; 4], a: f64, b: f64) -> [Point; 4] {
     [blossom(poly, a, a, a), blossom(poly, a, a, b), blossom(poly, a, b, b), blossom(poly, b, b, b)]
 }
 
+/// The velocity of the cubic `poly` at parameter `t` (any real parameter).
+fn cubic_velocity(poly: [Point; 4], t: f64) -> Vector {
+    let u = 1.0 - t;
+    (poly[1] - poly[0]) * (3.0 * u * u) + (poly[2] - poly[1]) * (6.0 * u * t) + (poly[3] - poly[2]) * (3.0 * t * t)
+}
+
+/// Whether the cubic `poly` keeps going the way it ends from `t = 1` to `t = 1 + length`: its
+/// velocity never vanishes and never turns more than 75 degrees from the heading at the end.
+fn cubic_is_stable(poly: [Point; 4], length: f64) -> bool {
+    let heading = [poly[2], poly[1], poly[0]].into_iter().map(|c| poly[3] - c).find(|d| d.length() > POS_EPS);
+    let Some(heading) = heading else { return false };
+    let heading = heading * (1.0 / heading.length());
+    const STEPS: usize = 400;
+    (1..=STEPS).all(|i| {
+        let v = cubic_velocity(poly, 1.0 + length * i as f64 / STEPS as f64);
+        let speed = v.length();
+        speed > POS_EPS && v.dot(heading) >= MAX_TURN_COS * speed
+    })
+}
+
+/// The parameter distance past the end (in `(0, reach]`) where the cubic `poly` first meets a
+/// boundary.
+fn first_crossing(poly: [Point; 4], reach: f64, boundaries: &[&Path]) -> Option<f64> {
+    let ahead_poly = cubic_over(poly, 1.0, 1.0 + reach);
+    let ahead = Segment::Cubic { c1: ahead_poly[1], c2: ahead_poly[2], to: ahead_poly[3] };
+    let mut best: Option<f64> = None;
+    for boundary in boundaries {
+        for (_, bf, bs) in segments_of(boundary) {
+            for (t, _, _) in segment_intersections(poly[3], &ahead, bf, &bs) {
+                if t * reach > POS_EPS && best.is_none_or(|b| t < b) {
+                    best = Some(t);
+                }
+            }
+        }
+    }
+    best.map(|t| t * reach)
+}
+
 /// The subpath `sp` with its end (or start) Bézier segment continued along the same cubic
-/// polynomial to the first boundary crossing ahead. The result is still one cubic there.
-fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> Result<Subpath, ExtendError> {
+/// polynomial to the first boundary crossing ahead. The result is still one cubic there. Up to
+/// three parameter lengths the cubic is always followed; up to thirty only while it is stable
+/// (it keeps its heading); otherwise the end continues straight along its tangent, and the note
+/// says which of these it was (G9-editor).
+fn extended_cubic_subpath(
+    sp: &Subpath,
+    at_end: bool,
+    boundaries: &[&Path],
+) -> Result<(Subpath, ExtendNote), ExtendError> {
     let segs = sp.segments();
     // Work on the end: a start is the end of the reversed segment.
     let (from, c1, c2, to, index) = if at_end {
@@ -186,42 +248,37 @@ fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> R
         }
     };
     let poly = [from, c1, c2, to];
-    let ahead_poly = cubic_over(poly, 1.0, 1.0 + BEZIER_REACH);
-    let ahead = Segment::Cubic { c1: ahead_poly[1], c2: ahead_poly[2], to: ahead_poly[3] };
-    let mut best: Option<f64> = None;
-    for boundary in boundaries {
-        for (_, bf, bs) in segments_of(boundary) {
-            for (t, _, _) in segment_intersections(to, &ahead, bf, &bs) {
-                if t * BEZIER_REACH > POS_EPS && best.is_none_or(|b| t < b) {
-                    best = Some(t);
-                }
-            }
-        }
-    }
-    let Some(t) = best else {
-        return tangent_continuation(sp, poly, at_end, boundaries);
+    let straight = |note| tangent_continuation(sp, poly, at_end, boundaries).map(|rebuilt| (rebuilt, note));
+    let Some(length) = first_crossing(poly, BEZIER_FAR_REACH, boundaries) else {
+        // Not met within thirty lengths: too far, or never.
+        let too_far = BEZIER_SEARCH_REACHES.iter().any(|reach| first_crossing(poly, *reach, boundaries).is_some());
+        let note = if too_far { ExtendNote::StraightTooFar } else { ExtendNote::StraightMisses };
+        return straight(note);
     };
-    let longer = cubic_over(poly, 0.0, 1.0 + t * BEZIER_REACH);
+    if length > BEZIER_REACH && !cubic_is_stable(poly, length) {
+        return straight(ExtendNote::StraightTurns);
+    }
+    let longer = cubic_over(poly, 0.0, 1.0 + length);
     let new = Segment::Cubic { c1: longer[1], c2: longer[2], to: longer[3] };
     let (start, mut rebuilt) = (sp.start(), segs.to_vec());
+    let note = ExtendNote::OwnCurve;
     if at_end {
         if let Some(slot) = rebuilt.get_mut(index) {
             *slot = new;
         }
-        Subpath::new(start, rebuilt, false).map_err(|_| ExtendError::NoBoundaryAhead)
+        Subpath::new(start, rebuilt, false).map(|s| (s, note)).map_err(|_| ExtendError::NoBoundaryAhead)
     } else {
         // The cubic was reversed: turn the lengthened one around again.
         let reversed = Segment::Cubic { c1: longer[2], c2: longer[1], to: longer[0] };
         if let Some(slot) = rebuilt.get_mut(index) {
             *slot = reversed;
         }
-        Subpath::new(longer[3], rebuilt, false).map_err(|_| ExtendError::NoBoundaryAhead)
+        Subpath::new(longer[3], rebuilt, false).map(|s| (s, note)).map_err(|_| ExtendError::NoBoundaryAhead)
     }
 }
 
-/// The boundary lies beyond the reach of the cubic's polynomial, which far from the drawn
-/// curve no longer says anything about its shape. The end then continues straight along its
-/// own end tangent (tangent continuous with the curve, which stays exactly as drawn) to the
+/// The cubic cannot be followed to the boundary (too far, turning back, or it never meets one):
+/// the end then continues straight along its own end tangent (tangent continuous with the curve, which stays exactly as drawn) to the
 /// first boundary crossing. `poly` is the cubic walked towards the extended end.
 fn tangent_continuation(
     sp: &Subpath,
