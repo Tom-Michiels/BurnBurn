@@ -7,8 +7,6 @@
 //! device: the host app hands in a port (`HostApp::attach_grbl_port`); until then every control
 //! says "geen seriële poort verbonden".
 
-#![allow(unsafe_code)] // defining Objective-C subclasses has no safe API (SAFETY below)
-
 use std::cell::RefCell;
 use std::rc::Weak;
 
@@ -459,12 +457,13 @@ pub(crate) fn grbl_window(mtm: MainThreadMarker, app: Weak<HostApp>, locale: Loc
     for (i, b) in macro_buttons.iter().enumerate() {
         wire(b, target_object, sel!(grblMacro:), i as isize);
     }
-    // SAFETY: the delegate and data source are weak references; the `GrblWindow` keeps the target alive.
-    unsafe {
-        input.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*target)));
-        table.setDataSource(Some(objc2::runtime::ProtocolObject::from_ref(&*target)));
-        table.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*target)));
-    }
+    // SAFETY: the delegate and data source are unretained references; the `GrblWindow` keeps the
+    // target alive and clears them in Drop.
+    unsafe { input.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*target))) };
+    // SAFETY: as above.
+    unsafe { table.setDataSource(Some(objc2::runtime::ProtocolObject::from_ref(&*target))) };
+    // SAFETY: as above.
+    unsafe { table.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*target))) };
     panel.setContentView(Some(&content));
     GrblWindow {
         panel,
@@ -578,11 +577,11 @@ impl Drop for GrblWindow {
     fn drop(&mut self) {
         // The delegate and data source are unretained references to `target`: clear them first.
         // SAFETY: setting no delegate / data source is always valid.
-        unsafe {
-            self.input.setDelegate(None);
-            self.table.setDataSource(None);
-            self.table.setDelegate(None);
-        }
+        unsafe { self.input.setDelegate(None) };
+        // SAFETY: as above.
+        unsafe { self.table.setDataSource(None) };
+        // SAFETY: as above.
+        unsafe { self.table.setDelegate(None) };
     }
 }
 

@@ -71,7 +71,7 @@ impl HostApp {
             && let Ok(slot) = self.grbl_window.try_borrow()
             && let Some(w) = slot.as_ref()
         {
-            crate::appkit::panels::widgets::set_text(&w.parts().input, "");
+            crate::appkit::panels::widgets::set_text(w.parts().input, "");
         }
         self.refresh();
     }
