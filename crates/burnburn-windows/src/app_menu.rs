@@ -64,7 +64,7 @@ impl AppAction {
     pub fn title(self, locale: Locale) -> &'static str {
         let text = match self {
             AppAction::About => AppText::About,
-            AppAction::Preferences => AppText::Preferences,
+            AppAction::Preferences => AppText::Options,
             AppAction::Shortcuts => AppText::Shortcuts,
             AppAction::History => AppText::UndoHistory,
             AppAction::Preview => AppText::Preview,

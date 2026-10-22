@@ -187,7 +187,7 @@ impl DocWindow {
         let (mut fields, controls) = transform_block(&mut col, locale);
         fields.push(super::panels::priority::priority_row(&mut col, locale));
         let status_label = col.add_label("", 32.0);
-        status_label.setTextColor(Some(&NSColor::systemRedColor()));
+        status_label.setTextColor(Some(&NSColor::secondaryLabelColor()));
         status_label.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         col.y -= 12.0;
         let plan_title = col.add_label("", 20.0);
@@ -508,6 +508,7 @@ impl DocWindow {
         self.window.setDocumentEdited(doc.dirty);
 
         let mut message = String::new();
+        let mut tone = burnburn_host_models::style::StatusTone::Neutral;
         for (key, field) in &self.fields {
             let model = doc.inspector.as_ref().and_then(|i| i.field(*key));
             let text = model.map(|f| f.text.clone()).unwrap_or_default();
@@ -519,6 +520,7 @@ impl DocWindow {
             }
             if let Some(error) = model.and_then(|f| f.error) {
                 message = message_text(error, locale);
+                tone = burnburn_host_models::style::StatusTone::Error;
             }
             // The caption names the unit the field is shown in (display-unit preference).
             if let (Some(unit), Some(caption)) = (model.map(|f| f.unit), caption_of(field)) {
@@ -536,6 +538,7 @@ impl DocWindow {
             && let Some(m) = doc.messages.last()
         {
             message = message_text(m.key, locale);
+            tone = burnburn_host_models::style::message_tone(m.key);
         }
         if message.is_empty()
             && let Some(m) = &doc.tool_measurement
@@ -543,13 +546,22 @@ impl DocWindow {
             message = crate::toolbar::measurement_text(m, locale);
         }
         set_text(&self.status_label, &message);
+        // Only a failure is red; ordinary messages and measurements are secondary text.
+        self.status_label.setTextColor(Some(&*match tone {
+            burnburn_host_models::style::StatusTone::Neutral => NSColor::secondaryLabelColor(),
+            burnburn_host_models::style::StatusTone::Warning => NSColor::systemOrangeColor(),
+            burnburn_host_models::style::StatusTone::Error => NSColor::systemRedColor(),
+        }));
 
         let panel = plan_panel(vm, document, locale);
+        // The plan hash is not shown (Q4): its row stays empty and the title carries it as a tooltip.
+        let no_text = String::new();
         for (label, text) in
-            self.plan_labels.iter().zip([&panel.title, &panel.plan_id, &panel.estimate, &panel.state, &panel.findings])
+            self.plan_labels.iter().zip([&panel.title, &no_text, &panel.estimate, &panel.state, &panel.findings])
         {
             set_text(label, text);
         }
+        self.plan_labels[0].setToolTip((!panel.id_tooltip.is_empty()).then(|| NSString::from_str(&panel.id_tooltip)).as_deref());
         set_text(&self.plan_calibration, &panel.calibration.join("; "));
         self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);

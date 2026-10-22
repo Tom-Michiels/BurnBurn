@@ -265,7 +265,7 @@ fn menus() -> Result<(), String> {
     )?;
     for title in [
         "Over BurnBurn",
-        "Voorkeuren…",
+        "Instellingen…",
         "Sneltoetsen…",
         "Diensten",
         "Verberg BurnBurn",
@@ -283,7 +283,7 @@ fn menus() -> Result<(), String> {
     ] {
         expect(|| format!("menu item {title:?} missing"), find_menu_item(menu, title).is_some())?;
     }
-    let prefs = find_menu_item(menu, "Voorkeuren…").ok_or("no Preferences item")?;
+    let prefs = find_menu_item(menu, "Instellingen…").ok_or("no Preferences item")?;
     expect(
         || "Preferences has Cmd+,".into(),
         prefs.keyEquivalent().to_string() == "," && prefs.keyEquivalentModifierMask() == NSEventModifierFlags::Command,

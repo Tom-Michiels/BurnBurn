@@ -22,4 +22,5 @@ pub mod panels_files;
 pub mod panels_image;
 pub mod quit_guard;
 pub mod recent;
+pub mod style;
 pub mod toolbar;
