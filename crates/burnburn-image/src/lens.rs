@@ -48,11 +48,7 @@ impl LensDistortion {
             let r = f64::from(i) / 100.0;
             1.0 + 3.0 * self.k1 * r * r + 5.0 * self.k2 * r.powi(4) <= 1e-3
         });
-        if folds || (self.has_tangential() && self.jacobian_folds()) {
-            Err(ImageError::InvalidLens)
-        } else {
-            Ok(())
-        }
+        if folds || (self.has_tangential() && self.jacobian_folds()) { Err(ImageError::InvalidLens) } else { Ok(()) }
     }
 
     /// Whether `p1` or `p2` is in use.

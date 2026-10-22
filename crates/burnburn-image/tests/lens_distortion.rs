@@ -97,7 +97,12 @@ fn pincushion_and_the_second_coefficient_are_corrected_too() {
 fn zero_coefficients_leave_the_image_as_it_is() {
     let img = photo(&[40.5, 100.5], -0.15, 0.0);
     let plain = prepare(&img, &recipe(None), &CancellationToken::never()).unwrap();
-    let zero = prepare(&img, &recipe(Some(LensDistortion { k1: 0.0, k2: 0.0, p1: 0.0, p2: 0.0 })), &CancellationToken::never()).unwrap();
+    let zero = prepare(
+        &img,
+        &recipe(Some(LensDistortion { k1: 0.0, k2: 0.0, p1: 0.0, p2: 0.0 })),
+        &CancellationToken::never(),
+    )
+    .unwrap();
     assert_eq!(plain.mask, zero.mask);
 }
 

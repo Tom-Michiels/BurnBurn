@@ -546,7 +546,9 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         report: t.report.clone().filter(|_| t.form.mode == TraceMode::Contour && t.result.is_some()),
         lens: match recipe.image.lens {
             Some(l) => PrepLens { on: true, k1: text(l.k1), k2: text(l.k2), p1: text(l.p1), p2: text(l.p2) },
-            None => PrepLens { on: false, k1: "0".to_owned(), k2: "0".to_owned(), p1: "0".to_owned(), p2: "0".to_owned() },
+            None => {
+                PrepLens { on: false, k1: "0".to_owned(), k2: "0".to_owned(), p1: "0".to_owned(), p2: "0".to_owned() }
+            }
         },
         contours: contours_view(t),
         node_target: t

@@ -21,6 +21,7 @@ mod sketch;
 mod snap;
 mod tool;
 mod view;
+mod work;
 
 pub use arrange::{ArrangeError, boolean_operands};
 pub use bed_image::{BedPicture, BedQuad};
@@ -55,3 +56,4 @@ pub use tool::{
 pub use tool::{ConstraintKind, constraint_relations};
 pub use tool::{Measurement, ModifyParam, ModifyTool, Rejection, Unavailable, modify_tool_kind};
 pub use view::{Camera, ViewError, Viewport};
+pub use work::{EditorWork, editor_work, reset_editor_work};

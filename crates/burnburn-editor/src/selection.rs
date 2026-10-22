@@ -33,20 +33,24 @@ impl<K: Copy + Eq + Hash> OrderedSet<K> {
     }
 
     pub(crate) fn contains(&self, k: &K) -> bool {
+        crate::work::selection_steps(1);
         self.members.contains(k)
     }
 
     /// Appends `k` unless it is already a member.
     pub(crate) fn insert(&mut self, k: K) {
+        crate::work::selection_steps(1);
         if self.members.insert(k) {
             self.order.push(k);
         }
     }
 
     pub(crate) fn remove(&mut self, k: &K) {
+        crate::work::selection_steps(1);
         if self.members.remove(k)
             && let Some(pos) = self.order.iter().position(|x| x == k)
         {
+            crate::work::selection_steps(pos + 1);
             self.order.remove(pos);
         }
     }
@@ -57,6 +61,7 @@ impl<K: Copy + Eq + Hash> OrderedSet<K> {
     }
 
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        crate::work::selection_steps(self.order.len());
         self.order.retain(|k| keep(k));
         self.members.retain(|k| keep(k));
     }
@@ -160,7 +165,10 @@ pub fn hit_test(snapshot: &DocumentSnapshot, at: Point, tolerance_mm: f64) -> Ve
     let index = crate::pick_index::pick_index(snapshot);
     burnburn_geometry::hit_test(
         &index.index,
-        |(_, id)| snapshot.is_selectable(id).then(|| snapshot.object(id)).flatten().map(|o| o.path().as_ref()),
+        |(_, id)| {
+            crate::work::pick_candidate();
+            snapshot.is_selectable(id).then(|| snapshot.object(id)).flatten().map(|o| o.path().as_ref())
+        },
         at,
         &tol,
     )

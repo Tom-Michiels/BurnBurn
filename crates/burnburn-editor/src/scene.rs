@@ -210,6 +210,7 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
         .filter(|id| !req.snapshot.is_hidden(*id))
         .filter_map(|id| {
             let obj = req.snapshot.object(id)?;
+            crate::work::scene_item();
             Some(SceneItem {
                 source: id,
                 path: Arc::clone(obj.path()),

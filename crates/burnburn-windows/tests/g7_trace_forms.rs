@@ -127,7 +127,10 @@ fn lens_pointing_and_a_check_send_their_intents_and_the_form_follows() {
     );
     assert_eq!(
         intent,
-        UiIntent::TracePrep { document: doc, intent: TracePrepIntent::UseLens { k1: "-0.1".into(), k2: "0".into(), p1: "0".into(), p2: "0".into() } }
+        UiIntent::TracePrep {
+            document: doc,
+            intent: TracePrepIntent::UseLens { k1: "-0.1".into(), k2: "0".into(), p1: "0".into(), p2: "0".into() }
+        }
     );
     assert!(text_of(&form(&h, doc), "Lens correction in use: k1 -0.1, k2 0."));
 
