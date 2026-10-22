@@ -43,7 +43,8 @@ pub enum ExtendError {
     Closed,
     /// No boundary lies ahead of the end.
     NoBoundaryAhead,
-    /// The end's segment is a Bézier curve; only lines and arcs can be extended.
+    /// No longer produced (G7-editor): a Bézier end is continued along its own cubic. Kept so
+    /// that callers matching on it keep compiling.
     NotExtendable,
 }
 

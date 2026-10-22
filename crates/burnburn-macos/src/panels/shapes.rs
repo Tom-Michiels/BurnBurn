@@ -49,6 +49,10 @@ fn caption(key: ParamKey, locale: Locale) -> &'static str {
         ParamKey::Rows => HostText::ParamRows,
         ParamKey::Count => HostText::ParamCount,
         ParamKey::Sweep => HostText::ParamSweep,
+        ParamKey::FilletRadius => HostText::ParamFilletRadius,
+        ParamKey::ChamferDistance => HostText::ParamChamferDistance,
+        ParamKey::ChamferDistance2 => HostText::ParamChamferDistance2,
+        ParamKey::ChamferAngle => HostText::ParamChamferAngle,
         _ => HostText::ParamKeepOriginal,
     };
     host_text(text, locale)

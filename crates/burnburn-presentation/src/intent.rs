@@ -588,6 +588,14 @@ pub enum ParamKey {
     Sweep,
     /// Mirror keeps the originals (`1`) or mirrors them in place (`0`).
     KeepOriginal,
+    /// Radius of the Fillet tool in mm (G7-editor, E05).
+    FilletRadius,
+    /// Distance of the Chamfer tools in mm (the first distance of the two-distance chamfer).
+    ChamferDistance,
+    /// Second distance of the two-distance chamfer in mm.
+    ChamferDistance2,
+    /// Angle of the distance-angle chamfer in degrees.
+    ChamferAngle,
 }
 
 /// One of the nine reference points of a selection's bounds (the inspector's 3×3 grid).
