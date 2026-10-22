@@ -21,8 +21,9 @@ use crate::source::SourceImage;
 
 /// Smallest template side (pixels) that still holds a pattern.
 const MIN_TEMPLATE_SIDE: u32 = 4;
-/// A template whose grey values hardly vary has no pattern to look for.
-const MIN_TEMPLATE_DEVIATION: f64 = 1.0;
+/// A template whose grey values vary less than this (standard deviation, grey levels of 255) has
+/// no pattern to look for: that much is what the noise of a camera sensor does on a plain surface.
+const MIN_TEMPLATE_DEVIATION: f64 = 4.0;
 /// Most matches a caller can ask for.
 const MAX_MATCHES: usize = 10_000;
 /// Largest reduction factor of the coarse search.
@@ -221,6 +222,21 @@ fn check_params(params: &LocateParams) -> Result<(), LocateError> {
     if score_ok && count_ok && separation_ok && factor_ok { Ok(()) } else { Err(LocateError::BadParams) }
 }
 
+/// Is `template` something that can be looked for: big enough, and with a pattern in it?
+pub fn check_template(template: &GrayImage) -> Result<(), LocateError> {
+    if !well_formed(template) {
+        return Err(LocateError::BadImage);
+    }
+    if template.width < MIN_TEMPLATE_SIDE || template.height < MIN_TEMPLATE_SIDE {
+        return Err(LocateError::TemplateTooSmall);
+    }
+    let kernel = Kernel::new(template);
+    if (kernel.energy / template.values.len() as f64).sqrt() < MIN_TEMPLATE_DEVIATION {
+        return Err(LocateError::FlatTemplate);
+    }
+    Ok(())
+}
+
 /// Every place where `template` appears in `frame` with a similarity of at least `min_score`, the
 /// most alike first (ties by position, so the order is fixed), at most `max_matches`, none closer
 /// than the separation to a better one.
@@ -235,16 +251,11 @@ pub fn locate(
         return Err(LocateError::BadImage);
     }
     cancel.check()?;
-    if template.width < MIN_TEMPLATE_SIDE || template.height < MIN_TEMPLATE_SIDE {
-        return Err(LocateError::TemplateTooSmall);
-    }
+    check_template(template)?;
     if template.width > frame.width || template.height > frame.height {
         return Err(LocateError::TemplateLargerThanFrame);
     }
     let kernel = Kernel::new(template);
-    if (kernel.energy / template.values.len() as f64).sqrt() < MIN_TEMPLATE_DEVIATION {
-        return Err(LocateError::FlatTemplate);
-    }
     let integral = Integral::new(frame);
     let (tw, th) = (template.width as usize, template.height as usize);
     let (max_x, max_y) = (frame.width as usize - tw, frame.height as usize - th);

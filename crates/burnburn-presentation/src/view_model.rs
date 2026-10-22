@@ -132,6 +132,8 @@ pub struct DocumentViewModel {
     pub start_confirm: Option<crate::start_confirm::StartConfirmViewModel>,
     /// The remnant library (W07).
     pub remnants: crate::remnants::RemnantsViewModel,
+    /// Template recognition in the camera picture (W06).
+    pub recognition: crate::recognition::RecognitionViewModel,
     /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
     pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
     /// Parts, variants, plates and references (S06, S07, P06).

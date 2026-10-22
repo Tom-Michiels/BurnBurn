@@ -124,6 +124,8 @@ pub enum UiIntent {
     },
     /// Closes the confirmation without starting.
     CancelStart,
+    /// Recognising products in the camera picture (W06): learn, find, decide, place.
+    Recognition(crate::recognition::RecognitionIntent),
     /// The remnant library (W07): keep the selection, remove, place.
     Remnant(crate::remnants::RemnantIntent),
     /// Names the remnant an order is made from, or none. The name must be in the remnant library.

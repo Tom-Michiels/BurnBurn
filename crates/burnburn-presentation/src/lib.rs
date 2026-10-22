@@ -30,6 +30,7 @@ mod notes;
 mod offset;
 mod production;
 pub mod profile_file;
+mod recognition;
 mod remnants;
 mod schikken;
 mod search_panel;
@@ -145,6 +146,10 @@ pub use production::{
     LiveStatus, MachineAction, MachineError, MachineIntent, MachinePort, MachineService, MachineStatus, OrderDraft,
     OrderId, Outcome, OutcomeRecord, PreparedJob, Recorded, RecoveredExecution, RecoveredMachine, Role, StoredOrder,
     StoredOrders, UploadRecord,
+};
+pub use recognition::{
+    CandidateDecision, CandidateView, LocateJob, NccLocator, RecognitionIntent, RecognitionNote, RecognitionPhase,
+    RecognitionProblem, RecognitionViewModel, RunningCamera, TemplateLocator, TemplateView,
 };
 pub use remnants::{RemnantIntent, RemnantLinkStatus, RemnantProblem, RemnantRow, RemnantsViewModel};
 pub use schikken::*;

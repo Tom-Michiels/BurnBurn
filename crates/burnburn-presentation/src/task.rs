@@ -101,6 +101,8 @@ pub enum TaskInput {
     ParseImport { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// A job of the file features: templates, libraries, bundles and exports.
     Files(FilesTask),
+    /// Where a learned template appears in a camera frame (W06).
+    Locate(Box<crate::recognition::LocateJob>),
     /// The objects of other pages of a PDF/AI file already parsed for the import preview.
     ImportPages { pdf: Arc<PdfDocument>, pages: PdfPages },
     /// Lower exactly this plan to RD bytes for the prepared job (C1); same lowering as `ExportRd`.
@@ -194,6 +196,7 @@ impl fmt::Debug for TaskInput {
             TaskInput::ParseImport { path, .. } => write!(f, "ParseImport({})", path.display()),
             TaskInput::ImportPages { pages, .. } => write!(f, "ImportPages({pages:?})"),
             TaskInput::Files(task) => write!(f, "Files({task:?})"),
+            TaskInput::Locate(job) => write!(f, "{job:?}"),
             TaskInput::SaveRecovery { path, .. } => write!(f, "SaveRecovery({})", path.display()),
             TaskInput::ListRecovery { dir, .. } => write!(f, "ListRecovery({})", dir.display()),
             TaskInput::RemoveRecovery { path, .. } => write!(f, "RemoveRecovery({})", path.display()),
@@ -230,6 +233,7 @@ impl TaskInput {
             TaskInput::ParseImport { .. } => TaskKind::ParseImport,
             TaskInput::ImportPages { .. } => TaskKind::ImportPages,
             TaskInput::Files(_) => TaskKind::Files,
+            TaskInput::Locate(_) => TaskKind::Locate,
             TaskInput::SaveRecovery { .. } => TaskKind::Autosave,
             TaskInput::ListRecovery { .. } | TaskInput::RemoveRecovery { .. } => TaskKind::Recovery,
             TaskInput::WriteText { .. } => TaskKind::TextExport,
@@ -286,6 +290,8 @@ pub enum TaskKind {
     OffsetPreview,
     /// The before/after of a repair (E09): worthless after an edit.
     RepairPreview,
+    /// A template search in a camera frame (W06): freshness by task identity, never by document revision.
+    Locate,
 }
 
 impl TaskKind {
@@ -315,6 +321,8 @@ pub struct TaskOutcome {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum TaskOutput {
+    /// The places a template was found in a camera frame (W06).
+    Located(Vec<burnburn_image::locate::LocateMatch>),
     Measured(DocumentMeasure),
     Saved {
         path: PathBuf,
@@ -508,6 +516,8 @@ pub enum TaskError {
     Repair(burnburn_document::CommandError),
     /// The feeder could not be planned around the compiled plan.
     Feeder(burnburn_cam::FeederError),
+    /// The template search failed (W06).
+    Locate(burnburn_image::locate::LocateError),
 }
 
 impl fmt::Display for TaskError {
@@ -536,6 +546,7 @@ impl fmt::Display for TaskError {
             TaskError::Offset(e) => write!(f, "offset failed: {e:?}"),
             TaskError::Repair(e) => write!(f, "repair preview failed: {e}"),
             TaskError::Feeder(e) => write!(f, "{e}"),
+            TaskError::Locate(e) => write!(f, "template search failed: {e:?}"),
         }
     }
 }
@@ -720,6 +731,11 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             Ok(TaskOutput::ImportParsed { path, bytes: Arc::from(bytes), parsed })
         }
         TaskInput::Files(task) => crate::files_task::run(task, cancel).map(TaskOutput::Files),
+        TaskInput::Locate(job) => match job.locator.locate(&job.frame, &job.template, &job.params, cancel) {
+            Ok(found) => Ok(TaskOutput::Located(found)),
+            Err(burnburn_image::locate::LocateError::Cancelled) => Err(TaskError::Cancelled),
+            Err(e) => Err(TaskError::Locate(e)),
+        },
         TaskInput::ImportPages { pdf, pages } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
             let draft = pdf.to_draft(pages).map_err(TaskError::Parse)?;
@@ -985,6 +1001,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::OffsetPreview => 60,
         TaskKind::RepairPreview => 61,
         TaskKind::ExportGcode => 44,
+        TaskKind::Locate => 62,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

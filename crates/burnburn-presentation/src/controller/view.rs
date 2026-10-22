@@ -31,6 +31,7 @@ impl AppController {
             Some(self.operator_view()).filter(|o| o.machine.is_some() || !o.jobs.is_empty() || !o.orders.is_empty());
         let start_confirm = self.start_confirm_view();
         let remnants = self.remnants_view();
+        let recognition = self.recognition_view();
         let documents = self
             .sessions
             .iter()
@@ -40,6 +41,7 @@ impl AppController {
                 vm.operator.clone_from(&operator);
                 vm.start_confirm.clone_from(&start_confirm);
                 vm.remnants.clone_from(&remnants);
+                vm.recognition.clone_from(&recognition);
                 vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
@@ -251,6 +253,7 @@ pub(super) fn document_view(
         operator: None,
         start_confirm: None,
         remnants: crate::remnants::RemnantsViewModel::default(),
+        recognition: crate::recognition::RecognitionViewModel::default(),
         offset: super::offset_preview::view(s),
         repair_preview: super::repair_preview::view(s),
         variable_panel: None,

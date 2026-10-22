@@ -38,6 +38,9 @@ impl AppController {
         if let Some(job) = self.files_jobs.remove(&outcome.id) {
             return self.files_finished(job, outcome);
         }
+        if self.recognition.owns(outcome.id) {
+            return self.located(outcome);
+        }
         let saved_path = match &outcome.result {
             Ok(TaskOutput::Saved { path } | TaskOutput::SavedWithBackup { path, .. }) => Some(path.clone()),
             _ => None,
@@ -299,14 +302,17 @@ impl AppController {
                 | TaskOutput::ImagePreview { .. }
                 | TaskOutput::BitmapSaved { .. }
                 // File jobs are delivered by `files_finished` before a session is looked up.
-                | TaskOutput::Files(_),
+                | TaskOutput::Files(_)
+                // A template search is delivered by `located` before a session is looked up.
+                | TaskOutput::Located(_),
             )
             | Err(
                 TaskError::Cancelled
                 | TaskError::Raster(_)
                 | TaskError::SourceMissing
                 | TaskError::Nest(_)
-                | TaskError::Files(_),
+                | TaskError::Files(_)
+                | TaskError::Locate(_),
             ) => {}
             Err(TaskError::Save(SaveError::Unconfirmed(_))) => {
                 // The replace happened: this revision is on disk, only durability is unconfirmed.
