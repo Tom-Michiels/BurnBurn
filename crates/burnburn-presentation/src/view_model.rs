@@ -405,6 +405,8 @@ pub struct TracerViewModel {
     pub result: Option<TraceSummary>,
     /// The panel's fields, the recipe in force and the last refused input.
     pub form: crate::image_panel::TraceFormViewModel,
+    /// Junctions and primitive candidates of the centre-line result, in centre-line mode (T04, T08).
+    pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

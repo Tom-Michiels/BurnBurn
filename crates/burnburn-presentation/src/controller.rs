@@ -536,6 +536,9 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| notes::set(s, document, text, request))
             }
+            UiIntent::CenterlineEdit { document, edit } => {
+                self.with_session(document, |s| trace::centerline_edit(s, document, edit))
+            }
             UiIntent::PreviewRepair { document, issue, tolerance } => self.preview_repair(document, issue, tolerance),
             UiIntent::PreviewOffset { document, distance } => self.preview_offset(document, distance),
             UiIntent::SetOffsetOptions { document, options } => self.set_offset_options(document, options),
@@ -898,6 +901,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetNotes { document, .. }
         | UiIntent::PreviewOffset { document, .. }
         | UiIntent::PreviewRepair { document, .. }
+        | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }

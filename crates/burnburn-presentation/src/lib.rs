@@ -7,6 +7,7 @@
 mod barcode_panel;
 mod cam_dialogs;
 mod camera;
+mod centerline_panel;
 mod camera_workspace;
 mod catalog;
 mod commit;
@@ -83,6 +84,9 @@ pub use files::{
     ImportLayerRow, ImportPage, ImportPages, Lbrn2ImageRow, Lbrn2ImageState, Lbrn2LayerRow, Lbrn2ReportViewModel,
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
+};
+pub use centerline_panel::{
+    CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
 };
 pub use notes::NotesViewModel;
 pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};

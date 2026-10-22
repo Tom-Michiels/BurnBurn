@@ -273,6 +273,11 @@ pub enum UiIntent {
         issue: usize,
         tolerance: String,
     },
+    /// A decision on the open centre-line result (T04, T08).
+    CenterlineEdit {
+        document: DocumentId,
+        edit: crate::centerline_panel::CenterlineEdit,
+    },
     /// Problem list (E09): close the gaps of problem `issue` (index into `DocumentViewModel.issues`)
     /// with the tolerance as typed. Gaps above the tolerance stay open.
     RepairIssue {
