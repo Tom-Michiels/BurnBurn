@@ -105,7 +105,7 @@ fn perf_guard_a_click_uses_one_index_and_looks_at_a_handful_of_outlines() {
     assert_eq!(pick_index_builds() - builds, 1, "200 clicks on one document state share one index");
     let per_click = editor_work().pick_candidates / 200;
     println!("guard click: worst index query {worst} nodes+boxes, {per_click} outlines per click");
-    assert!(per_click >= 1 && per_click <= 64, "{per_click} outlines examined per click (of {n})");
+    assert!((1..=64).contains(&per_click), "{per_click} outlines examined per click (of {n})");
 
     // A click on empty paper examines nothing.
     reset_editor_work();
@@ -129,7 +129,7 @@ fn perf_guard_select_all_costs_a_few_steps_per_object() {
     assert_eq!(sel.len() as u64, n);
     let steps = editor_work().selection_steps;
     println!("guard select all: {steps} steps for {n} objects");
-    assert!(steps >= n && steps <= 3 * n, "{steps} selection steps for {n} objects");
+    assert!((n..=3 * n).contains(&steps), "{steps} selection steps for {n} objects");
 
     // Lookups in a full selection are constant time: 1 000 of them add about 1 000 steps.
     reset_editor_work();
