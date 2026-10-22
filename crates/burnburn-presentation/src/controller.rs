@@ -88,6 +88,7 @@ mod trace;
 mod trace_g7;
 mod trace_link;
 mod trace_prep;
+mod trace_recipes;
 mod variable;
 mod view;
 
@@ -604,6 +605,7 @@ impl AppController {
             }
             UiIntent::TracePrep { document, intent } => self.trace_prep_intent(document, intent),
             UiIntent::TracePick { document, pick } => self.trace_pick(document, pick),
+            UiIntent::TraceRecipe { document, intent } => self.trace_recipe_intent(document, intent),
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
             }
@@ -1020,6 +1022,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::TracePrep { document, .. }
         | UiIntent::TracePick { document, .. }
+        | UiIntent::TraceRecipe { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }

@@ -68,6 +68,10 @@ impl AppController {
                 super::trace::centerline_finished(s, outcome.id, outcome.result, &mut update);
                 return update;
             }
+            TaskKind::TraceStudy => {
+                super::trace_recipes::finished(s, outcome.id, outcome.result, &mut update);
+                return update;
+            }
             TaskKind::TestJob => {
                 super::tests_gen::finished(s, outcome.id, outcome.result, &mut update);
                 return update;
@@ -296,6 +300,7 @@ impl AppController {
                 | TaskOutput::TextWritten { .. }
                 | TaskOutput::Nested(_)
                 | TaskOutput::Centerlined(_)
+                | TaskOutput::Studied(_)
                 | TaskOutput::ImagePreview { .. }
                 | TaskOutput::BitmapSaved { .. }
                 // File jobs are delivered by `files_finished` before a session is looked up.

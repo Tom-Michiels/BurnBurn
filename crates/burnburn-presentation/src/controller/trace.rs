@@ -87,6 +87,8 @@ pub(super) struct Tracer {
     pub(super) node_target: Option<burnburn_trace::NodeTarget>,
     /// Pointing in the image: corners being clicked or a brush in hand (G7-trace, T03).
     pub(super) pick: Option<super::trace_g7::PickState>,
+    /// Own recipes, the A/B comparison and the batch (G7-trace, T10).
+    pub(super) study: super::trace_recipes::StudyState,
 }
 
 impl Tracer {
@@ -120,6 +122,7 @@ impl Tracer {
             protect: std::collections::BTreeSet::new(),
             node_target: None,
             pick: None,
+            study: super::trace_recipes::StudyState::default(),
         }
     }
 
@@ -221,7 +224,7 @@ fn recipe_from(form: &TraceFormInput, base: Option<&TraceRecipe>) -> Result<Trac
 }
 
 /// The recipe a built-in preset stands for, on the declared scale of the source.
-fn preset_recipe(preset: TracePreset, scale: Option<PixelScale>) -> (TraceRecipe, TraceMode) {
+pub(super) fn preset_recipe(preset: TracePreset, scale: Option<PixelScale>) -> (TraceRecipe, TraceMode) {
     let mut recipe = TraceRecipe::default();
     recipe.image.scale = scale;
     let mut mode = TraceMode::Contour;

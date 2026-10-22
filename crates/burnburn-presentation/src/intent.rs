@@ -320,6 +320,11 @@ pub enum UiIntent {
         document: DocumentId,
         intent: crate::trace_prep::TracePrepIntent,
     },
+    /// Own recipes, A/B comparison and batch tracing of the open tracer (G7-trace, T10).
+    TraceRecipe {
+        document: DocumentId,
+        intent: crate::trace_recipes::TraceRecipeIntent,
+    },
     /// Pointing in the image of the open tracer: corners clicked, masks painted (G7-trace, T03).
     TracePick {
         document: DocumentId,

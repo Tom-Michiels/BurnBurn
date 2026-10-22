@@ -130,6 +130,8 @@ pub struct DocumentViewModel {
     pub operator: Option<OperatorViewModel>,
     /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
     pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
+    /// Own recipes, the A/B comparison and the batch report of the open tracer (G7-trace, T10).
+    pub trace_recipes: Option<crate::trace_recipes::TraceRecipesViewModel>,
     /// Parts, variants, plates and references (S06, S07, P06).
     pub structure: crate::structure_panel::StructureViewModel,
     /// The project notes panel while it is open (P04).

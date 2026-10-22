@@ -45,14 +45,18 @@ pub fn png_of_dpi(gray: &[u8], w: u32, h: u32, pixels_per_metre: u32) -> Vec<u8>
     out
 }
 
-pub fn image(w: usize, h: usize, pixel: impl Fn(usize, usize) -> u8) -> Vec<u8> {
+pub fn gray_image(w: usize, h: usize, pixel: impl Fn(usize, usize) -> u8) -> Vec<u8> {
     let mut gray = vec![255u8; w * h];
     for y in 0..h {
         for x in 0..w {
             gray[y * w + x] = pixel(x, y);
         }
     }
-    png_of(&gray, w as u32, h as u32)
+    gray
+}
+
+pub fn image(w: usize, h: usize, pixel: impl Fn(usize, usize) -> u8) -> Vec<u8> {
+    png_of(&gray_image(w, h, pixel), w as u32, h as u32)
 }
 
 pub fn inside_disc(x: usize, y: usize, cx: f64, cy: f64, r: f64) -> bool {
@@ -64,7 +68,12 @@ pub fn inside_disc(x: usize, y: usize, cx: f64, cy: f64, r: f64) -> bool {
 /// small black disc far away at (20, 15). At a global threshold of 127: ring with its counter,
 /// rectangle and the far disc (three parts, one hole).
 pub fn scene() -> Vec<u8> {
-    image(200, 120, |x, y| {
+    png_of(&scene_gray(), 200, 120)
+}
+
+/// The pixels of [`scene`] (200 × 120).
+pub fn scene_gray() -> Vec<u8> {
+    gray_image(200, 120, |x, y| {
         let mut v = 255u8;
         if inside_disc(x, y, 50.0, 60.0, 35.0) {
             v = 0;

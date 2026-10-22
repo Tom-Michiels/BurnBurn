@@ -112,9 +112,18 @@ pub(super) struct AppPanels {
     write_in_flight: Option<TaskId>,
     write_again: bool,
     pub(super) debug_log: super::support::DebugLog,
+    /// The user's own trace recipes (G7-trace, T10).
+    pub(super) trace_recipes: super::trace_recipes::RecipeStore,
     /// Preview window state and RD listings per window (W3-UI-app).
     pub(super) previews: std::collections::BTreeMap<DocumentId, super::preview::PreviewState>,
     pub(super) rd_listings: std::collections::BTreeMap<DocumentId, super::preview::RdListing>,
+}
+
+impl AppPanels {
+    /// The folder of the user file, once it is set.
+    pub(super) fn user_dir(&self) -> Option<&Path> {
+        self.user_dir.as_deref()
+    }
 }
 
 impl AppController {
@@ -129,6 +138,7 @@ impl AppController {
             Err(e) if e.kind == burnburn_io::fs::FsErrorKind::NotFound => None,
             Err(_) => Some(super::prefs::Loaded { settings: UserSettings::default(), damaged: true }),
         };
+        self.load_trace_recipes(&dir);
         let app = &mut self.app;
         app.user_dir = Some(dir);
         if let Some(loaded) = loaded {
@@ -267,6 +277,9 @@ impl AppController {
 
     /// A finished user-file write; `None` when the task is not ours.
     pub(super) fn app_panel_task_finished(&mut self, outcome: &TaskOutcome) -> Option<AppUpdate> {
+        if let Some(update) = self.trace_recipes_write_finished(outcome) {
+            return Some(update);
+        }
         if self.app.write_in_flight != Some(outcome.id) {
             return None;
         }
