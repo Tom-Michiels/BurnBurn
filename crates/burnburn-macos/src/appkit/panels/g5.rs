@@ -518,10 +518,10 @@ impl DocWindow {
                 section.shown = false;
                 section.requested = false;
             }
-            let draft = section.values();
-            let model = g5_panel(vm, document, kind, locale, &draft);
             let wanted = vm.active == Some(document) && (g5_opens_by_itself(kind) || section.requested);
-            let Some(model) = model.filter(|_| wanted) else {
+            // A panel nobody asked for is not even built (the structure lines are not cheap).
+            let model = if wanted { g5_panel(vm, document, kind, locale, &section.values()) } else { None };
+            let Some(model) = model else {
                 section.hide();
                 continue;
             };
