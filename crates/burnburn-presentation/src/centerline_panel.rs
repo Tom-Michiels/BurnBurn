@@ -55,4 +55,6 @@ pub struct CenterlineEditViewModel {
     pub chains: Vec<ChainRow>,
     /// Number of operator decisions taken so far.
     pub edits: u64,
+    /// Stored decisions that no longer fit this trace (their place is gone) and were not applied.
+    pub dropped: usize,
 }

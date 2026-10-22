@@ -6,10 +6,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use burnburn_document::engine::EngineRecipe;
 use burnburn_document::trace::TraceId;
 use burnburn_document::{CommandPayload, DerivedOwner, GeometrySource};
 use burnburn_geometry::Affine;
-use burnburn_trace::{TraceRecipe, centerline_command, centerline_from_engine, recipe_from_engine, trace_command};
+use burnburn_trace::{
+    CenterlineDecision, TraceRecipe, centerline_command, centerline_decisions_from_engine, centerline_from_engine,
+    recipe_from_engine, trace_command,
+};
 use burnburn_types::{CancellationSource, DocumentId, RequestId, TaskId};
 
 use crate::image_panel::TraceMode;
@@ -18,15 +22,26 @@ use crate::view_model::MessageKey;
 
 use super::{AppController, AppUpdate, Session, after_change, apply_command, error, submit};
 
+/// What a re-opened tracer starts from: the stored trace, its recipe and the decisions and
+/// corrections that belong to it.
+pub(super) struct Reopening {
+    pub(super) trace: TraceId,
+    pub(super) recipe: Box<TraceRecipe>,
+    pub(super) mode: TraceMode,
+    pub(super) decisions: Vec<CenterlineDecision>,
+    /// The stored engine recipe, for the local corrections (they need the decoded source to be read).
+    pub(super) stored: EngineRecipe,
+}
+
 /// Tracers being re-opened: the task that decodes the stored source, and what to show with it.
 #[derive(Default)]
 pub(super) struct TraceLinkState {
-    reopening: BTreeMap<TaskId, (TraceId, Box<TraceRecipe>, TraceMode)>,
+    reopening: BTreeMap<TaskId, Reopening>,
 }
 
 impl TraceLinkState {
     /// The trace and recipe a finished decode task was started for.
-    pub(super) fn take(&mut self, task: TaskId) -> Option<(TraceId, Box<TraceRecipe>, TraceMode)> {
+    pub(super) fn take(&mut self, task: TaskId) -> Option<Reopening> {
         self.reopening.remove(&task)
     }
 }
@@ -107,15 +122,17 @@ impl AppController {
             let stored = if definition.recipe.engine == burnburn_trace::CENTERLINE_ENGINE_VERSION {
                 // The tracer's form knows the image recipe and the fit budget; the rest of the
                 // centre-line settings are the tracer's defaults (the panel has no fields for them).
-                centerline_from_engine(&definition.recipe).map(|(image, settings)| {
+                centerline_from_engine(&definition.recipe).and_then(|(image, settings)| {
                     let mut recipe = TraceRecipe { image, ..TraceRecipe::default() };
                     recipe.fit.tolerance_mm = settings.tolerance_mm;
-                    (recipe, TraceMode::Centerline)
+                    // The operator's decisions are part of the stored recipe: tracing again applies them.
+                    let decisions = centerline_decisions_from_engine(&definition.recipe)?;
+                    Ok((recipe, TraceMode::Centerline, decisions))
                 })
             } else {
-                recipe_from_engine(&definition.recipe).map(|recipe| (recipe, TraceMode::Contour))
+                recipe_from_engine(&definition.recipe).map(|recipe| (recipe, TraceMode::Contour, Vec::new()))
             };
-            let Ok((recipe, mode)) = stored else { return error(Some(document), MessageKey::TraceFailed) };
+            let Ok((recipe, mode, decisions)) = stored else { return error(Some(document), MessageKey::TraceFailed) };
             let revision = s.doc.revision();
             let cancel = CancellationSource::new();
             let request = TaskRequest {
@@ -128,7 +145,10 @@ impl AppController {
             };
             let update = submit(s, &tasks, request, cancel, document);
             if s.pending.contains_key(&id) {
-                s.trace_link.reopening.insert(id, (trace, Box::new(recipe), mode));
+                s.trace_link.reopening.insert(
+                    id,
+                    Reopening { trace, recipe: Box::new(recipe), mode, decisions, stored: definition.recipe.clone() },
+                );
             }
             update
         })

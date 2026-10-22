@@ -300,6 +300,23 @@ fn an_ambiguous_junction_offers_its_pairings_and_picking_one_decides_it() {
     assert!(shown.iter().any(|t| t == "Decisions taken: 1"), "{shown:?}");
 }
 
+/// A stored decision whose place is gone after another resolution is said in the panel as a problem
+/// (G6-werk); with the same resolution no such line shows.
+#[test]
+fn a_stored_decision_that_no_longer_fits_is_said_in_the_panel() {
+    let (mut h, doc) = centre_lines_of(&t_png());
+    let node = vm(&h, doc).centerline.unwrap().junctions[0].node;
+    h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node, candidate: 0 } });
+    assert!(problems(&h, doc, G5Panel::Centerline).is_empty());
+    let mut input = h.document(doc).unwrap().tracer.unwrap().form.input;
+    input.dpi = "508".into();
+    h.send(UiIntent::SetTraceForm { document: doc, input: Box::new(input) });
+    h.run_tasks();
+    let shown = problems(&h, doc, G5Panel::Centerline);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert!(shown[0].contains("1 stored decision(s) no longer fit"), "{shown:?}");
+}
+
 /// A ring offers an exact circle; nothing is replaced until the operator accepts, and then the panel
 /// says which shape was confirmed.
 #[test]

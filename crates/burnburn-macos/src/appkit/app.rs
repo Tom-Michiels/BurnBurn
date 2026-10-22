@@ -1848,6 +1848,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             sep(),
             item(MenuItem::TraceImage, "", false),
             item(c(CommandKey::TraceEdit), "", false),
+            item(MenuItem::TracePrepPanel, "", false),
         ],
     ));
     main.addItem(&submenu(
@@ -1877,6 +1878,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::ShowArtLibrary),
             item(MenuItem::OffsetPanel, "", false),
             item(MenuItem::StructurePanel, "", false),
+            item(MenuItem::OperatorPanel, "", false),
         ],
     ));
     main.addItem(&app_host::help_menu(mtm, target, locale));

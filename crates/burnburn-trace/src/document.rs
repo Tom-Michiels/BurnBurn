@@ -8,7 +8,7 @@
 use burnburn_document::ObjectKind;
 use burnburn_document::engine::{EngineRecipe, ParamValue};
 use burnburn_document::trace::{TraceCommand, TraceDefinition, TraceId, TraceOutput};
-use burnburn_geometry::Affine;
+use burnburn_geometry::{Affine, Bounds, Point};
 use burnburn_image::{
     AlphaPolicy, ImageRecipe, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask, RegionMode,
     RegionShape, Threshold,
@@ -16,8 +16,9 @@ use burnburn_image::{
 use burnburn_types::ContentHash;
 
 use crate::{
-    CENTERLINE_ENGINE_VERSION, CenterlineResult, CenterlineSettings, ContourSettings, DiagonalPolicy, ENGINE_VERSION,
-    FitSettings, TraceError, TraceRecipe, TraceResult,
+    Anchor, CENTERLINE_ENGINE_VERSION, CenterlineDecision, CenterlineResult, CenterlineSettings, ChainEnd, ChainId,
+    ContourBinding, ContourId, ContourKind, ContourSettings, CorrectionId, CorrectionRecord, DiagonalPolicy,
+    ENGINE_VERSION, FitSettings, NodeTarget, TraceError, TraceRecipe, TraceResult,
 };
 
 use ParamValue as V;
@@ -324,7 +325,7 @@ pub fn trace_command(
     let definition = Box::new(TraceDefinition {
         name: name.to_owned(),
         source: source_asset,
-        recipe: recipe_to_engine(&result.recipe),
+        recipe: with_corrections(recipe_to_engine(&result.recipe), &result.corrections),
         key: result.recipe_key,
         placement,
     });
@@ -408,6 +409,9 @@ pub fn centerline_command(
     if result.revision > 0 {
         recipe = recipe.with("centerline.edits", V::Integer(i64::try_from(result.revision).unwrap_or(i64::MAX)));
     }
+    if !result.decisions().is_empty() {
+        recipe = recipe.with("centerline.decisions", decisions_to_param(result.decisions()));
+    }
     let definition = Box::new(TraceDefinition {
         name: name.to_owned(),
         source: source_asset,
@@ -429,4 +433,241 @@ pub fn centerline_command(
         None => TraceCommand::Create { definition, outputs },
         Some(trace) => TraceCommand::Replace { trace, definition, outputs },
     })
+}
+
+/// The operator decisions stored in a centreline recipe (none for a plain run).
+pub fn centerline_decisions_from_engine(recipe: &EngineRecipe) -> Result<Vec<CenterlineDecision>, TraceError> {
+    const NAME: &str = "centerline.decisions";
+    let Some(value) = recipe.get(NAME) else { return Ok(Vec::new()) };
+    list(NAME, value)?
+        .iter()
+        .map(|item| {
+            let point = |x: &ParamValue, y: &ParamValue| -> Result<Point, TraceError> {
+                Ok(Point::new(number(NAME, x)?, number(NAME, y)?))
+            };
+            let end = |chain: &ParamValue, at_start: &ParamValue| match at_start {
+                V::Bool(at_start) => Ok(ChainEnd { chain: ChainId(uint(NAME, chain)?), at_start: *at_start }),
+                _ => Err(TraceError::InvalidRecipe(NAME)),
+            };
+            match list(NAME, item)? {
+                [V::Text(kind), x, y, pairs @ ..] if kind == "junction" && pairs.len() % 4 == 0 => {
+                    let pairs = pairs
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|[ca, sa, cb, sb]| Ok((end(ca, sa)?, end(cb, sb)?)))
+                        .collect::<Result<_, TraceError>>()?;
+                    Ok(CenterlineDecision::ResolveJunction { at: point(x, y)?, pairs })
+                }
+                [V::Text(kind), chain, x, y] if kind == "confirm" => {
+                    Ok(CenterlineDecision::ConfirmPrimitive { chain: ChainId(uint(NAME, chain)?), at: point(x, y)? })
+                }
+                [V::Text(kind), ax, ay, bx, by] if kind == "join" => {
+                    Ok(CenterlineDecision::JoinEndpoints { a: point(ax, ay)?, b: point(bx, by)? })
+                }
+                _ => Err(TraceError::InvalidRecipe(NAME)),
+            }
+        })
+        .collect()
+}
+
+/// The decisions as the `centerline.decisions` parameter.
+fn decisions_to_param(decisions: &[CenterlineDecision]) -> ParamValue {
+    let end = |e: &ChainEnd| [V::Integer(i64::from(e.chain.0)), V::Bool(e.at_start)];
+    V::List(
+        decisions
+            .iter()
+            .map(|d| match d {
+                CenterlineDecision::ResolveJunction { at, pairs } => {
+                    let mut item = vec![V::Text("junction".into()), V::Number(at.x), V::Number(at.y)];
+                    for (a, b) in pairs {
+                        item.extend(end(a));
+                        item.extend(end(b));
+                    }
+                    V::List(item)
+                }
+                CenterlineDecision::ConfirmPrimitive { chain, at } => V::List(vec![
+                    V::Text("confirm".into()),
+                    V::Integer(i64::from(chain.0)),
+                    V::Number(at.x),
+                    V::Number(at.y),
+                ]),
+                CenterlineDecision::JoinEndpoints { a, b } => V::List(vec![
+                    V::Text("join".into()),
+                    V::Number(a.x),
+                    V::Number(a.y),
+                    V::Number(b.x),
+                    V::Number(b.y),
+                ]),
+            })
+            .collect(),
+    )
+}
+
+const CORRECTIONS: &str = "trace.corrections";
+
+fn binding_to_param(b: &ContourBinding) -> ParamValue {
+    V::List(vec![
+        V::Integer(i64::try_from(b.id.0).unwrap_or(i64::MAX)),
+        V::Text(
+            match b.kind {
+                ContourKind::Outer => "outer",
+                ContourKind::Hole => "hole",
+            }
+            .into(),
+        ),
+        V::Number(b.area_mm2),
+        V::Number(b.bounds.min().x),
+        V::Number(b.bounds.min().y),
+        V::Number(b.bounds.max().x),
+        V::Number(b.bounds.max().y),
+    ])
+}
+
+fn binding_from_param(v: &ParamValue) -> Result<ContourBinding, TraceError> {
+    match list(CORRECTIONS, v)? {
+        [id, V::Text(kind), area, x0, y0, x1, y1] => Ok(ContourBinding {
+            id: ContourId(uint(CORRECTIONS, id)?),
+            kind: match kind.as_str() {
+                "outer" => ContourKind::Outer,
+                "hole" => ContourKind::Hole,
+                _ => return Err(TraceError::InvalidRecipe(CORRECTIONS)),
+            },
+            area_mm2: number(CORRECTIONS, area)?,
+            bounds: Bounds::from_corners(
+                Point::new(number(CORRECTIONS, x0)?, number(CORRECTIONS, y0)?),
+                Point::new(number(CORRECTIONS, x1)?, number(CORRECTIONS, y1)?),
+            ),
+        }),
+        _ => Err(TraceError::InvalidRecipe(CORRECTIONS)),
+    }
+}
+
+/// One correction as a parameter: its region, the local recipe, anchors, protected contours, node
+/// target and the bindings it was made on. The ids of what it created or removed are not stored:
+/// replaying the correction finds them again.
+fn correction_to_param(c: &CorrectionRecord) -> ParamValue {
+    let region = match &c.region {
+        RegionShape::Rect(r) => {
+            let mut item = vec![V::Text("rect".into())];
+            item.extend(rect(r));
+            V::List(item)
+        }
+        RegionShape::Polygon(points) => {
+            let mut item = vec![V::Text("polygon".into())];
+            item.extend(points.iter().flat_map(|p| pair(*p)));
+            V::List(item)
+        }
+    };
+    let local = recipe_to_engine(&c.recipe).params.into_iter().map(|(k, v)| V::List(vec![V::Text(k), v])).collect();
+    let target = match c.node_target {
+        Some(t) => vec![int(u32::try_from(t.max_nodes).unwrap_or(u32::MAX)), V::Number(t.max_tolerance_mm)],
+        None => Vec::new(),
+    };
+    V::List(vec![
+        V::Text("correction-1".into()),
+        region,
+        V::List(local),
+        V::List(c.anchors.iter().map(|a| V::List(pair(a.at_px).into())).collect()),
+        V::List(c.protected.iter().map(|id| V::Integer(i64::try_from(id.0).unwrap_or(i64::MAX))).collect()),
+        V::List(c.touched.iter().map(binding_to_param).collect()),
+        V::List(c.untouched_in_region.iter().map(binding_to_param).collect()),
+        V::List(target),
+    ])
+}
+
+/// `recipe` with the corrections of a corrected result added as `trace.corrections` (nothing is
+/// added for a plain trace, so existing recipes keep their form).
+fn with_corrections(recipe: EngineRecipe, corrections: &[CorrectionRecord]) -> EngineRecipe {
+    if corrections.is_empty() {
+        return recipe;
+    }
+    recipe.with(CORRECTIONS, V::List(corrections.iter().map(correction_to_param).collect()))
+}
+
+/// The local corrections stored in a recipe (none for a plain trace). `base` is the recipe of the
+/// base trace: a correction must share its scale, crop and rotation. The records come back
+/// without the ids of what they created or removed, and with a base key that matches no real
+/// trace, so that applying them always checks their bindings.
+pub fn corrections_from_engine(
+    recipe: &EngineRecipe,
+    base: &TraceRecipe,
+    source_hash: ContentHash,
+) -> Result<Vec<CorrectionRecord>, TraceError> {
+    let Some(value) = recipe.get(CORRECTIONS) else { return Ok(Vec::new()) };
+    list(CORRECTIONS, value)?
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let bad = || TraceError::InvalidRecipe(CORRECTIONS);
+            let [V::Text(tag), region, local, anchors, protected, touched, untouched, target] =
+                list(CORRECTIONS, item)?
+            else {
+                return Err(bad());
+            };
+            if tag != "correction-1" {
+                return Err(bad());
+            }
+            let region = match list(CORRECTIONS, region)? {
+                [V::Text(kind), rest @ ..] if kind == "rect" => RegionShape::Rect(rect_from(CORRECTIONS, rest)?),
+                [V::Text(kind), rest @ ..] if kind == "polygon" && rest.len() % 2 == 0 => RegionShape::Polygon(
+                    rest.as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|[x, y]| Ok([number(CORRECTIONS, x)?, number(CORRECTIONS, y)?]))
+                        .collect::<Result<_, TraceError>>()?,
+                ),
+                _ => return Err(bad()),
+            };
+            let mut engine = EngineRecipe::new(ENGINE_VERSION);
+            for entry in list(CORRECTIONS, local)? {
+                let [V::Text(name), value] = list(CORRECTIONS, entry)? else { return Err(bad()) };
+                engine.params.insert(name.clone(), value.clone());
+            }
+            let local_recipe = recipe_from_engine(&engine)?;
+            if local_recipe.image.scale != base.image.scale
+                || local_recipe.image.crop != base.image.crop
+                || local_recipe.image.rotation != base.image.rotation
+            {
+                return Err(bad());
+            }
+            let anchors = list(CORRECTIONS, anchors)?
+                .iter()
+                .map(|a| match list(CORRECTIONS, a)? {
+                    [x, y] => Ok(Anchor { at_px: [number(CORRECTIONS, x)?, number(CORRECTIONS, y)?] }),
+                    _ => Err(bad()),
+                })
+                .collect::<Result<_, TraceError>>()?;
+            let protected = list(CORRECTIONS, protected)?
+                .iter()
+                .map(|id| Ok(ContourId(uint(CORRECTIONS, id)?)))
+                .collect::<Result<_, TraceError>>()?;
+            let bindings = |v: &ParamValue| -> Result<Vec<ContourBinding>, TraceError> {
+                list(CORRECTIONS, v)?.iter().map(binding_from_param).collect()
+            };
+            let node_target = match list(CORRECTIONS, target)? {
+                [] => None,
+                [n, tol] => Some(NodeTarget {
+                    max_nodes: usize::try_from(uint::<u32>(CORRECTIONS, n)?).map_err(|_| bad())?,
+                    max_tolerance_mm: number(CORRECTIONS, tol)?,
+                }),
+                _ => return Err(bad()),
+            };
+            Ok(CorrectionRecord {
+                id: CorrectionId(i as u64 + 1),
+                region,
+                local_key: local_recipe.key(source_hash).map_err(|_| TraceError::NonFinite)?,
+                recipe: local_recipe,
+                base_inputs: ContentHash::from_bytes([0; 32]),
+                anchors,
+                protected,
+                node_target,
+                touched: bindings(touched)?,
+                untouched_in_region: bindings(untouched)?,
+                created: Vec::new(),
+                removed: Vec::new(),
+                node_outcome: None,
+            })
+        })
+        .collect()
 }

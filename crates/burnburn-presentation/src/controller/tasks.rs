@@ -152,8 +152,8 @@ impl AppController {
             Ok(TaskOutput::ImageLoaded { source, bytes, .. }) => {
                 let media = super::image::media_of(&bytes);
                 let mut tracer = Tracer::new(source, bytes, media);
-                if let Some((trace, recipe, mode)) = s.trace_link.take(outcome.id) {
-                    tracer.reopen(trace, *recipe, mode);
+                if let Some(reopening) = s.trace_link.take(outcome.id) {
+                    tracer.reopen(reopening);
                 }
                 s.tracer = Some(tracer);
             }
@@ -162,10 +162,19 @@ impl AppController {
                     let current = t.recipe.as_ref().and_then(|r| r.key(t.source.content_hash()).ok());
                     let fresh = matches!((t.latest, current), (Some(latest), Some(key)) if result.check_fresh(latest, key).is_ok());
                     if fresh {
+                        t.report = Some(super::trace_prep::report_of(&result, t.recipe.as_ref()));
                         t.result = Some(result);
+                        t.unbound.clear();
+                        t.failed.clear();
                         update.scenes_changed.push(document);
                     }
                 }
+            }
+            Ok(TaskOutput::TracedCorrected(replay)) => {
+                super::trace_prep::corrected_finished(s, outcome.id, &replay, &mut update, document);
+            }
+            Ok(TaskOutput::Corrected(result)) => {
+                super::trace_prep::region_finished(s, outcome.id, result, &mut update, document);
             }
             Err(TaskError::Read(_) | TaskError::Decode(_)) => {
                 s.messages.push(StatusMessage { key: MessageKey::ImageFailed });

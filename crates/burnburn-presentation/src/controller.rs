@@ -86,6 +86,7 @@ mod tests_gen;
 mod text;
 mod trace;
 mod trace_link;
+mod trace_prep;
 mod variable;
 mod view;
 
@@ -600,6 +601,7 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| notes::set(s, document, text, request))
             }
+            UiIntent::TracePrep { document, intent } => self.trace_prep_intent(document, intent),
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
             }
@@ -1013,6 +1015,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Structure { document, .. }
         | UiIntent::ChoosePlate { document, .. }
         | UiIntent::CenterlineEdit { document, .. }
+        | UiIntent::TracePrep { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }

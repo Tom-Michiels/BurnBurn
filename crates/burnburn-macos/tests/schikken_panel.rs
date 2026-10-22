@@ -308,3 +308,28 @@ fn committing_what_a_print_and_cut_field_already_shows_changes_nothing() {
     let Some(SchikkenLine::Field { text, .. }) = control(&h, doc, C::PcMeasuredX(0)) else { panic!("field") };
     assert_eq!(text, "5", "the measurement survived the repeated commit");
 }
+
+#[test]
+fn the_nest_panel_offers_mirroring_and_sheets_and_reports_the_rest_per_sheet_and_the_complete_sets() {
+    let (mut h, doc) = window();
+    h.invoke(doc, CommandKey::QuickNest);
+    let Some(SchikkenLine::Check { on, .. }) = control(&h, doc, C::NestMirror) else { panic!("mirror check") };
+    assert!(!on, "mirroring is off until the operator chooses it");
+    let Some(SchikkenLine::Field { text, .. }) = control(&h, doc, C::NestSheets) else { panic!("sheets field") };
+    assert_eq!(text, "1");
+    press(&mut h, doc, C::NestMirror, vec![(C::NestMirror, "1".into())]).unwrap();
+    assert_eq!(
+        h.document(doc).unwrap().schikken.nest.unwrap().input.mirror,
+        burnburn_presentation::NestMirror::Allowed
+    );
+    press(&mut h, doc, C::NestSheets, vec![(C::NestSheets, "x".into())]).unwrap();
+    assert!(texts(&h, doc).iter().any(|t| t.contains("whole number from 1 to 20")), "{:?}", texts(&h, doc));
+    press(&mut h, doc, C::NestSheets, vec![(C::NestSheets, "1".into())]).unwrap();
+    press(&mut h, doc, C::NestStart, vec![]).unwrap();
+    h.run_tasks();
+    let t = texts(&h, doc);
+    assert!(t.iter().any(|x| x.starts_with("Sheet 1:") && x.contains("left")), "{t:?}");
+    assert!(t.iter().any(|x| x.contains("Complete sets: 1")), "{t:?}");
+    let nl = lines(&h, doc, Locale::Nl);
+    assert!(nl.iter().any(|l| matches!(l, SchikkenLine::Text(x) if x.starts_with("Plaat 1:") && x.contains("rest"))));
+}

@@ -19,6 +19,7 @@ pub(super) fn window_items() -> Vec<MenuNode> {
         host(Item::Art),
         MenuNode::Item(MenuItem::OffsetPanel),
         MenuNode::Item(MenuItem::StructurePanel),
+        MenuNode::Item(MenuItem::OperatorPanel),
         sep(),
         host(Item::App(AppAction::Preview)),
         host(Item::App(AppAction::InspectRd)),

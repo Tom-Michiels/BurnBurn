@@ -35,6 +35,8 @@ pub mod l10n_files;
 pub mod l10n_g5;
 #[path = "../../burnburn-macos/src/l10n_g6.rs"]
 pub mod l10n_g6;
+#[path = "../../burnburn-macos/src/l10n_g6_werk.rs"]
+pub mod l10n_g6_werk;
 #[path = "../../burnburn-macos/src/l10n_machine.rs"]
 pub mod l10n_machine;
 #[path = "../../burnburn-macos/src/panels/mod.rs"]

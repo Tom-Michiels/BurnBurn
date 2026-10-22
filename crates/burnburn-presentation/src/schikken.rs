@@ -197,6 +197,22 @@ pub struct NestInput {
     /// Grid step of the search (mm); finer packs tighter and takes longer.
     pub step: String,
     pub rotations: NestRotations,
+    /// Whether a part may be placed as its mirror image (C12). Forbidden unless chosen.
+    pub mirror: NestMirror,
+    /// A closed object of the drawing that is the sheet (a remnant): the parts go inside its contour
+    /// and the other objects that stay are its exclusion zones. `None`: the machine bed (W07).
+    pub sheet_object: Option<u64>,
+    /// How many identical sheets the parts may go on (whole number, at least 1).
+    pub sheets: String,
+}
+
+/// Whether the nest may mirror a part. Mirroring changes what a cut part is, so it is a choice that
+/// is off by default and never used to get a better score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestMirror {
+    #[default]
+    Forbidden,
+    Allowed,
 }
 
 impl Default for NestInput {
@@ -206,6 +222,9 @@ impl Default for NestInput {
             edge_buffer: "1".to_owned(),
             step: "1".to_owned(),
             rotations: NestRotations::default(),
+            mirror: NestMirror::default(),
+            sheet_object: None,
+            sheets: "1".to_owned(),
         }
     }
 }
@@ -215,6 +234,7 @@ pub enum NestField {
     Padding,
     EdgeBuffer,
     Step,
+    Sheets,
 }
 
 /// Why a nest did not run or gave nothing.
@@ -229,6 +249,10 @@ pub enum NestFailure {
     Geometry,
     /// The result no longer fits the document: it changed while or after nesting.
     Stale,
+    /// The chosen sheet is one of the objects being nested.
+    SheetIsPart,
+    /// The chosen sheet is not in the drawing any more, or is not a closed contour.
+    SheetGone,
     Refused,
 }
 
@@ -253,6 +277,15 @@ pub struct NestSheetView {
     pub height_mm: f64,
     /// The machine's bed (otherwise the bounds of what is being nested).
     pub is_bed: bool,
+    /// The object whose contour is the sheet (a remnant), when one is chosen (W07).
+    pub contour: Option<u64>,
+}
+
+/// A closed object that may be the sheet of a nest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestSheetChoice {
+    pub object: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -296,6 +329,30 @@ pub struct NestReportViewModel {
     pub skipped: Vec<NestSkippedRow>,
     /// Share of the sheet the placed parts cover, 0…1.
     pub utilisation: f64,
+    /// Parts placed as their mirror image (always 0 unless mirroring was allowed).
+    pub mirrored: usize,
+    /// Per sheet: how much is used and how much is left (C12).
+    pub sheets: Vec<NestSheetUseRow>,
+    /// Per part: ordered and placed (C12). One row per part; a group is one part.
+    pub parts: Vec<NestPartStatusRow>,
+    /// Complete sets placed: a set is one of every part.
+    pub complete_sets: u32,
+}
+
+/// What is used and left of one sheet, in mm².
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NestSheetUseRow {
+    pub net_mm2: f64,
+    pub placed_mm2: f64,
+    pub free_mm2: f64,
+}
+
+/// How much of one part's order was placed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestPartStatusRow {
+    pub objects: Vec<burnburn_types::GeometryId>,
+    pub ordered: u32,
+    pub placed: u32,
 }
 
 /// The nest panel (Quick Nest, Nest Selected) while it is open.
@@ -309,6 +366,8 @@ pub struct NestPanelViewModel {
     /// Objects that would be nested as parts, and the sheet they would go on.
     pub parts: usize,
     pub sheet: Option<NestSheetView>,
+    /// The closed objects that may be the sheet instead of the bed (W07).
+    pub sheet_choices: Vec<NestSheetChoice>,
     pub report: Option<NestReportViewModel>,
     /// Apply is available: a fresh result with at least one placement.
     pub can_apply: bool,

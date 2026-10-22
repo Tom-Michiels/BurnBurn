@@ -36,6 +36,7 @@ mod structure_panel;
 mod task;
 mod text_panel;
 mod thumbnail;
+mod trace_prep;
 mod variable_panel;
 mod view_model;
 
@@ -144,8 +145,8 @@ pub use production::{
 pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
 pub use structure_panel::{
-    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
-    ReferenceStatus, StructureEdit, StructureViewModel,
+    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
+    ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
@@ -155,6 +156,7 @@ pub use text_panel::{
     Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
+pub use trace_prep::*;
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
     VariablePanelViewModel, VariableProblem,

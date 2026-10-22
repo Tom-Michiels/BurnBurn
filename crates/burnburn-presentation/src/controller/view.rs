@@ -27,12 +27,15 @@ use super::{AppController, Session, layers};
 impl AppController {
     pub fn view(&self) -> Arc<AppViewModel> {
         let status = self.machine_port.as_ref().map(|p| p.status());
+        let operator =
+            Some(self.operator_view()).filter(|o| o.machine.is_some() || !o.jobs.is_empty() || !o.orders.is_empty());
         let documents = self
             .sessions
             .iter()
             .map(|(id, s)| {
                 let mut vm = document_view(*id, s, self.machine.as_ref(), self.app.prefs.units);
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
+                vm.operator.clone_from(&operator);
                 vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
@@ -240,6 +243,8 @@ pub(super) fn document_view(
         notes: super::notes::view(s),
         structure: super::structure::view(s),
         centerline: super::trace::centerline_panel(s),
+        trace_prep: super::trace_prep::view(s),
+        operator: None,
         offset: super::offset_preview::view(s),
         repair_preview: super::repair_preview::view(s),
         variable_panel: None,

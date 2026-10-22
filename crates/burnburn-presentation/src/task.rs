@@ -18,7 +18,10 @@ use burnburn_io::{
 };
 use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
 use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
-use burnburn_trace::{CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, trace};
+use burnburn_trace::{
+    CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, replay_corrections, retrace_region,
+    trace,
+};
 use burnburn_types::{
     CancellationToken, ContentHash, DocumentId, GeometryId, HashDomain, RevisionId, StableId, TaskId,
 };
@@ -39,6 +42,13 @@ pub struct TaskRequest {
     pub key: ContentHash,
     pub cancel: CancellationToken,
     pub input: TaskInput,
+}
+
+/// A contour trace and the local corrections to apply to it (T05).
+#[derive(Clone)]
+pub struct CorrectedTrace {
+    pub request: TraceRequest,
+    pub corrections: Arc<Vec<burnburn_trace::CorrectionRecord>>,
 }
 
 #[derive(Clone)]
@@ -83,6 +93,10 @@ pub enum TaskInput {
     DecodeImage { bytes: Arc<[u8]> },
     /// Contour trace of a source image with one recipe (IM12).
     Trace(Box<TraceRequest>),
+    /// A contour trace followed by the stored local corrections (T05).
+    TraceCorrected(Box<CorrectedTrace>),
+    /// One area traced again on top of a finished result (T05).
+    CorrectRegion(Box<burnburn_trace::CorrectionRequest>),
     /// Read and parse an SVG/DXF for the import preview (P03); nothing is committed.
     ParseImport { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// A job of the file features: templates, libraries, bundles and exports.
@@ -168,6 +182,10 @@ impl fmt::Debug for TaskInput {
             TaskInput::LoadImage { path, .. } => write!(f, "LoadImage({})", path.display()),
             TaskInput::DecodeImage { bytes } => write!(f, "DecodeImage({} bytes)", bytes.len()),
             TaskInput::Trace(r) => write!(f, "Trace(task {})", r.task),
+            TaskInput::TraceCorrected(r) => {
+                write!(f, "TraceCorrected(task {}, {} corrections)", r.request.task, r.corrections.len())
+            }
+            TaskInput::CorrectRegion(r) => write!(f, "CorrectRegion(task {})", r.task),
             TaskInput::PrepareJob { plan, .. } => write!(f, "PrepareJob({:?})", plan.id()),
             TaskInput::LoadBitmap { input } => write!(f, "LoadBitmap({input:?})"),
             TaskInput::ImagePreview(_) => f.write_str("ImagePreview"),
@@ -203,7 +221,7 @@ impl TaskInput {
             TaskInput::ExportRd { .. } => TaskKind::ExportRd,
             TaskInput::ExportGcode { .. } => TaskKind::ExportGcode,
             TaskInput::LoadImage { .. } | TaskInput::DecodeImage { .. } => TaskKind::LoadImage,
-            TaskInput::Trace(_) => TaskKind::Trace,
+            TaskInput::Trace(_) | TaskInput::TraceCorrected(_) | TaskInput::CorrectRegion(_) => TaskKind::Trace,
             TaskInput::PrepareJob { .. } => TaskKind::PrepareJob,
             TaskInput::LoadBitmap { .. } => TaskKind::LoadBitmap,
             TaskInput::ImagePreview(_) => TaskKind::ImagePreview,
@@ -355,6 +373,10 @@ pub enum TaskOutput {
         path: PathBuf,
     },
     Traced(Arc<TraceResult>),
+    /// A fresh trace with the stored corrections applied, and what became of each (T05).
+    TracedCorrected(Arc<burnburn_trace::CorrectionReplay>),
+    /// A finished result with one more area traced again (T05).
+    Corrected(Arc<TraceResult>),
     Centerlined(Arc<CenterlineResult>),
     /// The processed pixels of an image operation (live preview).
     ImagePreview {
@@ -780,9 +802,25 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
         TaskInput::Nest(job) => crate::nest_task::run_nest(&job, cancel).map(|o| TaskOutput::Nested(Arc::new(o))),
         TaskInput::Trace(request) => match trace(&request, cancel) {
             Ok(result) => Ok(TaskOutput::Traced(Arc::new(result))),
-            Err(TraceError::Cancelled(_)) => Err(TaskError::Cancelled),
-            Err(e) => Err(TaskError::Trace(e)),
+            Err(e) => Err(trace_error(e)),
         },
+        TaskInput::TraceCorrected(job) => {
+            let base = Arc::new(trace(&job.request, cancel).map_err(trace_error)?);
+            let replay = replay_corrections(&base, &job.request.source, &job.corrections, job.request.task, cancel)
+                .map_err(trace_error)?;
+            Ok(TaskOutput::TracedCorrected(Arc::new(replay)))
+        }
+        TaskInput::CorrectRegion(request) => {
+            retrace_region(&request, cancel).map(|r| TaskOutput::Corrected(Arc::new(r))).map_err(trace_error)
+        }
+    }
+}
+
+/// A trace error as a task error: a cancelled trace is a cancelled task.
+fn trace_error(e: TraceError) -> TaskError {
+    match e {
+        TraceError::Cancelled(_) => TaskError::Cancelled,
+        other => TaskError::Trace(other),
     }
 }
 

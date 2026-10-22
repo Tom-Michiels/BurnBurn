@@ -125,6 +125,11 @@ pub struct DocumentViewModel {
     pub repair_preview: Option<crate::offset::RepairPreviewViewModel>,
     /// Junctions and primitive candidates of the open centre-line result, in centre-line mode (T04, T08).
     pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
+    /// The compact operator view (W08), on every window while there is a machine service, an order
+    /// or an approved job.
+    pub operator: Option<OperatorViewModel>,
+    /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
+    pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
     /// Parts, variants, plates and references (S06, S07, P06).
     pub structure: crate::structure_panel::StructureViewModel,
     /// The project notes panel while it is open (P04).
@@ -314,7 +319,7 @@ pub struct JobCardViewModel {
 
 /// Compact operator view (W08, IM31): machine status, approved jobs and orders. It has no
 /// tools, fields or document commands by construction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OperatorViewModel {
     pub machine: Option<MachineViewModel>,
     /// Approved prepared jobs only.
@@ -322,12 +327,19 @@ pub struct OperatorViewModel {
     pub orders: Vec<OrderViewModel>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OperatorJobRow {
     /// The window the job was prepared in; `None` for a released job that comes from the history
     /// (after a restart) and has no window.
     pub document: Option<DocumentId>,
     pub name: String,
+    /// The document revision the job was compiled from (frozen with the job).
+    pub revision: RevisionId,
+    /// The size and place the job takes on the bed, from the frozen plan; `None` for a job rebuilt
+    /// from the history without its plan.
+    pub bounds: Option<burnburn_geometry::Bounds>,
+    /// The material of the plates in the project the job was made from, when they agree.
+    pub material: Option<String>,
     pub plan: JobPlanId,
     pub rd_hash: burnburn_types::ContentHash,
     pub upload: Option<MachineButton>,
@@ -742,6 +754,8 @@ pub enum MessageKey {
     Field(FieldKey),
     InvalidLength(FieldError),
     CommandRejected,
+    /// A structure edit (part, variant, reference) was refused for this reason (G6-werk).
+    Structure(crate::structure_panel::StructureProblem),
     SaveFailed,
     /// The file on disk was written by a newer BurnBurn: not overwritten, nothing was saved (X07).
     SaveNewerFileOnDisk,
