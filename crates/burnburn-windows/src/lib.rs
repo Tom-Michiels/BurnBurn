@@ -22,6 +22,10 @@ pub mod tasks;
 // into `burnburn-presentation` when the contracts phase gets to them (contracts-phase-c §IM20).
 #[path = "../../burnburn-macos/src/app_text.rs"]
 pub mod app_text;
+/// Desktop automation (API01): the protocol of `burnburn-runtime` over the presentation controller,
+/// shared with the macOS host.
+#[path = "../../burnburn-macos/src/automation_host.rs"]
+pub mod automation_host;
 #[path = "../../burnburn-macos/src/l10n_files.rs"]
 pub mod l10n_files;
 #[path = "../../burnburn-macos/src/l10n_g5.rs"]
