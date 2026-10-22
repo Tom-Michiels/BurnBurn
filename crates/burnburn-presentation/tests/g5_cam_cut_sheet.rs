@@ -99,7 +99,7 @@ fn tabs_that_no_longer_fit_are_said_at_the_tab_field() {
         .with_text(CutField::TabsWidth, "8");
     assert_eq!(ok(&mut h, doc, op, tabs), None);
     let sheet = open(&mut h, doc, op);
-    assert!(sheet.gates.advisory.get(&CutField::TabsValue).is_none(), "{:?}", sheet.gates.advisory);
+    assert!(!sheet.gates.advisory.contains_key(&CutField::TabsValue), "{:?}", sheet.gates.advisory);
     h.send(UiIntent::CancelCutSettings { document: doc });
 
     // The source shrinks to 3 x 3 mm (perimeter 12): 2 x 8 mm of tabs cover all of it.
