@@ -356,6 +356,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::CancelImageAdjust
             | CommandKey::MaskImage
             | CommandKey::ReplaceImage
+            | CommandKey::ReplaceImageToFit
             | CommandKey::RefreshImage
             | CommandKey::SaveProcessedBitmap,
             Some(s),

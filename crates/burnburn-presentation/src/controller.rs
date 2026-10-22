@@ -700,6 +700,7 @@ impl AppController {
             UiIntent::SetImageDpi { document, dpi } => self.set_image_dpi(document, &dpi),
             UiIntent::SetImageAdjust { document, input } => self.set_image_adjust(document, *input),
             UiIntent::ReplaceImage { document, path } => self.replace_image(document, path),
+            UiIntent::ReplaceImageToFit { document, path } => self.replace_image_to_fit(document, path),
             UiIntent::SaveProcessedBitmap { document, path } => self.save_processed_bitmap(document, path),
             UiIntent::SetTraceForm { document, input } => self.set_trace_form(document, *input),
             UiIntent::ApplyTracePreset { document, preset } => self.apply_trace_preset(document, preset),
@@ -1031,6 +1032,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetImageDpi { document, .. }
         | UiIntent::SetImageAdjust { document, .. }
         | UiIntent::ReplaceImage { document, .. }
+        | UiIntent::ReplaceImageToFit { document, .. }
         | UiIntent::SaveProcessedBitmap { document, .. }
         | UiIntent::SetTraceForm { document, .. }
         | UiIntent::ApplyTracePreset { document, .. }

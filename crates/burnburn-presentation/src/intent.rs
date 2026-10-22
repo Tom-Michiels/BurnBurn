@@ -439,6 +439,13 @@ pub enum UiIntent {
         document: DocumentId,
         path: PathBuf,
     },
+    /// File chosen for Replace to Fit (G7-trace, T09): like `ReplaceImage`, and the frame is
+    /// resized to hold the new picture in its own aspect ratio, as large as the old frame allows
+    /// and in the middle of it (one history entry).
+    ReplaceImageToFit {
+        document: DocumentId,
+        path: PathBuf,
+    },
     /// Location chosen for Save Processed Bitmap of the selected image operation. Writes exactly
     /// the pixels the compiler scans; the document is untouched.
     SaveProcessedBitmap {
@@ -876,6 +883,9 @@ pub enum CommandKey {
     /// Bitmap ▸ Replace Image… (the host asks for a file, then sends `UiIntent::ReplaceImage`);
     /// this key carries the enablement.
     ReplaceImage,
+    /// Bitmap ▸ Replace to Fit… (the host asks for a file, then sends `UiIntent::ReplaceImageToFit`);
+    /// this key carries the enablement.
+    ReplaceImageToFit,
     /// Bitmap ▸ Refresh Image: re-read the file the image came from (one history entry when the
     /// pixels changed).
     RefreshImage,
@@ -1121,6 +1131,7 @@ impl CommandKey {
         CommandKey::CancelImageAdjust,
         CommandKey::MaskImage,
         CommandKey::ReplaceImage,
+        CommandKey::ReplaceImageToFit,
         CommandKey::RefreshImage,
         CommandKey::SaveProcessedBitmap,
         CommandKey::SketchNew,

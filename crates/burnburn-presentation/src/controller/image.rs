@@ -58,6 +58,8 @@ pub(super) enum LoadPurpose {
     Replace(OperationId, Option<RequestId>),
     /// Re-read the file an operation came from.
     Refresh(OperationId, Option<RequestId>),
+    /// Replace the pixels and fit the frame to the new picture (G7-trace, T09).
+    ReplaceFit(OperationId, Option<RequestId>),
     /// Decode the stored pixels of a project that was opened from disk into the cache.
     Warm,
 }
@@ -362,9 +364,10 @@ pub(super) fn commit_enabled(s: &Session) -> bool {
 /// Enablement of the image commands.
 pub(super) fn command_enabled(key: CommandKey, s: &Session) -> bool {
     match key {
-        CommandKey::AdjustImage | CommandKey::ReplaceImage | CommandKey::SaveProcessedBitmap => {
-            selected_image(s).is_some()
-        }
+        CommandKey::AdjustImage
+        | CommandKey::ReplaceImage
+        | CommandKey::ReplaceImageToFit
+        | CommandKey::SaveProcessedBitmap => selected_image(s).is_some(),
         CommandKey::RefreshImage => selected_image(s).is_some_and(|(op, _)| origin_of(s, op).is_some()),
         CommandKey::MaskImage => mask_plan(s).is_some(),
         CommandKey::ApplyImageAdjust => image_view(s).adjust.is_some_and(|a| a.can_apply),
@@ -728,6 +731,16 @@ impl AppController {
         self.load_bitmap(document, BitmapInput::File { path, fs }, LoadPurpose::Replace(operation, request))
     }
 
+    /// Replace to Fit: the same replacement, with the frame resized to hold the new picture.
+    pub(super) fn replace_image_to_fit(&mut self, document: DocumentId, path: PathBuf) -> AppUpdate {
+        let request = self.next_id::<RequestId>();
+        let Some(operation) = self.sessions.get(&document).and_then(selected_image).map(|(op, _)| op) else {
+            return AppUpdate::default();
+        };
+        let fs = Arc::clone(&self.ports.fs);
+        self.load_bitmap(document, BitmapInput::File { path, fs }, LoadPurpose::ReplaceFit(operation, request))
+    }
+
     fn refresh_image(&mut self, document: DocumentId) -> AppUpdate {
         let request = self.next_id::<RequestId>();
         let Some((operation, path)) = self.sessions.get(&document).and_then(|s| {
@@ -794,6 +807,7 @@ fn apply_replacement(
     operation: OperationId,
     loaded: (Arc<SourceImage>, Arc<[u8]>, PathBuf),
     request: Option<RequestId>,
+    fit: bool,
 ) -> AppUpdate {
     let (source, bytes, path) = loaded;
     let snapshot = s.doc.snapshot();
@@ -815,7 +829,75 @@ fn apply_replacement(
     s.image.sources.insert(pixels, source);
     s.image.origins.insert((operation, pixels), path);
     let draft = OperationDraft { mode: OperationMode::Image(replaced), ..op.draft() };
-    apply_edit(s, document, CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft }), request)
+    let update = CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft });
+    if !fit {
+        return apply_edit(s, document, update, request);
+    }
+    // Replace to Fit: the frame takes the shape of the new picture inside the old frame.
+    let frame = op.targets().first().copied();
+    let old = frame.and_then(|f| snapshot.object(f)).and_then(|o| axis_aligned_frame(o.path()));
+    let (Some(frame), Some(old)) = (frame, old) else {
+        s.messages.push(StatusMessage { key: MessageKey::CommandRejected });
+        return AppUpdate::default();
+    };
+    match fit_transform(old, source_px_size(&s.image.sources, pixels)) {
+        None => apply_edit(s, document, update, request),
+        Some(Ok(transform)) => {
+            let compound = CompoundCommand {
+                label: CompoundLabel::ReplaceToFit,
+                steps: vec![
+                    CompoundStep::Run(CommandPayload::Transform { targets: vec![frame], transform }),
+                    CompoundStep::Run(update),
+                ],
+            };
+            apply_edit(s, document, CommandPayload::Compound(compound), request)
+        }
+        Some(Err(())) => {
+            s.messages.push(StatusMessage { key: MessageKey::CommandRejected });
+            AppUpdate::default()
+        }
+    }
+}
+
+fn source_px_size(sources: &BTreeMap<ContentHash, Arc<SourceImage>>, hash: ContentHash) -> (u32, u32) {
+    sources.get(&hash).map_or((0, 0), |i| (i.width(), i.height()))
+}
+
+/// The bounds of `path` when it is one closed rectangle with its sides along the axes: the frame of
+/// an imported picture before anyone rotated it.
+fn axis_aligned_frame(path: &Path) -> Option<Bounds> {
+    use burnburn_geometry::Segment;
+    let [sub] = path.subpaths() else { return None };
+    let bounds = path.bounds().filter(|b| b.width() > 0.0 && b.height() > 0.0)?;
+    let mut vertices = vec![sub.start()];
+    for segment in sub.segments() {
+        match segment {
+            Segment::Line { to } => vertices.push(*to),
+            _ => return None,
+        }
+    }
+    let on = |v: f64, lo: f64, hi: f64| (v - lo).abs() < 1e-9 || (v - hi).abs() < 1e-9;
+    let rectangle = vertices.len() >= 4
+        && vertices.iter().all(|p| on(p.x, bounds.min().x, bounds.max().x) && on(p.y, bounds.min().y, bounds.max().y));
+    rectangle.then_some(bounds)
+}
+
+/// The scaling and shift that put a picture of `px` pixels, in its own aspect ratio, as large as
+/// `old` allows into the middle of it. `None` when the frame already has that shape; `Some(Err)`
+/// when the picture has no size.
+fn fit_transform(old: Bounds, (pw, ph): (u32, u32)) -> Option<Result<burnburn_geometry::Affine, ()>> {
+    use burnburn_geometry::Affine;
+    if pw == 0 || ph == 0 {
+        return Some(Err(()));
+    }
+    let aspect = f64::from(pw) / f64::from(ph);
+    let (w, h) = (old.width(), old.height());
+    let (new_w, new_h) = if aspect >= w / h { (w, w / aspect) } else { (h * aspect, h) };
+    if (new_w - w).abs() < 1e-9 && (new_h - h).abs() < 1e-9 {
+        return None;
+    }
+    let centre = Point::new((old.min().x + old.max().x) / 2.0, (old.min().y + old.max().y) / 2.0);
+    Some(Affine::scale_about(centre, new_w / w, new_h / h).map_err(|_| ()))
 }
 
 // ---- task results ------------------------------------------------------------------------------
@@ -843,8 +925,13 @@ pub(super) fn finished(
                 s.image.pending =
                     Some(PendingBitmap { file: file_title(&path), path, source, bytes, media, dpi_text, issue: None });
             }
-            Some(LoadPurpose::Replace(op, request) | LoadPurpose::Refresh(op, request)) => {
-                let applied = apply_replacement(s, document, op, (source, bytes, path), request);
+            Some(
+                LoadPurpose::Replace(op, request)
+                | LoadPurpose::Refresh(op, request)
+                | LoadPurpose::ReplaceFit(op, request),
+            ) => {
+                let fit = matches!(purpose, Some(LoadPurpose::ReplaceFit(..)));
+                let applied = apply_replacement(s, document, op, (source, bytes, path), request, fit);
                 update.effects.extend(applied.effects);
                 update.scenes_changed.extend(applied.scenes_changed);
             }

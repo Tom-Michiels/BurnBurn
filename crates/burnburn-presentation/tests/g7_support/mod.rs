@@ -25,9 +25,14 @@ pub fn crc32(data: &[u8]) -> u32 {
 
 /// 254 dpi (0.1 mm per pixel) in the file.
 pub fn png_of(gray: &[u8], w: u32, h: u32) -> Vec<u8> {
+    png_of_dpi(gray, w, h, 10_000)
+}
+
+/// A gray PNG whose header says `pixels_per_metre` (1000 = 25.4 dpi = 1 mm per pixel).
+pub fn png_of_dpi(gray: &[u8], w: u32, h: u32, pixels_per_metre: u32) -> Vec<u8> {
     let plain = encode_png_gray8(w, h, gray).unwrap();
-    let mut data = 10_000u32.to_be_bytes().to_vec();
-    data.extend_from_slice(&10_000u32.to_be_bytes());
+    let mut data = pixels_per_metre.to_be_bytes().to_vec();
+    data.extend_from_slice(&pixels_per_metre.to_be_bytes());
     data.push(1);
     let mut body = b"pHYs".to_vec();
     body.extend_from_slice(&data);

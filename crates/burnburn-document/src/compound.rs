@@ -15,6 +15,8 @@ pub enum CompoundLabel {
     MaskImage,
     /// A LightBurn project: shapes, layer operations and bitmaps in one step (P04).
     ImportProject,
+    /// Replace to Fit: the frame takes the shape of the new picture, and the pixels change (G7-trace, T09).
+    ReplaceToFit,
 }
 
 /// One step of a compound command.
