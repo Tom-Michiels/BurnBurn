@@ -72,6 +72,7 @@ pub fn template_of(project: &Project, content: TemplateContent) -> Result<Projec
             // A template starts its own series.
             production: None,
             layer_slots: project.layer_slots.clone(),
+            part_name: None,
         }),
         TemplateContent::SettingsOnly => {
             let layer = project.document.process();
@@ -109,6 +110,7 @@ pub fn template_of(project: &Project, content: TemplateContent) -> Result<Projec
                 library_links: project.library_links.clone(),
                 production: None,
                 layer_slots: project.layer_slots.clone(),
+                part_name: None,
             })
         }
     }

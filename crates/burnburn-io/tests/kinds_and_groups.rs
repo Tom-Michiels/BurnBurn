@@ -23,6 +23,7 @@ fn project(objects: Vec<GeometryObject>, next_id: u64) -> Project {
         library_links: Vec::new(),
         production: None,
         layer_slots: Vec::new(),
+        part_name: None,
     }
 }
 

@@ -235,6 +235,25 @@ pub enum NestPartGrain {
     Across,
     /// The part has no grain rule and turns freely.
     Free,
+    /// The part's grain runs at its own angle (G9): tenths of a degree from its X axis, counter-
+    /// clockwise, in `0..1800` (the grain has no sense, so 180 degrees is the same grain). The part
+    /// turns until that direction lies along the grain of the sheet.
+    Angle(i32),
+}
+
+impl NestPartGrain {
+    /// The grain at `degrees` from the part's X axis, as a rule (rounded to a tenth of a degree).
+    pub fn at_degrees(degrees: f64) -> Self {
+        NestPartGrain::Angle(((degrees * 10.0).round() as i64).rem_euclid(1800) as i32)
+    }
+
+    /// The angle of an [`NestPartGrain::Angle`] rule in degrees.
+    pub fn angle_degrees(self) -> Option<f64> {
+        match self {
+            NestPartGrain::Angle(tenths) => Some(f64::from(tenths) / 10.0),
+            _ => None,
+        }
+    }
 }
 
 /// What an object that lies inside another object is for the nest.

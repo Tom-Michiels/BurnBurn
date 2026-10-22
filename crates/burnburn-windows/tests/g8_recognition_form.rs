@@ -109,3 +109,28 @@ fn pointing_sends_the_chosen_camera_and_name_and_shows_its_stop_while_it_lasts()
     let FormOutcome::Intent(stop) = react(&h, doc, C::RecogEndPoint, ControlValue::Press) else { panic!("stop") };
     assert_eq!(stop, UiIntent::Recognition(RecognitionIntent::EndPoint));
 }
+
+// --- Mirrored, tilted and partly visible products (G9-cam-werk) -------------------------------------------------
+
+#[test]
+fn the_form_has_the_three_new_search_choices_and_each_sends_all_three() {
+    let (mut h, doc) = rig();
+    let f = form(&h, doc);
+    for control in [C::RecogMirror, C::RecogPerspective, C::RecogPartial] {
+        assert!(matches!(f.find(&ControlId::G5(control)), Some(FormLine::Check { on: false, .. })), "{control:?}");
+    }
+    let outcome = react(&h, doc, C::RecogMirror, ControlValue::Toggle(true));
+    let FormOutcome::Intent(intent) = outcome else { panic!("{outcome:?}") };
+    assert_eq!(
+        intent,
+        UiIntent::Recognition(RecognitionIntent::SetSearchExtras { mirror: true, perspective: false, partial: false })
+    );
+    h.send(intent);
+    assert!(matches!(form(&h, doc).find(&ControlId::G5(C::RecogMirror)), Some(FormLine::Check { on: true, .. })));
+    let outcome = react(&h, doc, C::RecogPartial, ControlValue::Toggle(true));
+    let FormOutcome::Intent(intent) = outcome else { panic!("{outcome:?}") };
+    assert_eq!(
+        intent,
+        UiIntent::Recognition(RecognitionIntent::SetSearchExtras { mirror: true, perspective: false, partial: true })
+    );
+}

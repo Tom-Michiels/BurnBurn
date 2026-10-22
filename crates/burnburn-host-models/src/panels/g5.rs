@@ -72,6 +72,9 @@ pub enum G5Control {
     NotesText,
     NotesSave,
     NotesClose,
+    /// The explicit part name of the project and its button (W01/W02, G9).
+    NotesPartName,
+    NotesPartNameSave,
     OffsetDistance,
     OffsetJoin,
     OffsetKeepSources,
@@ -310,6 +313,10 @@ pub enum G5Control {
     // --- Recognition with rotation and scale, saved templates and pointing (G8-cam-werk, W06).
     RecogRotation,
     RecogScale,
+    // --- Mirrored, tilted and partly visible products (G9-cam-werk, W06).
+    RecogMirror,
+    RecogPerspective,
+    RecogPartial,
     RecogPoint,
     RecogEndPoint,
     RecogUse {
@@ -502,6 +509,9 @@ pub fn g5_panel(
 
 // --- Notes ---------------------------------------------------------------------------------------
 
+/// Longest part name, in characters (the project file refuses more).
+const MAX_PART_NAME_CHARS: usize = 200;
+
 fn notes_lines(doc: &DocumentViewModel, locale: Locale, draft: &[(G5Control, String)]) -> Option<Vec<G5Line>> {
     let notes = doc.notes.as_ref()?;
     let typed = value_of(draft, G5Control::NotesText).map_or_else(|| notes.text.chars().count(), |t| t.chars().count());
@@ -515,6 +525,13 @@ fn notes_lines(doc: &DocumentViewModel, locale: Locale, draft: &[(G5Control, Str
         lines.push(G5Line::Problem(g5_fmt(G5Text::NotesTooLong, locale, &[&max])));
     }
     lines.push(button(G5Control::NotesSave, g5_text(G5Text::NotesSave, locale).to_owned(), !too_long));
+    // The name an order finds this project's product by (W01/W02): saved with its own button.
+    lines.push(G5Line::Field {
+        control: G5Control::NotesPartName,
+        caption: g5_text(G5Text::NotesPartName, locale).to_owned(),
+        text: notes.part_name.clone(),
+    });
+    lines.push(button(G5Control::NotesPartNameSave, g5_text(G5Text::NotesPartNameSave, locale).to_owned(), true));
     lines.push(button(G5Control::NotesClose, g5_text(G5Text::NotesClose, locale).to_owned(), true));
     Some(lines)
 }
@@ -877,6 +894,9 @@ pub fn g5_intent(
         | G5Control::RecogReject { .. }
         | G5Control::RecogRotation
         | G5Control::RecogScale
+        | G5Control::RecogMirror
+        | G5Control::RecogPerspective
+        | G5Control::RecogPartial
         | G5Control::RecogPoint
         | G5Control::RecogEndPoint
         | G5Control::RecogUse { .. }
@@ -906,7 +926,11 @@ pub fn g5_intent(
             (text.chars().count() <= max).then_some(UiIntent::SetNotes { document, text })
         }
         G5Control::NotesClose => doc.notes.as_ref().map(|_| UiIntent::CloseNotes { document }),
-        G5Control::NotesText => None,
+        G5Control::NotesPartNameSave => {
+            let name = typed(G5Control::NotesPartName)?;
+            (name.trim().chars().count() <= MAX_PART_NAME_CHARS).then_some(UiIntent::SetPartName { document, name })
+        }
+        G5Control::NotesText | G5Control::NotesPartName => None,
         G5Control::OffsetPreview => (!doc.selection.is_empty()).then(|| UiIntent::PreviewOffset {
             document,
             distance: typed(G5Control::OffsetDistance).unwrap_or_default(),

@@ -107,6 +107,9 @@ impl AppController {
                 }
                 s.doc.mark_saved(outcome.source);
                 s.variable.mark_saved();
+                if let Some(saved) = s.saving_part_name.take() {
+                    s.saved_part_name = saved;
+                }
                 if let Some(recovery) = s.recovery_path.take().filter(|_| !s.unsaved()) {
                     s.autosaved = None;
                     if let Ok(id) = self.ids.allocate::<TaskId>() {
@@ -265,6 +268,7 @@ impl AppController {
                 if let Some(source) = s.preparing.take().filter(|p| p.id() == plan) {
                     let mut project = Project::new(s.uuid, (*s.doc.snapshot()).clone());
                     project.assets = s.assets.clone();
+                    project.part_name = s.part_name.clone();
                     let inputs = JobInputs {
                         plan: Arc::clone(&source),
                         project: Arc::new(project),

@@ -51,7 +51,16 @@ pub trait TemplateLocator: Send + Sync + fmt::Debug {
         Ok(self
             .locate(frame, template, &plain, cancel)?
             .into_iter()
-            .map(|m| PoseMatch { x_px: m.x_px, y_px: m.y_px, angle_deg: 0.0, scale: 1.0, score: m.score })
+            .map(|m| PoseMatch {
+                x_px: m.x_px,
+                y_px: m.y_px,
+                angle_deg: 0.0,
+                scale: 1.0,
+                score: m.score,
+                mirrored: false,
+                tilt: (0.0, 0.0),
+                visible: 1.0,
+            })
             .collect())
     }
 }
@@ -119,6 +128,9 @@ pub enum RecognitionIntent {
     CancelFind,
     /// What a search also looks for: a product that is turned, one that is larger or smaller.
     SetSearch { rotation: bool, scale: bool },
+    /// What a search also looks for (G9): a product that is the mirror image of the template, one seen
+    /// at an angle (perspective), one that lies partly outside the camera picture.
+    SetSearchExtras { mirror: bool, perspective: bool, partial: bool },
     /// Learn the template by pointing at two opposite corners of its box in the camera picture on
     /// the sheet (the canvas pointer); the second corner learns it under `name`.
     PointBox { device: CameraDeviceId, name: String },
@@ -214,6 +226,12 @@ pub struct SavedTemplateView {
 pub struct SearchChoice {
     pub rotation: bool,
     pub scale: bool,
+    /// Also the mirror image of the template (G9).
+    pub mirror: bool,
+    /// Also a product seen at an angle (G9).
+    pub perspective: bool,
+    /// Also a product that lies partly outside the picture (G9).
+    pub partial: bool,
 }
 
 /// Pointing at the box of a template in the camera picture on the sheet.
@@ -237,6 +255,10 @@ pub struct CandidateView {
     pub angle_deg: f64,
     /// How large the product is relative to the template (1 for a search without scale).
     pub scale: f64,
+    /// The product is the mirror image of the template: the copy placed on it is mirrored too.
+    pub mirrored: bool,
+    /// The part of the template that lies inside the picture, in percent (100 when all of it).
+    pub visible_percent: f64,
     /// The place on the bed, from the camera calibration; `None` without one.
     pub bed_mm: Option<[f64; 2]>,
     pub decision: CandidateDecision,

@@ -25,7 +25,9 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Opened { project, path }) => {
-                let Project { uuid, document: snapshot, assets, library_links, production, layer_slots, .. } = *project;
+                let Project {
+                    uuid, document: snapshot, assets, library_links, production, layer_slots, part_name, ..
+                } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let session = match &restored {
                     // A recovered document is unsaved and untitled: Save asks for a location and
@@ -49,6 +51,8 @@ impl AppController {
                 let mut session = session;
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
                 session.library_links = library_links;
+                session.part_name = part_name.clone();
+                session.saved_part_name = part_name;
                 if let Some(production) = &production {
                     let Session { variable, assets, .. } = &mut session;
                     variable.restore(production, assets);
@@ -149,6 +153,8 @@ impl AppController {
             project.library_links = s.library_links.clone();
             project.production = s.variable.production(&mut project.assets);
             project.layer_slots = super::layers::export(s);
+            project.part_name = s.part_name.clone();
+            s.saving_part_name = Some(s.part_name.clone());
             let cancel = CancellationSource::new();
             let request = TaskRequest {
                 id,

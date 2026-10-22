@@ -252,6 +252,12 @@ struct Session {
     offset: offset_preview::OffsetState,
     /// The project notes panel is open (P04; window state).
     notes_open: bool,
+    /// The explicit part name of the project (W01/W02, G9) and the one last saved: production
+    /// bookkeeping saved with the project, no undo step.
+    part_name: Option<String>,
+    saved_part_name: Option<String>,
+    /// The part name the save in flight carries.
+    saving_part_name: Option<Option<String>>,
     /// Text evaluator input (from `AppController::attach_fonts`).
     fonts: Option<SharedFonts>,
     /// Why the last operations-panel input sent no command.
@@ -404,6 +410,9 @@ impl Session {
             barcode: barcode::BarcodeState::default(),
             generator: generator::GeneratorState::default(),
             library_links: Vec::new(),
+            part_name: None,
+            saved_part_name: None,
+            saving_part_name: None,
             files: library::FilesUi::default(),
         })
     }
@@ -618,6 +627,9 @@ impl AppController {
             UiIntent::SetNotes { document, text } => {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| notes::set(s, document, text, request))
+            }
+            UiIntent::SetPartName { document, name } => {
+                self.with_session(document, |s| notes::set_part_name(s, document, &name))
             }
             UiIntent::TracePrep { document, intent } => self.trace_prep_intent(document, intent),
             UiIntent::TracePick { document, pick } => self.trace_pick(document, pick),
@@ -951,7 +963,7 @@ fn error(document: Option<DocumentId>, message: MessageKey) -> AppUpdate {
 impl Session {
     /// Unsaved work: document changes, or counters that moved since the last save (E11).
     fn unsaved(&self) -> bool {
-        self.doc.is_dirty() || self.variable.unsaved()
+        self.doc.is_dirty() || self.variable.unsaved() || self.part_name != self.saved_part_name
     }
 }
 
@@ -1044,6 +1056,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Select { document, .. }
         | UiIntent::SelectByKind { document, .. }
         | UiIntent::SetNotes { document, .. }
+        | UiIntent::SetPartName { document, .. }
         | UiIntent::PreviewOffset { document, .. }
         | UiIntent::PreviewRepair { document, .. }
         | UiIntent::Structure { document, .. }

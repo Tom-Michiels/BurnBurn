@@ -193,14 +193,7 @@ impl HistoryStore for RecordingHistory {
         if !approvals.iter().any(|a| a.plan == job.plan) {
             approvals.push(Arc::new(burnburn_presentation::PreparedJob { inputs: None, ..job.clone() }));
             if let Some(inputs) = job.inputs.as_ref() {
-                let snapshot = &inputs.project.document;
-                let names = snapshot
-                    .draw_order()
-                    .into_iter()
-                    .filter_map(|id| snapshot.object(id))
-                    .map(|o| o.name().to_owned())
-                    .collect();
-                self.parts.lock().unwrap().push((job.plan, names));
+                self.parts.lock().unwrap().push((job.plan, inputs.project.order_part_names()));
             }
         }
         Ok(())

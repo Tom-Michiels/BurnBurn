@@ -114,6 +114,10 @@ pub struct Project {
     /// The palette button of each layer, `(operation id, slot)` (C01). Window convenience: not
     /// part of the project hash, and a layer without an entry gets the first free colour.
     pub layer_slots: Vec<(u64, u8)>,
+    /// The name of the product this project makes, as an order names it (W01/W02, G9). It is separate
+    /// from the names of the drawn objects: an object may be called "Pad 1" while the product is
+    /// "Houder". Production bookkeeping: not part of the project hash and no undo step.
+    pub part_name: Option<String>,
 }
 
 /// A project recipe that came from a material-library entry: the library, the entry and the
@@ -193,6 +197,7 @@ impl Project {
             library_links: Vec::new(),
             production: None,
             layer_slots: Vec::new(),
+            part_name: None,
         }
     }
 
@@ -221,7 +226,18 @@ impl Project {
             library_links: Vec::new(),
             production: None,
             layer_slots: Vec::new(),
+            part_name: None,
         }
+    }
+
+    /// The names an order can use to find this project's product (W01/W02): the explicit part name
+    /// when there is one, otherwise the names of the drawn objects in draw order.
+    pub fn order_part_names(&self) -> Vec<String> {
+        if let Some(name) = self.part_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            return vec![name.to_owned()];
+        }
+        let snapshot = &self.document;
+        snapshot.draw_order().into_iter().filter_map(|id| snapshot.object(id)).map(|o| o.name().to_owned()).collect()
     }
 
     pub fn revision(&self, number: u32) -> Option<&FrozenRevision> {

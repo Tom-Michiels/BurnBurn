@@ -31,6 +31,10 @@ use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskR
 const DEFAULT_MIN_PERCENT: f64 = 70.0;
 /// Angles tried by a search with rotation (degrees); the refinement finds the angle in between.
 const ANGLE_STEP_DEG: f64 = 10.0;
+/// The largest tilt a search with perspective looks for (see `PoseParams::max_tilt`).
+const MAX_TILT: f64 = 0.4;
+/// The least part of the template that must lie in the picture for a search that allows partly visible products.
+const MIN_VISIBLE: f64 = 0.5;
 /// Scales tried by a search with scale; the refinement finds the scale in between.
 const SCALES: [f64; 3] = [0.8, 1.0, 1.25];
 /// The camera picture lies on the sheet at this size while the box of a template is pointed at.
@@ -63,6 +67,8 @@ struct Candidate {
     angle_deg: f64,
     scale: f64,
     score: f64,
+    mirrored: bool,
+    visible: f64,
     decision: CandidateDecision,
 }
 
@@ -169,6 +175,8 @@ impl AppController {
                 y_px: c.y_px,
                 angle_deg: c.angle_deg,
                 scale: c.scale,
+                mirrored: c.mirrored,
+                visible_percent: c.visible * 100.0,
                 bed_mm: self.bed_of(&f.config, [c.x_px, c.y_px]),
                 decision: c.decision,
             })
@@ -255,7 +263,11 @@ impl AppController {
             RecognitionIntent::Decide { index, decision } => self.decide(index, decision),
             RecognitionIntent::Place { document } => self.place_copies(document),
             RecognitionIntent::SetSearch { rotation, scale } => {
-                self.recognition.mode = SearchChoice { rotation, scale };
+                self.recognition.mode = SearchChoice { rotation, scale, ..self.recognition.mode };
+                Ok(())
+            }
+            RecognitionIntent::SetSearchExtras { mirror, perspective, partial } => {
+                self.recognition.mode = SearchChoice { mirror, perspective, partial, ..self.recognition.mode };
                 Ok(())
             }
             RecognitionIntent::PointBox { device, name } => {
@@ -391,6 +403,8 @@ impl AppController {
                         angle_deg: m.angle_deg,
                         scale: m.scale,
                         score: m.score,
+                        mirrored: m.mirrored,
+                        visible: m.visible,
                         decision: CandidateDecision::Pending,
                     })
                     .collect();
@@ -405,6 +419,8 @@ impl AppController {
                         angle_deg: 0.0,
                         scale: 1.0,
                         score: m.score,
+                        mirrored: false,
+                        visible: 1.0,
                         decision: CandidateDecision::Pending,
                     })
                     .collect();
@@ -453,17 +469,17 @@ impl AppController {
             let at = self.bed_of(&config, *pixel).ok_or(RecognitionProblem::NotCalibrated)?;
             let turn =
                 if c.angle_deg == 0.0 { 0.0 } else { self.bed_angle(&config, *pixel, c.angle_deg).unwrap_or(0.0) };
-            targets.push((at, turn, c.scale));
+            targets.push((at, turn, c.scale, c.mirrored));
         }
         let requests: Vec<Option<RequestId>> = targets.iter().map(|_| self.next_id::<RequestId>()).collect();
         if let Some(s) = self.sessions.get_mut(&document) {
-            for ((target, turn, scale), request) in targets.iter().zip(requests) {
-                let command = if *turn == 0.0 && *scale == 1.0 {
+            for ((target, turn, scale, mirrored), request) in targets.iter().zip(requests) {
+                let command = if *turn == 0.0 && *scale == 1.0 && !*mirrored {
                     let offset = Vector { x: target[0] - centre[0], y: target[1] - centre[1] };
                     ArrangeCommand::Paste { items: items.clone(), offset }
                 } else {
                     // Turned about the centre of the selection, scaled, and put on the place found.
-                    let moved = placed(&items, centre, *target, *turn, *scale);
+                    let moved = placed(&items, centre, *target, *turn, *scale, *mirrored);
                     ArrangeCommand::Paste { items: moved, offset: Vector { x: 0.0, y: 0.0 } }
                 };
                 apply_edit(s, document, CommandPayload::Arrange(command), request);
@@ -488,10 +504,13 @@ impl AppController {
     /// The search a panel choice asks for; `None` is translation only.
     fn pose_params(&self, min_score: f64) -> Option<PoseParams> {
         let mode = self.recognition.mode;
-        (mode.rotation || mode.scale).then(|| PoseParams {
+        (mode.rotation || mode.scale || mode.mirror || mode.perspective || mode.partial).then(|| PoseParams {
             min_score,
             angle_step_deg: mode.rotation.then_some(ANGLE_STEP_DEG),
             scales: if mode.scale { SCALES.to_vec() } else { vec![1.0] },
+            mirror: mode.mirror,
+            max_tilt: mode.perspective.then_some(MAX_TILT),
+            min_visible: if mode.partial { MIN_VISIBLE } else { 1.0 },
             ..PoseParams::default()
         })
     }
@@ -691,12 +710,22 @@ fn picture_of(gray: &GrayImage) -> Option<BedPicture> {
     BedPicture::new(u64::from_be_bytes(id), nw, nh, Arc::from(rgba))
 }
 
-/// The items turned by `turn_deg` (counter-clockwise), `scale` times as large, about `centre`, and
-/// put on `target`. Editable definitions of basic shapes are dropped: the shape is no longer the basic one.
-fn placed(items: &[PasteItem], centre: [f64; 2], target: [f64; 2], turn_deg: f64, scale: f64) -> Vec<PasteItem> {
+/// The items mirrored (when `mirrored`), turned by `turn_deg` (counter-clockwise), `scale` times as
+/// large, about `centre`, and put on `target`. Editable definitions of basic shapes are dropped: the shape is no longer the basic one.
+fn placed(
+    items: &[PasteItem],
+    centre: [f64; 2],
+    target: [f64; 2],
+    turn_deg: f64,
+    scale: f64,
+    mirrored: bool,
+) -> Vec<PasteItem> {
     let matrix = (|| {
         let to_origin = Affine::translate(Vector { x: -centre[0], y: -centre[1] }).ok()?;
-        let scaled = to_origin.then(&Affine::scale(scale, scale).ok()?);
+        // A mirrored product: the copy is first reflected in the vertical axis through its centre
+        // (the product's own y axis), then turned like any other.
+        let flipped = if mirrored { to_origin.then(&Affine::scale(-1.0, 1.0).ok()?) } else { to_origin };
+        let scaled = flipped.then(&Affine::scale(scale, scale).ok()?);
         let turned = scaled.then(&Affine::rotate(Angle::from_degrees(turn_deg).ok()?));
         Some(turned.then(&Affine::translate(Vector { x: target[0], y: target[1] }).ok()?))
     })();

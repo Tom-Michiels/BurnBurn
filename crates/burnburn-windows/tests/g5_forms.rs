@@ -176,7 +176,17 @@ fn a_memo_is_laid_out_as_one_multi_line_edit_inside_the_width() {
     let (mut h, doc, _) = two_rects();
     h.invoke(doc, CommandKey::ShowNotes);
     let f = form(&h, doc, P::Notes);
-    assert_eq!(f.ids(), [ControlId::G5(C::NotesText), ControlId::G5(C::NotesSave), ControlId::G5(C::NotesClose)]);
+    // The part name (G9-cam-werk) sits between the notes buttons and Close.
+    assert_eq!(
+        f.ids(),
+        [
+            ControlId::G5(C::NotesText),
+            ControlId::G5(C::NotesSave),
+            ControlId::G5(C::NotesPartName),
+            ControlId::G5(C::NotesPartNameSave),
+            ControlId::G5(C::NotesClose)
+        ]
+    );
     for width in [260, 380, 520] {
         let l = layout(&f, width, 1.0);
         let memo = l.items.iter().find(|p| matches!(p.item, Item::Memo { .. })).expect("a memo item");

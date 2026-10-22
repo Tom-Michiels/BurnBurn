@@ -28,6 +28,10 @@ const LIBRARY_LINKS: &str = "library-links.json";
 const PRODUCTION: &str = "production.json";
 /// The palette button of each layer (C01, G5-cam); only present when the project has some.
 const LAYER_SLOTS: &str = "layer-slots.json";
+/// The name of the product the project makes, as an order names it (W01/W02, G9); only present when set.
+const PART_NAME: &str = "part-name.json";
+/// Longest part name, in characters.
+const MAX_PART_NAME_CHARS: usize = 200;
 /// The last palette button (30 colours and the tool layers T1/T2).
 const MAX_LAYER_SLOT: u8 = 31;
 const ASSET_DIR: &str = "assets/";
@@ -108,6 +112,11 @@ pub fn encode_container(project: &Project) -> Result<Vec<u8>, SaveError> {
         zip.start_file(LAYER_SLOTS, json).map_err(|e| enc(&e))?;
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
+    if let Some(name) = project.part_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        zip.start_file(PART_NAME, json).map_err(|e| enc(&e))?;
+        zip.write_all(&serde_json::to_vec_pretty(&PartNameDto { name: name.to_owned() }).map_err(|e| enc(&e))?)
+            .map_err(|e| enc(&e))?;
+    }
     for (h, a) in project.assets.iter() {
         zip.start_file(format!("{ASSET_DIR}{}", asset_key(h)), options(CompressionMethod::Stored))
             .map_err(|e| enc(&e))?;
@@ -138,6 +147,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let mut link_bytes = None;
     let mut production_bytes = None;
     let mut slot_bytes = None;
+    let mut part_name_bytes = None;
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
@@ -151,6 +161,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             LIBRARY_LINKS => (Some(&mut link_bytes), MAX_JSON_BYTES),
             PRODUCTION => (Some(&mut production_bytes), MAX_JSON_BYTES),
             LAYER_SLOTS => (Some(&mut slot_bytes), MAX_JSON_BYTES),
+            PART_NAME => (Some(&mut part_name_bytes), MAX_JSON_BYTES),
             n if n.starts_with(ASSET_DIR) && !n[ASSET_DIR.len()..].contains('/') => (None, MAX_ASSET_BYTES),
             n if n.starts_with(PREVIEW_DIR) && !n.contains("..") => continue,
             _ => return Err(LoadError::UnexpectedEntry(name)),
@@ -228,6 +239,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
         library_links: Vec::new(),
         production: None,
         layer_slots: Vec::new(),
+        part_name: None,
     };
     if let Some(bytes) = profile_bytes {
         let dtos: Vec<crate::profile::ProfileDto> =
@@ -278,6 +290,17 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             }
             project.layer_slots.push((d.operation, d.slot));
         }
+    }
+    if let Some(bytes) = part_name_bytes {
+        let dto: PartNameDto = serde_json::from_slice(&bytes).map_err(|e| json_error(PART_NAME, &e))?;
+        let name = dto.name.trim();
+        if name.is_empty() || name.chars().count() > MAX_PART_NAME_CHARS || name != dto.name {
+            return Err(LoadError::InvalidValue {
+                path: "part-name".into(),
+                reason: "empty, padded with spaces, or too long".into(),
+            });
+        }
+        project.part_name = Some(dto.name);
     }
     if let Some(bytes) = revision_bytes {
         let dtos: Vec<RevisionDto> = serde_json::from_slice(&bytes).map_err(|e| json_error(REVISIONS, &e))?;
@@ -425,6 +448,13 @@ fn production_from_dto(d: &ProductionDto, assets: &AssetStore) -> Result<crate::
         }
     };
     Ok(crate::ProductionState { serial, row: d.row, policy, rows })
+}
+
+/// The part name on disk.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PartNameDto {
+    name: String,
 }
 
 /// The palette button of one layer on disk.

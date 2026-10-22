@@ -17,7 +17,14 @@
 //! The angle turns the template to the product in the frame by the usual rotation matrix, so with `y`
 //! down a positive angle looks clockwise on the screen. The scale is the size of the product in the
 //! frame relative to the template (1.25: a quarter larger). Positions are centres of the template.
-//! A pose whose turned template would reach outside the frame is not looked at.
+//!
+//! G9 widened the pose. A product may be the *mirror image* of the template (reflected in the
+//! template's y axis before it is turned; `mirror`), may be *seen at an angle* (a homography: the
+//! offset of a template pixel is divided by `w = 1 + (tx * m.x + ty * m.y) / R`, with `R` the half
+//! diagonal of the template and `(tx, ty)` the tilt; `max_tilt`), and may lie *partly outside the
+//! frame* (`min_visible`): such a pose is scored on the template pixels that are inside the frame
+//! only, and the match says how much that was (`visible`). Without these options a pose whose
+//! template would reach outside the frame is not looked at and nothing is mirrored or tilted.
 
 use burnburn_types::{CancellationToken, Cancelled};
 
@@ -38,6 +45,14 @@ const MAX_MATCHES: usize = 1_000;
 const FINAL_POSITION_STEP_PX: f64 = 0.25;
 const FINAL_ANGLE_STEP_DEG: f64 = 0.5;
 const MAX_REFINE_ROUNDS: usize = 120;
+/// The largest tilt that can be asked for (each of the two components).
+const MAX_TILT: f64 = 0.6;
+/// `min_visible` must be above this: less than a quarter of a template is not a pattern.
+const MIN_VISIBLE_FLOOR: f64 = 0.25;
+/// The refinement of the tilt stops below this step.
+const FINAL_TILT_STEP: f64 = 0.005;
+/// Fewest template pixels a partly visible pose may be scored on.
+const MIN_VISIBLE_PIXELS: usize = 16;
 
 /// How strict, how many, and which poses.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +69,17 @@ pub struct PoseParams {
     pub angle_step_deg: Option<f64>,
     /// Scales tried (each between 0.25 and 4). Empty is not allowed; `[1.0]` is no scale search.
     pub scales: Vec<f64>,
+    /// Also look for the product as its mirror image (reflected in the template's own y axis, then
+    /// turned and scaled), as a product printed or cut the other way round looks.
+    pub mirror: bool,
+    /// Also look for the product seen at an angle (a homography): the largest tilt, between 0 and
+    /// 0.6, where a tilt of 0.2 makes the far edge of the template 20 % smaller than the near
+    /// edge. `None`: a flat view only.
+    pub max_tilt: Option<f64>,
+    /// The smallest part of the template that must lie inside the frame, above 0.25 and at most 1.
+    /// 1: only products wholly in the frame. Less: a product partly outside the frame is found from
+    /// the part that is inside (see [`PoseMatch::visible`]).
+    pub min_visible: f64,
 }
 
 impl Default for PoseParams {
@@ -64,6 +90,9 @@ impl Default for PoseParams {
             min_separation_px: None,
             angle_step_deg: Some(10.0),
             scales: vec![1.0],
+            mirror: false,
+            max_tilt: None,
+            min_visible: 1.0,
         }
     }
 }
@@ -80,6 +109,13 @@ pub struct PoseMatch {
     pub scale: f64,
     /// The similarity at this pose, at most 1. Not a length, not a probability.
     pub score: f64,
+    /// The product is the mirror image of the template (reflected in its y axis before the turn).
+    pub mirrored: bool,
+    /// The tilt of the view in the template's axes as seen after mirroring: `(0, 0)` is a flat view.
+    pub tilt: (f64, f64),
+    /// The part of the template that lies inside the frame, in `(0, 1]`; below 1 the match rests on
+    /// that part only and a person should look at it before using it.
+    pub visible: f64,
 }
 
 fn check_params(p: &PoseParams) -> Result<(), LocateError> {
@@ -88,7 +124,17 @@ fn check_params(p: &PoseParams) -> Result<(), LocateError> {
     let separation_ok = p.min_separation_px.is_none_or(|s| s.is_finite() && s >= 0.0);
     let angle_ok = p.angle_step_deg.is_none_or(|a| a.is_finite() && (1.0..=90.0).contains(&a));
     let scales_ok = !p.scales.is_empty() && p.scales.iter().all(|s| s.is_finite() && (0.25..=4.0).contains(s));
-    if score_ok && count_ok && separation_ok && angle_ok && scales_ok && grid_size(p) <= MAX_POSES {
+    let tilt_ok = p.max_tilt.is_none_or(|t| t.is_finite() && t > 0.0 && t <= MAX_TILT);
+    let visible_ok = p.min_visible.is_finite() && p.min_visible > MIN_VISIBLE_FLOOR && p.min_visible <= 1.0;
+    if score_ok
+        && count_ok
+        && separation_ok
+        && angle_ok
+        && scales_ok
+        && tilt_ok
+        && visible_ok
+        && grid_size(p) <= MAX_POSES
+    {
         Ok(())
     } else {
         Err(LocateError::BadParams)
@@ -111,6 +157,20 @@ fn grid_size(p: &PoseParams) -> usize {
         _ => 1,
     }
     .saturating_mul(p.scales.len())
+    .saturating_mul(mirrors(p).len())
+    .saturating_mul(tilts(p).len())
+}
+
+fn mirrors(p: &PoseParams) -> &'static [bool] {
+    if p.mirror { &[false, true] } else { &[false] }
+}
+
+/// The tilts of the coarse grid: flat, and a half of the largest one in each direction.
+fn tilts(p: &PoseParams) -> Vec<(f64, f64)> {
+    match p.max_tilt {
+        None => vec![(0.0, 0.0)],
+        Some(m) => vec![(0.0, 0.0), (m / 2.0, 0.0), (-m / 2.0, 0.0), (0.0, m / 2.0), (0.0, -m / 2.0)],
+    }
 }
 
 /// Average of `factor x factor` blocks; the remainder at the right and bottom edge is dropped.
@@ -161,6 +221,10 @@ impl Sampler<'_> {
 struct Kernel {
     width: usize,
     height: usize,
+    /// The half diagonal of the template: the scale of the tilt.
+    radius: f64,
+    /// The template values as they are (a partly visible pose is scored on a part of them).
+    values: Vec<f64>,
     /// Offset of each pixel centre from the centre of the template, row by row.
     offsets: Vec<(f64, f64)>,
     zero_mean: Vec<f64>,
@@ -180,7 +244,8 @@ impl Kernel {
                 offsets.push((x as f64 + 0.5 - w as f64 / 2.0, y as f64 + 0.5 - h as f64 / 2.0));
             }
         }
-        Kernel { width: w, height: h, offsets, zero_mean, energy }
+        let values = template.values.iter().map(|v| f64::from(*v)).collect();
+        Kernel { width: w, height: h, radius: 0.5 * (w as f64).hypot(h as f64), values, offsets, zero_mean, energy }
     }
 
     /// Half the width and height: where the corners of the template are from its centre.
@@ -189,13 +254,16 @@ impl Kernel {
     }
 }
 
-/// A pose: the centre of the template, its turn (as cosine and sine) and its scale.
+/// A pose: the centre of the template, its turn, its scale, whether it is mirrored and its tilt.
 #[derive(Clone, Copy)]
 struct Pose {
     x: f64,
     y: f64,
     angle_deg: f64,
     scale: f64,
+    mirrored: bool,
+    tx: f64,
+    ty: f64,
 }
 
 impl Pose {
@@ -203,25 +271,35 @@ impl Pose {
         let a = self.angle_deg.to_radians();
         (a.cos() * self.scale, a.sin() * self.scale)
     }
+
+    /// Where the template pixel at offset `(ox, oy)` from the template's centre lies in the frame.
+    fn point(&self, matrix: (f64, f64), radius: f64, ox: f64, oy: f64) -> (f64, f64) {
+        let (c, s) = matrix;
+        let mx = if self.mirrored { -ox } else { ox };
+        let w = 1.0 + (self.tx * mx + self.ty * oy) / radius;
+        (self.x + (c * mx - s * oy) / w, self.y + (s * mx + c * oy) / w)
+    }
 }
 
-/// Does the turned and scaled template lie wholly inside the frame?
+/// Does the turned, scaled and tilted template lie wholly inside the frame? (A projective map keeps
+/// straight lines straight, and the tilt is limited so that it never flips, so the corners decide.)
 fn fits(frame: &GrayImage, kernel: &Kernel, pose: &Pose) -> bool {
-    let (c, s) = pose.matrix();
+    let m = pose.matrix();
     let (hw, hh) = kernel.half();
     [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)].iter().all(|(ox, oy)| {
-        let (px, py) = (pose.x + c * ox - s * oy, pose.y + s * ox + c * oy);
+        let (px, py) = pose.point(m, kernel.radius, *ox, *oy);
         px >= 0.0 && py >= 0.0 && px <= f64::from(frame.width) && py <= f64::from(frame.height)
     })
 }
 
 /// The similarity of the frame at `pose` with the template; 0 where the frame has no variation.
 fn similarity(sampler: &Sampler<'_>, kernel: &Kernel, pose: &Pose) -> f64 {
-    let (c, s) = pose.matrix();
+    let m = pose.matrix();
     let n = kernel.offsets.len() as f64;
     let (mut sum, mut sum_sq, mut dot) = (0.0, 0.0, 0.0);
     for (k, (ox, oy)) in kernel.offsets.iter().enumerate() {
-        let v = sampler.at(pose.x + c * ox - s * oy, pose.y + s * ox + c * oy);
+        let (px, py) = pose.point(m, kernel.radius, *ox, *oy);
+        let v = sampler.at(px, py);
         sum += v;
         sum_sq += v * v;
         dot += v * kernel.zero_mean[k];
@@ -231,6 +309,70 @@ fn similarity(sampler: &Sampler<'_>, kernel: &Kernel, pose: &Pose) -> f64 {
         return 0.0;
     }
     (dot / (spread * kernel.energy).sqrt()).clamp(-1.0, 1.0)
+}
+
+/// The similarity of the part of the template that lies inside the frame, and how much of the
+/// template that is; `None` when it is less than `min_visible` (or too few pixels to mean anything).
+/// The correlation is taken over those pixels alone, with their own mean.
+fn partial_similarity(sampler: &Sampler<'_>, kernel: &Kernel, pose: &Pose, min_visible: f64) -> Option<(f64, f64)> {
+    let frame = sampler.image;
+    let (fw, fh) = (f64::from(frame.width), f64::from(frame.height));
+    let m = pose.matrix();
+    // Cheap exit: the mapped box of the template hardly touches the frame.
+    let (hw, hh) = kernel.half();
+    let corners: Vec<(f64, f64)> = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
+        .iter()
+        .map(|(ox, oy)| pose.point(m, kernel.radius, *ox, *oy))
+        .collect();
+    let (x0, x1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, c| (a.0.min(c.0), a.1.max(c.0)));
+    let (y0, y1) = corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |a, c| (a.0.min(c.1), a.1.max(c.1)));
+    let area = (x1 - x0) * (y1 - y0);
+    let inside = (x1.min(fw) - x0.max(0.0)).max(0.0) * (y1.min(fh) - y0.max(0.0)).max(0.0);
+    if area <= 0.0 || inside < 0.5 * min_visible * area {
+        return None;
+    }
+    let (mut n, mut st, mut stt, mut sv, mut svv, mut stv) = (0usize, 0.0, 0.0, 0.0, 0.0, 0.0);
+    for (k, (ox, oy)) in kernel.offsets.iter().enumerate() {
+        let (px, py) = pose.point(m, kernel.radius, *ox, *oy);
+        if px < 0.0 || py < 0.0 || px > fw || py > fh {
+            continue;
+        }
+        let (t, v) = (kernel.values[k], sampler.at(px, py));
+        n += 1;
+        st += t;
+        stt += t * t;
+        sv += v;
+        svv += v * v;
+        stv += t * v;
+    }
+    let visible = n as f64 / kernel.offsets.len() as f64;
+    if n < MIN_VISIBLE_PIXELS || visible < min_visible {
+        return None;
+    }
+    let nf = n as f64;
+    let (spread_t, spread_v) = (stt - st * st / nf, svv - sv * sv / nf);
+    if spread_t <= 1e-9 || spread_v <= 1e-9 {
+        return Some((0.0, visible));
+    }
+    Some((((stv - st * sv / nf) / (spread_t * spread_v).sqrt()).clamp(-1.0, 1.0), visible))
+}
+
+/// The similarity and the visible part of the template at `pose`: the whole template when it lies in
+/// the frame, a part of it when `min_visible` allows that, otherwise nothing.
+fn score(
+    frame: &GrayImage,
+    sampler: &Sampler<'_>,
+    kernel: &Kernel,
+    pose: &Pose,
+    min_visible: f64,
+) -> Option<(f64, f64)> {
+    if fits(frame, kernel, pose) {
+        Some((similarity(sampler, kernel, pose), 1.0))
+    } else if min_visible < 1.0 {
+        partial_similarity(sampler, kernel, pose, min_visible)
+    } else {
+        None
+    }
 }
 
 fn wrap_degrees(a: f64) -> f64 {
@@ -281,31 +423,58 @@ pub fn locate_pose(
     let small = Sampler { image: &small_frame };
     let coarse_floor = (params.min_score * 0.5).max(0.05);
     let step = f64::from(factor);
+    let partial = params.min_visible < 1.0;
+    // A partly visible product has its centre up to about a half diagonal outside the frame.
+    let margin = if partial { (small_kernel.radius * max_scale).ceil() as usize } else { 0 };
+    let tilt_grid = tilts(params);
     let mut found: Vec<(f64, Pose)> = Vec::new();
     if small_kernel.energy > 0.0 {
         let grid_angles = angles(params);
-        for &scale in &params.scales {
-            for &angle_deg in &grid_angles {
-                cancel.check().map_err(|Cancelled| LocateError::Cancelled)?;
-                let (fw, fh) = (small_frame.width as usize, small_frame.height as usize);
-                // Scores of this pose over the positions, on the pixel grid of the small frame.
-                let mut scores = vec![f64::NEG_INFINITY; fw * fh];
-                for y in 0..fh {
-                    for x in 0..fw {
-                        let pose = Pose { x: x as f64 + 0.5, y: y as f64 + 0.5, angle_deg, scale };
-                        if fits(&small_frame, &small_kernel, &pose) {
-                            scores[y * fw + x] = similarity(&small, &small_kernel, &pose);
+        let (fw, fh) = (small_frame.width as usize + 2 * margin, small_frame.height as usize + 2 * margin);
+        for &mirrored in mirrors(params) {
+            for &(tx, ty) in &tilt_grid {
+                for &scale in &params.scales {
+                    for &angle_deg in &grid_angles {
+                        cancel.check().map_err(|Cancelled| LocateError::Cancelled)?;
+                        // Scores of this pose over the positions, on the pixel grid of the small frame
+                        // (extended by the margin on every side).
+                        let mut scores = vec![f64::NEG_INFINITY; fw * fh];
+                        for y in 0..fh {
+                            for x in 0..fw {
+                                let pose = Pose {
+                                    x: x as f64 - margin as f64 + 0.5,
+                                    y: y as f64 - margin as f64 + 0.5,
+                                    angle_deg,
+                                    scale,
+                                    mirrored,
+                                    tx,
+                                    ty,
+                                };
+                                if let Some((s, _)) =
+                                    score(&small_frame, &small, &small_kernel, &pose, params.min_visible)
+                                {
+                                    scores[y * fw + x] = s;
+                                }
+                            }
                         }
-                    }
-                }
-                for y in 0..fh {
-                    for x in 0..fw {
-                        let s = scores[y * fw + x];
-                        if s < coarse_floor || !is_peak(&scores, fw, fh, x, y) {
-                            continue;
+                        for y in 0..fh {
+                            for x in 0..fw {
+                                let s = scores[y * fw + x];
+                                if s < coarse_floor || !is_peak(&scores, fw, fh, x, y) {
+                                    continue;
+                                }
+                                let pose = Pose {
+                                    x: (x as f64 - margin as f64 + 0.5) * step,
+                                    y: (y as f64 - margin as f64 + 0.5) * step,
+                                    angle_deg,
+                                    scale,
+                                    mirrored,
+                                    tx,
+                                    ty,
+                                };
+                                found.push((s, pose));
+                            }
                         }
-                        let pose = Pose { x: (x as f64 + 0.5) * step, y: (y as f64 + 0.5) * step, angle_deg, scale };
-                        found.push((s, pose));
                     }
                 }
             }
@@ -318,6 +487,9 @@ pub fn locate_pose(
             .then(a.1.x.total_cmp(&b.1.x))
             .then(a.1.angle_deg.total_cmp(&b.1.angle_deg))
             .then(a.1.scale.total_cmp(&b.1.scale))
+            .then(a.1.mirrored.cmp(&b.1.mirrored))
+            .then(a.1.tx.total_cmp(&b.1.tx))
+            .then(a.1.ty.total_cmp(&b.1.ty))
     });
     let separation = params.min_separation_px.unwrap_or(f64::from(template.width.max(template.height)) / 2.0);
     let coarse_separation = (separation / 2.0).max(step);
@@ -339,14 +511,17 @@ pub fn locate_pose(
     let scale_lo = params.scales.iter().copied().fold(f64::INFINITY, f64::min) * 0.9;
     let scale_hi = max_scale.max(params.scales.iter().copied().fold(0.0, f64::max)) * 1.1;
     let scale_step0 = scale_step(&params.scales);
+    let tilt_limit = params.max_tilt.unwrap_or(0.0);
+    let tilt_step0 = tilt_limit / 4.0;
     let mut refined: Vec<PoseMatch> = Vec::new();
     for start in candidates {
         cancel.check().map_err(|Cancelled| LocateError::Cancelled)?;
         let mut pose = start;
-        let mut best = if fits(frame, &kernel, &pose) { similarity(&full, &kernel, &pose) } else { f64::NEG_INFINITY };
-        let (mut dp, mut da, mut ds) = (step, angle_step0, scale_step0);
+        let at_start = score(frame, &full, &kernel, &pose, params.min_visible);
+        let (mut best, mut visible) = at_start.unwrap_or((f64::NEG_INFINITY, 0.0));
+        let (mut dp, mut da, mut ds, mut dt) = (step, angle_step0, scale_step0, tilt_step0);
         for _ in 0..MAX_REFINE_ROUNDS {
-            let mut moves: Vec<Pose> = Vec::with_capacity(8);
+            let mut moves: Vec<Pose> = Vec::with_capacity(12);
             for (mx, my) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
                 moves.push(Pose { x: pose.x + mx * dp, y: pose.y + my * dp, ..pose });
             }
@@ -361,26 +536,31 @@ pub fn locate_pose(
                     moves.push(Pose { scale, ..pose });
                 }
             }
-            let mut improved: Option<(f64, Pose)> = None;
-            for m in moves {
-                if !fits(frame, &kernel, &m) {
-                    continue;
+            if dt >= FINAL_TILT_STEP / 2.0 && tilt_limit > 0.0 {
+                for sign in [1.0, -1.0] {
+                    moves.push(Pose { tx: (pose.tx + sign * dt).clamp(-tilt_limit, tilt_limit), ..pose });
+                    moves.push(Pose { ty: (pose.ty + sign * dt).clamp(-tilt_limit, tilt_limit), ..pose });
                 }
-                let s = similarity(&full, &kernel, &m);
-                if s > best + 1e-12 && improved.is_none_or(|(b, _)| s > b) {
-                    improved = Some((s, m));
+            }
+            let mut improved: Option<(f64, f64, Pose)> = None;
+            for m in moves {
+                let Some((s, v)) = score(frame, &full, &kernel, &m, params.min_visible) else { continue };
+                if s > best + 1e-12 && improved.is_none_or(|(b, _, _)| s > b) {
+                    improved = Some((s, v, m));
                 }
             }
             match improved {
-                Some((s, m)) => {
+                Some((s, v, m)) => {
                     best = s;
+                    visible = v;
                     pose = m;
                 }
                 None => {
                     dp /= 2.0;
                     da /= 2.0;
                     ds /= 2.0;
-                    if dp < FINAL_POSITION_STEP_PX && da < FINAL_ANGLE_STEP_DEG && ds < 0.002 {
+                    dt /= 2.0;
+                    if dp < FINAL_POSITION_STEP_PX && da < FINAL_ANGLE_STEP_DEG && ds < 0.002 && dt < FINAL_TILT_STEP {
                         break;
                     }
                 }
@@ -393,6 +573,9 @@ pub fn locate_pose(
                 angle_deg: wrap_degrees(pose.angle_deg),
                 scale: pose.scale,
                 score: best.min(1.0),
+                mirrored: pose.mirrored,
+                tilt: (pose.tx, pose.ty),
+                visible,
             });
         }
     }

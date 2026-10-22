@@ -351,6 +351,12 @@ fn centre(origin: Point, step: f64, c: i64, r: i64) -> Point {
 
 /// Every cell whose open interior a boundary segment passes through.
 fn boundary_cells(polys: &[Vec<Point>], origin: Point, step: f64) -> Vec<(i64, i64)> {
+    boundary_cells_grown(polys, origin, step, 0.0)
+}
+
+/// [`boundary_cells`] with every cell grown by `eps` on all sides: with a small positive `eps` a
+/// segment along a cell border meets both cells beside it.
+fn boundary_cells_grown(polys: &[Vec<Point>], origin: Point, step: f64, eps: f64) -> Vec<(i64, i64)> {
     let cell = |v: f64, o: f64| ((v - o) / step).floor() as i64;
     let mut cells = Vec::new();
     for poly in polys {
@@ -362,7 +368,7 @@ fn boundary_cells(polys: &[Vec<Point>], origin: Point, step: f64) -> Vec<(i64, i
             for r in r0..=r1 {
                 for c in c0..=c1 {
                     let (x0, y0) = (origin.x + c as f64 * step, origin.y + r as f64 * step);
-                    if segment_meets_box(a, b, x0, y0, x0 + step, y0 + step) {
+                    if segment_meets_box(a, b, x0 - eps, y0 - eps, x0 + step + eps, y0 + step + eps) {
                         cells.push((c, r));
                     }
                 }
@@ -398,6 +404,11 @@ struct TightShape {
     grown: Path,
     /// Width and height of the shape (its bounds start at the local origin).
     size: (f64, f64),
+    /// Bounds of `shrunk` (local coordinates).
+    shrunk_bounds: Option<Bounds>,
+    /// Points along the boundary of `shrunk`, at most [`DEEP_SAMPLE_SPACING`] apart (local
+    /// coordinates): a sample in a deep cell of the sheet proves an overlap (see [`DeepMask`]).
+    samples: Vec<Point>,
 }
 
 /// A cancelled offset is a cancelled nest, not a geometry problem.
@@ -460,7 +471,9 @@ fn rotated_with(
         };
         let raw_centres = centre_cells(&polygons(&shape, &p.tolerance)?, Point::ORIGIN, step);
         let size = shape.bounds().map_or((0.0, 0.0), |b| (b.width(), b.height()));
-        Some(TightShape { raw_centres, shrunk, grown: grown_path, size })
+        let samples = boundary_samples(&polygons(&shrunk, &p.tolerance)?, deep_cell(p));
+        let shrunk_bounds = shrunk.bounds();
+        Some(TightShape { raw_centres, shrunk, grown: grown_path, size, shrunk_bounds, samples })
     } else {
         None
     };
@@ -510,6 +523,12 @@ struct TightSheet {
     /// a placed part's grown outline. A candidate is always confirmed exactly.
     blocked: Grid,
     placed: Vec<(Bounds, Path)>,
+    /// The usable area is the rectangle `usable_bounds`: staying inside its bounds is staying inside it.
+    usable_is_rect: bool,
+    /// Where a placed part's grown outline is certainly deep.
+    deep: DeepMask,
+    /// Overlays done so far (see [`NestWork`]).
+    overlays: std::cell::Cell<u64>,
 }
 
 #[cfg(test)]
@@ -553,12 +572,25 @@ fn sheet_with<'a>(
         }
     }
     // At this point `blocked` holds exactly the cells whose centre is outside the usable area.
-    let tight = tight.then(|| TightSheet {
-        usable_bounds: usable.bounds(),
-        usable: usable.clone(),
-        blocked: blocked.clone(),
-        placed: Vec::new(),
-    });
+    let tight = if tight {
+        let usable_bounds = usable.bounds();
+        // A contour that fills its own bounding box is that box.
+        let usable_is_rect = usable_bounds.is_some_and(|ub| {
+            let filled = self::net_area(&polys);
+            polys.len() == 1 && (filled - ub.width() * ub.height()).abs() <= 1e-9 * (1.0 + filled)
+        });
+        Some(TightSheet {
+            usable_bounds,
+            usable: usable.clone(),
+            blocked: blocked.clone(),
+            placed: Vec::new(),
+            usable_is_rect,
+            deep: DeepMask::new(b, deep_cell(p))?,
+            overlays: std::cell::Cell::new(0),
+        })
+    } else {
+        None
+    };
     for (c, r) in boundary_cells(&polys, b.min(), step) {
         blocked.set(c, r);
     }
@@ -631,6 +663,13 @@ pub enum Packing {
     Tight,
 }
 
+/// What a nest cost, counted rather than timed (deterministic, so tests can bound it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NestWork {
+    /// Exact polygon overlays ([`Packing::Tight`] only): the expensive step of a tight nest.
+    pub overlays: u64,
+}
+
 /// [`nest_with`] with a choice of [`Packing`].
 pub fn nest_packed(
     parts: &[NestPart],
@@ -640,6 +679,18 @@ pub fn nest_packed(
     packing: Packing,
     cancel: &CancellationToken,
 ) -> Result<NestResult, NestError> {
+    nest_packed_counted(parts, stock, p, options, packing, cancel).map(|(result, _)| result)
+}
+
+/// [`nest_packed`] that also reports how much work it did.
+pub fn nest_packed_counted(
+    parts: &[NestPart],
+    stock: &[Stock],
+    p: &NestParams,
+    options: &NestOptions,
+    packing: Packing,
+    cancel: &CancellationToken,
+) -> Result<(NestResult, NestWork), NestError> {
     let tight = packing == Packing::Tight;
     let mirror_choices: &[bool] = match options.mirror {
         MirrorPolicy::Forbidden => &[false],
@@ -760,7 +811,8 @@ pub fn nest_packed(
             .sum(),
     };
     let value = if denominator_mm2 > 0.0 { used_mm2 / denominator_mm2 } else { 0.0 };
-    Ok(NestResult {
+    let work = NestWork { overlays: sheets.iter().filter_map(|s| s.tight.as_ref()).map(|t| t.overlays.get()).sum() };
+    let result = NestResult {
         placements,
         unplaced,
         utilisation: Utilisation { used_mm2, basis: p.basis, denominator_mm2, value },
@@ -773,7 +825,8 @@ pub fn nest_packed(
                 free_mm2: s.net_area - s.placed_mm2,
             })
             .collect(),
-    })
+    };
+    Ok((result, work))
 }
 
 /// Bottom-left first free position of `shape` on `grid`: lowest row, then lowest column, where
@@ -871,6 +924,100 @@ const MAX_SLIDE_STEPS: u32 = 4;
 /// Sub-cell offsets tried for each free cell, in the order of a bottom-left search.
 const SUB_CELL: [f64; 4] = [0.0, 0.25, 0.5, 0.75];
 
+/// Largest distance between boundary samples of a shape, as a multiple of the deep cell size.
+const DEEP_SAMPLE_SPACING: f64 = 1.0;
+/// Most cells of a [`DeepMask`].
+const DEEP_MAX_CELLS: f64 = 4_000_000.0;
+
+/// Edge of a cell of the [`DeepMask`] (mm): an eighth of the step, never below four production
+/// tolerances so that "deep" always means clearly more than the tolerance of the overlay.
+fn deep_cell(p: &NestParams) -> f64 {
+    (p.step.mm() / 8.0).max(4.0 * p.tolerance.mm())
+}
+
+/// Points along the closed contours `polys`: every vertex and enough points on each edge that
+/// none lies further than `spacing` from the next one.
+fn boundary_samples(polys: &[Vec<Point>], spacing: f64) -> Vec<Point> {
+    let mut out = Vec::new();
+    for poly in polys {
+        let n = poly.len();
+        for k in 0..n {
+            let (a, b) = (poly[k], poly[(k + 1) % n]);
+            let parts = ((a.distance(b) / (spacing * DEEP_SAMPLE_SPACING)).ceil() as usize).max(1);
+            for i in 0..parts {
+                let t = i as f64 / parts as f64;
+                out.push(Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+            }
+        }
+    }
+    out
+}
+
+/// A raster of the sheet that marks cells lying *deep* inside the grown outline of a placed part:
+/// the cell centre is inside and no boundary of that outline touches the cell or one of its eight neighbours, so
+/// every point of the cell is at least one cell edge (at least four tolerances) inside the outline.
+///
+/// A point on the boundary of a later part that falls in a deep cell lies that far inside a
+/// placed part's grown outline, and a boundary point of a part always has part of its interior
+/// beside it: the overlap of the two areas is several times the tolerance wide, far more than the
+/// "negligible" sliver the exact check allows. So such a candidate is rejected without an overlay;
+/// every other candidate is decided by the overlay as before.
+struct DeepMask {
+    origin: Point,
+    cell: f64,
+    cols: i64,
+    rows: i64,
+    cells: Vec<bool>,
+}
+
+impl DeepMask {
+    fn new(stock: Bounds, cell: f64) -> Result<Self, NestError> {
+        // Few enough cells: a very large sheet gets coarser cells (fewer certain rejections).
+        let cell = cell.max((stock.width() * stock.height() / DEEP_MAX_CELLS).sqrt());
+        let cols = (stock.width() / cell).ceil() as i64 + 1;
+        let rows = (stock.height() / cell).ceil() as i64 + 1;
+        let n = (cols.max(0) as u64).saturating_mul(rows.max(0) as u64);
+        if n > MAX_GRID_CELLS {
+            return Err(NestError::GridTooLarge);
+        }
+        Ok(DeepMask { origin: stock.min(), cell, cols, rows, cells: vec![false; n as usize] })
+    }
+
+    fn at(&self, c: i64, r: i64) -> Option<usize> {
+        (c >= 0 && r >= 0 && c < self.cols && r < self.rows).then(|| (r * self.cols + c) as usize)
+    }
+
+    /// Whether `p` lies in a deep cell.
+    fn is_deep(&self, p: Point) -> bool {
+        let c = ((p.x - self.origin.x) / self.cell).floor() as i64;
+        let r = ((p.y - self.origin.y) / self.cell).floor() as i64;
+        self.at(c, r).is_some_and(|i| self.cells[i])
+    }
+
+    /// Marks the deep cells of the area bounded by `polys` (a placed part's grown outline).
+    fn add(&mut self, polys: &[Vec<Point>]) {
+        let (origin, cell) = (self.origin, self.cell);
+        // Every cell whose closure the boundary touches, and the cells around those.
+        let mut edge: std::collections::HashSet<(i64, i64)> =
+            boundary_cells_grown(polys, origin, cell, cell * 1e-6).into_iter().collect();
+        let marked: Vec<(i64, i64)> = edge.iter().copied().collect();
+        for (c, r) in marked {
+            for dr in -1..=1 {
+                for dc in -1..=1 {
+                    edge.insert((c + dc, r + dr));
+                }
+            }
+        }
+        for (c, r) in centre_cells(polys, origin, cell) {
+            if !edge.contains(&(c, r))
+                && let Some(i) = self.at(c, r)
+            {
+                self.cells[i] = true;
+            }
+        }
+    }
+}
+
 /// Whether an overlay result is empty up to rounding of the overlay grid.
 fn negligible(path: &Path) -> bool {
     path.subpaths().iter().filter_map(|sp| sp.signed_area()).map(f64::abs).sum::<f64>() < 1e-9
@@ -885,18 +1032,27 @@ fn exact_valid(
     p: &NestParams,
     cancel: &CancellationToken,
 ) -> Result<bool, NestError> {
-    let moved = ts
-        .shrunk
-        .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
-    let Some(b) = moved.bounds() else { return Ok(false) };
+    let Some(local) = ts.shrunk_bounds else { return Ok(false) };
+    let shift = at - Point::ORIGIN;
+    let b = Bounds::from_corners(local.min() + shift, local.max() + shift);
+    // A boundary point deep inside a placed part's grown outline: a certain overlap, no overlay.
+    if ts.samples.iter().any(|&s| t.deep.is_deep(s + shift)) {
+        return Ok(false);
+    }
+    let moved = ts.shrunk.transform(&Affine::translate(shift).map_err(|_| NestError::Geometry { what: "placement" })?);
     let options = BooleanOptions { fill: FillRule::EvenOdd, tolerance: p.tolerance };
     let boolean = |a: &Path, c: &Path, op| {
+        t.overlays.set(t.overlays.get() + 1);
         burnburn_geometry::boolean(a, c, op, &options, cancel).map_err(|e| match e {
             burnburn_geometry::BooleanError::Cancelled => NestError::Cancelled,
             _ => NestError::Geometry { what: "exact placement" },
         })
     };
-    if !negligible(&boolean(&moved, &t.usable, BooleanOp::Difference)?) {
+    let inside_rect = t.usable_is_rect
+        && t.usable_bounds.is_some_and(|u| {
+            b.min().x >= u.min().x && b.min().y >= u.min().y && b.max().x <= u.max().x && b.max().y <= u.max().y
+        });
+    if !inside_rect && !negligible(&boolean(&moved, &t.usable, BooleanOp::Difference)?) {
         return Ok(false);
     }
     for (other, grown) in &t.placed {
@@ -1063,9 +1219,11 @@ fn occupy_exact(t: &mut TightSheet, ts: &TightShape, at: Point, p: &NestParams) 
         .grown
         .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
     if let Some(b) = grown.bounds() {
-        for (c, r) in centre_cells(&polygons(&grown, &p.tolerance)?, t.blocked.origin, p.step.mm()) {
+        let polys = polygons(&grown, &p.tolerance)?;
+        for (c, r) in centre_cells(&polys, t.blocked.origin, p.step.mm()) {
             t.blocked.set(c, r);
         }
+        t.deep.add(&polys);
         t.placed.push((b, grown));
     }
     Ok(())

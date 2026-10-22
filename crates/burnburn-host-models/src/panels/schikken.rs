@@ -59,6 +59,8 @@ pub enum SchikkenControl {
     NestPartCopies(usize),
     /// The grain rule of one part, by its row in the panel.
     NestPartGrain(usize),
+    /// The angle of the grain of one part, by its row, when its rule is a free angle (G9).
+    NestPartGrainAngle(usize),
     /// The previous / next page of the part list.
     NestPartsPrev,
     NestPartsNext,
@@ -202,6 +204,7 @@ pub enum SchikkenText {
     NestPartsPrev,
     NestPartsNext,
     NestPartGrain,
+    NestPartGrainAngle,
     NestOrdersHeading,
     NestOrderLineOne,
     NestOrderLineMany,
@@ -209,6 +212,7 @@ pub enum SchikkenText {
     GrainAlong,
     GrainAcross,
     GrainFree,
+    GrainAngle,
     NestHoles,
     NestTight,
     NestCommonLine,
@@ -326,6 +330,7 @@ impl SchikkenText {
             T::NestPartsPrev,
             T::NestPartsNext,
             T::NestPartGrain,
+            T::NestPartGrainAngle,
             T::NestOrdersHeading,
             T::NestOrderLineOne,
             T::NestOrderLineMany,
@@ -333,6 +338,7 @@ impl SchikkenText {
             T::GrainAlong,
             T::GrainAcross,
             T::GrainFree,
+            T::GrainAngle,
             T::NestHoles,
             T::NestTight,
             T::NestCommonLine,
@@ -456,6 +462,9 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestPartsPrev => ("Vorige onderdelen", "Previous parts"),
         T::NestPartsNext => ("Volgende onderdelen", "Next parts"),
         T::NestPartGrain => ("Onderdeel {n}: {name}, nerf", "Part {n}: {name}, grain"),
+        T::NestPartGrainAngle => {
+            ("Onderdeel {n}: {name}, hoek van de nerf (°)", "Part {n}: {name}, angle of the grain (°)")
+        }
         T::NestOrdersHeading => ("Aantal van een order overnemen", "Take the quantity of an order"),
         T::NestOrderLineOne => (
             "{name}: nog {left} te maken, 1 onderdeel van de nest heeft deze naam",
@@ -469,6 +478,7 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::GrainAlong => ("Volgt de plaat (X langs de nerf)", "Follows the sheet (X along the grain)"),
         T::GrainAcross => ("Dwars (Y langs de nerf)", "Across (Y along the grain)"),
         T::GrainFree => ("Vrij draaien", "Turns freely"),
+        T::GrainAngle => ("Nerf onder een hoek (zelf in te vullen)", "Grain at an angle (set below)"),
         T::NestHoles => ("Binnencontouren zijn gaten van het onderdeel", "Inner contours are holes of the part"),
         T::NestTight => ("Strak pakken (exact, trager)", "Pack tightly (exact, slower)"),
         T::NestCommonLine => (
@@ -911,13 +921,27 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
             lines.push(SchikkenLine::Choice {
                 control: SchikkenControl::NestPartGrain(i),
                 caption: fill(SchikkenText::NestPartGrain, locale, &names),
-                options: vec![t(SchikkenText::GrainAlong), t(SchikkenText::GrainAcross), t(SchikkenText::GrainFree)],
+                options: vec![
+                    t(SchikkenText::GrainAlong),
+                    t(SchikkenText::GrainAcross),
+                    t(SchikkenText::GrainFree),
+                    t(SchikkenText::GrainAngle),
+                ],
                 selected: match row.grain {
                     burnburn_presentation::NestPartGrain::Along => 0,
                     burnburn_presentation::NestPartGrain::Across => 1,
                     burnburn_presentation::NestPartGrain::Free => 2,
+                    burnburn_presentation::NestPartGrain::Angle(_) => 3,
                 },
             });
+            if let Some(degrees) = row.grain.angle_degrees() {
+                lines.push(SchikkenLine::Field {
+                    control: SchikkenControl::NestPartGrainAngle(i),
+                    caption: fill(SchikkenText::NestPartGrainAngle, locale, &names),
+                    text: format!("{degrees}"),
+                    invalid: false,
+                });
+            }
         }
     }
     // The orders whose quantity can become the copies of their parts (W07).
@@ -1273,6 +1297,9 @@ fn tangent_lines(tg: &TangentViewModel, locale: Locale) -> Vec<SchikkenLine> {
 /// sends the index of the chosen option; a check `1` or `0`.
 pub type SchikkenValues = [(SchikkenControl, String)];
 
+/// The angle a part gets when its grain is first set to an angle (degrees).
+const DEFAULT_GRAIN_ANGLE: f64 = 45.0;
+
 fn value(values: &SchikkenValues, control: SchikkenControl) -> &str {
     values.iter().find(|(c, _)| *c == control).map_or("", |(_, v)| v.as_str())
 }
@@ -1389,13 +1416,32 @@ pub fn schikken_intent(
             let rule = match index(values, control) {
                 1 => burnburn_presentation::NestPartGrain::Across,
                 2 => burnburn_presentation::NestPartGrain::Free,
+                3 => burnburn_presentation::NestPartGrain::at_degrees(DEFAULT_GRAIN_ANGLE),
                 _ => burnburn_presentation::NestPartGrain::Along,
             };
             nest(&|i| {
+                // Choosing the angle again keeps the angle already typed.
+                let kept = i.part_grain.iter().find(|(o, g)| *o == object && g.angle_degrees().is_some()).copied();
                 i.part_grain.retain(|(o, _)| *o != object);
                 // Following the sheet is what a part does without an entry.
                 if rule != burnburn_presentation::NestPartGrain::Along {
-                    i.part_grain.push((object, rule));
+                    match (rule.angle_degrees(), kept) {
+                        (Some(_), Some(entry)) => i.part_grain.push(entry),
+                        _ => i.part_grain.push((object, rule)),
+                    }
+                }
+            })
+        }
+        SchikkenControl::NestPartGrainAngle(row) => {
+            let object = s.nest.as_ref()?.part_rows.get(row)?.object;
+            // A decimal comma is a decimal point; text that is no finite number leaves the angle as it is.
+            let typed = value(values, control).trim().replace(',', ".").parse::<f64>().ok().filter(|d| d.is_finite());
+            nest(&|i| {
+                if let Some(degrees) = typed
+                    && let Some(entry) =
+                        i.part_grain.iter_mut().find(|(o, g)| *o == object && g.angle_degrees().is_some())
+                {
+                    entry.1 = burnburn_presentation::NestPartGrain::at_degrees(degrees);
                 }
             })
         }

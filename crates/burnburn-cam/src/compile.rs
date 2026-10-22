@@ -302,7 +302,12 @@ fn order_chunks(
         if parts.is_empty() {
             parts.insert(vec![0; split.len()], Vec::new());
         }
+        let parts: Vec<(Vec<i128>, Vec<usize>)> = parts.into_iter().collect();
+        let member_lists: Vec<Vec<usize>> = parts.iter().map(|(_, m)| m.clone()).collect();
+        let mut part_buckets =
+            local_buckets(&member_lists, &unit.buckets, unit.contours.len(), &mut ChunkStats::default()).into_iter();
         for (part, members) in parts {
+            let buckets = part_buckets.next().unwrap_or_default();
             let mut sort: Vec<i128> = Vec::with_capacity(listed.len() + 1);
             for k in listed {
                 sort.push(if *k == OrderKey::Layer {
@@ -311,13 +316,6 @@ fn order_chunks(
                     part[split.iter().position(|s| s == k).unwrap_or(0)]
                 });
             }
-            let local = |i: usize| members.iter().position(|m| *m == i);
-            let buckets = unit
-                .buckets
-                .iter()
-                .map(|b| b.iter().filter_map(|&i| local(i)).collect::<Vec<_>>())
-                .filter(|b| !b.is_empty())
-                .collect();
             let contours = members.iter().map(|&i| unit.contours[i].clone()).collect();
             keyed.push((sort, ui, Chunk { unit: ui, contours, buckets }));
         }
@@ -325,6 +323,58 @@ fn order_chunks(
     // Stable: equal keys keep the unit and contour order they were built in.
     keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
     Ok(keyed.into_iter().map(|(_, _, c)| c).collect())
+}
+
+/// What mapping the fill buckets of a unit to its parts cost: a deterministic measure for tests.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ChunkStats {
+    /// Contour indices looked at while mapping.
+    steps: usize,
+}
+
+/// The buckets of a unit as seen from each part of it: for part `p` (its `members` are indices into
+/// the unit's contours, ascending) every bucket reduced to its members of `p`, as positions within
+/// `members[p]`, in bucket order; buckets without a member of `p` are left out.
+fn local_buckets(
+    members: &[Vec<usize>],
+    buckets: &[Vec<usize>],
+    contours: usize,
+    stats: &mut ChunkStats,
+) -> Vec<Vec<Vec<usize>>> {
+    // Where each contour is: its part, and its position within the members of that part.
+    let mut at: Vec<Option<(usize, usize)>> = vec![None; contours];
+    for (p, m) in members.iter().enumerate() {
+        for (position, &i) in m.iter().enumerate() {
+            stats.steps += 1;
+            if let Some(slot) = at.get_mut(i) {
+                *slot = Some((p, position));
+            }
+        }
+    }
+    let mut out: Vec<Vec<Vec<usize>>> = vec![Vec::new(); members.len()];
+    // Where the part's piece of the bucket in hand is in `split` (reset after every bucket).
+    let mut slot: Vec<Option<usize>> = vec![None; members.len()];
+    for b in buckets {
+        // The members of this bucket per part; each part has one piece, so the order between parts
+        // does not matter for the result.
+        let mut split: Vec<(usize, Vec<usize>)> = Vec::new();
+        for &i in b {
+            stats.steps += 1;
+            let Some((p, position)) = at.get(i).copied().flatten() else { continue };
+            match slot[p] {
+                Some(k) => split[k].1.push(position),
+                None => {
+                    slot[p] = Some(split.len());
+                    split.push((p, vec![position]));
+                }
+            }
+        }
+        for (p, positions) in split {
+            slot[p] = None;
+            out[p].push(positions);
+        }
+    }
+    out
 }
 
 /// Flattened contours an operation block works on (kerf-compensated for Line, rings for
@@ -653,4 +703,70 @@ fn placement_offset(units: &[Unit<'_>], placement: Placement) -> Vector {
         JobAnchor::TopRight => max,
     };
     at - a
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// The mapping as it was written first: for every part, a search for every bucket entry.
+    fn reference(members: &[Vec<usize>], buckets: &[Vec<usize>]) -> Vec<Vec<Vec<usize>>> {
+        members
+            .iter()
+            .map(|m| {
+                let local = |i: usize| m.iter().position(|x| *x == i);
+                buckets
+                    .iter()
+                    .map(|b| b.iter().filter_map(|&i| local(i)).collect::<Vec<_>>())
+                    .filter(|b| !b.is_empty())
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// `n` contours dealt over `parts` parts by `deal`, buckets of `bucket` consecutive contours.
+    fn split(n: usize, parts: usize, deal: &[usize], bucket: usize) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
+        let mut members = vec![Vec::new(); parts];
+        for i in 0..n {
+            members[deal[i % deal.len()] % parts].push(i);
+        }
+        let buckets = (0..n).collect::<Vec<_>>().chunks(bucket.max(1)).map(<[usize]>::to_vec).collect();
+        (members, buckets)
+    }
+
+    #[test]
+    fn mapping_the_buckets_of_a_big_unit_looks_at_each_contour_a_few_times_not_at_every_other_one() {
+        let n = 4_000;
+        let (members, buckets) = split(n, 1, &[0], 1);
+        let mut stats = ChunkStats::default();
+        let got = local_buckets(&members, &buckets, n, &mut stats);
+        assert_eq!(got, reference(&members, &buckets));
+        assert!(stats.steps <= 4 * n, "looked at {} contour indices for {n} contours", stats.steps);
+    }
+
+    #[test]
+    fn many_parts_cost_no_more_than_one_pass_over_the_buckets() {
+        let n = 4_000;
+        let (members, buckets) = split(n, 400, &[0, 1, 2, 3, 5, 7, 11], 3);
+        let mut stats = ChunkStats::default();
+        let got = local_buckets(&members, &buckets, n, &mut stats);
+        assert_eq!(got, reference(&members, &buckets));
+        assert!(stats.steps <= 4 * n, "looked at {} contour indices for {n} contours in 400 parts", stats.steps);
+    }
+
+    proptest! {
+        /// Whatever the parts and the buckets (also buckets that span parts), the result is the original's.
+        #[test]
+        fn the_mapping_equals_the_original_one(
+            n in 0usize..60,
+            parts in 1usize..6,
+            deal in prop::collection::vec(0usize..6, 1..8),
+            bucket in 1usize..7,
+        ) {
+            let (members, buckets) = split(n, parts, &deal, bucket);
+            let got = local_buckets(&members, &buckets, n, &mut ChunkStats::default());
+            prop_assert_eq!(got, reference(&members, &buckets));
+        }
+    }
 }

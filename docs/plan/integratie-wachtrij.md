@@ -30,17 +30,21 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
     vorm"). `Feature::CommonLine` blijft `Unverified` op RD en GRBL: zo'n plan wordt geweigerd tot er bewijs is.
   - *Nest*: `Packing::Tight` houdt de afstand tot op de productietolerantie (0,01 mm); gemeten (G8, één synthetische plaat van 600 x
     400 mm met 39 tot 156 onderdelen): zelfde benutting zolang alles past (kortere bereik), +9 stuks / +4 tot +5 procentpunt zodra de
-    plaat vol raakt, maar 40x tot 200x de rekentijd van Grid (tot ruim 6 s op 78 stuks). Nog niet op echte werkplaatsdata. De nerf per
-    onderdeel is een keuze uit drie (geen vrije hoek); er is geen automatisch verdelen over platen.
+    plaat vol raakt, maar 40x tot 200x de rekentijd van Grid (tot ruim 6 s op 78 stuks). G9-cam-werk (22-10-2026, `docs/dev-notes/G9-cam-werk.md`):
+    dezelfde plaatsingen (karakteriseringstest) in 0,2 tot 0,5 s i.p.v. 0,85 tot 4,75 s (release; 2,3x tot 9,5x sneller, nog 4x tot 20x Grid); de nerf
+    per onderdeel kent sindsdien ook een vrije hoek (vierde keuze met een veld in graden). Nog niet op echte werkplaatsdata; er is geen
+    automatisch verdelen over platen.
 - **Werkpakketten van het plan** (golf 7 sloot W04, W07, W01/W02, W09 en de basis van W06, zie "G7-werk"; G8-cam-werk bouwde W06 af,
   W07 aantallen en W01/W02 op onderdeelnaam, zie `docs/dev-notes/G8-cam-werk.md`): W06 herkent nu gedraaide en geschaalde producten
-  (eigen Rust, operator beslist nog steeds over elke treffer; geen spiegeling, geen perspectief, uniforme schaal; een product dat deels
-  buiten het beeld ligt wordt niet gevonden), bewaart geleerde sjablonen (`recognition-templates.json`, schema 1) en laat het zoekvak in
-  het beeld aanwijzen; W07: één knop in het nest-paneel neemt het aantal (nog te maken) van een order over als aantal exemplaren van de
-  onderdelen met die naam; W01/W02: een order vindt een vrijgegeven job ook op de naam van een getekend onderdeel. Open blijft: bij W09
-  het bewijs van de tekenconventie van de pointeroffset op een machine; bij W06 de snelheid op echte camerabeelden en het uiterlijk van
-  het wijzen met de muis (alleen headless geoefend); bij W01/W02 dat een order een job vindt op de *getekende* objectnamen (geen
-  aparte onderdeelnaam in het project) en dat dezelfde naam in meer jobs de keuze van de operator vraagt.
+  (eigen Rust, operator beslist nog steeds over elke treffer; uniforme schaal), bewaart geleerde sjablonen (`recognition-templates.json`, schema 1)
+  en laat het zoekvak in het beeld aanwijzen; G9-cam-werk (`docs/dev-notes/G9-cam-werk.md`) voegde gespiegelde producten toe (de kopie wordt dan ook
+  gespiegeld), producten onder een hoek (homografie met twee kantelparameters) en producten die deels buiten het beeld liggen (met de markering
+  "DEELS ZICHTBAAR, n %"; ook die beslist de operator); W07: één knop in het nest-paneel neemt het aantal (nog te maken) van een order over als aantal
+  exemplaren van de onderdelen met die naam; W01/W02: een order vindt een vrijgegeven job op de naam van een getekend onderdeel en, sinds G9, op een
+  expliciete onderdeelnaam in het project (`part-name.json`, in te vullen in het notitiepaneel, niet in de projecthash; met een expliciete naam telt een objectnaam
+  niet meer); dezelfde naam in meer jobs vraagt de keuze van de operator. Open blijft: bij W09 het bewijs van de tekenconventie van de pointeroffset op een
+  machine; bij W06 de snelheid en kwaliteit op echte camerabeelden (de kanteling is een zoekbenadering, geen gemeten perspectief), spookposes bij een lage
+  drempel en het uiterlijk van het wijzen met de muis (alleen headless geoefend).
 - **Editor** (G7-editor en G8-editor hebben E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md` en
   `docs/dev-notes/G8-editor.md`; wat blijft):
   E05 afronden/afschuinen tussen krommen is numeriek (Newton op de twee parameters); een straal die op geen van beide zijden past
@@ -425,3 +429,13 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G8-editor | E08 meerregelige tekst op pad; gebonden tekst verplaatsen = startafstand; variabele tekst op pad | `generators::{guide_frame_at, text_room}`, `text_on_path` meerregelig | – (`CommitField`, slepen) | `generators/tests/g8_multiline_path.rs`, `presentation/tests/g8_text_path.rs::*` | klaar; open: zie "Nog open" |
 | G8-editor | S07/P06 formules in vormen, vaste vormen verplaatsen/schalen, exemplaar draaien, verdelen over platen | `Dim::Expr`, `parse_formula`, `distribute_over_plates`, `CompoundLabel::DistributeOverPlates`, `structure_dto::Dim::Expr` | `StructureEdit::{RotateInstance, DistributeOverPlates}`, `InstanceRow.rotation`, `StructureProblem::{BadFormula, NoPlates, NothingToDistribute, NoRoomOnPlates}`, `EditorControl::{InstanceRotation, InstanceTurn, PlatesGap, PlatesDistribute}` | `document/tests/{g8_part_formulas,g8_distribute}.rs`, `io/tests/g8_part_formula_roundtrip.rs`, `presentation/tests/g8_parts.rs`, `macos/tests/g8_editor_panels_parts.rs`, `windows/tests/g8_editor_forms_parts.rs` | klaar |
 | G8-editor | S01 maat door a = b; ellips raakt cirkel en ellips | geen solverwijziging; hulpgeometrie in `burnburn-sketch/src/evaluate.rs` (contactpunt, normaal als som van eenheidsvectoren), rolwissel door doelmaat en tweede poging | `Relation::Tangent(ellips, cirkel/ellips)` toegestaan | `sketch/tests/g8_ellipse_swap_tangent.rs::*`, editor `constraint::...` | klaar; open: zie "Nog open" |
+
+## G9-cam-werk
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G9-cam-werk | Nest: nerf per onderdeel als vrije hoek (naast volgt/dwars/vrij) | `NestPartGrain::Angle(tienden)`, `nest_task::angled_rotations` (draait tot de hoek langs de nerf van de plaat ligt) | `SchikkenControl::NestPartGrainAngle(rij)` (veld), vierde keuze bij `NestPartGrain(rij)` | `presentation/tests/g9_nest_grain_angle.rs::*`, `macos/tests/g9_cam_werk_panels.rs::nest_panel::*`, `windows/tests/g9_cam_werk_forms.rs` | klaar |
+| G9-cam-werk | `Packing::Tight` sneller met dezelfde plaatsingen | `cam::nest::{nest_packed_counted, NestWork}` (teller), diepe-cellenmasker in `exact_valid` | – | `cam/tests/nest_tight_golden.rs::*` (karakterisering + 3x minder overlays), `nest_tight_measure` (release) | klaar |
+| G9-cam-werk | W06 herkenning gespiegeld, met perspectief en deels buiten het beeld | `image::locate_pose::{PoseParams::{mirror, max_tilt, min_visible}, PoseMatch::{mirrored, tilt, visible}}` | `RecognitionIntent::SetSearchExtras`, `SearchChoice.{mirror, perspective, partial}`, `CandidateView.{mirrored, visible_percent}`, `G5Control::{RecogMirror, RecogPerspective, RecogPartial}` | `image/tests/g9_locate_pose.rs::*`, `presentation/tests/g9_recognition.rs::*`, `macos/tests/g9_cam_werk_panels.rs::recognition::*`, `windows/tests/g8_recognition_form.rs` | klaar |
+| G9-cam-werk | W01/W02 expliciete onderdeelnaam in het project; orders matchen erop | `io::Project::{part_name, order_part_names}`, `part-name.json` (additief, niet in de projecthash) | `UiIntent::SetPartName`, `NotesViewModel.part_name`, `G5Control::{NotesPartName, NotesPartNameSave}` | `io/tests/g9_part_name.rs::*`, `presentation/tests/g9_part_name.rs::*`, `runtime/tests/g8_job_parts.rs::an_explicit_part_name_…`, `macos/tests/g9_cam_werk_panels.rs::part_name::*`, `windows/tests/g9_cam_werk_forms.rs` | klaar |
+| G9-cam-werk | Compile bij 100k contouren: kwadratische bucket-afbeelding weg | `cam::compile::local_buckets` (lineair) | – | `cam/src/compile.rs::tests::*`, `cam/tests/compile_scale_measure.rs` (release), `scenarios/tests/benchmarks_100k.rs` | klaar |
+| G9-cam-werk | Waarneming voor de document-lane: `Operation::new` controleert dubbele doelen kwadratisch (`targets[..i].contains(g)`), ~2,8 s bij 200k doelen | `burnburn-document/src/process/operation.rs` (een `HashSet` volstaat; fout en volgorde ongewijzigd) | – | nog geen test (buiten het gebied van G9-cam-werk) | open |

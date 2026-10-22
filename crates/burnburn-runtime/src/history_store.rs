@@ -228,8 +228,7 @@ impl HistoryStore for JournalHistoryStore {
         let s = self.lock();
         let Some(job) = s.history.jobs().find(|j| j.plan == plan.hash()).map(|j| j.id) else { return Vec::new() };
         let Ok(project) = s.history.load_project(s.fs.as_ref(), job) else { return Vec::new() };
-        let snapshot = &project.document;
-        snapshot.draw_order().into_iter().filter_map(|id| snapshot.object(id)).map(|o| o.name().to_owned()).collect()
+        project.order_part_names()
     }
 
     fn record_upload(&self, record: &UploadRecord) -> Result<(ExecutionId, Recorded), HistoryStoreError> {
