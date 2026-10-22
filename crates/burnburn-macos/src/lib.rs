@@ -12,11 +12,13 @@ pub mod app_text;
 pub mod app_view;
 #[cfg(target_os = "macos")]
 pub mod appkit;
+pub mod automation_host;
 pub mod calib;
 pub mod camera;
 pub mod hub_panel;
 pub mod l10n;
 pub mod l10n_files;
+pub mod l10n_g5;
 pub mod l10n_machine;
 pub mod lifecycle;
 pub mod panels;

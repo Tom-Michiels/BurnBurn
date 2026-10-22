@@ -2,6 +2,7 @@
 //! keeps About, Preferences and Shortcuts there, here they close the Help popup.
 
 use super::{MenuNode, cmd, host, sep};
+use crate::adapter::MenuItem;
 use crate::app_menu::AppAction;
 use crate::host_panels::menu::Item;
 use burnburn_presentation::CommandKey;
@@ -16,10 +17,13 @@ pub(super) fn window_items() -> Vec<MenuNode> {
     vec![
         host(Item::Material),
         host(Item::Art),
+        MenuNode::Item(MenuItem::OffsetPanel),
+        MenuNode::Item(MenuItem::StructurePanel),
         sep(),
         host(Item::App(AppAction::Preview)),
         host(Item::App(AppAction::InspectRd)),
         host(Item::App(AppAction::History)),
+        host(Item::App(AppAction::MachineHub)),
     ]
 }
 

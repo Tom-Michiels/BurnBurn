@@ -81,6 +81,8 @@ pub mod id {
     pub const TR_PREVIEW: u16 = B + 66;
     pub const TR_APPLY: u16 = B + 67;
     pub const TR_CLOSE: u16 = B + 68;
+    /// "Pas toe als trace" (T02): the result stays a re-editable trace of the project.
+    pub const TR_APPLY_LINKED: u16 = B + 69;
     /// Captions of the tracer rows: `+0..+9`.
     pub const TR_CAPTION: u16 = B + 70;
 }
@@ -278,6 +280,11 @@ pub fn image_spec(input: &ImageInput<'_>) -> PanelSpec {
         rows.push(Row::one(ControlSpec::bitmap(id::TR_PREVIEW, TRACE_PREVIEW_PX, p.preview.clone())));
         rows.push(Row::of(vec![
             ControlSpec::button(id::TR_APPLY, ht(HostText::TracerApply, locale), on(CommandKey::ApplyTrace)),
+            ControlSpec::button(
+                id::TR_APPLY_LINKED,
+                ht(HostText::TracerApplyLinked, locale),
+                on(CommandKey::ApplyTraceLinked),
+            ),
             ControlSpec::button(id::TR_CLOSE, ht(HostText::TracerClose, locale), on(CommandKey::CloseTracer)),
         ]));
     } else {
@@ -355,6 +362,7 @@ pub fn on_image_event(input: &ImageInput<'_>, event: &PanelEvent) -> PanelReacti
             intent(image_adjust_intent(document, shown, fields, event.values.selected(id::ADJ_GRAY)))
         }
         id::TR_APPLY if clicked => invoke(input, CommandKey::ApplyTrace),
+        id::TR_APPLY_LINKED if clicked => invoke(input, CommandKey::ApplyTraceLinked),
         id::TR_CLOSE if clicked => invoke(input, CommandKey::CloseTracer),
         id::TR_PRESET if code == notify::CHANGED => {
             if doc.tracer.is_some() {

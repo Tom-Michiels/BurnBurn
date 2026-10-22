@@ -16,11 +16,12 @@ use burnburn_presentation::{
 use burnburn_types::DocumentId;
 
 use crate::l10n::Locale;
-use crate::panels::{LayerColumn, ParamSection, SchikkenControl, Slot};
+use crate::panels::{G5Control, G5Panel, LayerColumn, ParamSection, SchikkenControl, Slot};
 
 pub mod cam;
 pub mod choice;
 pub mod cut_settings;
+pub mod g5;
 pub mod inspector;
 pub mod layers;
 pub mod layout;
@@ -43,6 +44,8 @@ pub struct FormContext<'a> {
 pub struct PanelState {
     /// The Schikken options panel was asked for from the menu.
     pub schikken_shown: bool,
+    /// The golf-5 panels that wait for a menu item and were asked for (offset and repair, structure).
+    pub g5_shown: Vec<G5Panel>,
     /// The layer row selected in the Layers panel.
     pub layer_row: Option<usize>,
 }
@@ -64,6 +67,8 @@ pub enum FormKind {
     Barcode,
     GeometryDialog,
     Sketch,
+    /// Notes, offset and repair, centre-line decisions or the structure panel (G5-native).
+    G5(G5Panel),
 }
 
 /// Where the panel lives in the window.
@@ -114,6 +119,8 @@ pub enum ControlId {
     /// Move an `Order by` level up (`true`) or down.
     CamMove(OrderKey, bool),
     Schikken(SchikkenControl),
+    /// A control of one of the golf-5 panels.
+    G5(G5Control),
     Text(Slot),
     GeometryValue,
     GeometryOk,
@@ -219,6 +226,12 @@ pub enum FormLine {
     },
     /// Lines side by side, each with the same share of the width.
     Row(Vec<FormLine>),
+    /// A multi-line text (the project notes); Return makes a new line, nothing commits it but a button.
+    Memo {
+        id: ControlId,
+        text: String,
+        max_chars: usize,
+    },
 }
 
 impl FormLine {
@@ -239,6 +252,7 @@ impl FormLine {
             FormLine::Field { id, .. }
             | FormLine::Check { id, .. }
             | FormLine::Choice { id, .. }
+            | FormLine::Memo { id, .. }
             | FormLine::List { id, .. } => vec![id.clone()],
             FormLine::Buttons(b) | FormLine::Grid { buttons: b, .. } => b.iter().map(|b| b.id.clone()).collect(),
             FormLine::Row(lines) => lines.iter().flat_map(FormLine::ids).collect(),
@@ -281,7 +295,9 @@ impl Form {
         fn walk(lines: &[FormLine], out: &mut Vec<(ControlId, ControlValue)>) {
             for line in lines {
                 match line {
-                    FormLine::Field { id, text, .. } => out.push((id.clone(), ControlValue::Text(text.clone()))),
+                    FormLine::Field { id, text, .. } | FormLine::Memo { id, text, .. } => {
+                        out.push((id.clone(), ControlValue::Text(text.clone())))
+                    }
                     FormLine::Check { id, on, .. } => out.push((id.clone(), ControlValue::Toggle(*on))),
                     FormLine::Choice { id, selected, .. } => out.push((id.clone(), ControlValue::Choice(*selected))),
                     FormLine::List { id, selected, .. } => out.push((id.clone(), ControlValue::Rows(selected.clone()))),
@@ -342,6 +358,7 @@ pub fn forms(ctx: &FormContext<'_>, aux: &FormAux<'_>, values: &FormValues) -> V
     out.extend(text::forms(ctx));
     out.extend(shapes::dialog_form(ctx));
     out.extend(sketch::form(ctx));
+    out.extend(g5::forms(ctx, aux.state, values));
     out
 }
 
@@ -369,6 +386,7 @@ pub fn react(
         }
         FormKind::GeometryDialog => shapes::dialog_react(id, value, values, ctx),
         FormKind::Sketch => sketch::react(id, value, values, ctx),
+        FormKind::G5(panel) => g5::react(panel, id, values, ctx),
     }
 }
 

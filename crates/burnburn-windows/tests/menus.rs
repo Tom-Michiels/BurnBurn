@@ -120,6 +120,8 @@ fn win_tokens(menu: &Submenu) -> Vec<String> {
                 MenuNode::Item(MenuItem::Open) => out.push("Open".into()),
                 MenuNode::Item(MenuItem::CamDialog(d)) => out.push(format!("Cam:{d:?}")),
                 MenuNode::Item(MenuItem::SchikkenPanel) => out.push("Schikken".into()),
+                MenuNode::Item(MenuItem::OffsetPanel) => out.push("Other:OffsetPanel".into()),
+                MenuNode::Item(MenuItem::StructurePanel) => out.push("Other:StructurePanel".into()),
                 MenuNode::Item(MenuItem::Host(item)) => out.push(host_token(*item)),
                 MenuNode::Separator => {}
                 MenuNode::Submenu(s) if s.id.starts_with("recent_") => out.push(format!("Dyn:{}", s.id)),

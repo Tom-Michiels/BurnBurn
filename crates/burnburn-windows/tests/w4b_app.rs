@@ -180,6 +180,7 @@ struct Views {
     preview: Option<burnburn_presentation::PreviewViewModel>,
     rd: Option<burnburn_presentation::RdInspectViewModel>,
     debug: DebugLogViewModel,
+    hub: burnburn_presentation::MachineHubViewModel,
     vm: std::sync::Arc<burnburn_presentation::AppViewModel>,
     doc: DocumentId,
 }
@@ -193,6 +194,7 @@ fn views(h: &mut HeadlessEditorHarness, doc: DocumentId) -> Views {
         preview: c.preview_view(doc),
         rd: c.rd_inspect_view(doc),
         debug: c.debug_log_view(),
+        hub: c.machine_hub_view(),
         vm: h.view(),
         doc,
     }
@@ -223,6 +225,7 @@ impl Views {
             rd: self.rd.as_ref(),
             help: AppController::help_info(),
             debug: &self.debug,
+            hub: &self.hub,
             support_text: host.support,
             shortcut_filter: host.filter,
             shortcut_row: host.row,

@@ -202,6 +202,8 @@ fn shortcut_id_of(item: &NSMenuItem) -> Option<String> {
             MenuItem::App(a) => Some(a.shortcut_id().to_owned()),
             MenuItem::CamDialog(dialog) => Some(format!("host.cam.{dialog:?}")),
             MenuItem::SchikkenPanel => Some("host.schikken_panel".into()),
+            MenuItem::OffsetPanel => Some("host.offset_panel".into()),
+            MenuItem::StructurePanel => Some("host.structure_panel".into()),
             MenuItem::Recent(_)
             | MenuItem::ClearRecent
             | MenuItem::RecentTemplate(_)
@@ -509,6 +511,9 @@ impl HostApp {
     /// canvas quality. Snapping, nudge distances and units are presentation's.
     fn apply_preferences(&self) {
         let Some(prefs) = self.controller.try_borrow().ok().map(|c| *c.preferences()) else { return };
+        // Desktop automation listens exactly while its preference is on (opt-in, loopback only);
+        // idempotent, and retried by the next refresh when the pump was busy.
+        self.sync_automation(prefs.desktop_automation);
         if self.applied_prefs.get() == Some(prefs) {
             return;
         }

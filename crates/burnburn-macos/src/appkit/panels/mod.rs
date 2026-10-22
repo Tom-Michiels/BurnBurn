@@ -13,6 +13,9 @@ pub(crate) mod cut_settings;
 pub(crate) mod export;
 pub(crate) mod files;
 pub(crate) mod files_ui;
+// `define_class!` and `msg_send!` need unsafe (the golf-5 panels have their own small target object).
+#[allow(unsafe_code)]
+pub(crate) mod g5;
 #[allow(unsafe_code)]
 pub(crate) mod hub;
 // `define_class!` and `msg_send!` need unsafe (the GRBL window has its own small target object).

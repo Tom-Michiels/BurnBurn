@@ -16,6 +16,10 @@ pub enum MenuItem {
     CamDialog(CamDialog),
     /// Schikken: shows or hides the Schikken options panel of the active window.
     SchikkenPanel,
+    /// Venster: shows or hides the offset and repair panel of the active window (G5-native).
+    OffsetPanel,
+    /// Venster: shows or hides the structure panel of the active window (G5-native).
+    StructurePanel,
     /// An item of the panel families (laser window, import, export, bundles, templates, images,
     /// camera, help; ids `6000..6500`): what it does is decided in [`crate::host_panels::menu`].
     Host(HostItem),
@@ -24,7 +28,7 @@ pub enum MenuItem {
 /// Every menu item the host offers. The recent-list entries are not in it: they come and go with
 /// the stored lists (as `Recent(n)` on the Mac).
 pub fn menu_items() -> Vec<MenuItem> {
-    [MenuItem::Open, MenuItem::SchikkenPanel]
+    [MenuItem::Open, MenuItem::SchikkenPanel, MenuItem::OffsetPanel, MenuItem::StructurePanel]
         .into_iter()
         .chain(crate::host_panels::menu::items().into_iter().map(MenuItem::Host))
         .chain(CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
@@ -38,6 +42,9 @@ pub fn menu_items() -> Vec<MenuItem> {
 /// macOS tags (1001–1008, 2000+, 3000+).
 const FIRST_ID: u16 = 100;
 const SCHIKKEN_PANEL_ID: u16 = 1007;
+/// The golf-5 panels use the macOS tags too (G5-native).
+const OFFSET_PANEL_ID: u16 = 1030;
+const STRUCTURE_PANEL_ID: u16 = 1031;
 const CAM_ID_BASE: u16 = 4000;
 
 /// `WM_COMMAND` id of a menu item (also used by the accelerator table).
@@ -46,6 +53,8 @@ pub fn command_id(item: MenuItem) -> u16 {
         MenuItem::Open => FIRST_ID,
         MenuItem::Host(item) => item.id(),
         MenuItem::SchikkenPanel => SCHIKKEN_PANEL_ID,
+        MenuItem::OffsetPanel => OFFSET_PANEL_ID,
+        MenuItem::StructurePanel => STRUCTURE_PANEL_ID,
         MenuItem::CamDialog(dialog) => CamDialog::ALL
             .iter()
             .position(|d| *d == dialog)
@@ -62,6 +71,12 @@ pub fn command_id(item: MenuItem) -> u16 {
 pub fn menu_item(id: u16) -> Option<MenuItem> {
     if let Some(item) = HostItem::from_id(id) {
         return Some(MenuItem::Host(item));
+    }
+    if id == OFFSET_PANEL_ID {
+        return Some(MenuItem::OffsetPanel);
+    }
+    if id == STRUCTURE_PANEL_ID {
+        return Some(MenuItem::StructurePanel);
     }
     if id == SCHIKKEN_PANEL_ID {
         return Some(MenuItem::SchikkenPanel);
@@ -160,7 +175,9 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
             recent_templates: &[],
         }),
         // A dialog or panel belongs to a window; its own greying says why in words.
-        MenuItem::CamDialog(_) | MenuItem::SchikkenPanel => vm.active.is_some(),
+        MenuItem::CamDialog(_) | MenuItem::SchikkenPanel | MenuItem::OffsetPanel | MenuItem::StructurePanel => {
+            vm.active.is_some()
+        }
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
     }
 }
@@ -169,7 +186,12 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
 pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
-        MenuItem::Open | MenuItem::CamDialog(_) | MenuItem::SchikkenPanel | MenuItem::Host(_) => false,
+        MenuItem::Open
+        | MenuItem::CamDialog(_)
+        | MenuItem::SchikkenPanel
+        | MenuItem::OffsetPanel
+        | MenuItem::StructurePanel
+        | MenuItem::Host(_) => false,
     }
 }
 
@@ -182,6 +204,8 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         }
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
+        MenuItem::OffsetPanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::OffsetMenu, locale).to_owned(),
+        MenuItem::StructurePanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::StructureMenu, locale).to_owned(),
         MenuItem::Command(key) => {
             let label = vm.commands.get(&key).map_or(MessageKey::Command(key), |c| c.label);
             message_or_key(label, locale)

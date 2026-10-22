@@ -32,11 +32,20 @@ pub enum AppSheet {
     Preview,
     Rd,
     Support,
+    /// Machine en productie (G5-machine-rest): devices, upload, queue, history with repeat, calibration.
+    Hub,
 }
 
 impl AppSheet {
-    pub const ALL: [AppSheet; 6] =
-        [AppSheet::Prefs, AppSheet::Shortcuts, AppSheet::History, AppSheet::Preview, AppSheet::Rd, AppSheet::Support];
+    pub const ALL: [AppSheet; 7] = [
+        AppSheet::Prefs,
+        AppSheet::Shortcuts,
+        AppSheet::History,
+        AppSheet::Preview,
+        AppSheet::Rd,
+        AppSheet::Support,
+        AppSheet::Hub,
+    ];
 
     /// A small number that names the sheet in a window key.
     pub fn code(self) -> u8 {
@@ -108,6 +117,8 @@ pub mod id {
     pub const SU_CLEAR_LOG: u16 = B + 119;
     pub const SU_HEADING: u16 = B + 120;
     pub const SU_LOG_HEADING: u16 = B + 121;
+
+    // Machine hub: `B + 130 ..= B + 199`, see `hub::id`.
 }
 
 /// Size (pixels) of the picture the preview is drawn into, and its margin.
@@ -127,6 +138,8 @@ pub struct AppInput<'a> {
     pub rd: Option<&'a RdInspectViewModel>,
     pub help: HelpInfo,
     pub debug: &'a DebugLogViewModel,
+    /// The machine hub (app-wide).
+    pub hub: &'a burnburn_presentation::MachineHubViewModel,
     /// The text a support bundle would hold with the options ticked in the panel (the host asks
     /// the controller for it: what the user sees is what is written).
     pub support_text: &'a str,
@@ -155,6 +168,7 @@ pub fn app_spec(sheet: AppSheet, input: &AppInput<'_>) -> PanelSpec {
         AppSheet::Preview => preview_spec(input),
         AppSheet::Rd => rd_spec(input),
         AppSheet::Support => support_spec(input),
+        AppSheet::Hub => super::hub::hub_spec(input),
     }
 }
 
@@ -376,6 +390,7 @@ pub fn on_app_event(sheet: AppSheet, input: &AppInput<'_>, event: &PanelEvent) -
         AppSheet::Preview => on_preview(input, event),
         AppSheet::Rd => on_rd(input, event),
         AppSheet::Support => on_support(input, event),
+        AppSheet::Hub => super::hub::on_hub(input, event),
     }
 }
 

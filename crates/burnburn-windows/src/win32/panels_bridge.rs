@@ -36,6 +36,7 @@ impl Bridge for PanelBridge {
                 preview: doc.and_then(|d| c.preview_view(d)),
                 rd: doc.and_then(|d| c.rd_inspect_view(d)),
                 debug: c.debug_log_view(),
+                hub: c.machine_hub_view(),
                 recent_projects: c.recent_projects(),
                 recent_templates: c.recent_templates(),
                 vm,

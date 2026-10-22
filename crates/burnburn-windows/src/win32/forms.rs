@@ -47,6 +47,9 @@ const LBN_DBLCLK: u16 = 2;
 // Control styles that the `windows` crate types as plain integers.
 const SS_LEFT: u32 = 0x0000;
 const ES_AUTOHSCROLL: u32 = 0x0080;
+const ES_MULTILINE: u32 = 0x0004;
+const ES_AUTOVSCROLL: u32 = 0x0040;
+const ES_WANTRETURN: u32 = 0x1000;
 const BS_PUSHBUTTON: u32 = 0x0000;
 const BS_AUTOCHECKBOX: u32 = 0x0003;
 const BS_PUSHLIKE: u32 = 0x1000;
@@ -99,6 +102,7 @@ fn signature_of(item: &Item) -> String {
         Item::Choice { id, items, .. } => format!("S{id:?}{}", items.len()),
         Item::Button(b) => format!("B{:?}", b.id),
         Item::List { id, items, .. } => format!("L{id:?}{}", items.len()),
+        Item::Memo { id, .. } => format!("M{id:?}"),
     }
 }
 
@@ -179,6 +183,12 @@ fn make(instance: HINSTANCE, parent: HWND, placed: &crate::forms::layout::Placed
             let _ = unsafe { SetWindowSubclass(hwnd, Some(edit_proc), 2, 0) };
             (hwnd, Some(id.clone()), text.clone())
         }
+        Item::Memo { id, text } => {
+            // Return makes a new line (no subclass): a button commits the note.
+            let bits = WS_BORDER.0 | WS_VSCROLL.0 | tab | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN;
+            let hwnd = child(instance, parent, w!("EDIT"), &text.replace('\n', "\r\n"), bits, r, cid)?;
+            (hwnd, Some(id.clone()), text.clone())
+        }
         Item::Check { id, caption, .. } => (
             child(instance, parent, w!("BUTTON"), caption, tab | BS_AUTOCHECKBOX, r, cid)?,
             Some(id.clone()),
@@ -241,6 +251,13 @@ fn push_values(ctl: &mut Ctl, placed: &crate::forms::layout::Placed) {
             }
             ctl.shown = text.clone();
             enable(ctl.hwnd, *enabled);
+        }
+        Item::Memo { text, .. } => {
+            // What the user typed stays until the stored note changes.
+            if *text != ctl.shown {
+                set_text(ctl.hwnd, &text.replace('\n', "\r\n"));
+            }
+            ctl.shown = text.clone();
         }
         Item::Check { on, enabled, caption, .. } => {
             if window_text(ctl.hwnd) != *caption {
@@ -587,6 +604,8 @@ impl FormWin {
 fn read(ctl: &Ctl) -> Option<ControlValue> {
     Some(match &ctl.item {
         Item::Field { .. } => ControlValue::Text(window_text(ctl.hwnd)),
+        // An edit control keeps CR LF; the note is stored with LF.
+        Item::Memo { .. } => ControlValue::Text(window_text(ctl.hwnd).replace("\r\n", "\n")),
         Item::Check { .. } => ControlValue::Toggle(send(ctl.hwnd, BM_GETCHECK, 0, 0).0 as usize == BST_CHECKED),
         Item::Choice { items, selected, .. } => {
             let position = usize::try_from(send(ctl.hwnd, CB_GETCURSEL, 0, 0).0).ok()?;
@@ -650,6 +669,9 @@ pub(super) fn close_command(kind: FormKind) -> Option<ControlId> {
         FormKind::TextPath => Some(ControlId::Text(Slot::PathCancel)),
         FormKind::Barcode => Some(ControlId::Text(Slot::BcCancel)),
         FormKind::Schikken => None,
+        // The notes close like their button; the others close with the menu item or the trace.
+        FormKind::G5(crate::panels::G5Panel::Notes) => Some(ControlId::G5(crate::panels::G5Control::NotesClose)),
+        FormKind::G5(_) => None,
         FormKind::Inspector | FormKind::Layers | FormKind::TextToolbar | FormKind::Variable | FormKind::Sketch => None,
     }
 }

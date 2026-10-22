@@ -30,7 +30,7 @@ fn some_forms() -> Vec<Form> {
     h.send(UiIntent::OpenCutSettings { document: doc, operation: op });
     let vm = h.view();
     let ctx = FormContext { vm: &vm, document: doc, locale: Locale::En };
-    let state = PanelState { schikken_shown: true, layer_row: Some(0) };
+    let state = PanelState { schikken_shown: true, layer_row: Some(0), ..PanelState::default() };
     vec![
         inspector::form(&ctx).unwrap(),
         layers::form(&ctx, &state).unwrap(),

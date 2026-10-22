@@ -179,6 +179,16 @@ path = "../../tests/native/macos/schikken_panel.rs"
 harness = false
 
 [[test]]
+name = "g5_panels_native"
+path = "../../tests/native/macos/g5_panels.rs"
+harness = false
+
+[[test]]
+name = "automation_native"
+path = "../../tests/native/macos/automation.rs"
+harness = false
+
+[[test]]
 name = "image_sheets"
 path = "../../tests/native/macos/image_sheets.rs"
 harness = false
