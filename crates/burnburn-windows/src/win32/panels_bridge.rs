@@ -57,7 +57,7 @@ impl Bridge for PanelBridge {
 
 /// `%LOCALAPPDATA%\BurnBurn`: the libraries (materials, art) live here, as on the Mac next to the
 /// recent-projects file.
-fn library_dir() -> Option<PathBuf> {
+pub(super) fn library_dir() -> Option<PathBuf> {
     let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("BurnBurn");
     match std::fs::create_dir_all(&dir) {
         Ok(()) => Some(dir),

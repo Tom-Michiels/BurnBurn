@@ -501,6 +501,7 @@ dependencies = [
  "burnburn-text",
  "burnburn-types",
  "raw-window-handle",
+ "serde_json",
  "toml",
  "wgpu",
  "windows",

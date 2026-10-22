@@ -198,6 +198,12 @@ fn apply(update: AppUpdate) {
     for effect in &update.effects {
         // W4-L8b: RD export, template and bundle dialogs, recent lists.
         crate::win32_panels::manager::effect(effect);
+        // The recent lists are stored as soon as the controller announces a change.
+        if let Some(dir) = panels_bridge::library_dir()
+            && let Some(Err(e)) = crate::persist::persist_effect(&dir, effect)
+        {
+            eprintln!("burnburn-win: recent list in {}: {e}", dir.display());
+        }
         match effect {
             HostEffect::OpenWindow { document } => open_window(*document),
             HostEffect::CloseWindow { document } => {
@@ -882,7 +888,8 @@ fn register_form(instance: HINSTANCE) -> bool {
 }
 
 /// `burnburn-win`: one document window, the message loop, quit when the last window closes.
-pub fn run_app() -> ExitCode {
+/// `args`: the command-line arguments after the program name (a project path to open).
+pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
     // SAFETY: process-wide DPI mode, set once before any window exists.
     let _ = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
     // SAFETY: this thread becomes the STA UI thread (file dialogs are COM objects).
@@ -974,7 +981,16 @@ pub fn run_app() -> ExitCode {
         }
     });
     panels_bridge::install();
-    dispatch(UiIntent::NewDocument);
+    // The stored recent lists first (the menus of the first window show them), then the project
+    // named on the command line, or a blank document.
+    if let Some(dir) = panels_bridge::library_dir() {
+        for intent in crate::persist::load_intents(&dir) {
+            dispatch(intent);
+        }
+    }
+    for intent in crate::startup::startup_intents(args) {
+        dispatch(intent);
+    }
     dispatch(UiIntent::CheckRecovery);
     let mut message = MSG::default();
     // The standard message loop on the thread that owns every window (each call below is a
