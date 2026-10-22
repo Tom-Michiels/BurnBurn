@@ -353,6 +353,14 @@ pub trait HistoryStore: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// The names of the parts (the drawn objects) of the project a released job was frozen from,
+    /// so an order can find its job by the name of a part and not only by the file name. A history
+    /// that cannot say gives none.
+    fn job_parts(&self, plan: JobPlanId) -> Vec<String> {
+        let _ = plan;
+        Vec::new()
+    }
+
     /// Records a new or changed order.
     fn record_order(&self, order: &StoredOrder) -> Result<(), HistoryStoreError> {
         let _ = order;

@@ -497,6 +497,20 @@ impl History {
         decode_plan(&self.read_blob(fs, &j.blobs.plan)?, &j.plan)
     }
 
+    /// The project a job was frozen from, rebuilt from its blob and checked against the project
+    /// hash recorded with the job. Nothing is recompiled.
+    pub fn load_project(&self, fs: &dyn JournalFs, job: CompiledJobId) -> Result<burnburn_io::Project, HistoryError> {
+        let j = self.jobs.get(&job).ok_or(HistoryError::UnknownJob(job))?;
+        let bytes = self.read_blob(fs, &j.blobs.project)?;
+        let project =
+            burnburn_io::decode_container(&bytes).map_err(|e| HistoryError::Encode(format!("project: {e:?}")))?;
+        let hash = burnburn_io::project_hash(&project).map_err(|e| HistoryError::Encode(format!("{e:?}")))?;
+        if hash != j.project_hash {
+            return Err(HistoryError::BlobMismatch);
+        }
+        Ok(project)
+    }
+
     /// The exact RD bytes of a job, verified against its recorded RD hash.
     pub fn load_rd(&self, fs: &dyn JournalFs, job: CompiledJobId) -> Result<Vec<u8>, HistoryError> {
         let j = self.jobs.get(&job).ok_or(HistoryError::UnknownJob(job))?;

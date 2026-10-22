@@ -393,6 +393,7 @@ name = "burnburn-runtime"
 version = "0.1.0"
 dependencies = [
  "burnburn-document",
+ "burnburn-geometry",
  "burnburn-history",
  "burnburn-io",
  "burnburn-job",
