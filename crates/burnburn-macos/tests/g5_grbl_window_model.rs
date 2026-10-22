@@ -4,8 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)]
 
-#[path = "../../../tests/native/macos/common/grbl_fake.rs"]
-mod grbl_fake;
+use burnburn_test_support::host::grbl_fake;
 
 use burnburn_job::{MachineFrame, MachineProfile, OriginCorner, PowerRatio};
 use burnburn_macos::l10n::Locale;

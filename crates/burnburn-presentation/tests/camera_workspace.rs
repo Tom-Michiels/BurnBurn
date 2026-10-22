@@ -7,9 +7,8 @@
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::expect_used)] // test helpers
 
-mod common;
-#[path = "common/camera.rs"]
-mod rig;
+use burnburn_test_support::host::camera as rig;
+use burnburn_test_support::host::rig as common;
 
 use std::sync::{Arc, Mutex};
 

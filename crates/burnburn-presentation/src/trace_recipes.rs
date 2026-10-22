@@ -38,6 +38,12 @@ pub enum TraceRecipeIntent {
         with: RecipeChoice,
     },
     ClearCompare,
+    /// Link (or unlink) the stored local correction `index` to the contours of B although it no longer binds
+    /// there (G9): the comparison is traced again with the correction applied to B.
+    RelinkCorrection {
+        index: usize,
+        on: bool,
+    },
     /// Make the compared recipe (B) the one in force.
     AdoptCompared,
     /// Trace these files with the settings in force (contour mode), one report line per file.
@@ -93,11 +99,30 @@ pub struct CompareCorrectionsView {
     pub b_applied: usize,
 }
 
+/// Where a stored local correction stands on variant B of a comparison (G9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareCorrectionState {
+    /// Not applied to B: `lost` contours it was bound to are gone, `new_in_region` new ones lie in its area.
+    Unbound { lost: usize, new_in_region: usize },
+    /// Linked to B's contours by the operator although it no longer bound.
+    Relinked,
+}
+
+/// One correction that did not bind on B, or that the operator linked there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompareCorrectionRow {
+    /// Position in the tracer's list of corrections.
+    pub index: usize,
+    pub state: CompareCorrectionState,
+}
+
 /// Recipe in force (A) against another (B) on the same picture.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompareViewModel {
     /// The local corrections of the tracer, when it has any (applied to both variants).
     pub corrections: Option<CompareCorrectionsView>,
+    /// The corrections that do not bind on B (and can be linked to it) or were linked, in list order.
+    pub b_corrections: Vec<CompareCorrectionRow>,
     /// Where B comes from: the saved recipe or the built-in.
     pub b_choice: RecipeChoice,
     pub computing: bool,

@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-mod g6_fixtures;
+use burnburn_test_support::host::g6 as g6_fixtures;
 
 use burnburn_macos::l10n::{Locale, message_or_key, undo_label_text};
 use burnburn_macos::panels::{G5Control as C, G5Line, G5Panel, G5PanelModel, g5_intent, g5_opens_by_itself, g5_panel};

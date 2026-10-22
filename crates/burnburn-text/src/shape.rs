@@ -149,31 +149,61 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
         VAlign::Middle => -(ascent + (last_baseline - descent)) / 2.0,
         VAlign::Bottom => descent - last_baseline,
     };
+    let shape_one = |line: &str, base: usize, kashida: usize| -> Result<RawLine, TextError> {
+        Ok(match obj.mode {
+            TextMode::Outline => shape_line(line, base, &chain, layout, em, kashida)?,
+            TextMode::SingleLine => single_line_glyphs(line, base, em, layout.uppercase),
+        })
+    };
+    // Justified text: every line but the last is stretched to the width of the widest one.
+    let mut naturals: Vec<Option<RawLine>> = Vec::new();
+    let mut target = None;
+    if layout.align == Align::Justify && line_count > 1 {
+        let mut at = 0;
+        let mut widest: f64 = 0.0;
+        for line in obj.content.split('\n') {
+            let raw = shape_one(line, at, 0)?;
+            at += line.len() + 1;
+            widest = widest.max(pens_of(&raw, &obj.content, layout, &Stretch::NONE).1);
+            naturals.push(Some(raw));
+        }
+        target = Some(widest);
+    }
     for (line_index, line) in obj.content.split('\n').enumerate() {
         let bytes = offset..offset + line.len();
         offset += line.len() + 1;
-        let raw = match obj.mode {
-            TextMode::Outline => shape_line(line, bytes.start, &chain, layout, em)?,
-            TextMode::SingleLine => single_line_glyphs(line, bytes.start, em, layout.uppercase),
+        let mut raw = match naturals.get_mut(line_index).and_then(Option::take) {
+            Some(raw) => raw,
+            None => shape_one(line, bytes.start, 0)?,
         };
-        for m in raw.missing {
+        for m in std::mem::take(&mut raw.missing) {
             out.missing.push(MissingGlyph { ch: m.0, byte: m.1, line: line_index });
         }
-        // Pen positions with letter spacing between clusters (never after the last glyph).
-        let mut pens = Vec::with_capacity(raw.glyphs.len());
-        let mut pen = 0.0;
-        for (i, g) in raw.glyphs.iter().enumerate() {
-            pens.push(pen);
-            pen += g.advance;
-            if raw.glyphs.get(i + 1).is_some_and(|next| next.cluster != g.cluster)
-                && !joined_letters(&obj.content, g.cluster, raw.glyphs.get(i + 1).map_or(g.cluster, |n| n.cluster))
-            {
-                pen += layout.letter_spacing_mm;
+        let mut stretch = Stretch::NONE;
+        if let Some(target) = target.filter(|_| line_index + 1 < line_count) {
+            let natural = pens_of(&raw, &obj.content, layout, &stretch).1;
+            if target - natural > STRETCH_EPS {
+                if obj.mode == TextMode::Outline {
+                    let widths = (natural, target);
+                    let better = kashida_stretch(&shape_one, line, bytes.start, &obj.content, layout, &chain, widths)?;
+                    if let Some(better) = better {
+                        raw.glyphs = better.glyphs;
+                    }
+                }
+                let extra = target - pens_of(&raw, &obj.content, layout, &stretch).1;
+                if extra > STRETCH_EPS {
+                    let (gaps, boundaries) = stretch_points(&raw, &obj.content);
+                    if gaps > 0 {
+                        stretch.gap = extra / gaps as f64;
+                    } else if boundaries > 0 {
+                        stretch.letter = extra / boundaries as f64;
+                    }
+                }
             }
         }
-        let width = pen;
+        let (pens, width) = pens_of(&raw, &obj.content, layout, &stretch);
         let start_x = match layout.align {
-            Align::Left => 0.0,
+            Align::Left | Align::Justify => 0.0,
             Align::Center => -width / 2.0,
             Align::Right => -width,
         };
@@ -221,6 +251,192 @@ pub fn shape(obj: &TextObject, fonts: &dyn FontSource) -> Result<ShapedText, Tex
         }
     }
     Ok(out)
+}
+
+/// Smaller stretches than this (mm) are not worth a second pass.
+const STRETCH_EPS: f64 = 1e-6;
+/// At most this many kashida (tatweel) per word.
+const MAX_KASHIDA_PER_WORD: usize = 6;
+
+/// Extra space a justified line adds: per word gap, or per letter boundary where there is no gap.
+struct Stretch {
+    gap: f64,
+    letter: f64,
+}
+
+impl Stretch {
+    const NONE: Stretch = Stretch { gap: 0.0, letter: 0.0 };
+}
+
+/// Pen position of every glyph of a line (letter spacing between clusters of letters that do not join,
+/// never after the last glyph) and the width of the line.
+fn pens_of(raw: &RawLine, content: &str, layout: &crate::model::TextLayout, stretch: &Stretch) -> (Vec<f64>, f64) {
+    let mut pens = Vec::with_capacity(raw.glyphs.len());
+    let mut pen = 0.0;
+    for (i, g) in raw.glyphs.iter().enumerate() {
+        pens.push(pen);
+        pen += g.advance;
+        if let Some(next) = raw.glyphs.get(i + 1) {
+            if next.cluster != g.cluster && !joined_letters(content, g.cluster, next.cluster) {
+                pen += layout.letter_spacing_mm + stretch.letter;
+            }
+            if is_gap(content, g.cluster) {
+                pen += stretch.gap;
+            }
+        }
+    }
+    (pens, pen)
+}
+
+/// Whether the character at byte `at` is a space between words.
+fn is_gap(content: &str, at: usize) -> bool {
+    content.get(at..).and_then(|s| s.chars().next()).is_some_and(|c| c.is_whitespace() && c != '\r')
+}
+
+/// (word gaps, letter boundaries that take letter spacing) of a line, counting only those with a glyph after.
+fn stretch_points(raw: &RawLine, content: &str) -> (usize, usize) {
+    let (mut gaps, mut boundaries) = (0, 0);
+    for pair in raw.glyphs.windows(2) {
+        if is_gap(content, pair[0].cluster) {
+            gaps += 1;
+        }
+        if pair[1].cluster != pair[0].cluster && !joined_letters(content, pair[0].cluster, pair[1].cluster) {
+            boundaries += 1;
+        }
+    }
+    (gaps, boundaries)
+}
+
+/// The line shaped again with kashida added so that it gets as close to `target` as it can without
+/// passing it, or `None` when it has no place for one (no Arabic join that allows it, or the font has no
+/// tatweel).
+fn kashida_stretch(
+    shape_one: &dyn Fn(&str, usize, usize) -> Result<RawLine, TextError>,
+    line: &str,
+    base: usize,
+    content: &str,
+    layout: &crate::model::TextLayout,
+    chain: &[Arc<FontData>],
+    (natural, target): (f64, f64),
+) -> Result<Option<RawLine>, TextError> {
+    if !chain.iter().any(|f| f.has_glyph(TATWEEL)) {
+        return Ok(None);
+    }
+    let (text, _) = case_mapped(line, layout.uppercase);
+    let sites = kashida_sites(&text).len();
+    if sites == 0 {
+        return Ok(None);
+    }
+    let width = |raw: &RawLine| pens_of(raw, content, layout, &Stretch::NONE).1;
+    // What one tatweel adds, measured on the line itself (its neighbours decide the glyph).
+    let probe = shape_one(line, base, sites)?;
+    let one = (width(&probe) - natural) / sites as f64;
+    if one <= STRETCH_EPS {
+        return Ok(None);
+    }
+    let cap = sites * MAX_KASHIDA_PER_WORD;
+    let mut count = (((target - natural) / one).floor().max(0.0) as usize).min(cap);
+    for _ in 0..4 {
+        if count == 0 {
+            return Ok(None);
+        }
+        let raw = shape_one(line, base, count)?;
+        let w = width(&raw);
+        if w <= target + STRETCH_EPS {
+            return Ok(Some(raw));
+        }
+        count = count.saturating_sub((((w - target) / one).ceil() as usize).max(1));
+    }
+    Ok(None)
+}
+
+const TATWEEL: char = '\u{640}';
+
+/// Per word of `text` the byte offset where a kashida may go: between a letter that joins forward and a
+/// letter that joins backward (marks in between stay with the first), never inside the lam-alef
+/// ligature. Of a word's places the one nearest the middle is taken. Letters outside the basic Arabic
+/// block and the Persian additions are not known to join and get none.
+fn kashida_sites(text: &str) -> Vec<usize> {
+    let mut sites = Vec::new();
+    let mut word_start = 0;
+    for (i, ch) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
+        if !ch.is_whitespace() {
+            continue;
+        }
+        let chars: Vec<(usize, char)> = text[word_start..i].char_indices().map(|(j, c)| (word_start + j, c)).collect();
+        let mut places = Vec::new();
+        for (k, &(_, x)) in chars.iter().enumerate() {
+            if !joins_forward(x) {
+                continue;
+            }
+            let mut n = k + 1;
+            while chars.get(n).is_some_and(|&(_, m)| is_arabic_mark(m)) {
+                n += 1;
+            }
+            if let Some(&(at, y)) = chars.get(n)
+                && joins_backward(y)
+                && !(x == '\u{644}' && matches!(y, '\u{627}' | '\u{623}' | '\u{625}' | '\u{622}'))
+            {
+                places.push((k, at));
+            }
+        }
+        let middle = chars.len() / 2;
+        if let Some(&(_, at)) = places.iter().min_by_key(|(k, _)| k.abs_diff(middle)) {
+            sites.push(at);
+        }
+        word_start = i + ch.len_utf8();
+    }
+    sites
+}
+
+fn is_arabic_mark(c: char) -> bool {
+    matches!(
+        u32::from(c),
+        0x064B..=0x065F | 0x0670 | 0x06D6..=0x06DC | 0x06DF..=0x06E4 | 0x06E7..=0x06E8 | 0x06EA..=0x06ED
+    )
+}
+
+/// Letters that connect to the letter after them (Joining_Type dual-joining), for the Arabic block and
+/// the common Persian and Urdu additions.
+fn joins_forward(c: char) -> bool {
+    matches!(u32::from(c),
+        0x0626 | 0x0628 | 0x062A..=0x062E | 0x0633..=0x063A | 0x0641..=0x0647 | 0x0649 | 0x064A | 0x066E | 0x066F
+            | 0x067E | 0x0686 | 0x06A9 | 0x06AF | 0x06BE | 0x06C1 | 0x06CC | 0x0640)
+}
+
+/// Letters that connect to the letter before them (dual- and right-joining).
+fn joins_backward(c: char) -> bool {
+    joins_forward(c)
+        || matches!(
+            u32::from(c),
+            0x0622..=0x0625 | 0x0627 | 0x0629 | 0x062F..=0x0632 | 0x0648 | 0x0698 | 0x06D2 | 0x06D3
+        )
+}
+
+/// `line` with `kashida` tatweels spread over its words' sites, and the source offset of every byte.
+fn with_kashida(line: &str, map: Vec<usize>, kashida: usize) -> (String, Vec<usize>) {
+    let sites = kashida_sites(line);
+    if kashida == 0 || sites.is_empty() {
+        return (line.to_owned(), map);
+    }
+    let (each, extra) = (kashida / sites.len(), kashida % sites.len());
+    let mut text = String::with_capacity(line.len() + kashida * TATWEEL.len_utf8());
+    let mut out_map = Vec::with_capacity(map.len() + kashida * TATWEEL.len_utf8());
+    let mut done = 0;
+    for (n, &site) in sites.iter().enumerate() {
+        text.push_str(&line[done..site]);
+        out_map.extend_from_slice(&map[done..site]);
+        // The tatweels belong to the letter before the site.
+        let owner = line[..site].char_indices().next_back().map_or(0, |(j, _)| map.get(j).copied().unwrap_or(0));
+        for _ in 0..each + usize::from(n < extra) {
+            text.push(TATWEEL);
+            out_map.extend(std::iter::repeat_n(owner, TATWEEL.len_utf8()));
+        }
+        done = site;
+    }
+    text.push_str(&line[done..]);
+    out_map.extend_from_slice(&map[done..]);
+    (text, out_map)
 }
 
 /// Whether the clusters starting at byte `a` and `b` of `content` are letters of a cursive script
@@ -329,10 +545,12 @@ fn shape_line(
     chain: &[Arc<FontData>],
     layout: &crate::model::TextLayout,
     em: f64,
+    kashida: usize,
 ) -> Result<RawLine, TextError> {
     let mut raw = RawLine { glyphs: Vec::new(), missing: Vec::new() };
     // The text to draw (upper-cased on request) and, per byte, its source offset in `line`.
     let (line, map) = case_mapped(line, layout.uppercase);
+    let (line, map) = with_kashida(&line, map, kashida);
     let line = line.as_str();
     // Directional runs in visual (left-to-right) order, each (byte range, right-to-left).
     let bidi = BidiInfo::new(line, None);

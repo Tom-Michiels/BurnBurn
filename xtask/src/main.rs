@@ -160,8 +160,8 @@ fn check_workspace_deps() -> Result<(), String> {
     Err(format!("{} dependency/ies without `workspace = true`", violations.len()))
 }
 
-/// ADR 0009: no `#[path]` attribute in the production sources (`src/`) leaves the directory of its own
-/// crate. Test binaries sharing fixtures across crates are a separate, listed follow-up.
+/// ADR 0009: no `#[path]` attribute in the production sources (`src/`) or the tests (`tests/`, also the
+/// workspace-level native tests) leaves the directory of its own crate.
 fn check_path_attrs() -> Result<(), String> {
     let meta = cargo_json(&["metadata", "--format-version", "1", "--no-deps", "--locked"])?;
     let packages = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
@@ -172,38 +172,25 @@ fn check_path_attrs() -> Result<(), String> {
         let manifest = p["manifest_path"].as_str().ok_or("cargo metadata: package without manifest_path")?;
         let Some(dir) = Path::new(manifest).parent().and_then(|d| d.strip_prefix(&root).ok()) else { continue };
         let dir_rel = dir.to_string_lossy().replace('\\', "/");
-        let mut sources = Vec::new();
-        collect_rs(&root.join(dir).join("src"), &mut sources)?;
-        for file in sources {
-            let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-            let rel = file.strip_prefix(&root).unwrap_or(&file).to_string_lossy().replace('\\', "/");
-            files += 1;
-            violations.extend(path_attrs::check_source(&dir_rel, &rel, &text));
-        }
+        let (found, n) = path_attrs::check_tree(&root, &dir_rel, path_attrs::SCANNED_DIRS)?;
+        violations.extend(found);
+        files += n;
     }
+    // The workspace-level `tests/` tree holds the native test sources that crates run through `[[test]] path`.
+    let (found, n) = path_attrs::check_tree(&root, "tests", &[""])?;
+    violations.extend(found);
+    files += n;
     if violations.is_empty() {
-        println!("path-attrs: {} crates, {files} source files, no #[path] leaves its own crate", packages.len());
+        println!(
+            "path-attrs: {} crates, {files} source files, no #[path] leaves its own crate (src, tests)",
+            packages.len()
+        );
         return Ok(());
     }
     for v in &violations {
         eprintln!("  {v}");
     }
     Err(format!("{} #[path] attribute(s) leave their own crate", violations.len()))
-}
-
-fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    for entry in entries {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| n != "target" && n != ".git") {
-                collect_rs(&path, out)?;
-            }
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 fn gen_trace_corpus() -> Result<(), String> {

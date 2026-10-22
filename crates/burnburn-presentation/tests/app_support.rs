@@ -4,8 +4,6 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 

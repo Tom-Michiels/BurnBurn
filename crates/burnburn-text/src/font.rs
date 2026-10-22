@@ -41,6 +41,8 @@ pub struct FontData {
     hash: ContentHash,
     shaping: harfrust::Font,
     units_per_em: u16,
+    /// Which face of a font collection (`.ttc`); 0 for a single font.
+    face: u32,
 }
 
 impl fmt::Debug for FontData {
@@ -49,6 +51,7 @@ impl fmt::Debug for FontData {
             .field("hash", &self.hash)
             .field("bytes", &self.bytes.len())
             .field("units_per_em", &self.units_per_em)
+            .field("face", &self.face)
             .finish()
     }
 }
@@ -56,10 +59,23 @@ impl fmt::Debug for FontData {
 impl FontData {
     /// Parses font bytes (TrueType/OpenType; the first face of a collection, `.ttc`).
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, FontError> {
-        let hash = ContentHash::of(HashDomain::Asset, &bytes);
+        Self::from_bytes_face(bytes, 0)
+    }
+
+    /// Parses face `face` of font bytes (a single font has only face 0). The asset key of face 0 is that
+    /// of the bytes; another face of a collection has its own key, so two faces never share one.
+    pub fn from_bytes_face(bytes: Vec<u8>, face: u32) -> Result<Self, FontError> {
+        let file_hash = ContentHash::of(HashDomain::Asset, &bytes);
+        let hash = if face == 0 {
+            file_hash
+        } else {
+            let mut key = file_hash.as_bytes().to_vec();
+            key.extend_from_slice(&face.to_le_bytes());
+            ContentHash::of(HashDomain::Asset, &key)
+        };
         let bytes = Arc::new(bytes);
         let units_per_em = {
-            let font = first_face(&bytes).map_err(|_| FontError::Unreadable)?;
+            let font = face_at(&bytes, face).map_err(|_| FontError::Unreadable)?;
             if font.outline_glyphs().format().is_none() {
                 return Err(FontError::Unreadable);
             }
@@ -70,8 +86,8 @@ impl FontData {
             upem
         };
         let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = bytes.clone();
-        let shaping = harfrust::Font::new(blob, 0).ok_or(FontError::Unreadable)?;
-        Ok(FontData { bytes, hash, shaping, units_per_em })
+        let shaping = harfrust::Font::new(blob, face).ok_or(FontError::Unreadable)?;
+        Ok(FontData { bytes, hash, shaping, units_per_em, face })
     }
 
     /// Asset key of these bytes (`ContentHash` in the asset domain).
@@ -111,13 +127,17 @@ impl FontData {
     }
 
     pub(crate) fn outline_font(&self) -> Result<skrifa::FontRef<'_>, FontError> {
-        first_face(&self.bytes).map_err(|_| FontError::Unreadable)
+        face_at(&self.bytes, self.face).map_err(|_| FontError::Unreadable)
     }
 }
 
 /// The font of a single-font file, or the first face of a font collection.
 fn first_face(bytes: &[u8]) -> Result<skrifa::FontRef<'_>, skrifa::raw::ReadError> {
-    skrifa::FontRef::from_index(bytes, 0)
+    face_at(bytes, 0)
+}
+
+fn face_at(bytes: &[u8], face: u32) -> Result<skrifa::FontRef<'_>, skrifa::raw::ReadError> {
+    skrifa::FontRef::from_index(bytes, face)
 }
 
 /// Resolves a [`FontRef`] to font bytes. Implementations look at embedded project assets first;
@@ -140,11 +160,26 @@ pub trait FontSource {
 
 /// Family name and style a font file declares (name table, `head.macStyle`), read without
 /// shaping setup: the font catalogue lists thousands of faces. `None` when the bytes are not a
-/// font or declare no family.
+/// font or declare no family. For a collection it is the first face.
 pub fn font_names(bytes: &[u8]) -> Option<(String, FontStyle)> {
+    face_name(bytes, 0)
+}
+
+/// [`font_names`] of every face of the file: `(face index, family, style)`. A single font has one face; a
+/// collection (`.ttc`/`.otc`) has as many as its header says. A face without a family is left out.
+pub fn face_names(bytes: &[u8]) -> Vec<(u32, String, FontStyle)> {
+    let count = match skrifa::raw::FileRef::new(bytes) {
+        Ok(skrifa::raw::FileRef::Font(_)) => 1,
+        Ok(skrifa::raw::FileRef::Collection(c)) => c.len(),
+        Err(_) => 0,
+    };
+    (0..count).filter_map(|i| face_name(bytes, i).map(|(family, style)| (i, family, style))).collect()
+}
+
+fn face_name(bytes: &[u8], face: u32) -> Option<(String, FontStyle)> {
     use skrifa::raw::tables::head::MacStyle;
     use skrifa::string::StringId;
-    let font = first_face(bytes).ok()?;
+    let font = face_at(bytes, face).ok()?;
     let family = font.localized_strings(StringId::FAMILY_NAME).english_or_first()?.to_string();
     if family.trim().is_empty() {
         return None;

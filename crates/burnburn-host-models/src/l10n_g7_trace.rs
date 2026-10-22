@@ -158,6 +158,16 @@ texts! {
     ),
     CompareAdopt => ("Neem B over als huidig recept", "Take B as the current recipe"),
     CompareClear => ("Sluit de vergelijking", "Close the comparison"),
+    CompareUnbound => (
+        "Correctie {0} past niet op B: {1} contour(en) waaraan ze gebonden was bestaan daar niet meer en {2} nieuwe liggen in het gebied.",
+        "Correction {0} does not fit B: {1} contour(s) it was bound to are not there any more and {2} new ones lie in the area."
+    ),
+    CompareRelinked => (
+        "Correctie {0} is aan B gekoppeld, ook al past ze niet meer bij de contouren van B (jouw besluit; haar beschermde contouren zijn opnieuw gezocht op soort en afmeting).",
+        "Correction {0} is linked to B although it no longer fits the contours of B (your decision; its protected contours were looked up again by kind and size)."
+    ),
+    CompareRelinkButton => ("Koppel correctie {0} toch aan B", "Link correction {0} to B anyway"),
+    CompareUnlinkButton => ("Haal correctie {0} weer van B af", "Take correction {0} off B again"),
     // --- Batch (T10).
     BatchHeading => ("Meerdere afbeeldingen tracen", "Trace several pictures"),
     BatchHint => (

@@ -96,3 +96,59 @@ fn the_default_face_prefers_a_common_family_else_the_first_and_an_empty_catalogu
     let empty = tempfile::tempdir().unwrap();
     assert_eq!(SystemFontCatalog::new(vec![empty.path().to_path_buf()]).default_font(), None);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Font collections (.ttc): every face is listed (G9)
+// ---------------------------------------------------------------------------------------------
+
+use burnburn_text::shape;
+
+/// The faces of `MuktaMahee.ttc`, in collection order, as the name table of each face gives them
+/// (read from the file with plain `struct` unpacking: family = name ID 1, bold = head.macStyle bit 0).
+const MUKTA_FACES: [(&str, FontStyle); 7] = [
+    ("MuktaMahee Regular", FontStyle::Regular),
+    ("MuktaMahee SemiBold", FontStyle::Regular),
+    ("MuktaMahee Medium", FontStyle::Regular),
+    ("MuktaMahee Light", FontStyle::Regular),
+    ("MuktaMahee ExtraLight", FontStyle::Regular),
+    ("MuktaMahee ExtraBold", FontStyle::Regular),
+    ("MuktaMahee Bold", FontStyle::Bold),
+];
+
+fn collection_dir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::copy(fonts_dir().join("MuktaMahee.ttc"), dir.path().join("MuktaMahee.ttc")).unwrap();
+    dir
+}
+
+#[test]
+fn a_font_collection_lists_every_face_it_holds() {
+    let dir = collection_dir();
+    let catalog = SystemFontCatalog::new(vec![dir.path().to_path_buf()]);
+    let mut expected: Vec<String> = MUKTA_FACES.iter().map(|(f, _)| (*f).to_owned()).collect();
+    expected.sort();
+    assert_eq!(catalog.families(), expected);
+    for (family, style) in MUKTA_FACES {
+        assert_eq!(catalog.available_styles(family), [style], "{family}");
+    }
+}
+
+#[test]
+fn each_face_of_a_collection_loads_as_itself_and_not_as_the_first_face() {
+    let dir = collection_dir();
+    let catalog = SystemFontCatalog::new(vec![dir.path().to_path_buf()]);
+    let faces: Vec<_> =
+        MUKTA_FACES.iter().map(|(f, s)| catalog.load(&FontRef::new(*f, *s)).expect("listed face")).collect();
+    let hashes: std::collections::BTreeSet<_> = faces.iter().map(|f| f.hash()).collect();
+    assert_eq!(hashes.len(), 7, "seven faces, seven asset identities");
+    // The face is the one asked for: the weights set different advances (Gurmukhi letters).
+    let width = |face: &Arc<burnburn_text::FontData>| -> f64 {
+        let mut src = burnburn_text::MemoryFontSource::new();
+        let r = src.insert("f", FontStyle::Regular, Arc::clone(face));
+        let size = burnburn_text::FontSize::from_mm(burnburn_types::Length::from_mm(10.0).unwrap()).unwrap();
+        let obj = burnburn_text::TextObject::new("\u{0A2E}\u{0A15}\u{0A3E}", r, size);
+        shape(&obj, &src).unwrap().lines[0].width_mm
+    };
+    let (regular, extra_light, bold) = (width(&faces[0]), width(&faces[4]), width(&faces[6]));
+    assert!(extra_light < regular && regular < bold, "ExtraLight {extra_light} < Regular {regular} < Bold {bold}");
+}

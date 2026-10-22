@@ -48,7 +48,10 @@ AppKit-, Windows- of wgpu-type verschijnt in de gedeelde code.
 - Eén uitzondering: `app_view` gebruikte de hostspecifieke `app_menu::binding_glyphs` (macOS `⌘S`, Windows
   `Ctrl+S`). De gedeelde variant neemt de glyphfunctie als parameter (`shortcut_lines_with`); elke host heeft een
   dunne `app_view`-gevel met dezelfde publieke `shortcut_lines(view, filter, locale)` als voorheen.
-- `cargo xtask path-attrs` (onderdeel van `verify`) verbiedt `#[path]` in `src/` die de eigen crate verlaat.
-  Testfixtures die `tests/`-bestanden tussen crates delen (`g5_fixtures`, `g6_fixtures`,
-  `burnburn-presentation/tests/common`) vallen buiten deze check en staan als vervolg in
-  `docs/plan/integratie-wachtrij.md`.
+- `cargo xtask path-attrs` (onderdeel van `verify`) verbiedt `#[path]` die de eigen crate verlaat, in `src/` en
+  (sinds G9-trace-infra) ook in `tests/` en in de native tests onder `tests/native/`. Testfixtures die vroeger
+  tussen crates werden gedeeld (`g5_fixtures`, `g6_fixtures`, `burnburn-presentation/tests/common`,
+  `tests/native/macos/common/grbl_fake.rs`) staan nu in `burnburn-test-support`, module `host`, achter de feature
+  `host` (laag 6; hangt van presentation en lager af, geen host- of platformtypes). Alleen crates die ze nodig
+  hebben (presentation, macos, windows) vragen de feature als dev-dependency; de andere crates die de testkit
+  gebruiken bouwen presentation niet mee (R3/R4 van `layers.toml` blijven gelden).

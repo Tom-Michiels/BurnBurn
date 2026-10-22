@@ -4,8 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-presentation/tests/common/mod.rs"]
-mod rig_common;
+use burnburn_test_support::host::rig as rig_common;
 
 use burnburn_presentation::{MachineAction, UiIntent};
 use burnburn_windows::forms::g5;

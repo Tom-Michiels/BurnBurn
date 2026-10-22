@@ -88,6 +88,7 @@ pub enum Align {
     Left,
     Center,
     Right,
+    Justify,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

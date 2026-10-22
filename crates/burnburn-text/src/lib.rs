@@ -20,7 +20,9 @@ mod shape;
 mod single_line;
 
 pub use evaluate::{EVALUATOR_VERSION, TextEvaluator, inputs_hash};
-pub use font::{FontData, FontError, FontRef, FontSource, FontStyle, MemoryFontSource, font_names, switch_style};
+pub use font::{
+    FontData, FontError, FontRef, FontSource, FontStyle, MemoryFontSource, face_names, font_names, switch_style,
+};
 pub use model::{
     Align, FontSize, FontSizeError, MM_PER_POINT, MissingGlyph, TextId, TextLayout, TextMode, TextObject, VAlign,
     VariableText,

@@ -5,8 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-macos/tests/g5_fixtures/mod.rs"]
-mod g5_fixtures;
+use burnburn_test_support::host::g5 as g5_fixtures;
 
 use burnburn_presentation::{
     CenterlineEdit, CommandKey, HeadlessEditorHarness, OffsetJoin, OffsetOptions, StructureEdit, UiIntent,

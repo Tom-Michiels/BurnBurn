@@ -4,8 +4,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-mod common;
-
 use burnburn_editor::Overlay;
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId, OperationId};

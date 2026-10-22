@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-mod common;
+use burnburn_test_support::host::rig as common;
 
 use std::path::{Path as FsPath, PathBuf};
 

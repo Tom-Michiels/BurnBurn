@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-mod g5_fixtures;
+use burnburn_test_support::host::g5 as g5_fixtures;
 
 use std::path::PathBuf;
 

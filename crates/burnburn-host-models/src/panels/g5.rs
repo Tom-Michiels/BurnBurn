@@ -164,6 +164,11 @@ pub enum G5Control {
     RecipeComparePreset,
     CompareAdopt,
     CompareClear,
+    /// Link the stored correction `index` to B of the comparison although it no longer binds there, or take the
+    /// link back (G9).
+    CompareRelink {
+        index: usize,
+    },
     BatchFiles,
     BatchRun,
     /// Choose the files of the batch in the host's file panel (G8-trace, T10).
@@ -827,6 +832,7 @@ pub fn g5_intent(
         | G5Control::RecipeComparePreset
         | G5Control::CompareAdopt
         | G5Control::CompareClear
+        | G5Control::CompareRelink { .. }
         | G5Control::BatchRun
         | G5Control::BatchChoose
         | G5Control::BatchCancel

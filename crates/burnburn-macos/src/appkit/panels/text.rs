@@ -199,7 +199,7 @@ pub(crate) fn text_section(
         mtm,
         &target,
         Slot::Align,
-        &[t(TextText::AlignLeft), t(TextText::AlignCenter), t(TextText::AlignRight)],
+        &[t(TextText::AlignLeft), t(TextText::AlignCenter), t(TextText::AlignRight), t(TextText::AlignJustify)],
         t(TextText::Alignment),
     );
     let valign = popup(mtm, &target, Slot::VAlign, t(TextText::Vertical));

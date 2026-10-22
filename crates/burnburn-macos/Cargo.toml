@@ -282,7 +282,7 @@ burnburn-ruida = { workspace = true }
 # Machine panel test: execution states and machine ids as the view model carries them.
 burnburn-machine = { workspace = true }
 # Text panels: a font source with several faces and the OFL test fonts (W3-UI-tekst).
-burnburn-test-support = { workspace = true }
+burnburn-test-support = { workspace = true, features = ["host"] }
 burnburn-text = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

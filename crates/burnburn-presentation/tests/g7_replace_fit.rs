@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
+use burnburn_test_support::host::rig as common;
 mod g7_support;
 
 use std::path::{Path as FsPath, PathBuf};
@@ -14,7 +14,7 @@ use burnburn_document::process::{ImageSettings, OperationMode};
 use burnburn_geometry::Bounds;
 use burnburn_io::fs::FileSystem;
 use burnburn_io::{Project, load_project};
-use burnburn_presentation::{CommandKey, HeadlessEditorHarness, MessageKey, SelectMode, UiIntent};
+use burnburn_presentation::{CommandKey, HeadlessEditorHarness, SelectMode, UiIntent};
 use burnburn_types::DocumentId;
 use common::*;
 use g7_support::png_of_dpi;
@@ -161,19 +161,4 @@ fn a_file_that_cannot_be_read_changes_nothing() {
     assert_eq!((after.source(), bounds), (settings.source(), old));
 }
 
-#[test]
-fn a_frame_that_was_turned_at_an_angle_is_refused_and_nothing_changes() {
-    let (mut h, doc) = window_with(&picture(8, 8));
-    h.send(UiIntent::CommitField {
-        document: doc,
-        field: burnburn_presentation::FieldKey::Rotation,
-        text: "30".into(),
-    });
-    let (settings, tilted) = image(&mut h, doc);
-    let before = h.document(doc).unwrap().revision;
-    replace_to_fit(&mut h, doc, "wide.png", &picture(12, 6));
-    assert_eq!(h.document(doc).unwrap().revision, before, "the fit of a tilted frame is not guessed");
-    let (after, bounds) = image(&mut h, doc);
-    assert_eq!((after.source(), bounds), (settings.source(), tilted));
-    assert!(h.document(doc).unwrap().messages.iter().any(|m| m.key == MessageKey::CommandRejected));
-}
+// A frame turned at an angle is fitted since G9 (`g9_replace_fit_rotated.rs`); one that is not a rectangle is still refused there.

@@ -3,7 +3,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
+use burnburn_test_support::host::rig as common;
 mod edit_rig;
 
 use burnburn_presentation::{CommandKey, FieldKey, HostEffect, MessageKey, UiIntent};

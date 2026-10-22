@@ -6,7 +6,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
+use burnburn_test_support::host::rig as common;
 
 use burnburn_job::MoveKind;
 use burnburn_machine::{FrameShape, JobAnchor, LiveRequest, Reply, Request, StartFrom};

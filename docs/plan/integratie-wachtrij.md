@@ -14,7 +14,7 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 
 ### Software (eerlijk nog niet gebouwd)
 
-- **Hosts delen modellen via `#[path]`**: klaar in G8-refactor (22-10-2026). De 19 bestanden staan in `burnburn-host-models` (ADR 0009, `docs/dev-notes/G8-refactor.md`); `cargo xtask path-attrs` (onderdeel van `verify`) verbiedt `#[path]` naar andere crates in `src/`. Nog open: testbinaries delen fixtures via `#[path]` tussen crates (`macos/tests/g5_fixtures`, `g6_fixtures`, `presentation/tests/common`, `tests/native/macos/common/grbl_fake.rs`; 20 regels in `tests/`) — verhuis naar `burnburn-test-support`.
+- **Hosts delen modellen via `#[path]`**: klaar in G8-refactor (22-10-2026) en G9-trace-infra. De 19 bestanden staan in `burnburn-host-models` (ADR 0009, `docs/dev-notes/G8-refactor.md`); de testfixtures die testbinaries tussen crates deelden (`g5_fixtures`, `g6_fixtures`, `presentation/tests/common`, `grbl_fake.rs`) staan sinds G9 in `burnburn-test-support` (module `host`, feature `host`), en `cargo xtask path-attrs` (onderdeel van `verify`) controleert nu `src/` én `tests/` (zie `docs/dev-notes/G9-trace-infra.md`).
 - **CAM** (G7-cam en G8-cam-werk, 22-10-2026; zie `docs/dev-notes/G7-cam.md` en `docs/dev-notes/G8-cam-werk.md`): Tab Cut Power is
   gebouwd tot en met plan, preview, GRBL-S per beweging, het Cut Settings-veld op beide hosts en (G8) de plan-blob van de historie;
   common-line cutting (document, bestand, compile, nest, Cut Settings) snijdt het gedeelde stuk sinds G8 bij de *laatste* vorm, ná het
@@ -59,14 +59,16 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   raakt een ellips niet, en een schets met een ellips die niet convergeert wordt één keer opnieuw opgelost met omgekeerde
   asrol.
   CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`).
-- **Trace** (G7-trace en G8-trace: gebouwd, zie `docs/dev-notes/G7-trace.md` en `docs/dev-notes/G8-trace.md`; wat blijft): het
+- **Trace** (G7-trace, G8-trace en G9-trace-infra: gebouwd, zie `docs/dev-notes/G7-trace.md`, `G8-trace.md` en `G9-trace-infra.md`; wat blijft): het
   uiterlijk en het gevoel van de aanwijsstanden (foto op het blad, kwast, beschermen van contouren en hoeken, de omtrekken van A/B,
-  knoopmarkeringen) zijn niet bekeken; de OK-knop van het meervoudige bestandspaneel (macOS) en de Windows-dialoog
-  (`IFileOpenDialog` met `FOS_ALLOWMULTISELECT`) zijn nooit gedraaid; een correctie die op B niet bindt kan vanuit de vergelijking niet
-  opnieuw gelinkt worden; een beschermde hoek bij een lokale hertrace met een andere drempel werkt alleen binnen 3 px van een
-  hoekpunt van die drempel; Replace to Fit voor een gedraaid kader wordt geweigerd. Gebouwd in G8: tangentiële lenstermen (T03), beschermen
+  knoopmarkeringen, de nieuwe koppelknoppen in de vergelijking) zijn niet bekeken; de OK-knop van het meervoudige bestandspaneel (macOS) en de Windows-dialoog
+  (`IFileOpenDialog` met `FOS_ALLOWMULTISELECT`) zijn nooit gedraaid. Gebouwd in G8: tangentiële lenstermen (T03), beschermen
   door te klikken en beschermde hoeken (T05/T06), knoopmarkeringen (T04), meervoudige bestandskeuze en A/B met correcties en omtrekken op het
-  canvas (T10), paletkoppeling bij PDF/HPGL-lagen (P04).
+  canvas (T10), paletkoppeling bij PDF/HPGL-lagen (P04). Gebouwd in G9: een correctie die op B niet bindt opnieuw koppelen vanuit de vergelijking
+  (beschermde contouren op soort/kader/oppervlak teruggezocht, wat niet terugkomt wordt geteld), een beschermde hoek bij een lokale hertrace met
+  een andere drempel tot 8 px van de bewaarde plek (scherpste hoekpunt ≥ 5°; daarbuiten "niet gevonden" in `stats.corners_unmatched`), Replace to
+  Fit voor een gedraaid kader (rechthoek op een hoek; bij een hoek anders dan 0°/90° is de bounding box, wat gebrand wordt, niet exact de
+  verhouding van het plaatje; een kader dat geen rechthoek is blijft geweigerd).
 - **Machine**: UI voor controllerinstellingen schrijven/herstellen (M09, wacht op hardwarebewijs); plugin-loader en -paneel
   (X06, wacht op B-5). Het bevestigingspaneel voor Start (M06) en het bewaren van het actieve apparaat (M01) bestaan sinds golf 7;
   het paneel zegt eerlijk dat Start op geen enkele controller is bewezen.
@@ -74,12 +76,16 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   deterministische tellingen, zonder klok (klik, select all, scene, compile-schaal: `scenarios/tests/perf_guard_100k.rs`, eigen stap
   in `verify`). De compile-schaal is lineariteit van het plan plus de tellertests in `burnburn-cam`; de CPU-tijd van `compile` bij 100k
   contouren is niet opnieuw gemeten (W4-prestaties noemt 90 s; G5-cam maakte de planning sub-kwadratisch). De GitHub-workflows
-  (`ci.yml`, `release.yml`) zijn nooit gedraaid; fuzz-doelen (o.a. `grbl_status`) zijn gebouwd maar niet gedraaid (B-10).
+  (`ci.yml`, `release.yml`) zijn nooit gedraaid (vraagt pushen). Fuzz: in G9-trace-infra is elk van de 16 doelen in `fuzz/` 60 s gedraaid
+  (nightly en `cargo-fuzz` stonden op de machine); uitkomst en commando's in `docs/dev-notes/G9-trace-infra.md` en `fuzz/README.md`. Een run van een minuut
+  per doel is een rooktest, geen dekking; langere runs en een vaste CI-taak (B-10) blijven open.
 - **Tekst**: getest met permissieve fonts (`test-data/fonts/README.md`): Arabisch (G7), GPOS-marktekens (fatha/kasra/shadda, Latijnse
   accenten), kashida (tatweel) en Gurmukhi (Mukta Mahee, OFL) in G8-trace; drie fouten gefixt (`.ttc`-collecties onleesbaar, letterafstand
-  scheurde verbonden Arabische woorden, onzichtbare opmaaktekens als "ontbrekend"). Open: Devanagari zelf (geen permissief font op deze
-  machine), uitvullen met kashida (er is geen uitvulling), de systeemfontlijst in `burnburn-runtime` neemt `.ttc` nog niet mee, weergave
-  van RTL- en Indische tekst in canvas en tekstpaneel is niet bekeken; geen SHX-parser (geen permissieve Rust-crate).
+  scheurde verbonden Arabische woorden, onzichtbare opmaaktekens als "ontbrekend"). Gebouwd in G9: uitvullen (`Align::Justify`: elke regel
+  behalve de laatste zo breed als de breedste, over de woordgaten; Arabisch eerst met kashida op de verbindingen die dat toelaten, nooit in
+  lam-alef) in beide tekstpanelen, en de systeemfontlijst in `burnburn-runtime` neemt `.ttc`/`.otc` mee (elke face). Open: Devanagari zelf (op
+  deze machine alleen Apple-fonts, geen permissief font; niets gedownload), uitvullen met een kaderbreedte/regelafbreking (het model kent geen
+  tekstkader), weergave van RTL-, Indische en uitgevulde tekst in canvas en tekstpaneel is niet bekeken; geen SHX-parser (geen permissieve Rust-crate).
 
 ### Handmatig (macOS-uiterlijk en OS-dialogen; niet bekeken)
 

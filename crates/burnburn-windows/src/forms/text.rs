@@ -64,7 +64,7 @@ fn toolbar(p: &ToolbarPanel, locale: Locale) -> Form {
     lines.push(choice(
         Slot::Align,
         t(TextText::Alignment),
-        plain(&[t(TextText::AlignLeft), t(TextText::AlignCenter), t(TextText::AlignRight)]),
+        plain(&[t(TextText::AlignLeft), t(TextText::AlignCenter), t(TextText::AlignRight), t(TextText::AlignJustify)]),
         p.align,
     ));
     lines.push(choice(

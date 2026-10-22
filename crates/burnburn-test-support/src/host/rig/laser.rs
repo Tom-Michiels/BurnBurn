@@ -6,13 +6,13 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::FakeClock;
 use burnburn_job::MachineFrame;
 use burnburn_machine::{Capabilities, Capability, ExecutionId, MachineId};
 use burnburn_presentation::{
     HistoryStore, HistoryStoreError, IntentRecord, LiveIntentRecord, LiveOutcomeRecord, MachineService, OutcomeRecord,
     Recorded, RecoveredMachine, StoredOrder, StoredOrders, UploadRecord,
 };
-use burnburn_test_support::FakeClock;
 
 use super::{FakePort, Peer, RecordingHistory, profile, service_with};
 

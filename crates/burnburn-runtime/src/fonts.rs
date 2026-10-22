@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use burnburn_text::{FontData, FontError, FontRef, FontSource, FontStyle, MemoryFontSource, font_names};
+use burnburn_text::{FontData, FontError, FontRef, FontSource, FontStyle, MemoryFontSource, face_names};
 
 /// A font source with one registered face and the reference new text uses.
 pub struct SystemFont {
@@ -41,14 +41,14 @@ pub fn default_font_candidates() -> Vec<PathBuf> {
 /// Largest font file the catalogue reads (bytes); anything bigger is not offered.
 const MAX_FONT_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Every TrueType/OpenType file in some directories, by the family and style it declares (W3-UI-tekst:
+/// Every face of every TrueType/OpenType file (collections included) in some directories, by the family and style it declares (W3-UI-tekst:
 /// the text toolbar's font choice). The index is built once, on first use or in the background;
 /// a face is read and parsed only when text asks for it. A face that is not listed is
 /// [`FontError::NotFound`] — never another face with a similar name. A reference that names an
 /// embedded asset resolves only to a face this catalogue has already loaded with that hash.
 pub struct SystemFontCatalog {
     dirs: Vec<PathBuf>,
-    index: OnceLock<BTreeMap<(String, FontStyle), PathBuf>>,
+    index: OnceLock<BTreeMap<(String, FontStyle), (PathBuf, u32)>>,
     loaded: Mutex<BTreeMap<(String, FontStyle), Arc<FontData>>>,
 }
 
@@ -58,7 +58,7 @@ fn is_hidden(family: &str) -> bool {
     family.starts_with('.')
 }
 
-fn scan(dirs: &[PathBuf]) -> BTreeMap<(String, FontStyle), PathBuf> {
+fn scan(dirs: &[PathBuf]) -> BTreeMap<(String, FontStyle), (PathBuf, u32)> {
     let mut index = BTreeMap::new();
     for dir in dirs {
         let Ok(entries) = std::fs::read_dir(dir) else { continue };
@@ -68,17 +68,20 @@ fn scan(dirs: &[PathBuf]) -> BTreeMap<(String, FontStyle), PathBuf> {
             let is_font = path
                 .extension()
                 .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case("ttf") || e.eq_ignore_ascii_case("otf"));
+                .is_some_and(|e| ["ttf", "otf", "ttc", "otc"].iter().any(|font| e.eq_ignore_ascii_case(font)));
             let small = std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= MAX_FONT_BYTES);
             if !is_font || !small {
                 continue;
             }
-            let Some(names) = std::fs::read(&path).ok().and_then(|bytes| font_names(&bytes)) else { continue };
-            if is_hidden(&names.0) {
-                continue;
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            // Every face of a collection is listed; a single font is its one face.
+            for (face, family, style) in face_names(&bytes) {
+                if is_hidden(&family) {
+                    continue;
+                }
+                // The first directory and file name win: a duplicate never replaces what is listed.
+                index.entry((family, style)).or_insert_with(|| (path.clone(), face));
             }
-            // The first directory and file name win: a duplicate never replaces what is listed.
-            index.entry(names).or_insert(path);
         }
     }
     index
@@ -103,7 +106,7 @@ impl SystemFontCatalog {
         });
     }
 
-    fn index(&self) -> &BTreeMap<(String, FontStyle), PathBuf> {
+    fn index(&self) -> &BTreeMap<(String, FontStyle), (PathBuf, u32)> {
         self.index.get_or_init(|| scan(&self.dirs))
     }
 
@@ -134,9 +137,9 @@ impl FontSource for SystemFontCatalog {
         if let Some(face) = loaded.get(&key) {
             return Ok(Arc::clone(face));
         }
-        let path = self.index().get(&key).ok_or_else(|| FontError::NotFound(font.clone()))?;
+        let (path, index) = self.index().get(&key).ok_or_else(|| FontError::NotFound(font.clone()))?;
         let bytes = std::fs::read(path).map_err(|_| FontError::NotFound(font.clone()))?;
-        let face = Arc::new(FontData::from_bytes(bytes)?);
+        let face = Arc::new(FontData::from_bytes_face(bytes, *index)?);
         loaded.insert(key, Arc::clone(&face));
         Ok(face)
     }
