@@ -35,16 +35,15 @@ fn scenario() -> Result<(), String> {
 
     // A plotter file with two pens: a square with pen 1 and a circle with pen 2.
     let plt = s.dir.join("pennen.plt");
-    std::fs::write(&plt, "IN;SP1;PU0,0;PD400,0,400,400,0,400,0,0;PU;SP2;PU200,200;CI100;PU;SP0;").map_err(|e| e.to_string())?;
+    std::fs::write(&plt, "IN;SP1;PU0,0;PD400,0,400,400,0,400,0,0;PU;SP2;PU200,200;CI100;PU;SP0;")
+        .map_err(|e| e.to_string())?;
     s.app.native(NativeEvent::ImportFileChosen { document: doc, path: Some(plt) });
     s.wait(5.0, "the import sheet", || {
         s.app.with_window(doc, |w| w.import_sheet.is_some() && w.window.attachedSheet().is_some()).unwrap_or(false)
     })?;
     s.pump(0.3);
-    let (layers, commit) = s
-        .app
-        .with_window(doc, |w| (w.import_layers.retain(), w.import_commit.retain()))
-        .ok_or("no sheet")?;
+    let (layers, commit) =
+        s.app.with_window(doc, |w| (w.import_layers.retain(), w.import_commit.retain())).ok_or("no sheet")?;
     expect(|| "the check is shown for a plotter file".into(), !layers.isHidden())?;
     expect(|| "and it starts unchecked".into(), layers.state() == objc2_app_kit::NSControlStateValueOff)?;
     let title = layers.title().to_string();
