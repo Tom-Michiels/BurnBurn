@@ -90,3 +90,11 @@ menu-items `RemnantsPanel` (tag/id 1070) en `RecognitionPanel` (1071) in het Ven
 - **Hardware**: Start, upload en de pointeroffset-tekenconventie zijn niet op een controller gezien; er is geen camera/laser gecontacteerd.
 - **M01**: de Ruida-instellingen van een herstelde machine zijn de neutrale standaard (zoals bij kiezen uit de bibliotheek); de host
   moet ze zelf zetten als hij echte magic/overscan wil.
+
+## Eindcontrole (macOS arm64, toolchain 1.99.1)
+
+- `cargo fmt --all`; `cargo clippy --workspace --all-targets --locked -- -D warnings` en
+  `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets --locked -- -D warnings` zonder meldingen.
+- `cargo xtask verify` (eigen target-dir): de eerste run viel om op de native test `grbl_window` (de map van de gebruiker bevatte nu
+  `active-machine.json`, de test telde dat als export); de test slaat dat bestand nu over. Tweede run op de laatste commit: exit 0,
+  632 testbinaries `ok`, geen `FAILED`.
