@@ -130,8 +130,10 @@ fn corner_cuts_report_typed_failures_and_never_change_the_input() {
     );
     let flat = Path::polyline(&[p(0.0, 0.0), p(5.0, 0.0), p(10.0, 0.0)], false).unwrap();
     assert_eq!(flat.cut_corner(p(5.0, 0.0), 1.0, CornerCut::Fillet { radius: 1.0 }), Err(CornerError::Collinear));
+    // A circle is smooth at its seam: curved sides are cut since golf 8 (`g8_curve_corners`), but
+    // a tangent-continuous junction is not a corner.
     let rounded = Path::circle(p(0.0, 0.0), 5.0).unwrap();
-    assert_eq!(rounded.cut_corner(p(5.0, 0.0), 1.0, CornerCut::Fillet { radius: 1.0 }), Err(CornerError::CurvedSide));
+    assert_eq!(rounded.cut_corner(p(5.0, 0.0), 1.0, CornerCut::Fillet { radius: 1.0 }), Err(CornerError::Collinear));
     assert_eq!(square, before);
 }
 

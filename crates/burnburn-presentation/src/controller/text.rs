@@ -9,7 +9,7 @@ use burnburn_document::{
     CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, DocumentSnapshot, GeometryCommand,
     GeometrySource,
 };
-use burnburn_generators::{GenError, PathTextParams, text_on_path};
+use burnburn_generators::{GenError, PathTextParams, guide_frame_at, text_on_path, text_room};
 use burnburn_types::{DocumentId, GeometryId, Length, RequestId};
 
 use burnburn_text::{FontData, FontError, FontRef, FontSize, FontSource, FontStyle, switch_style};
@@ -199,6 +199,76 @@ fn is_path_edit(edit: &TextEdit) -> bool {
     )
 }
 
+/// A move of text that follows a guide (G8-editor, E08). The outline of a bound text is derived,
+/// so the move is made on its definition: a pure translation of the text alone changes where it
+/// starts on the guide (the displacement along the guide's direction there, kept within the
+/// room the guide has for the text); a text whose guide moves with it simply follows. Anything
+/// else stays as it was and the document refuses it. One command, so one undo step.
+pub(super) fn retarget_move(
+    snapshot: &DocumentSnapshot,
+    fonts: Option<&SharedFonts>,
+    payload: CommandPayload,
+) -> CommandPayload {
+    let CommandPayload::Transform { targets, transform } = &payload else { return payload };
+    let mut bound: Vec<(TextId, TextObject)> = Vec::new();
+    let mut rest: Vec<GeometryId> = Vec::new();
+    for id in targets {
+        match text_of(snapshot, *id).and_then(|t| snapshot.text(t).filter(|o| o.path.is_some()).map(|o| (t, o))) {
+            Some((t, obj)) => {
+                if !bound.iter().any(|(b, _)| *b == t) {
+                    bound.push((t, obj.clone()));
+                }
+            }
+            None => rest.push(*id),
+        }
+    }
+    if bound.is_empty() {
+        return payload;
+    }
+    let mut sets: Vec<(TextId, TextObject)> = Vec::new();
+    for (id, obj) in bound {
+        let Some(binding) = obj.path else { return payload };
+        if targets.contains(&binding.guide) {
+            continue; // the guide moves too: the text follows it
+        }
+        let [a, b, c, d, e, f] = transform.coefficients();
+        let pure_move = (a - 1.0).abs() < 1e-12 && b.abs() < 1e-12 && c.abs() < 1e-12 && (d - 1.0).abs() < 1e-12;
+        let (Some(fonts), true) = (fonts, pure_move) else { return payload };
+        let Some(guide) = snapshot.object(binding.guide) else { return payload };
+        let Some(tolerance) =
+            Length::from_mm(PATH_TEXT_TOLERANCE_MM).ok().and_then(|l| ProductionTolerance::new(l).ok())
+        else {
+            return payload;
+        };
+        let Ok((_, direction)) = guide_frame_at(guide.path(), &tolerance, binding.reverse, binding.start_mm) else {
+            return payload;
+        };
+        let Ok(room) = text_room(&obj, fonts, guide.path(), &tolerance, binding.reverse) else { return payload };
+        let start = (binding.start_mm + e * direction.x + f * direction.y).clamp(0.0, room);
+        if (start - binding.start_mm).abs() < 1e-9 {
+            continue;
+        }
+        let mut next = obj.clone();
+        next.path = Some(PathBinding { start_mm: start, ..binding });
+        sets.push((id, next));
+    }
+    let mut steps: Vec<CompoundStep> = Vec::new();
+    if !rest.is_empty() {
+        steps.push(CompoundStep::Run(CommandPayload::Transform { targets: rest, transform: *transform }));
+    }
+    steps.extend(sets.into_iter().map(|(id, next)| {
+        CompoundStep::Run(CommandPayload::Text(TextCommand::Set { text: id, source: Box::new(next) }))
+    }));
+    match steps.len() {
+        0 => payload,
+        1 => match steps.remove(0) {
+            CompoundStep::Run(only) => only,
+            _ => payload,
+        },
+        _ => CommandPayload::Compound(CompoundCommand { label: CompoundLabel::EditTexts, steps }),
+    }
+}
+
 /// Whether `obj` (bound to a guide) can be bent along its guide now, or why not.
 fn check_fit(snapshot: &DocumentSnapshot, fonts: Option<&SharedFonts>, obj: &TextObject) -> Result<(), TextIssue> {
     let fonts = fonts.ok_or(TextIssue::NoFonts)?;
@@ -267,17 +337,30 @@ pub(super) fn edit(
     apply_edit(s, document, payload, request)
 }
 
-/// Whether Convert to Path can act: one text with outlines is selected.
+/// Whether Convert to Path can act: the selection is made of the outlines of one or more texts.
 pub(super) fn convertible(s: &Session) -> bool {
     let snapshot = s.doc.snapshot();
-    single_text(s, &snapshot).is_some_and(|id| !s.selection.is_empty() && snapshot.text(id).is_some())
+    let ids = selected_texts(s, &snapshot);
+    !ids.is_empty() && ids.iter().all(|id| snapshot.text(*id).is_some())
 }
 
-/// Convert to Path of the selected text: its outlines become ordinary objects (one undo step).
+/// Convert to Path of the selected text(s): their outlines become ordinary objects. One text is
+/// one `ConvertToPath`, several are one compound (G8-editor, E07): one undo step either way.
 pub(super) fn convert(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> AppUpdate {
     let snapshot = s.doc.snapshot();
-    let Some(id) = single_text(s, &snapshot) else { return AppUpdate::default() };
-    apply_edit(s, document, CommandPayload::Text(TextCommand::ConvertToPath { text: id }), request)
+    let mut ids = selected_texts(s, &snapshot);
+    let payload = match ids.len() {
+        0 => return AppUpdate::default(),
+        1 => CommandPayload::Text(TextCommand::ConvertToPath { text: ids.remove(0) }),
+        _ => CommandPayload::Compound(CompoundCommand {
+            label: CompoundLabel::ConvertTexts,
+            steps: ids
+                .into_iter()
+                .map(|text| CompoundStep::Run(CommandPayload::Text(TextCommand::ConvertToPath { text })))
+                .collect(),
+        }),
+    };
+    apply_edit(s, document, payload, request)
 }
 
 /// The toolbar for the selected text(s): the first text's values, with the differing ones marked.
@@ -571,7 +654,7 @@ impl AppController {
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             let snapshot = s.doc.snapshot();
-            let selected: Vec<TextId> = s
+            let mut selected: Vec<TextId> = s
                 .selection
                 .ids()
                 .iter()
@@ -583,12 +666,30 @@ impl AppController {
                     _ => None,
                 })
                 .collect();
+            selected.sort();
+            selected.dedup();
+            // Typing extends every selected text (G8-editor, E07): one text is one `Set`, several
+            // are one compound and so one undo step.
+            let extended = |id: TextId| {
+                let mut source = snapshot.text(id)?.clone();
+                source.content.push_str(&text);
+                Some(TextCommand::Set { text: id, source: Box::new(source) })
+            };
+            if let [_, _, ..] = selected.as_slice() {
+                let Some(steps) = selected
+                    .iter()
+                    .map(|id| extended(*id).map(|c| CompoundStep::Run(CommandPayload::Text(c))))
+                    .collect()
+                else {
+                    return AppUpdate::default();
+                };
+                let payload = CommandPayload::Compound(CompoundCommand { label: CompoundLabel::EditTexts, steps });
+                return apply_edit(s, document, payload, request);
+            }
             let edit = match selected.as_slice() {
-                [first, rest @ ..] if rest.iter().all(|t| t == first) => {
-                    let Some(current) = snapshot.text(*first) else { return AppUpdate::default() };
-                    let mut source = current.clone();
-                    source.content.push_str(&text);
-                    TextCommand::Set { text: *first, source: Box::new(source) }
+                [first] => {
+                    let Some(edit) = extended(*first) else { return AppUpdate::default() };
+                    edit
                 }
                 _ => {
                     let Ok(size) = Length::from_mm(DEFAULT_TEXT_MM)

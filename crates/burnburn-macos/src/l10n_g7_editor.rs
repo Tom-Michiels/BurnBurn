@@ -68,6 +68,69 @@ texts! {
     MakeOffsetHeading => ("Offsetketen op de selectie", "Offset chain on the selection"),
     MakeOffsetDistance => ("Afstand (mm, positief vergroot)", "Distance (mm, positive grows)"),
     MakeOffsetButton => ("Offsetketen maken", "Make offset chain"),
+    // --- Adding a step, and the stack of the selection (G8, E06).
+    StackTitle => ("Stapel van de selectie", "Stack of the selection"),
+    StackHint => (
+        "De ketens waar de selectie bron of resultaat van is.",
+        "The chains the selection is the source or a result of."
+    ),
+    AddStepHeading => ("Stap toevoegen", "Add a step"),
+    AddStepHint => (
+        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten.",
+        "Fill in the numbers of the kind; a boolean step combines with the other selected objects."
+    ),
+    NewKindCaption => ("Soort stap", "Kind of step"),
+    NewKindOffset => ("Offset", "Offset"),
+    NewKindUnion => ("Boolean: vereniging", "Boolean: union"),
+    NewKindDifference => ("Boolean: verschil", "Boolean: difference"),
+    NewKindIntersection => ("Boolean: doorsnede", "Boolean: intersection"),
+    NewKindXor => ("Boolean: exclusieve of", "Boolean: xor"),
+    NewKindGrid => ("Raster", "Grid"),
+    NewKindCircle => ("Cirkel", "Circle"),
+    NewDistance => ("Offset: afstand (mm)", "Offset: distance (mm)"),
+    NewColumns => ("Raster: kolommen", "Grid: columns"),
+    NewRows => ("Raster: rijen", "Grid: rows"),
+    NewPitchX => ("Raster: kolomafstand (mm)", "Grid: column pitch (mm)"),
+    NewPitchY => ("Raster: rijafstand (mm)", "Grid: row pitch (mm)"),
+    NewCount => ("Cirkel: aantal", "Circle: count"),
+    NewCenterX => ("Cirkel: middelpunt x (mm)", "Circle: centre x (mm)"),
+    NewCenterY => ("Cirkel: middelpunt y (mm)", "Circle: centre y (mm)"),
+    NewSweep => ("Cirkel: hoek (graden)", "Circle: sweep (degrees)"),
+    AddStepButton => ("Stap toevoegen aan {0}", "Add the step to {0}"),
+    NewChainButton => ("Keten maken van de selectie met deze stap", "Make a chain of the selection with this step"),
+    InstanceRotationCaption => (
+        "Exemplaar {0} van {1}: draaihoek (graden)",
+        "Instance {0} of {1}: angle (degrees)"
+    ),
+    InstanceTurnButton => ("Exemplaar {0} 90 graden draaien", "Turn instance {0} by 90 degrees"),
+    DistributeHeading => ("Automatisch verdelen over platen", "Distribute over plates automatically"),
+    DistributeHint => (
+        "Zet elk exemplaar zonder plaat op een plaat waar het past (in rijen, het hoogste eerst, ook een kwartslag gedraaid). Waar het op de plaat komt, bepaalt het nesten.",
+        "Puts every instance without a plate on a plate where it fits (in rows, tallest first, also turned a quarter). Where it lies on the plate is for the nest."
+    ),
+    DistributeGap => ("Tussenruimte (mm)", "Space between parts (mm)"),
+    DistributeButton => ("Verdeel exemplaren zonder plaat", "Distribute instances without a plate"),
+    ProblemBadFormula => (
+        "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel.",
+        "That is no number, parameter name or formula over the parameters of the part."
+    ),
+    ProblemNoPlates => ("Er zijn nog geen platen om over te verdelen.", "There are no plates to distribute over yet."),
+    ProblemNothingToDistribute => (
+        "Elk exemplaar staat al op een plaat.",
+        "Every instance is on a plate already."
+    ),
+    ProblemNoRoomOnPlates => (
+        "Minstens één exemplaar past op geen enkele plaat; er is niets verplaatst.",
+        "At least one instance fits on no plate; nothing was moved."
+    ),
+    ProblemNeedsOperands => (
+        "Een booleanstap heeft andere geselecteerde objecten nodig om mee te combineren.",
+        "A boolean step needs other selected objects to combine with."
+    ),
+    ProblemInvalidSweep => (
+        "Een hoek is een getal tussen 0 en 360 graden, niet nul.",
+        "A sweep is an angle between 0 and 360 degrees, not zero."
+    ),
     // --- Text that follows a path (E08).
     TextPathTitle => ("Tekst op pad", "Text on a path"),
     TextPathFollows => ("De tekst volgt het pad {0}.", "The text follows the path {0}."),
@@ -118,13 +181,13 @@ texts! {
     ShapesHeading => ("Vormen van {0}", "Shapes of {0}"),
     ShapesNone => ("Dit onderdeel heeft geen vormen.", "This part has no shapes."),
     ShapesHint => (
-        "Een getal is in mm; de naam van een parameter laat de vorm die parameter volgen.",
-        "A number is in mm; the name of a parameter makes the shape follow that parameter."
+        "Een getal is in mm; de naam van een parameter of een formule over parameters (breedte / 2 + 3) laat de vorm die volgen. Een vaste vorm kan alleen verplaatst en geschaald worden.",
+        "A number is in mm; the name of a parameter or a formula over parameters (breedte / 2 + 3) makes the shape follow it. A fixed shape can only be moved and resized."
     ),
     ShapeLine => ("{0}: {1}", "{0}: {1}"),
     ShapeKindRectangle => ("rechthoek", "rectangle"),
     ShapeKindCircle => ("cirkel", "circle"),
-    ShapeKindFixed => ("vaste vorm (geen getallen)", "fixed shape (no numbers)"),
+    ShapeKindFixed => ("vaste vorm (verplaatsen en schalen)", "fixed shape (move and resize)"),
     ShapeNameCaption => ("Vorm {0}: naam", "Shape {0}: name"),
     ShapeX => ("Vorm {0}: x", "Shape {0}: x"),
     ShapeY => ("Vorm {0}: y", "Shape {0}: y"),
@@ -240,6 +303,12 @@ pub fn structure_problem_text(problem: burnburn_presentation::StructureProblem, 
         P::LastStep => G7Text::ProblemLastStep,
         P::StepHasNoValue => G7Text::ProblemStepHasNoValue,
         P::InvalidCount => G7Text::ProblemInvalidCount,
+        P::NeedsOperands => G7Text::ProblemNeedsOperands,
+        P::BadFormula => G7Text::ProblemBadFormula,
+        P::NoPlates => G7Text::ProblemNoPlates,
+        P::NothingToDistribute => G7Text::ProblemNothingToDistribute,
+        P::NoRoomOnPlates => G7Text::ProblemNoRoomOnPlates,
+        P::InvalidSweep => G7Text::ProblemInvalidSweep,
         P::UnknownPlate => G7Text::ProblemUnknownPlate,
         P::UnknownShape => G7Text::ProblemUnknownShape,
         P::NoSuchField => G7Text::ProblemNoSuchField,

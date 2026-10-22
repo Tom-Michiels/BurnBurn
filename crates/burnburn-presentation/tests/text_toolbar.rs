@@ -516,9 +516,9 @@ fn text_on_a_path_says_why_it_cannot_and_keeps_the_dialog() {
         }
     }
 
-    // Text on a path is one line.
+    // Several lines are bent since golf 8 (`g8_text_path`): the dialog applies and closes.
     let (mut h, doc, _, _) = text_and_circle("A\nB");
     h.invoke(doc, CommandKey::TextOnPath);
     path_edit(&mut h, doc, TextPathEdit::Apply);
-    assert_eq!(vm(&h, doc).text_on_path.unwrap().issue, Some(TextIssue::PathMultiline));
+    assert!(vm(&h, doc).text_on_path.is_none());
 }

@@ -39,7 +39,7 @@ pub enum GenError {
         needed_mm: f64,
         available_mm: f64,
     },
-    /// Text on a path is one line.
+    /// The shaped text has no line to place (an empty text).
     MultiLineText,
     /// The guide path has no length.
     EmptyGuide,
@@ -66,7 +66,7 @@ impl fmt::Display for GenError {
             GenError::TextLongerThanPath { needed_mm, available_mm } => {
                 write!(f, "text needs {needed_mm} mm of path, {available_mm} mm available")
             }
-            GenError::MultiLineText => f.write_str("text on a path must be a single line"),
+            GenError::MultiLineText => f.write_str("there is no line of text to place on the path"),
             GenError::EmptyGuide => f.write_str("the guide path has no length"),
             GenError::UnsupportedChar { ch, index } => write!(f, "character {ch:?} at {index} cannot be encoded"),
         }

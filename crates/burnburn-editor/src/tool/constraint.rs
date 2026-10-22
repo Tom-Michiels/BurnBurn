@@ -136,6 +136,11 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
             vec![Relation::Tangent(e[0], e[1])]
         }
         (ConstraintKind::Tangent, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Tangent(e[0], e[1])],
+        // An ellipse touches a circle or another ellipse (G8-editor, S01); an arc is not allowed.
+        (ConstraintKind::Tangent, [Ellipse, PickKind::Circle | Ellipse])
+        | (ConstraintKind::Tangent, [PickKind::Circle, Ellipse]) => {
+            vec![Relation::Tangent(e[0], e[1])]
+        }
         _ => return None,
     })
 }
@@ -581,13 +586,15 @@ mod tests {
         assert_eq!(table(ConstraintKind::Midpoint, &[L1, L2]), None);
     }
     /// S01/S05: an ellipse takes part through its major axis and its centre; a point can lie on it
-    /// and a line can be tangent to it (G7-editor), but it is never tangent to a circle or equal to
-    /// one, and the table says no instead of the solver failing.
+    /// and a line, a circle or another ellipse can be tangent to it (G7, G8-editor), but it is never
+    /// equal to a circle, and the table says no instead of the solver failing.
     #[test]
     fn an_ellipse_is_an_axis_and_a_centre_a_point_lies_on_it_a_line_touches_it() {
         let mut s = sketch();
         let (c, m) = (s.point(0.0, 30.0).unwrap(), s.point(8.0, 30.0).unwrap());
         let ellipse = s.ellipse(c, m, 3.0).unwrap();
+        let (c2, m2) = (s.point(0.0, 40.0).unwrap(), s.point(5.0, 40.0).unwrap());
+        let other = s.ellipse(c2, m2, 2.0).unwrap();
         let ask = |kind, entities: &[EntityId]| constraint_relations(kind, &s, entities);
         let (l1, circle, point) = (id(L1), id(C1), id(A));
         assert_eq!(ask(ConstraintKind::Horizontal, &[ellipse]), Some(vec![Relation::Horizontal(ellipse)]));
@@ -614,8 +621,10 @@ mod tests {
         );
         assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), Some(vec![Relation::Tangent(l1, ellipse)]));
         assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, l1]), Some(vec![Relation::Tangent(ellipse, l1)]));
-        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, circle]), None, "a circle is not a line");
-        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, ellipse]), None);
+        // Since G8 an ellipse also touches a circle or another ellipse; an arc stays out.
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, circle]), Some(vec![Relation::Tangent(ellipse, circle)]));
+        assert_eq!(ask(ConstraintKind::Tangent, &[circle, ellipse]), Some(vec![Relation::Tangent(circle, ellipse)]));
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, other]), Some(vec![Relation::Tangent(ellipse, other)]));
         assert_eq!(ask(ConstraintKind::Equal, &[ellipse, circle]), None);
         assert_eq!(ask(ConstraintKind::Equal, &[ellipse, l1]), None, "which length would be meant?");
     }

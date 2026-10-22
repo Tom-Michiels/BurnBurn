@@ -1002,6 +1002,8 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ImportLayers => ("Importeren met lagen", "Import with Layers"),
             CompoundLabel::ReplaceToFit => ("Beeld vervangen en passen", "Replace Image to Fit"),
             CompoundLabel::EditTexts => ("Teksten wijzigen", "Edit Texts"),
+            CompoundLabel::ConvertTexts => ("Teksten omzetten naar pad", "Convert Texts to Path"),
+            CompoundLabel::DistributeOverPlates => ("Over platen verdelen", "Distribute over Plates"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1517,8 +1519,8 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
                 "Not available yet: construction geometry exists only in a sketch.",
             ),
             ToolRejection::CurvedCorner => (
-                "Nog niet beschikbaar: afronden en afschuinen vragen twee rechte zijden.",
-                "Not available yet: fillet and chamfer need two straight sides.",
+                "Nog niet beschikbaar: deze zijde laat zich niet afronden of afschuinen.",
+                "Not available yet: this side cannot be rounded or chamfered.",
             ),
             ToolRejection::BezierExtend => (
                 "Nog niet beschikbaar: alleen lijnen en bogen kunnen worden verlengd.",
@@ -1801,6 +1803,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             CompoundLabel::ReplaceToFit,
             CompoundLabel::ImportLayers,
             CompoundLabel::EditTexts,
+            CompoundLabel::ConvertTexts,
+            CompoundLabel::DistributeOverPlates,
         ]
         .map(UndoLabel::Compound),
     );

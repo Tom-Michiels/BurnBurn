@@ -689,7 +689,7 @@ pub enum ToolRejection {
     Offset,
     /// Construction geometry exists only inside a sketch.
     ConstructionOutsideSketch,
-    /// Fillet and chamfer need two straight sides.
+    /// Reserved: fillet and chamfer also cut corners between curves since golf 8.
     CurvedCorner,
     /// Only lines and arcs can be extended.
     BezierExtend,

@@ -285,6 +285,11 @@ pub(crate) fn check_definition(d: &PartDefinition) -> Result<(), StructureError>
         super::Dim::Mm(v) if v.is_finite() => Ok(()),
         super::Dim::Mm(_) => Err(StructureError::InvalidValue { field }),
         super::Dim::Param(p) => param(p),
+        // A formula must parse and name only parameters of the part (G8-editor).
+        super::Dim::Expr(text) => {
+            let formula = super::parse_formula(text).map_err(|_| StructureError::InvalidValue { field })?;
+            formula.names().iter().try_for_each(|n| param(n))
+        }
     };
     for s in d.shapes.values() {
         match &s.shape {

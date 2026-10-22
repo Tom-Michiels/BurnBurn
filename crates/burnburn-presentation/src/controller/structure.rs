@@ -12,16 +12,18 @@ use burnburn_document::structure::{
     effective_parameters, part_from_objects,
 };
 use burnburn_document::{
-    CommandPayload, DerivedOwner, DocumentSnapshot, EvalDiagnosis, EvalStatus, GeometryObject, GeometrySource,
+    CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, DocumentSnapshot, EvalDiagnosis,
+    EvalStatus, GeometryObject, GeometrySource,
 };
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point, Segment, SegmentRef, Subpath, Vector};
-use burnburn_types::{DocumentId, GeometryId, Length, RequestId, StableId};
+use burnburn_types::{Angle, DocumentId, GeometryId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length, parse_position};
 use crate::structure_panel::{
-    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
-    ModifierValueKind, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
-    ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
+    BooleanKind, BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus,
+    ModifierStepRow, ModifierValueKind, NewModifierStep, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField,
+    PlateIssueRow, PlateRow, ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem,
+    StructureViewModel, VariantRow,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
 
@@ -144,7 +146,83 @@ fn value_of(modifier: &Modifier) -> Option<(ModifierValueKind, String)> {
     }
 }
 
-fn modifiers_view(snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
+/// The selected objects a boolean step combines with: everything selected except the chain's
+/// source and the chain's own outputs.
+fn operands_of(
+    s: &Session,
+    snapshot: &DocumentSnapshot,
+    source: GeometryId,
+    own: Option<DerivedOwner>,
+) -> Vec<GeometryId> {
+    s.selection
+        .ids()
+        .iter()
+        .copied()
+        .filter(|id| *id != source)
+        .filter(|id| {
+            snapshot.object(*id).is_some_and(
+                |o| !matches!((o.source(), own), (GeometrySource::Derived(k), Some(owner)) if k.owner == owner),
+            )
+        })
+        .collect()
+}
+
+/// An array the geometry refuses (zero or too many copies) is an invalid count.
+fn array_error(_: burnburn_geometry::array::ArrayError) -> MessageKey {
+    problem(StructureProblem::InvalidCount)
+}
+
+/// The modifier step `step` stands for, with its numbers parsed. `operands` are the objects a
+/// boolean step combines with.
+fn new_step(
+    snapshot: &DocumentSnapshot,
+    source: GeometryId,
+    operands: &[GeometryId],
+    step: NewModifierStep,
+) -> Result<Modifier, MessageKey> {
+    match step {
+        NewModifierStep::Offset { distance } => {
+            let distance = Length::from_mm(typed_position(&distance)?).map_err(|_| MessageKey::CommandRejected)?;
+            Ok(Modifier::Offset { distance, join: burnburn_geometry::OffsetJoin::Round })
+        }
+        NewModifierStep::Boolean { op } => {
+            if operands.is_empty() {
+                return Err(problem(StructureProblem::NeedsOperands));
+            }
+            let op = match op {
+                BooleanKind::Union => burnburn_geometry::BooleanOp::Union,
+                BooleanKind::Difference => burnburn_geometry::BooleanOp::Difference,
+                BooleanKind::Intersection => burnburn_geometry::BooleanOp::Intersection,
+                BooleanKind::Xor => burnburn_geometry::BooleanOp::Xor,
+            };
+            Ok(Modifier::Boolean { op, with: operands.to_vec() })
+        }
+        NewModifierStep::Grid { columns, rows, pitch_x, pitch_y } => {
+            let (columns, rows) = (typed_count(&columns)?, typed_count(&rows)?);
+            let pitch_x = Length::from_mm(typed_position(&pitch_x)?).map_err(|_| MessageKey::CommandRejected)?;
+            let pitch_y = Length::from_mm(typed_position(&pitch_y)?).map_err(|_| MessageKey::CommandRejected)?;
+            let grid = burnburn_geometry::array::GridArray { columns, rows, pitch_x, pitch_y };
+            burnburn_geometry::array::grid_array(&grid).map_err(array_error)?;
+            Ok(Modifier::GridArray(grid))
+        }
+        NewModifierStep::Circle { count, center_x, center_y, sweep } => {
+            let count = typed_count(&count)?;
+            let center = Point::new(typed_position(&center_x)?, typed_position(&center_y)?);
+            let sweep_deg = crate::field::parse_number(&sweep, &["°", "deg"])
+                .ok()
+                .filter(|v| v.is_finite() && *v != 0.0 && v.abs() <= 360.0)
+                .ok_or(problem(StructureProblem::InvalidSweep))?;
+            let reference =
+                snapshot.object(source).and_then(|o| o.path().bounds()).map_or(Point::new(0.0, 0.0), |b| b.center());
+            let circular =
+                burnburn_geometry::array::CircularArray { count, center, sweep_deg, rotate_items: true, reference };
+            burnburn_geometry::array::circular_array(&circular).map_err(array_error)?;
+            Ok(Modifier::CircularArray(circular))
+        }
+    }
+}
+
+fn modifiers_view(s: &Session, snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
     snapshot
         .structure()
         .modifiers()
@@ -182,15 +260,79 @@ fn modifiers_view(snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
                     .objects()
                     .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
                     .count(),
+                in_selection: s.selection.ids().iter().any(|sel| {
+                    *sel == chain.source
+                        || snapshot
+                            .object(*sel)
+                            .is_some_and(|o| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
+                }),
             }
         })
         .collect()
+}
+
+/// Whether `text` is more than a word or a number: an operator, a bracket, a space or another sign.
+fn looks_like_formula(text: &str) -> bool {
+    text.trim().chars().any(|c| !(c.is_alphanumeric() || matches!(c, '_' | '.' | ',')))
+}
+
+/// A formula over the parameters of the part as a shape number, or why it is none.
+fn formula_dim(text: &str, parameters: &BTreeMap<String, Length>) -> Result<Dim, MessageKey> {
+    let formula =
+        burnburn_document::structure::parse_formula(text).map_err(|_| problem(StructureProblem::BadFormula))?;
+    if formula.names().iter().any(|n| !parameters.contains_key(n)) {
+        return Err(problem(StructureProblem::BadFormula));
+    }
+    Ok(Dim::Expr(text.trim().to_owned()))
+}
+
+/// The fixed outline `path` with one number of its box changed: the corner moves (X, Y) or the
+/// outline is stretched from its lower left corner (width, height).
+fn fixed_shape_edit(path: &Path, field: ShapeField, text: &str) -> Result<Path, MessageKey> {
+    let bounds = path.bounds().ok_or(problem(StructureProblem::NoSuchField))?;
+    let (min, width, height) = (bounds.min(), bounds.width(), bounds.height());
+    let transform = match field {
+        ShapeField::X => {
+            let x = parse_position(text).map_err(MessageKey::InvalidLength)?.mm();
+            Affine::translate(Vector::new(x - min.x, 0.0))
+        }
+        ShapeField::Y => {
+            let y = parse_position(text).map_err(MessageKey::InvalidLength)?.mm();
+            Affine::translate(Vector::new(0.0, y - min.y))
+        }
+        ShapeField::Width => {
+            let w = typed_length(text)?.mm();
+            if !(width > 0.0) {
+                return Err(problem(StructureProblem::NoSuchField));
+            }
+            Affine::scale_about(min, w / width, 1.0)
+        }
+        ShapeField::Height => {
+            let h = typed_length(text)?.mm();
+            if !(height > 0.0) {
+                return Err(problem(StructureProblem::NoSuchField));
+            }
+            Affine::scale_about(min, 1.0, h / height)
+        }
+        _ => return Err(problem(StructureProblem::NoSuchField)),
+    };
+    Ok(path.transform(&transform.map_err(|_| MessageKey::CommandRejected)?))
+}
+
+/// The turn of a transform in degrees (counter-clockwise, -180 to 180]; a mirror shows the turn of
+/// its x axis.
+fn rotation_degrees(t: &Affine) -> f64 {
+    let [a, b, ..] = t.coefficients();
+    let degrees = b.atan2(a).to_degrees();
+    // A turn that is zero up to rounding shows as 0.
+    if degrees.abs() < 1e-9 { 0.0 } else { degrees }
 }
 
 fn dim_text(d: &Dim) -> String {
     match d {
         Dim::Mm(v) => format_mm(*v),
         Dim::Param(p) => p.clone(),
+        Dim::Expr(text) => text.clone(),
     }
 }
 
@@ -215,6 +357,18 @@ fn shapes_view(def: &PartDefinition) -> Vec<PartShapeRow> {
                         (ShapeField::Y, dim_text(y)),
                         (ShapeField::Radius, dim_text(radius)),
                     ],
+                ),
+                PartShape::Fixed(path) => (
+                    PartShapeKind::Fixed,
+                    // The box of the fixed outline: it can be moved and resized from here (G8-editor).
+                    path.bounds().map_or_else(Vec::new, |b| {
+                        vec![
+                            (ShapeField::X, format_mm(b.min().x)),
+                            (ShapeField::Y, format_mm(b.min().y)),
+                            (ShapeField::Width, format_mm(b.width())),
+                            (ShapeField::Height, format_mm(b.height())),
+                        ]
+                    }),
                 ),
                 _ => (PartShapeKind::Fixed, Vec::new()),
             };
@@ -250,6 +404,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
                     effective: values(&effective_parameters(def, inst)),
                     plate: inst.plate.and_then(plate_name),
                     plate_id: inst.plate.map(StableId::raw),
+                    rotation: format_mm(rotation_degrees(&inst.transform)),
                     status: status_of(&snapshot, iid),
                 })
                 .collect(),
@@ -320,7 +475,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
         selected: s.selection.ids().iter().filter(|id| snapshot.object(**id).is_some()).count(),
         edges: edges_view(&snapshot, s.selection.single()),
         edge_object: s.selection.single().filter(|id| snapshot.object(*id).is_some()).map(StableId::raw),
-        modifiers: modifiers_view(&snapshot),
+        modifiers: modifiers_view(s, &snapshot),
     }
 }
 
@@ -344,6 +499,10 @@ pub(super) fn edit(
         StructureEdit::SetVariant { .. } | StructureEdit::SetOverride { .. } => {
             instance_edit(s, document, edit, request)
         }
+        StructureEdit::RotateInstance { instance, degrees, relative } => {
+            rotate_instance(s, document, instance, &degrees, relative, request)
+        }
+        StructureEdit::DistributeOverPlates { gap } => distribute(s, document, &gap, request),
         other => other_edit(s, document, other, request),
     }
 }
@@ -618,14 +777,27 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
         }
         StructureEdit::SetPartShapeField { definition, shape, field, text } => {
             let (id, mut value) = definition_of(definition)?;
+            if let Some(NamedShape { shape: PartShape::Fixed(path), .. }) = value.shapes.get(&shape) {
+                let moved = fixed_shape_edit(path, field, &text)?;
+                if let Some(slot) = value.shapes.get_mut(&shape) {
+                    slot.shape = PartShape::Fixed(moved);
+                }
+                return Ok(StructureCommand::SetPartDefinition { definition: id, value });
+            }
             let known = value.parameters.keys().any(|p| *p == text.trim());
             let positioned = matches!(field, ShapeField::X | ShapeField::Y);
             let dim = if known {
                 Dim::Param(text.trim().to_owned())
-            } else if positioned {
-                Dim::Mm(parse_position(&text).map_err(MessageKey::InvalidLength)?.mm())
             } else {
-                Dim::Mm(typed_length(&text)?.mm())
+                let number = if positioned { parse_position(&text) } else { parse_length(&text) };
+                match number {
+                    Ok(v) => Dim::Mm(v.mm()),
+                    // Not a number, but built like a formula: a formula over the parameters or nothing.
+                    Err(crate::field::FieldError::NotANumber) if looks_like_formula(&text) => {
+                        formula_dim(&text, &value.parameters)?
+                    }
+                    Err(e) => return Err(MessageKey::InvalidLength(e)),
+                }
             };
             let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
             let target = match (&mut slot.shape, field) {
@@ -688,6 +860,38 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             let (id, _) = chain_of(layer, modifier)?;
             Ok(StructureCommand::BakeModifier { modifier: id })
         }
+        StructureEdit::RotateInstance { .. } | StructureEdit::DistributeOverPlates { .. } => {
+            Err(MessageKey::CommandRejected)
+        }
+        StructureEdit::AddModifierStep { modifier, step } => {
+            let (id, mut chain) = chain_of(layer, modifier)?;
+            let own = DerivedOwner::Modifier(id);
+            let operands = operands_of(s, &snapshot, chain.source, Some(own));
+            let made = new_step(&snapshot, chain.source, &operands, step)?;
+            chain.steps.push(ModifierStep { modifier: made, enabled: true });
+            Ok(StructureCommand::SetModifier { modifier: id, chain })
+        }
+        StructureEdit::CreateModifierChain { step } => {
+            let selected: Vec<GeometryId> =
+                s.selection.ids().iter().copied().filter(|id| snapshot.object(*id).is_some()).collect();
+            let source = *selected.first().ok_or(problem(StructureProblem::NeedsSelection))?;
+            let name = match &step {
+                NewModifierStep::Offset { .. } => "Offset",
+                NewModifierStep::Boolean { .. } => "Boolean",
+                NewModifierStep::Grid { .. } => "Raster",
+                NewModifierStep::Circle { .. } => "Cirkel",
+            };
+            let made = new_step(&snapshot, source, &selected[1..], step)?;
+            let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
+            let chain = ModifierChain {
+                name: name.to_owned(),
+                source,
+                steps: vec![ModifierStep { modifier: made, enabled: true }],
+                tolerance,
+                mode: EvalMode::Inline,
+            };
+            Ok(StructureCommand::CreateModifier { chain })
+        }
         StructureEdit::CreateOffsetModifier { distance } => {
             let source = s.selection.single().filter(|id| snapshot.object(*id).is_some());
             let source = source.ok_or(problem(StructureProblem::NeedsSelection))?;
@@ -706,6 +910,115 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             Ok(StructureCommand::CreateModifier { chain })
         }
     }
+}
+
+/// The union of the bounds of what instance `id` outputs (None: nothing was ever evaluated).
+fn instance_bounds(
+    snapshot: &burnburn_document::DocumentSnapshot,
+    id: PartInstanceId,
+) -> Option<burnburn_geometry::Bounds> {
+    let owner = DerivedOwner::Part(id);
+    snapshot
+        .objects()
+        .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
+        .filter_map(|(_, o)| o.bounds())
+        .reduce(|a, b| a.union(b))
+}
+
+/// Turns an instance about the middle of its outline (G8-editor): to the angle typed, or by it.
+/// An angle it has already is no command.
+fn rotate_instance(
+    s: &mut Session,
+    document: DocumentId,
+    instance: u64,
+    degrees: &str,
+    relative: bool,
+    request: Option<RequestId>,
+) -> AppUpdate {
+    let snapshot = s.doc.snapshot();
+    let id = PartInstanceId::from_raw(instance);
+    let Some(current) = snapshot.structure().instance(id) else {
+        return refused(s, document, problem(StructureProblem::UnknownInstance));
+    };
+    let typed = match crate::field::parse_number(degrees, &["°", "deg"]) {
+        Ok(v) => v,
+        Err(e) => return refused(s, document, MessageKey::InvalidLength(e)),
+    };
+    let now = rotation_degrees(&current.transform);
+    let delta = if relative { typed } else { typed - now };
+    if delta.rem_euclid(360.0).min(360.0 - delta.rem_euclid(360.0)) < 1e-9 {
+        s.problem = None;
+        return AppUpdate::redraw(document);
+    }
+    let middle =
+        instance_bounds(&snapshot, id).map_or_else(|| current.transform.apply(Point::new(0.0, 0.0)), |b| b.center());
+    let turn = Angle::from_degrees(delta).map(Affine::rotate).ok();
+    let about = turn.and_then(|r| {
+        let there = Affine::translate(Vector::new(middle.x, middle.y)).ok()?;
+        let back = Affine::translate(Vector::new(-middle.x, -middle.y)).ok()?;
+        Some(back.then(&r).then(&there))
+    });
+    let Some(about) = about else { return refused(s, document, MessageKey::CommandRejected) };
+    let mut next = current.clone();
+    next.transform = current.transform.then(&about);
+    s.problem = None;
+    apply_edit(
+        s,
+        document,
+        CommandPayload::Structure(StructureCommand::SetInstance { instance: id, value: next }),
+        request,
+    )
+}
+
+/// Puts every instance that is on no plate on a plate where it fits (G8-editor, P06): one undo
+/// step for all of them, or a refusal that changes nothing.
+fn distribute(s: &mut Session, document: DocumentId, gap: &str, request: Option<RequestId>) -> AppUpdate {
+    use burnburn_document::structure::{Footprint, PlateRoom, distribute_over_plates};
+    let gap = if gap.trim().is_empty() {
+        0.0
+    } else {
+        match parse_position(gap) {
+            Ok(v) if v.mm() >= 0.0 => v.mm(),
+            Ok(_) => return refused(s, document, MessageKey::InvalidLength(crate::field::FieldError::NotPositive)),
+            Err(e) => return refused(s, document, MessageKey::InvalidLength(e)),
+        }
+    };
+    let snapshot = s.doc.snapshot();
+    let layer = snapshot.structure();
+    let plates: Vec<PlateRoom> =
+        layer.plates().map(|(id, p)| PlateRoom { id, width: p.width.mm(), height: p.height.mm() }).collect();
+    if plates.is_empty() {
+        return refused(s, document, problem(StructureProblem::NoPlates));
+    }
+    if layer.instances().all(|(_, i)| i.plate.is_some()) {
+        return refused(s, document, problem(StructureProblem::NothingToDistribute));
+    }
+    let items: Vec<Footprint> = layer
+        .instances()
+        .map(|(id, inst)| {
+            let (width, height) = instance_bounds(&snapshot, id).map_or((0.0, 0.0), |b| (b.width(), b.height()));
+            Footprint { id, width, height, plate: inst.plate }
+        })
+        .collect();
+    let plan = distribute_over_plates(&plates, &items, gap);
+    if !plan.unplaced.is_empty() {
+        return refused(s, document, problem(StructureProblem::NoRoomOnPlates));
+    }
+    let steps: Vec<CompoundStep> = plan
+        .assigned
+        .iter()
+        .filter_map(|(instance, plate)| {
+            let mut value = layer.instance(*instance)?.clone();
+            value.plate = Some(*plate);
+            Some(CompoundStep::Run(CommandPayload::Structure(StructureCommand::SetInstance {
+                instance: *instance,
+                value,
+            })))
+        })
+        .collect();
+    s.problem = None;
+    let payload = CommandPayload::Compound(CompoundCommand { label: CompoundLabel::DistributeOverPlates, steps });
+    apply_edit(s, document, payload, request)
 }
 
 /// One edit of one instance. Nothing is changed when the instance, the variant or the parameter

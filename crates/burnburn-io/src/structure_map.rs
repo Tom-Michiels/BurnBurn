@@ -44,6 +44,7 @@ fn dim_to(x: &Dim) -> d::Dim {
     match x {
         Dim::Mm(v) => d::Dim::Mm { value: Num(*v) },
         Dim::Param(p) => d::Dim::Param { name: p.clone() },
+        Dim::Expr(text) => d::Dim::Expr { text: text.clone() },
     }
 }
 
@@ -293,6 +294,7 @@ fn dim_from(path: &dyn Fn() -> String, x: &d::Dim) -> Result<Dim, LoadError> {
     Ok(match x {
         d::Dim::Mm { value } => Dim::Mm(num(path, *value)?),
         d::Dim::Param { name } => Dim::Param(name.clone()),
+        d::Dim::Expr { text } => Dim::Expr(text.clone()),
     })
 }
 

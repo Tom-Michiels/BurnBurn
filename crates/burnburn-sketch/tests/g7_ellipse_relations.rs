@@ -240,12 +240,13 @@ fn tangency_follows_the_minor_axis_dimension() {
 // --- what stays refused, and the degrees of freedom ---------------------------------------------------------
 
 #[test]
-fn an_ellipse_is_still_never_tangent_to_a_circle_or_equal_to_one() {
+fn an_ellipse_is_still_never_equal_to_a_circle() {
+    // Tangent to a circle became possible in G8 (`g8_ellipse_swap_tangent.rs`).
     let f = ellipse();
     let mut s = f.s;
     let cc = s.point(30.0, 30.0).unwrap();
     let circle = s.circle(cc, 3.0).unwrap();
-    assert!(matches!(s.relate(Relation::Tangent(f.e, circle)), Err(SketchError::WrongEntityKind(_))));
+    assert!(s.relate(Relation::Tangent(f.e, circle)).is_ok());
     assert!(matches!(s.relate(Relation::Equal(f.e, circle)), Err(SketchError::WrongEntityKind(_))));
     // And a line can still not lie on an ellipse: only points can.
     let (p, q) = (s.point(0.0, 0.0).unwrap(), s.point(1.0, 1.0).unwrap());

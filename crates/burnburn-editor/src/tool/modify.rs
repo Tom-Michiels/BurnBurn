@@ -87,7 +87,7 @@ impl Measurement {
 pub enum Unavailable {
     /// Construction is a flag of sketch entities; drawn objects have none yet.
     ConstructionOutsideSketch,
-    /// Fillet and chamfer need two straight sides; line–arc corners are not supported yet.
+    /// Reserved: corners between curves are cut since golf 8, the geometry no longer returns this.
     CurvedCorner,
     /// Only lines and arcs can be extended, not Bézier curves.
     BezierExtend,

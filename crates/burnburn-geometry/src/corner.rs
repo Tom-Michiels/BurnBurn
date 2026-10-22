@@ -5,6 +5,7 @@ use std::f64::consts::PI;
 
 use burnburn_types::Angle;
 
+use crate::corner_curved;
 use crate::query::nearest_on_segment;
 use crate::ring::{Ring, make_subpath};
 use crate::{EllipticalArc, Path, Point, Segment, math};
@@ -30,7 +31,7 @@ pub enum CornerCut {
 pub enum CornerError {
     /// No corner between two segments lies within reach of the pick.
     NoCorner,
-    /// One of the two sides is not a straight line (line–arc corners are not supported yet).
+    /// Reserved: corners between curves are cut since golf 8, so the geometry no longer returns this.
     CurvedSide,
     /// A distance, radius or angle is not a positive finite number, or the angle misses the other side.
     InvalidValue,
@@ -44,7 +45,7 @@ impl std::fmt::Display for CornerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             CornerError::NoCorner => "no corner near the pick",
-            CornerError::CurvedSide => "only corners between straight lines can be cut",
+            CornerError::CurvedSide => "this kind of side cannot be cut",
             CornerError::InvalidValue => "the radius, distance or angle is not valid",
             CornerError::TooLarge => "the cut is longer than a side of the corner",
             CornerError::Collinear => "the sides do not form a corner",
@@ -81,7 +82,15 @@ impl Path {
         let m = ring.len();
         let prev = (i + m - 1) % m;
         let (Segment::Line { .. }, Segment::Line { to: b }) = (ring.segs[prev], ring.segs[i]) else {
-            return Err(CornerError::CurvedSide);
+            let pick_first = |ring: &Ring| {
+                nearest_on_segment(ring.starts[prev], &ring.segs[prev], pick).2
+                    <= nearest_on_segment(ring.starts[i], &ring.segs[i], pick).2
+            };
+            let (start, segs) =
+                corner_curved::cut_curved(&ring, i, pick_first(&ring), cut, self.subpaths()[si].start())?;
+            let mut subs = self.subpaths().to_vec();
+            subs[si] = make_subpath(start, segs, ring.closed).ok_or(CornerError::InvalidValue)?;
+            return Ok(Path::from_subpaths(subs));
         };
         let (a, corner) = (ring.starts[prev], ring.starts[i]);
         let (la, lb) = (a.distance(corner), corner.distance(b));

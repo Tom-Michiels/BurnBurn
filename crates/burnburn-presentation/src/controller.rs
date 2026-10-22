@@ -914,6 +914,8 @@ fn apply_command(
 ) -> Result<CommandOutcome, CommandError> {
     // Moving a generated object edits its definition (C-8), wherever the move comes from.
     let cmd = DocumentCommand { payload: generator::retarget(&doc.snapshot(), cmd.payload), ..cmd };
+    // Moving text that follows a guide edits where it starts on the guide (G8-editor, E08).
+    let cmd = DocumentCommand { payload: text::retarget_move(&doc.snapshot(), fonts.as_ref(), cmd.payload), ..cmd };
     let sketches = SketchEvaluator::new(SketchSolverAdapter);
     match fonts {
         Some(f) => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator, &BoundTextEvaluator::new(f.clone())]),

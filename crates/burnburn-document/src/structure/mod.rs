@@ -8,6 +8,7 @@
 
 mod canonical;
 mod command;
+mod formula;
 mod from_objects;
 mod ids;
 mod layer;
@@ -19,6 +20,7 @@ mod relation;
 
 pub use command::{StructureChange, StructureCommand, StructureError, StructureLabel};
 pub(crate) use command::{StructureEffect, StructureTxn, apply, chain_order};
+pub use formula::{Formula, FormulaError, parse_formula};
 pub use from_objects::{PartFromObjects, PartFromObjectsError, part_from_objects};
 pub use ids::{ModifierId, PartDefinitionId, PartInstanceId, PlateId, ReferenceId, RelationId};
 pub use layer::{StructureLayer, StructureParts};
@@ -29,7 +31,7 @@ pub use part::{
     Dim, NamedShape, PART_EVALUATOR_VERSION, PartDefinition, PartInstance, PartShape, effective_parameters,
 };
 pub(crate) use part::{evaluate_instance, instance_inputs};
-pub use plate::{Plate, PlateIssue};
+pub use plate::{Distribution, Footprint, Plate, PlateIssue, PlateRoom, distribute_over_plates};
 pub use reference::{
     AssocReference, BreakReason, EdgeName, EdgeOrigin, GeometryRef, ProvenanceEdge, RefHolder, RefStatus, Resolved,
     SubRef, VertexEnd,

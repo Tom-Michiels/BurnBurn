@@ -73,8 +73,9 @@ impl Path {
         Ok(replace_subpath(self, si, pieces))
     }
 
-    /// Extends an open line or arc end to the nearest boundary ahead (lines move along their
-    /// direction, arcs along their circle or ellipse).
+    /// Extends an open line, arc or Bézier end to the nearest boundary ahead (lines move along
+    /// their direction, arcs along their circle or ellipse, a Bézier along its own polynomial
+    /// for up to three parameter lengths and straight along its end tangent beyond that).
     pub fn extend_end(&self, end: EndpointRef, boundaries: &[&Path]) -> Result<Path, ExtendError> {
         let (si, at_end) = match end {
             EndpointRef::Start(s) => (s, false),
@@ -197,7 +198,9 @@ fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> R
             }
         }
     }
-    let t = best.ok_or(ExtendError::NoBoundaryAhead)?;
+    let Some(t) = best else {
+        return tangent_continuation(sp, poly, at_end, boundaries);
+    };
     let longer = cubic_over(poly, 0.0, 1.0 + t * BEZIER_REACH);
     let new = Segment::Cubic { c1: longer[1], c2: longer[2], to: longer[3] };
     let (start, mut rebuilt) = (sp.start(), segs.to_vec());
@@ -213,6 +216,53 @@ fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> R
             *slot = reversed;
         }
         Subpath::new(longer[3], rebuilt, false).map_err(|_| ExtendError::NoBoundaryAhead)
+    }
+}
+
+/// The boundary lies beyond the reach of the cubic's polynomial, which far from the drawn
+/// curve no longer says anything about its shape. The end then continues straight along its
+/// own end tangent (tangent continuous with the curve, which stays exactly as drawn) to the
+/// first boundary crossing. `poly` is the cubic walked towards the extended end.
+fn tangent_continuation(
+    sp: &Subpath,
+    poly: [Point; 4],
+    at_end: bool,
+    boundaries: &[&Path],
+) -> Result<Subpath, ExtendError> {
+    let end = poly[3];
+    // The last control point that differs from the end gives the heading.
+    let heading = [poly[2], poly[1], poly[0]]
+        .into_iter()
+        .map(|c| end - c)
+        .find(|d| d.length() > POS_EPS)
+        .ok_or(ExtendError::NoBoundaryAhead)?;
+    let heading = heading * (1.0 / heading.length());
+    // Long enough to cross everything the boundaries contain.
+    let mut reach = 1.0;
+    for boundary in boundaries {
+        if let Some(b) = boundary.bounds() {
+            reach = f64::max(reach, 2.0 * (b.min().distance(end) + b.max().distance(end)) + 1.0);
+        }
+    }
+    let ray = Segment::Line { to: end + heading * reach };
+    let mut best: Option<(f64, Point)> = None;
+    for boundary in boundaries {
+        for (_, bf, bs) in segments_of(boundary) {
+            for (t, _, hit) in segment_intersections(end, &ray, bf, &bs) {
+                if t * reach > POS_EPS && best.is_none_or(|b| t < b.0) {
+                    best = Some((t, hit));
+                }
+            }
+        }
+    }
+    let (_, hit) = best.ok_or(ExtendError::NoBoundaryAhead)?;
+    let mut segs = sp.segments().to_vec();
+    if at_end {
+        segs.push(Segment::Line { to: hit });
+        Subpath::new(sp.start(), segs, false).map_err(|_| ExtendError::NoBoundaryAhead)
+    } else {
+        segs.insert(0, Segment::Line { to: sp.start() });
+        Subpath::new(hit, segs, false).map_err(|_| ExtendError::NoBoundaryAhead)
     }
 }
 

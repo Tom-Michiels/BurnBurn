@@ -21,6 +21,10 @@ pub enum CompoundLabel {
     ReplaceToFit,
     /// One text edit applied to several text objects at once (G7-editor, E07).
     EditTexts,
+    /// Convert to Path of several texts at once (G8-editor, E07).
+    ConvertTexts,
+    /// Every instance without a plate onto a plate where it fits (G8-editor, P06).
+    DistributeOverPlates,
 }
 
 /// One step of a compound command.
