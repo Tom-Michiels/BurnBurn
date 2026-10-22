@@ -115,10 +115,12 @@ fn the_identity_does_not_change_while_an_execution_is_active() {
 fn a_controller_reply_never_writes_the_declared_identity() {
     let (mut actor, peer) = rig(MachineIdentity::unprobed);
     actor.declare_identity(Some("RDC6445G".into()), None).unwrap();
-    peer.script(Step::expect(Request::QueryIdentity).reply(Reply::Identity(ControllerIdentity {
-        model: Some("RDC6445G".into()),
-        firmware: Some("v9.99".into()),
-    })));
+    peer.script(
+        Step::expect(Request::QueryIdentity).reply(Reply::Identity(ControllerIdentity {
+            model: Some("RDC6445G".into()),
+            firmware: Some("v9.99".into()),
+        })),
+    );
     actor.begin_upload(ExecutionId::from_raw(1), &artifact()).unwrap();
     actor.poll().unwrap();
     assert_eq!(actor.machine().firmware, None, "what the controller says about itself is evidence, not configuration");

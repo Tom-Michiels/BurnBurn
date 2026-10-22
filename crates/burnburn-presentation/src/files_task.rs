@@ -10,6 +10,7 @@ use burnburn_io::art_library::{
     ArtError, ArtFormat, ArtLibrary, ArtPlacement, NewArt, load_art_library, save_art_library,
 };
 use burnburn_io::bundle::{Bundle, BundleContents, BundleTemplate, decode_bundle, encode_bundle};
+use burnburn_io::calibration_library::{CalibrationLibrary, load_calibration_library, save_calibration_library};
 use burnburn_io::export::{
     DxfOptions, ExportError, ExportItem, ExportLoss, LostSemantics, SvgOptions, export_dxf_with, export_svg_with,
     preflight_dxf, preflight_svg,
@@ -17,7 +18,6 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
-use burnburn_io::calibration_library::{CalibrationLibrary, load_calibration_library, save_calibration_library};
 use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
@@ -343,8 +343,7 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                 }
             }
             let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library_entries);
-            let calibration =
-                read_library(fs.as_ref(), &dir.join(CALIBRATION_LIBRARY_FILE), load_calibration_library);
+            let calibration = read_library(fs.as_ref(), &dir.join(CALIBRATION_LIBRARY_FILE), load_calibration_library);
             Ok(FilesOutput::LibrariesLoaded { profiles, calibration, materials, art, thumbnails })
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
@@ -364,9 +363,8 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
         }
         FilesTask::ReadMachineProfile { path, fs } => {
             // A profile file is a few hundred bytes; a bigger file is not one.
-            let bytes = fs
-                .read(&path, 1 << 20)
-                .map_err(|e| TaskError::Files(FilesError::MachineProfile(format!("{e:?}"))))?;
+            let bytes =
+                fs.read(&path, 1 << 20).map_err(|e| TaskError::Files(FilesError::MachineProfile(format!("{e:?}"))))?;
             cancelled(cancel)?;
             let file = crate::profile_file::parse_profile(&bytes)
                 .map_err(|e| TaskError::Files(FilesError::MachineProfile(e.to_string())))?;

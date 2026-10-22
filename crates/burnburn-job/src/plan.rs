@@ -5,8 +5,7 @@ use burnburn_types::{CanonicalWriter, ContentHash, HashDomain, RevisionId, Stabl
 
 use crate::{
     AppliedCalibration, MachineFrame, MachinePoint, OperationSettings, PlanError, PlanEvent, PlanMode, ProfileRevision,
-    RotaryConfig,
-    ScanAxis, SettingsIndex,
+    RotaryConfig, ScanAxis, SettingsIndex,
 };
 
 /// Content address of a plan: hash of its canonical content (no addresses, no log time,

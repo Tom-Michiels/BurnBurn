@@ -69,13 +69,13 @@ impl AppController {
                     None => self.libs_declared(id),
                 };
                 DeviceRow {
-                id: p.revision().id.clone(),
-                revision: p.revision().revision,
-                width_mm: p.frame().width_mm(),
-                height_mm: p.frame().height_mm(),
-                active: active.as_deref() == Some(p.revision().id.as_str()),
-                model: declared.model,
-                firmware: declared.firmware,
+                    id: p.revision().id.clone(),
+                    revision: p.revision().revision,
+                    width_mm: p.frame().width_mm(),
+                    height_mm: p.frame().height_mm(),
+                    active: active.as_deref() == Some(p.revision().id.as_str()),
+                    model: declared.model,
+                    firmware: declared.firmware,
                 }
             })
             .collect()
@@ -281,9 +281,8 @@ impl AppController {
             if scan.iter().any(|s| s.speed_mm_s == speed) {
                 continue;
             }
-            let best = of_machine()
-                .filter(|p| p.kind == ProofKind::ScanOffset && p.speed_mm_s == Some(speed))
-                .max_by(newest);
+            let best =
+                of_machine().filter(|p| p.kind == ProofKind::ScanOffset && p.speed_mm_s == Some(speed)).max_by(newest);
             if let Some(p) = best {
                 scan.push(ScanOffsetProof {
                     speed_mm_s: speed,

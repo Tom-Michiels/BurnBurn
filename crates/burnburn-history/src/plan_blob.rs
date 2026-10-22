@@ -5,8 +5,9 @@
 //! in for another plan.
 
 use burnburn_job::{
-    AppliedCalibration, AppliedKind, ProofRef, JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings, OriginCorner, PlanEvent, PlanMode,
-    PlanSource, PowerRatio, ProfileRevision, ScanAxis, ScanLine, SettingsIndex, SourceRef,
+    AppliedCalibration, AppliedKind, JobPlan, JobPlanBuilder, MachineFrame, MachinePoint, OperationSettings,
+    OriginCorner, PlanEvent, PlanMode, PlanSource, PowerRatio, ProfileRevision, ProofRef, ScanAxis, ScanLine,
+    SettingsIndex, SourceRef,
 };
 use burnburn_types::{ContentHash, GeometryId, OperationId, RevisionId, StableId};
 use serde::{Deserialize, Serialize};

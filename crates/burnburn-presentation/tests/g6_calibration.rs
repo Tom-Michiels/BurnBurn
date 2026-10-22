@@ -138,7 +138,11 @@ fn the_machines_proofs_do_not_leak_to_another_machine() {
     );
     h.send(UiIntent::ChooseMachineProfile { id: "research-1500x900".into() });
     h.run_tasks();
-    assert_eq!(h.controller().machine_profile().unwrap().calibration().kerf().len(), 1, "and it is back with its machine");
+    assert_eq!(
+        h.controller().machine_profile().unwrap().calibration().kerf().len(),
+        1,
+        "and it is back with its machine"
+    );
 }
 
 #[test]

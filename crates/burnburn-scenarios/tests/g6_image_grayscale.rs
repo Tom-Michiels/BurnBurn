@@ -93,8 +93,7 @@ fn grayscale_power_follows_the_gray_of_every_dot_like_the_python_reference() {
     let mut failures = Vec::new();
     for (variant, scale, expected) in &cases {
         let (cols, rows) = (12 * scale, 6 * scale);
-        let settings =
-            ImageSettings::new(source.content_hash(), mm(0.1), mm(0.1), ImageRender::Grayscale).unwrap();
+        let settings = ImageSettings::new(source.content_hash(), mm(0.1), mm(0.1), ImageRender::Grayscale).unwrap();
         let settings = settings.with_negative(variant == "grayscale-negative");
         let s = scene(settings, cols as f64 / 10.0, rows as f64 / 10.0);
         let got = powers(&plan(&s, &source), cols, rows);
@@ -103,7 +102,12 @@ fn grayscale_power_follows_the_gray_of_every_dot_like_the_python_reference() {
             failures.push(format!("{variant} x{scale}:\n  got      {}\n  expected {}", show(&got), show(expected)));
         }
     }
-    assert!(failures.is_empty(), "{} of 4 differ from the independent reference:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} of 4 differ from the independent reference:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]

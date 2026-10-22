@@ -274,7 +274,13 @@ impl AppController {
     fn libraries_loaded(&mut self, outcome: TaskOutcome) -> AppUpdate {
         let mut effects = Vec::new();
         match outcome.result {
-            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded { profiles, calibration, materials, art, thumbnails })) => {
+            Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded {
+                profiles,
+                calibration,
+                materials,
+                art,
+                thumbnails,
+            })) => {
                 match calibration {
                     Loaded::Ready(library) => {
                         if self.proofs_loaded(library) {

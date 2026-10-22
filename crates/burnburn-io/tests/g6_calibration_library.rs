@@ -63,7 +63,11 @@ fn every_kind_of_proof_survives_a_save_and_load() {
     let proofs = vec![kerf(1, "graveur", "multiplex-3", 0.18), scan(2, 100.0, 0.1), scan(3, 300.0, 0.3), pointer(4)];
     let library = CalibrationLibrary { proofs, next_id: 9 };
     save_calibration_library(&fs, path, &library).unwrap();
-    assert_eq!(load_calibration_library(&fs, path).unwrap(), library, "also the next id: a removed proof's id stays spent");
+    assert_eq!(
+        load_calibration_library(&fs, path).unwrap(),
+        library,
+        "also the next id: a removed proof's id stays spent"
+    );
 }
 
 fn lib(proofs: Vec<ProofRecord>) -> CalibrationLibrary {
@@ -80,7 +84,10 @@ fn the_file_uses_its_documented_names() {
     let library = decode_calibration_library(bytes).unwrap();
     assert_eq!(library.proofs.len(), 1);
     assert_eq!(library.proofs[0].kind, ProofKindRecord::ScanOffset);
-    assert_eq!((library.proofs[0].speed_mm_s, library.proofs[0].value_mm, library.proofs[0].id), (Some(250.0), 0.27, 9));
+    assert_eq!(
+        (library.proofs[0].speed_mm_s, library.proofs[0].value_mm, library.proofs[0].id),
+        (Some(250.0), 0.27, 9)
+    );
     assert_eq!(library.next_id, 10, "a file without a next id continues after the highest id it holds");
 }
 
@@ -104,9 +111,10 @@ fn a_newer_schema_a_foreign_file_and_damage_are_refused_not_read_as_empty() {
 
 #[test]
 fn proofs_that_say_nothing_usable_are_refused() {
-    let bad = |p: ProofRecord| encode_calibration_library(&lib(vec![p])).and_then(|b| {
-        decode_calibration_library(&b).map_err(|e| burnburn_io::SaveError::Invalid(e.to_string()))
-    });
+    let bad = |p: ProofRecord| {
+        encode_calibration_library(&lib(vec![p]))
+            .and_then(|b| decode_calibration_library(&b).map_err(|e| burnburn_io::SaveError::Invalid(e.to_string())))
+    };
     assert!(bad(kerf(1, "g", "m", -0.1)).is_err(), "negative kerf");
     assert!(bad(kerf(1, "g", "m", f64::NAN)).is_err(), "not a number");
     assert!(bad(kerf(1, "g", "  ", 0.1)).is_err(), "a kerf belongs to a material");
@@ -115,7 +123,10 @@ fn proofs_that_say_nothing_usable_are_refused() {
     assert!(bad(ProofRecord { value_y_mm: None, ..pointer(1) }).is_err(), "a pointer offset has x and y");
     assert!(bad(ProofRecord { date: "1-10-2026".into(), ..kerf(1, "g", "m", 0.1) }).is_err(), "dates are YYYY-MM-DD");
     assert!(bad(ProofRecord { method: " ".into(), ..kerf(1, "g", "m", 0.1) }).is_err(), "the method is on record");
-    assert!(bad(ProofRecord { machine: String::new(), ..kerf(1, "g", "m", 0.1) }).is_err(), "a proof belongs to a machine");
+    assert!(
+        bad(ProofRecord { machine: String::new(), ..kerf(1, "g", "m", 0.1) }).is_err(),
+        "a proof belongs to a machine"
+    );
 }
 
 #[test]

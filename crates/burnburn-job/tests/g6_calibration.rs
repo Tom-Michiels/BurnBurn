@@ -54,18 +54,17 @@ fn a_measurement_is_a_new_profile_revision_and_the_same_measurement_the_same_rev
 
 #[test]
 fn the_order_the_measurements_were_given_in_does_not_matter() {
-    let one = Calibration::new(
-        vec![kerf("b", 0.2, 2), kerf("a", 0.1, 1)],
-        vec![scan(300.0, 0.3, 4), scan(100.0, 0.1, 3)],
-    )
-    .unwrap();
-    let two = Calibration::new(
-        vec![kerf("a", 0.1, 1), kerf("b", 0.2, 2)],
-        vec![scan(100.0, 0.1, 3), scan(300.0, 0.3, 4)],
-    )
-    .unwrap();
+    let one =
+        Calibration::new(vec![kerf("b", 0.2, 2), kerf("a", 0.1, 1)], vec![scan(300.0, 0.3, 4), scan(100.0, 0.1, 3)])
+            .unwrap();
+    let two =
+        Calibration::new(vec![kerf("a", 0.1, 1), kerf("b", 0.2, 2)], vec![scan(100.0, 0.1, 3), scan(300.0, 0.3, 4)])
+            .unwrap();
     assert_eq!(one, two);
-    assert_eq!(profile().with_calibration(one).unwrap().revision(), profile().with_calibration(two).unwrap().revision());
+    assert_eq!(
+        profile().with_calibration(one).unwrap().revision(),
+        profile().with_calibration(two).unwrap().revision()
+    );
 }
 
 #[test]

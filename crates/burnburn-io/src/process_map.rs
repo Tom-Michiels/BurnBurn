@@ -9,12 +9,12 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, CutPriority, PathLock, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
+    AdvancedOptions, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
     ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
-    Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId,
-    RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement, TabSpec,
-    ToneSettings, ToolLayer, ZOffset, ZStep,
+    Overcut, Passes, PathLock, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft,
+    RecipeId, RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement,
+    TabSpec, ToneSettings, ToolLayer, ZOffset, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 

@@ -49,7 +49,10 @@ fn grbl_entry(id: &str, g: GrblProfile) -> LibraryProfile {
 fn the_dialect_settings_of_a_grbl_machine_survive_the_library_file() {
     let fs = MemoryFileSystem::new();
     let path = Path::new("/lib/profiles.json");
-    let entries = [grbl_entry("graveur", unusual_grbl()), LibraryProfile { profile: base("ruida-bed"), grbl: None, model: None, firmware: None }];
+    let entries = [
+        grbl_entry("graveur", unusual_grbl()),
+        LibraryProfile { profile: base("ruida-bed"), grbl: None, model: None, firmware: None },
+    ];
     save_profile_library_entries(&fs, path, &entries).unwrap();
     let back = load_profile_library_entries(&fs, path).unwrap();
     let key = |v: &[LibraryProfile]| -> Vec<_> {
@@ -61,8 +64,11 @@ fn the_dialect_settings_of_a_grbl_machine_survive_the_library_file() {
 #[test]
 fn a_library_without_grbl_machines_is_written_exactly_as_before() {
     let plain = [base("a"), base("b")];
-    let entries: Vec<LibraryProfile> =
-        plain.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None }).collect();
+    let entries: Vec<LibraryProfile> = plain
+        .iter()
+        .cloned()
+        .map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None })
+        .collect();
     assert_eq!(encode_profile_library_entries(&entries).unwrap(), encode_profile_library(&plain).unwrap());
 }
 

@@ -3,8 +3,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use burnburn_document::process::{PathLock, ProcessLabel};
 use burnburn_document::UndoLabel;
+use burnburn_document::process::{PathLock, ProcessLabel};
 use burnburn_presentation::{CommandKey, HeadlessEditorHarness, MessageKey, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId};
 

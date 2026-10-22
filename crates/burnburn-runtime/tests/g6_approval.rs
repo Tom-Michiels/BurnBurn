@@ -170,6 +170,7 @@ fn an_unknown_rebuilt_job_is_still_refused() {
     let store = start(&fs);
     let stranger = PreparedJob { inputs: None, ..(*job(30.0)).clone() };
     let action = ActionId { kind: MachineAction::Upload, subject: ActionSubject::Job(stranger.plan), generation: 0 };
-    let record = UploadRecord { action, machine: MachineId::new("bench-ruida-1"), job: Arc::new(stranger), order: None };
+    let record =
+        UploadRecord { action, machine: MachineId::new("bench-ruida-1"), job: Arc::new(stranger), order: None };
     assert!(store.record_upload(&record).is_err());
 }

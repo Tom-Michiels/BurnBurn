@@ -1,6 +1,8 @@
 use burnburn_types::{CanonicalWriter, ContentHash, HashDomain};
 
-use crate::{Calibration, MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio, RotaryConfig, RotaryKind};
+use crate::{
+    Calibration, MachineCapabilities, MachineFrame, OriginCorner, PlanError, PowerRatio, RotaryConfig, RotaryKind,
+};
 
 /// Identity and revision of a machine profile. A plan compiled for one revision is stale for
 /// another (M01: a profile change invalidates the old compile result). `revision` is a display

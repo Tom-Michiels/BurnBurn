@@ -11,8 +11,8 @@ use super::{HostApp, fill_recent_templates_menu};
 use crate::appkit::panels::files_ui::{open_file, save_file};
 use crate::l10n_files::{FilesText as T, files_text};
 use crate::panels_files::{
-    bundle_open_intent, machine_profile_open_intent, recent_template_intent, template_open_intent, template_save_intent,
-    template_scope_titles,
+    bundle_open_intent, machine_profile_open_intent, recent_template_intent, template_open_intent,
+    template_save_intent, template_scope_titles,
 };
 
 /// File extension of a template (the same as `burnburn_io::template::TEMPLATE_EXTENSION`).

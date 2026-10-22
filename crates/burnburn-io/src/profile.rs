@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use burnburn_job::{
-    Calibration, Feature, KerfProof, MachineCapabilities, ProofRef, ScanOffsetProof, MachineFrame, MachineProfile, OriginCorner, PowerRatio, RotaryConfig, RotaryKind,
-    Support,
+    Calibration, Feature, KerfProof, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio,
+    ProofRef, RotaryConfig, RotaryKind, ScanOffsetProof, Support,
 };
 use burnburn_types::ContentHash;
 use serde::{Deserialize, Serialize};

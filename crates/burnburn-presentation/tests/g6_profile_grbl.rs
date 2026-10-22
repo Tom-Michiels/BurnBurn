@@ -109,7 +109,10 @@ fn choosing_a_ruida_profile_after_a_grbl_one_leaves_no_dialect_behind() {
     h.run_tasks();
     assert_eq!(h.controller().grbl_profile(), None);
     let kept = stored(&h);
-    assert_eq!(kept.iter().find(|e| e.profile.revision().id == "graveur").and_then(|e| e.grbl.clone()), Some(grbl_settings()));
+    assert_eq!(
+        kept.iter().find(|e| e.profile.revision().id == "graveur").and_then(|e| e.grbl.clone()),
+        Some(grbl_settings())
+    );
 }
 
 #[test]
@@ -124,7 +127,10 @@ fn a_library_written_before_the_dialects_existed_chooses_as_ruida() {
     .unwrap();
     let mut h = HeadlessEditorHarness::with_fs(fs);
     h.controller().set_library_dir(Some(PathBuf::from("/lib")));
-    h.send(UiIntent::SetGrblMachineProfile { profile: Box::new(grbl_machine("graveur")), grbl: Box::new(grbl_settings()) });
+    h.send(UiIntent::SetGrblMachineProfile {
+        profile: Box::new(grbl_machine("graveur")),
+        grbl: Box::new(grbl_settings()),
+    });
     h.run_tasks();
     h.send(UiIntent::ChooseMachineProfile { id: "research-1500x900".into() });
     h.run_tasks();

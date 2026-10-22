@@ -236,12 +236,7 @@ pub fn preflight_with(
                 // A whole number of dots per pixel keeps every pixel intact; anything else
                 // duplicates some pixels more than others, or skips some.
                 if dots.0 % window.0.max(1) != 0 || dots.1 % window.1.max(1) != 0 {
-                    add(Finding::PassThroughResampled {
-                        operation: op.id(),
-                        geometry,
-                        source_px: window,
-                        dots,
-                    });
+                    add(Finding::PassThroughResampled { operation: op.id(), geometry, source_px: window, dots });
                 }
             }
         }

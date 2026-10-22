@@ -52,7 +52,10 @@ fn a_grbl_file_becomes_the_active_grbl_machine_with_its_declared_identity() {
     let c = h.controller();
     assert_eq!(c.machine_profile().unwrap().revision().id, "grbl-diode-400x300");
     let grbl = c.grbl_profile().expect("driven as GRBL");
-    assert_eq!((grbl.max_spindle, grbl.power_mode, grbl.work_coordinate), (255, PowerMode::Constant, Some(WorkCoordinate::G55)));
+    assert_eq!(
+        (grbl.max_spindle, grbl.power_mode, grbl.work_coordinate),
+        (255, PowerMode::Constant, Some(WorkCoordinate::G55))
+    );
     assert_eq!(c.declared_identity(), (Some("diode-5w".into()), Some("1.1h".into())));
 }
 
@@ -77,10 +80,9 @@ fn a_damaged_or_missing_file_changes_nothing_and_says_so() {
         let mut h = rig();
         let effects = open(&mut h, name);
         assert!(
-            effects.iter().any(|e| matches!(
-                e,
-                HostEffect::ShowError { message: MessageKey::MachineProfileFileUnusable, .. }
-            )),
+            effects
+                .iter()
+                .any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::MachineProfileFileUnusable, .. })),
             "{name}: {effects:?}"
         );
         assert_eq!(h.controller().machine_profile().unwrap().revision().id, "research-1500x900", "{name}");

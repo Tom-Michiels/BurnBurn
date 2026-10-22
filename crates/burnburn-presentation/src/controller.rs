@@ -58,9 +58,9 @@ mod machine_hub;
 mod machine_rest;
 mod nest;
 mod notes;
-mod path_lock;
 mod offset_preview;
 mod order_dialog;
+mod path_lock;
 mod preflight_dialog;
 mod prefs;
 mod preview;
@@ -636,7 +636,12 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida, grbl: None, declared: Declared::default() });
+                self.replace_active_machine(Machine {
+                    profile: Arc::from(profile),
+                    ruida,
+                    grbl: None,
+                    declared: Declared::default(),
+                });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::SetGrblMachineProfile { profile, grbl } => {

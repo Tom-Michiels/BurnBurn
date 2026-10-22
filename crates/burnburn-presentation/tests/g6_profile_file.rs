@@ -49,7 +49,10 @@ fn a_grbl_file_gives_every_dialect_field_and_the_grbl_capability_matrix() {
             decimals: 2,
         }
     );
-    assert!(f.profile.capabilities().is_supported(burnburn_job::Feature::ScanAngle), "the GRBL matrix is the profile's");
+    assert!(
+        f.profile.capabilities().is_supported(burnburn_job::Feature::ScanAngle),
+        "the GRBL matrix is the profile's"
+    );
     let id = f.identity.expect("identity section");
     assert_eq!((id.model, id.firmware.as_deref()), (None, Some("1.1h")), "a missing model stays missing");
 }

@@ -89,7 +89,9 @@ impl AppController {
                     crate::profile_file::Backend::Grbl(g) => Some(g),
                     crate::profile_file::Backend::Ruida => None,
                 };
-                let declared = identity.map_or_else(Declared::default, |i| Declared::of(&i.model.unwrap_or_default(), &i.firmware.unwrap_or_default()));
+                let declared = identity.map_or_else(Declared::default, |i| {
+                    Declared::of(&i.model.unwrap_or_default(), &i.firmware.unwrap_or_default())
+                });
                 self.replace_active_machine(Machine { profile: Arc::new(profile), ruida, grbl, declared });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }

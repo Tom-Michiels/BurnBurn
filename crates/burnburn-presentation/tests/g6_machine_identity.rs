@@ -74,7 +74,11 @@ fn declaring_only_the_identity_is_no_new_profile_revision_and_leaves_plans_alone
     let (mut h, doc) = window();
     let before = h.controller().machine_profile().unwrap().revision().clone();
     declare(&mut h, doc, "RDC6445G", "");
-    assert_eq!(h.controller().machine_profile().unwrap().revision(), &before, "support and compile do not depend on it");
+    assert_eq!(
+        h.controller().machine_profile().unwrap().revision(),
+        &before,
+        "support and compile do not depend on it"
+    );
 }
 
 #[test]
@@ -127,8 +131,15 @@ fn the_hub_lists_the_declared_identity_of_every_known_machine() {
     h.run_tasks();
     let devices = h.controller().machine_hub_view().devices;
     let row = |id: &str| devices.iter().find(|d| d.id == id).unwrap().clone();
-    assert_eq!((row("research-1500x900").model, row("research-1500x900").firmware), (Some("RDC6445G".into()), Some("v8.02".into())));
-    assert_eq!((row("tweede-machine").model, row("tweede-machine").firmware), (None, None), "not declared is shown as such");
+    assert_eq!(
+        (row("research-1500x900").model, row("research-1500x900").firmware),
+        (Some("RDC6445G".into()), Some("v8.02".into()))
+    );
+    assert_eq!(
+        (row("tweede-machine").model, row("tweede-machine").firmware),
+        (None, None),
+        "not declared is shown as such"
+    );
 }
 
 // ---- against the machine service ---------------------------------------------------------------------------

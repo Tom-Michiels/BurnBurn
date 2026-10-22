@@ -11,8 +11,8 @@ use burnburn_cam::{CompileError, compile};
 use burnburn_document::process::{Kerf, OperationMode, ProcessCommand, RecipeDraft};
 use burnburn_document::{CommandPayload, DocumentSession};
 use burnburn_job::{
-    AppliedCalibration, AppliedKind, Calibration, Feature, JobPlan, KerfProof, MachineProfile, OriginCorner,
-    PlanEvent, ProofRef, ScanOffsetProof, Support,
+    AppliedCalibration, AppliedKind, Calibration, Feature, JobPlan, KerfProof, MachineProfile, OriginCorner, PlanEvent,
+    ProofRef, ScanOffsetProof, Support,
 };
 use burnburn_types::{CancellationToken, OperationId};
 use common::*;
@@ -26,11 +26,9 @@ fn with(profile: MachineProfile, calibration: Calibration) -> MachineProfile {
 }
 
 fn kerf_profile(material: &str, kerf_mm: f64) -> MachineProfile {
-    let calibration = Calibration::new(
-        vec![KerfProof { material: material.into(), kerf_mm, proof: proof(7, "2026-10-01") }],
-        vec![],
-    )
-    .unwrap();
+    let calibration =
+        Calibration::new(vec![KerfProof { material: material.into(), kerf_mm, proof: proof(7, "2026-10-01") }], vec![])
+            .unwrap();
     with(supporting(&[Feature::KerfCompensation]), calibration)
 }
 

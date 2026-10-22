@@ -79,7 +79,8 @@ fn grbl_to_dto(g: &GrblProfile) -> GrblDto {
 }
 
 fn grbl_from_dto(i: usize, d: &GrblDto) -> Result<GrblProfile, LoadError> {
-    let bad = |field: &str, reason: String| LoadError::InvalidValue { path: format!("settings[{i}].grbl.{field}"), reason };
+    let bad =
+        |field: &str, reason: String| LoadError::InvalidValue { path: format!("settings[{i}].grbl.{field}"), reason };
     let power_mode = match d.power_mode.as_str() {
         "constant" => PowerMode::Constant,
         "dynamic" => PowerMode::Dynamic,
@@ -195,8 +196,11 @@ pub fn decode_profile_library_entries(bytes: &[u8]) -> Result<Vec<LibraryProfile
 
 /// Profiles → bytes (compact JSON), without dialect settings (schema 1).
 pub fn encode_profile_library(profiles: &[MachineProfile]) -> Result<Vec<u8>, SaveError> {
-    let entries: Vec<LibraryProfile> =
-        profiles.iter().cloned().map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None }).collect();
+    let entries: Vec<LibraryProfile> = profiles
+        .iter()
+        .cloned()
+        .map(|profile| LibraryProfile { profile, grbl: None, model: None, firmware: None })
+        .collect();
     encode_profile_library_entries(&entries)
 }
 

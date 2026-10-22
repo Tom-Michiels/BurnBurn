@@ -595,10 +595,11 @@ impl AppController {
         let unchanged =
             base.as_ref().is_some_and(|b| b.revision().content == profile.revision().content) && base_grbl == grbl;
         self.device.draft = None;
-        let ruida = self.machine.as_ref().map_or(
-            RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
-            |m| m.ruida,
-        );
+        let ruida =
+            self.machine.as_ref().map_or(
+                RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
+                |m| m.ruida,
+            );
         match (unchanged, self.machine.as_mut()) {
             // Only the declaration changed: it is not part of the profile, so no new revision and
             // no stale plans.

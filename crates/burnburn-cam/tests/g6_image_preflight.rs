@@ -9,9 +9,7 @@ mod common;
 
 use burnburn_cam::{Finding, NoRasters, Severity, compile_with, preflight, preflight_with};
 use burnburn_document::DocumentSession;
-use burnburn_document::process::{
-    DitherMode, ImageCrop, ImageRender, ImageSettings, OperationDraft, OperationMode,
-};
+use burnburn_document::process::{DitherMode, ImageCrop, ImageRender, ImageSettings, OperationDraft, OperationMode};
 use burnburn_image::SourceImage;
 use burnburn_types::{CancellationToken, OperationId};
 use common::*;
@@ -20,7 +18,13 @@ fn source(w: u32, h: u32) -> SourceImage {
     SourceImage::from_gray8(w, h, (0..w * h).map(|i| if i % 2 == 0 { 0 } else { 255 }).collect()).unwrap()
 }
 
-fn scene(src: &SourceImage, mode: DitherMode, dots_w: f64, dots_h: f64, crop: Option<ImageCrop>) -> (DocumentSession, OperationId) {
+fn scene(
+    src: &SourceImage,
+    mode: DitherMode,
+    dots_w: f64,
+    dots_h: f64,
+    crop: Option<ImageCrop>,
+) -> (DocumentSession, OperationId) {
     let mut s = session();
     // 0.1 mm dots: a frame of dots_w x dots_h dots.
     let frame = rectangle(&mut s, 10.0, 10.0, dots_w / 10.0, dots_h / 10.0);
