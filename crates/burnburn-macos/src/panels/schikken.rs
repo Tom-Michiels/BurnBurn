@@ -42,6 +42,7 @@ pub enum SchikkenControl {
     NestRotations,
     NestMirror,
     NestSheets,
+    NestSheet,
     NestStart,
     NestStop,
     NestApply,
@@ -167,6 +168,9 @@ pub enum SchikkenText {
     NestRotations,
     NestMirror,
     NestSheets,
+    NestSheetCaption,
+    NestSheetBedOption,
+    NestSheetContour,
     NestSheetUse,
     NestMirroredRow,
     NestSetsRow,
@@ -270,6 +274,9 @@ impl SchikkenText {
             T::NestRotations,
             T::NestMirror,
             T::NestSheets,
+            T::NestSheetCaption,
+            T::NestSheetBedOption,
+            T::NestSheetContour,
             T::NestSheetUse,
             T::NestMirroredRow,
             T::NestSetsRow,
@@ -379,6 +386,11 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestRotations => ("Draaiingen", "Rotations"),
         T::NestMirror => ("Spiegelen toestaan", "Allow mirroring"),
         T::NestSheets => ("Aantal platen", "Number of sheets"),
+        T::NestSheetCaption => ("Plaat", "Sheet"),
+        T::NestSheetBedOption => ("Machinebed", "Machine bed"),
+        T::NestSheetContour => {
+            ("Plaat: contour van een restplaat ({w} × {h} mm)", "Sheet: contour of a remnant ({w} × {h} mm)")
+        }
         T::NestSheetUse => {
             ("Plaat {n}: {used} cm² gebruikt, {free} cm² rest", "Sheet {n}: {used} cm² used, {free} cm² left")
         }
@@ -671,13 +683,33 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
     let running = n.run == NestRun::Running;
     let mut lines = Vec::new();
     if let Some(sheet) = n.sheet {
-        let which = if sheet.is_bed { SchikkenText::NestSheetBed } else { SchikkenText::NestSheetBounds };
-        lines.push(SchikkenLine::Text(format!(
-            "{} ({} × {} mm)",
-            t(which),
-            mm(sheet.width_mm, locale),
-            mm(sheet.height_mm, locale)
-        )));
+        if sheet.contour.is_some() {
+            lines.push(SchikkenLine::Text(fill(
+                SchikkenText::NestSheetContour,
+                locale,
+                &[("w", mm(sheet.width_mm, locale)), ("h", mm(sheet.height_mm, locale))],
+            )));
+        } else {
+            let which = if sheet.is_bed { SchikkenText::NestSheetBed } else { SchikkenText::NestSheetBounds };
+            lines.push(SchikkenLine::Text(format!(
+                "{} ({} × {} mm)",
+                t(which),
+                mm(sheet.width_mm, locale),
+                mm(sheet.height_mm, locale)
+            )));
+        }
+    }
+    if !n.sheet_choices.is_empty() {
+        let mut options = vec![t(SchikkenText::NestSheetBedOption)];
+        options.extend(n.sheet_choices.iter().map(|c| c.name.clone()));
+        let selected =
+            n.input.sheet_object.and_then(|o| n.sheet_choices.iter().position(|c| c.object == o)).map_or(0, |i| i + 1);
+        lines.push(SchikkenLine::Choice {
+            control: SchikkenControl::NestSheet,
+            caption: t(SchikkenText::NestSheetCaption),
+            options,
+            selected,
+        });
     }
     let invalid = |f| {
         matches!(
@@ -1135,6 +1167,13 @@ pub fn schikken_intent(
             i.mirror = if value(values, control) == "1" { NestMirror::Allowed } else { NestMirror::Forbidden };
         }),
         SchikkenControl::NestSheets => nest(&|i| i.sheets = value(values, control).to_owned()),
+        SchikkenControl::NestSheet => {
+            let object = {
+                let choices = &s.nest.as_ref()?.sheet_choices;
+                index(values, control).checked_sub(1).and_then(|i| choices.get(i)).map(|c| c.object)
+            };
+            nest(&|i| i.sheet_object = object)
+        }
         SchikkenControl::NestStart => send(SchikkenIntent::StartNest { document }),
         SchikkenControl::NestStop => send(SchikkenIntent::CancelNest { document }),
         SchikkenControl::NestApply => send(SchikkenIntent::ApplyNest { document }),

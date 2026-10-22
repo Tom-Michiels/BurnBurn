@@ -199,6 +199,9 @@ pub struct NestInput {
     pub rotations: NestRotations,
     /// Whether a part may be placed as its mirror image (C12). Forbidden unless chosen.
     pub mirror: NestMirror,
+    /// A closed object of the drawing that is the sheet (a remnant): the parts go inside its contour
+    /// and the other objects that stay are its exclusion zones. `None`: the machine bed (W07).
+    pub sheet_object: Option<u64>,
     /// How many identical sheets the parts may go on (whole number, at least 1).
     pub sheets: String,
 }
@@ -220,6 +223,7 @@ impl Default for NestInput {
             step: "1".to_owned(),
             rotations: NestRotations::default(),
             mirror: NestMirror::default(),
+            sheet_object: None,
             sheets: "1".to_owned(),
         }
     }
@@ -245,6 +249,10 @@ pub enum NestFailure {
     Geometry,
     /// The result no longer fits the document: it changed while or after nesting.
     Stale,
+    /// The chosen sheet is one of the objects being nested.
+    SheetIsPart,
+    /// The chosen sheet is not in the drawing any more, or is not a closed contour.
+    SheetGone,
     Refused,
 }
 
@@ -269,6 +277,15 @@ pub struct NestSheetView {
     pub height_mm: f64,
     /// The machine's bed (otherwise the bounds of what is being nested).
     pub is_bed: bool,
+    /// The object whose contour is the sheet (a remnant), when one is chosen (W07).
+    pub contour: Option<u64>,
+}
+
+/// A closed object that may be the sheet of a nest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestSheetChoice {
+    pub object: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -349,6 +366,8 @@ pub struct NestPanelViewModel {
     /// Objects that would be nested as parts, and the sheet they would go on.
     pub parts: usize,
     pub sheet: Option<NestSheetView>,
+    /// The closed objects that may be the sheet instead of the bed (W07).
+    pub sheet_choices: Vec<NestSheetChoice>,
     pub report: Option<NestReportViewModel>,
     /// Apply is available: a fresh result with at least one placement.
     pub can_apply: bool,

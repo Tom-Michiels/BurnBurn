@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use burnburn_document::{CommandPayload, DocumentCommand, GeometryCommand, PlaceCommand};
 use burnburn_editor::{Overlay, SelectionChange};
-use burnburn_types::{CancellationSource, DocumentId, RequestId, RevisionId, TaskId};
+use burnburn_types::{CancellationSource, DocumentId, GeometryId, RequestId, RevisionId, StableId, TaskId};
 
 use crate::field::{parse_length, parse_position};
 use crate::intent::CommandKey;
@@ -75,6 +75,7 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         step_mm: parse_length(&input.step).map(|l| l.mm()).map_err(|_| NestField::Step)?,
         rotations: input.rotations,
         mirror: input.mirror,
+        sheet_object: input.sheet_object.map(GeometryId::from_raw),
         sheets: input
             .sheets
             .trim()
@@ -305,7 +306,11 @@ pub(super) fn finished(
 pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelViewModel> {
     let panel = s.nest.panel.as_ref()?;
     let snapshot = s.doc.snapshot();
-    let classified = classify(&snapshot, panel.scope, s.selection.ids());
+    let mut classified = classify(&snapshot, panel.scope, s.selection.ids());
+    // A chosen sheet is not one of the parts (when it cannot be, Start says why).
+    if let Some(sheet) = panel.settings.sheet_object {
+        classified.movable.retain(|body| !body.contains(&sheet) || panel.scope == NestScope::Selected);
+    }
     let bed = machine.map(|m| (m.profile.frame().width_mm(), m.profile.frame().height_mm()));
     let run = run_state(s);
     let report = s.nest.done.as_ref().map(|d| NestReportViewModel {
@@ -325,6 +330,7 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         run,
         parts: classified.movable.len(),
         sheet: sheet_of(&snapshot, &classified.movable, &panel.settings, bed),
+        sheet_choices: crate::nest_task::sheet_choices(&snapshot),
         report,
         can_apply: run == NestRun::Done && s.nest.done.as_ref().is_some_and(|d| !d.output.placements.is_empty()),
     })

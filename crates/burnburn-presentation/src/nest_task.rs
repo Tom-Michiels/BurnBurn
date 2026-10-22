@@ -2,18 +2,20 @@
 //! go on, and the result mapped back to document objects. Pure data in, pure data out; the
 //! packing itself is `burnburn_cam::nest`, which checks the cancellation token.
 
+use std::sync::Arc;
+
 use burnburn_cam::nest::{
     MirrorPolicy, NestError, NestOptions, NestParams, NestPart, PartKey, RotationSet, Stock, StockId, UnplacedReason,
     UtilisationBasis, complete_sets, nest_with, order_status,
 };
 use burnburn_document::{DocumentSnapshot, GeometrySource};
 use burnburn_editor::expand_to_groups;
-use burnburn_geometry::{Affine, Bounds, Path, Point, ProductionTolerance, Rect};
-use burnburn_types::{CancellationToken, GeometryId, GroupId, Length};
+use burnburn_geometry::{Affine, Bounds, Path, Point, ProductionTolerance, Rect, Vector};
+use burnburn_types::{CancellationToken, GeometryId, GroupId, Length, StableId};
 
 use crate::schikken::{
-    NestFailure, NestMirror, NestPartStatusRow, NestRotations, NestScope, NestSheetUseRow, NestSheetView,
-    NestSkipReason, NestSkippedRow, NestUnplacedReason, NestUnplacedRow,
+    NestFailure, NestMirror, NestPartStatusRow, NestRotations, NestScope, NestSheetChoice, NestSheetUseRow,
+    NestSheetView, NestSkipReason, NestSkippedRow, NestUnplacedReason, NestUnplacedRow,
 };
 use crate::task::TaskError;
 
@@ -33,6 +35,8 @@ pub struct NestSettings {
     pub rotations: NestRotations,
     pub mirror: NestMirror,
     pub sheets: u32,
+    /// The closed object whose contour is the sheet (a remnant); `None`: the bed or the parts' bounds.
+    pub sheet_object: Option<GeometryId>,
 }
 
 /// Everything the worker needs; owned, so the task outlives the window state.
@@ -81,6 +85,10 @@ pub struct NestOutput {
 pub enum BuildError {
     NothingToNest,
     Geometry,
+    /// The chosen sheet is one of the objects being nested.
+    SheetIsPart,
+    /// The chosen sheet is gone, or is not a closed contour.
+    SheetGone,
 }
 
 impl From<BuildError> for NestFailure {
@@ -88,6 +96,8 @@ impl From<BuildError> for NestFailure {
         match e {
             BuildError::NothingToNest => NestFailure::NothingToNest,
             BuildError::Geometry => NestFailure::Geometry,
+            BuildError::SheetIsPart => NestFailure::SheetIsPart,
+            BuildError::SheetGone => NestFailure::SheetGone,
         }
     }
 }
@@ -158,6 +168,36 @@ pub fn classify(snapshot: &DocumentSnapshot, scope: NestScope, selection: &[Geom
     Classified { movable, skipped }
 }
 
+/// The contour of the chosen sheet object, taken out of the parts: in a nest of the selection it is
+/// refused when it is selected itself, in a quick nest it is simply not a part.
+fn take_sheet(
+    snapshot: &DocumentSnapshot,
+    classified: &mut Classified,
+    scope: NestScope,
+    sheet: GeometryId,
+) -> Result<Arc<Path>, BuildError> {
+    let object = snapshot.object(sheet).filter(|o| is_closed(o.path())).ok_or(BuildError::SheetGone)?;
+    let is_sheet = |body: &Vec<GeometryId>| body.contains(&sheet);
+    match scope {
+        NestScope::Selected if classified.movable.iter().any(is_sheet) => return Err(BuildError::SheetIsPart),
+        _ => classified.movable.retain(|body| !is_sheet(body)),
+    }
+    classified.skipped.retain(|row| row.object != sheet);
+    Ok(Arc::clone(object.path()))
+}
+
+/// The closed objects of the drawing that may be the sheet of a nest.
+pub fn sheet_choices(snapshot: &DocumentSnapshot) -> Vec<NestSheetChoice> {
+    snapshot
+        .draw_order()
+        .into_iter()
+        .filter(|id| snapshot.is_selectable(*id))
+        .filter_map(|id| snapshot.object(id))
+        .filter(|o| is_closed(o.path()))
+        .map(|o| NestSheetChoice { object: o.id().raw(), name: o.name().to_owned() })
+        .collect()
+}
+
 impl NestSettings {
     /// How far the sheet without a bed reaches beyond the parts' bounds: the margin the nest keeps
     /// clear, the padding and one raster step, so that what is there now fits again.
@@ -185,15 +225,26 @@ fn sheet_bounds(
     }
 }
 
-/// The sheet a nest of `movable` would go on, for the panel.
+/// The sheet a nest of `movable` would go on, for the panel: the contour of the chosen object, the
+/// bed, or the bounds of the parts.
 pub fn sheet_of(
     snapshot: &DocumentSnapshot,
     movable: &[Vec<GeometryId>],
     settings: &NestSettings,
     bed: Option<(f64, f64)>,
 ) -> Option<NestSheetView> {
+    if let Some(id) = settings.sheet_object
+        && let Some(b) = snapshot.object(id).filter(|o| is_closed(o.path())).and_then(|o| o.bounds())
+    {
+        return Some(NestSheetView {
+            width_mm: b.width(),
+            height_mm: b.height(),
+            is_bed: false,
+            contour: Some(id.raw()),
+        });
+    }
     let (b, is_bed) = sheet_bounds(snapshot, movable, settings, bed)?;
-    Some(NestSheetView { width_mm: b.width(), height_mm: b.height(), is_bed })
+    Some(NestSheetView { width_mm: b.width(), height_mm: b.height(), is_bed, contour: None })
 }
 
 /// Makes the job for `scope` over `selection`. `bed` is the machine's bed (width, height in mm)
@@ -205,7 +256,12 @@ pub fn build_job(
     settings: &NestSettings,
     bed: Option<(f64, f64)>,
 ) -> Result<NestJob, BuildError> {
-    let Classified { movable, skipped } = classify(snapshot, scope, selection);
+    let mut classified = classify(snapshot, scope, selection);
+    let sheet_outline = match settings.sheet_object {
+        Some(id) => Some(take_sheet(snapshot, &mut classified, scope, id)?),
+        None => None,
+    };
+    let Classified { movable, skipped } = classified;
     if movable.is_empty() {
         return Err(BuildError::NothingToNest);
     }
@@ -233,21 +289,35 @@ pub fn build_job(
     let keep_out: Vec<Path> = snapshot
         .draw_order()
         .into_iter()
-        .filter(|id| !moving.contains(id) && !snapshot.is_hidden(*id))
+        .filter(|id| !moving.contains(id) && Some(*id) != settings.sheet_object && !snapshot.is_hidden(*id))
         .filter_map(|id| snapshot.object(id))
         .filter(|o| is_closed(o.path()))
         .map(|o| o.path().as_ref().clone())
         .collect();
     let length = |mm: f64| Length::from_mm(mm).map_err(|_| BuildError::Geometry);
-    let (sheet, _) = sheet_bounds(snapshot, &movable, settings, bed).ok_or(BuildError::Geometry)?;
+    let (sheet, _) = match &sheet_outline {
+        Some(outline) => (outline.bounds().ok_or(BuildError::SheetGone)?, false),
+        None => sheet_bounds(snapshot, &movable, settings, bed).ok_or(BuildError::Geometry)?,
+    };
     // Further sheets lie beside the first, a fixed gap apart, in document coordinates: a placement on
     // sheet `k` is already where that sheet is.
     let stocks: Vec<Stock> = (0..settings.sheets)
         .map(|k| {
-            let origin = Point::new(sheet.min().x + f64::from(k) * (sheet.width() + SHEET_GAP_MM), sheet.min().y);
-            let rect =
-                Rect::new(origin, length(sheet.width())?, length(sheet.height())?).map_err(|_| BuildError::Geometry)?;
-            Ok(Stock { id: StockId(k), outline: Path::rectangle(rect), keep_out: keep_out.clone(), grain_deg: None })
+            let shift = f64::from(k) * (sheet.width() + SHEET_GAP_MM);
+            let outline = match &sheet_outline {
+                // A remnant keeps its own shape on every further sheet.
+                Some(contour) if k == 0 => contour.as_ref().clone(),
+                Some(contour) => {
+                    contour.transform(&Affine::translate(Vector::new(shift, 0.0)).map_err(|_| BuildError::Geometry)?)
+                }
+                None => {
+                    let origin = Point::new(sheet.min().x + shift, sheet.min().y);
+                    let rect = Rect::new(origin, length(sheet.width())?, length(sheet.height())?)
+                        .map_err(|_| BuildError::Geometry)?;
+                    Path::rectangle(rect)
+                }
+            };
+            Ok(Stock { id: StockId(k), outline, keep_out: keep_out.clone(), grain_deg: None })
         })
         .collect::<Result<_, BuildError>>()?;
     let params = NestParams {
