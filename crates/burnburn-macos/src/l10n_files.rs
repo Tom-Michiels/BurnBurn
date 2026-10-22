@@ -28,6 +28,10 @@ macro_rules! texts {
 texts! {
     // --- Import sheet: pages, units, layers and the LightBurn report.
     ImportPageLabel => ("Pagina:", "Page:"),
+    ImportLayersCheck => (
+        "Maak voor elke van deze lagen een bewerking aan",
+        "Create an operation for each of these layers"
+    ),
     ImportAllPages => ("Alle pagina's naast elkaar", "All pages side by side"),
     ImportPageItem => ("Pagina {0} — {1} × {2} mm", "Page {0} — {1} × {2} mm"),
     ImportReading => ("Pagina wordt gelezen…", "Reading the page…"),

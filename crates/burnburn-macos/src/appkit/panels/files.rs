@@ -26,6 +26,8 @@ pub(crate) struct FilesSection {
     target: Retained<FilesTarget>,
     /// The import sheet's page pop-up (PDF/AI), wired to this section's target.
     import_pages: Retained<NSPopUpButton>,
+    /// The import sheet's check for the proposed layers.
+    import_layers: Retained<objc2_app_kit::NSButton>,
 }
 
 pub(crate) fn files_section(
@@ -35,9 +37,11 @@ pub(crate) fn files_section(
     document: DocumentId,
     locale: Locale,
     import_pages: &Retained<NSPopUpButton>,
+    import_layers: &Retained<objc2_app_kit::NSButton>,
 ) -> FilesSection {
     let target = FilesTarget::new(mtm);
     let app_for_pages = app.clone();
+    let app_for_layers = app.clone();
     let material = material_section(mtm, &target, app.clone(), document, locale);
     let art = art_section(mtm, window.clone(), &target, app.clone(), document, locale);
     let bundle = bundle_sheet(mtm, &target, app.clone(), document, locale);
@@ -51,7 +55,25 @@ pub(crate) fn files_section(
             }
         });
     });
-    FilesSection { material, art, bundle, export, target, import_pages: import_pages.clone() }
+    let layers = import_layers.clone();
+    let link = std::rc::Rc::new(Link { app: app_for_layers, document });
+    target.wire(import_layers, move || {
+        link.run(|app, doc, vm| {
+            let on = layers.state() == objc2_app_kit::NSControlStateValueOn;
+            if let Some(intent) = crate::panels_files::import_layers_intent(doc, vm, on) {
+                app.dispatch(intent);
+            }
+        });
+    });
+    FilesSection {
+        material,
+        art,
+        bundle,
+        export,
+        target,
+        import_pages: import_pages.clone(),
+        import_layers: import_layers.clone(),
+    }
 }
 
 impl FilesSection {
@@ -62,6 +84,7 @@ impl FilesSection {
         self.bundle.clear_targets();
         self.export.clear_targets();
         unwire(&self.import_pages);
+        unwire(&self.import_layers);
         let _ = &self.target;
     }
 

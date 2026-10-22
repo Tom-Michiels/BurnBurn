@@ -83,6 +83,18 @@ pub fn import_pages_intent(document: DocumentId, vm: &AppViewModel, item: isize)
     Some(UiIntent::Files(FilesIntent::SetImportPages { document, pages }))
 }
 
+/// The words of the check that accepts the proposed layers of an import.
+pub fn import_layers_check_text(locale: Locale) -> &'static str {
+    t(T::ImportLayersCheck, locale)
+}
+
+/// The check accepted (`on`) or took back the proposed layers; `None` when the open import
+/// proposes none (or nothing is open).
+pub fn import_layers_intent(document: DocumentId, vm: &AppViewModel, on: bool) -> Option<UiIntent> {
+    let import = vm.document(document)?.import.as_ref()?;
+    (!import.layers.is_empty()).then_some(UiIntent::Files(FilesIntent::SetImportLayers { document, create: on }))
+}
+
 /// The line under the size that says where the millimetres come from, for the formats without a
 /// unit question (the DXF and SVG lines live in `panels::import`).
 pub fn import_unit_line(import: &ImportViewModel, locale: Locale) -> Option<String> {
