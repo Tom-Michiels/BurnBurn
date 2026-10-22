@@ -37,6 +37,7 @@ pub(crate) struct AppPanels {
     pub(crate) history: Option<HistoryWindow>,
     pub(crate) preview: Option<PreviewWindow>,
     pub(crate) rd: Option<RdWindow>,
+    pub(crate) hub: Option<crate::appkit::panels::hub::HubWindow>,
     pub(crate) shortcut_filter: String,
     /// A recorded binding another entry holds: Replace takes it over.
     pub(crate) pending_conflict: Option<(String, KeyBinding)>,
@@ -57,6 +58,7 @@ impl AppPanels {
             history: None,
             preview: None,
             rd: None,
+            hub: None,
             shortcut_filter: String::new(),
             pending_conflict: None,
             recording: false,

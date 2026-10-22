@@ -13,6 +13,8 @@ pub(crate) mod cut_settings;
 pub(crate) mod export;
 pub(crate) mod files;
 pub(crate) mod files_ui;
+#[allow(unsafe_code)]
+pub(crate) mod hub;
 pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;

@@ -22,8 +22,8 @@ impl AppController {
         let Some(port) = self.machine_port.as_ref() else { return MachineActivity::default() };
         let status = port.status();
         let executions: Vec<ExecutionState> = status.executions().map(|r| r.execution.state.clone()).collect();
-        let frame_running = status.current_is_frame
-            && status.current.as_ref().is_some_and(|r| !r.execution.state.is_terminal());
+        let frame_running =
+            status.current_is_frame && status.current.as_ref().is_some_and(|r| !r.execution.state.is_terminal());
         MachineActivity { executions, live_control: status.live.jog_held.is_some() || frame_running }
     }
 

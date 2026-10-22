@@ -93,14 +93,14 @@ pub use intent::{
     CameraIntent, CloseChoice, CommandKey, CutSettingsInput, DialogKind, FieldKey, ImportUnit, OperationField,
     OperationKind, ParamKey, RefPoint, SelectMode, SketchDimensionKind, UiIntent, ViewPointerEvent,
 };
-pub use machine_hub::{
-    DeviceRow, HistoryEntry, MachineHubViewModel, ProofField, ProofInput, ProofKind, ProofProblem, ProofRow,
-    ProofView, QueueCounts, QueueRow, QueueStage, QueueView, RecipeChange, RecipeField, RepeatRefusal, RepeatView,
-    UploadFailure, UploadStage, UploadStatusView,
-};
 pub use laser::{
     AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
+};
+pub use machine_hub::{
+    DeviceRow, HistoryEntry, MachineHubViewModel, ProofField, ProofInput, ProofKind, ProofProblem, ProofRow, ProofView,
+    QueueCounts, QueueRow, QueueStage, QueueView, RecipeChange, RecipeField, RepeatRefusal, RepeatView, UploadFailure,
+    UploadStage, UploadStatusView,
 };
 pub use production::{
     ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,

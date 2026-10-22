@@ -41,6 +41,7 @@ app_texts! {
     Preview => ("Voorbeeld", "Preview"),
     InspectRd => ("RD inspecteren…", "Inspect RD…"),
     UndoHistory => ("Geschiedenis", "History"),
+    MachineHub => ("Machine en productie…", "Machine and Production…"),
     Minimize => ("Minimaliseer", "Minimize"),
     ZoomWindow => ("Zoom", "Zoom"),
     BringAllToFront => ("Alles naar voren", "Bring All to Front"),

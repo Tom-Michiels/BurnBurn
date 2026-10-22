@@ -54,10 +54,7 @@ impl AppController {
             queue: status.as_ref().map_or_else(QueueView::default, |st| self.hub_queue(st)),
             history: status.as_ref().map_or_else(Vec::new, |st| self.hub_history(st)),
             repeat: self.hub.repeat.as_ref().map(|(execution, job)| self.repeat_view(*execution, job)),
-            calibration: ProofView {
-                rows: self.hub.proofs.iter().map(proof_row).collect(),
-                problem: self.hub.problem,
-            },
+            calibration: ProofView { rows: self.hub.proofs.iter().map(proof_row).collect(), problem: self.hub.problem },
         }
     }
 
@@ -164,13 +161,7 @@ impl AppController {
 
     fn repeat_view(&self, execution: ExecutionId, job: &Arc<crate::production::PreparedJob>) -> RepeatView {
         let refusal = self.repeat_refusal(job);
-        RepeatView {
-            execution,
-            job_name: job.name.clone(),
-            plan: job.plan,
-            changes: self.recipe_changes(job),
-            refusal,
-        }
+        RepeatView { execution, job_name: job.name.clone(), plan: job.plan, changes: self.recipe_changes(job), refusal }
     }
 
     fn repeat_refusal(&self, job: &crate::production::PreparedJob) -> Option<RepeatRefusal> {
@@ -282,9 +273,10 @@ impl AppController {
                     .filter(|v| v.is_finite() && *v > 0.0)
                     .ok_or(ProofProblem::Invalid(ProofField::Speed))?;
                 let offset = number(ProofField::Value, &input.value)?;
-                let duplicate = self.hub.proofs.iter().any(|p| {
-                    p.kind == ProofKind::ScanOffset && p.machine == machine_id && p.speed_mm_s == Some(speed)
-                });
+                let duplicate =
+                    self.hub.proofs.iter().any(|p| {
+                        p.kind == ProofKind::ScanOffset && p.machine == machine_id && p.speed_mm_s == Some(speed)
+                    });
                 if duplicate {
                     return Err(ProofProblem::DuplicateSpeed);
                 }
@@ -368,7 +360,9 @@ fn upload_status(status: &MachineStatus) -> Option<UploadStatusView> {
             FailReason::ControllerFault => UploadFailure::ControllerFault,
             FailReason::OperatorDidNotRun | FailReason::OperatorPartial => return None,
         }),
-        ExecutionState::Cancelled if !e.evidence.iter().any(|x| matches!(x.evidence, Evidence::StorageConfirmed { .. })) => {
+        ExecutionState::Cancelled
+            if !e.evidence.iter().any(|x| matches!(x.evidence, Evidence::StorageConfirmed { .. })) =>
+        {
             UploadStage::Stopped
         }
         _ => return None,

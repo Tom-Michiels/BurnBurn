@@ -56,10 +56,11 @@ impl AppController {
         let Some(profile) = self.known_profiles().into_iter().find(|p| p.revision().id == id) else {
             return error(None, MessageKey::UnknownMachineProfile);
         };
-        let ruida = self.machine.as_ref().map_or(
-            RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
-            |m| m.ruida,
-        );
+        let ruida =
+            self.machine.as_ref().map_or(
+                RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
+                |m| m.ruida,
+            );
         self.replace_active_machine(Machine { profile, ruida });
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }
