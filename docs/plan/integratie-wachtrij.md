@@ -78,8 +78,9 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   het paneel zegt eerlijk dat Start op geen enkele controller is bewezen.
 - **Prestaties/CI**: de 100k-wandklokbenchmarks blijven `#[ignore]`; sinds G8-trace bewaakt `cargo xtask verify` de 100k-route met
   deterministische tellingen, zonder klok (klik, select all, scene, compile-schaal: `scenarios/tests/perf_guard_100k.rs`, eigen stap
-  in `verify`). De compile-schaal is lineariteit van het plan plus de tellertests in `burnburn-cam`; de CPU-tijd van `compile` bij 100k
-  contouren is niet opnieuw gemeten (W4-prestaties noemt 90 s; G5-cam maakte de planning sub-kwadratisch). De GitHub-workflows
+  in `verify`). De compile-schaal is lineariteit van het plan plus de tellertests in `burnburn-cam`; `compile` bij 100k
+  contouren is in G9-cam-werk opnieuw gemeten (release, één kern): F100K-C 1 492,5 ms → 194,6 ms na het lineair maken van
+  `order_chunks::local_buckets` (200k lijnen 5 722 → 438 ms; `docs/dev-notes/G9-cam-werk.md`). De GitHub-workflows
   (`ci.yml`, `release.yml`) zijn nooit gedraaid (vraagt pushen). Fuzz: in G9-trace-infra is elk van de 16 doelen in `fuzz/` 60 s gedraaid
   (nightly en `cargo-fuzz` stonden op de machine); uitkomst en commando's in `docs/dev-notes/G9-trace-infra.md` en `fuzz/README.md`. Een run van een minuut
   per doel is een rooktest, geen dekking; langere runs en een vaste CI-taak (B-10) blijven open.
