@@ -26,6 +26,7 @@ mod notes;
 mod offset;
 mod production;
 mod schikken;
+mod structure_panel;
 mod task;
 mod text_panel;
 mod thumbnail;
@@ -103,6 +104,10 @@ pub use laser::{
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
 };
 pub use notes::NotesViewModel;
+pub use structure_panel::{
+    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateRow, ReferenceRow, ReferenceStatus,
+    StructureEdit, StructureViewModel,
+};
 pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use production::{
     ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,

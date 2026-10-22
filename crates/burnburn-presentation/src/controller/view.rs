@@ -226,6 +226,7 @@ pub(super) fn document_view(
         text_toolbar: super::text::toolbar_view(s),
         text_on_path: super::text::path_view(s),
         notes: super::notes::view(s),
+        structure: super::structure::view(s),
         centerline: super::trace::centerline_panel(s),
         offset: super::offset_preview::view(s),
         repair_preview: super::repair_preview::view(s),

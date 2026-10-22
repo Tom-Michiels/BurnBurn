@@ -63,6 +63,7 @@ mod repair_preview;
 mod reshape;
 mod shapes;
 mod shortcuts;
+mod structure;
 mod sketch;
 mod sketch_param;
 
@@ -539,6 +540,10 @@ impl AppController {
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
             }
+            UiIntent::Structure { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| structure::edit(s, document, edit, request))
+            }
             UiIntent::PreviewRepair { document, issue, tolerance } => self.preview_repair(document, issue, tolerance),
             UiIntent::PreviewOffset { document, distance } => self.preview_offset(document, distance),
             UiIntent::SetOffsetOptions { document, options } => self.set_offset_options(document, options),
@@ -901,6 +906,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetNotes { document, .. }
         | UiIntent::PreviewOffset { document, .. }
         | UiIntent::PreviewRepair { document, .. }
+        | UiIntent::Structure { document, .. }
         | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }

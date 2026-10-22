@@ -278,6 +278,11 @@ pub enum UiIntent {
         document: DocumentId,
         edit: crate::centerline_panel::CenterlineEdit,
     },
+    /// An edit of a part instance in the structure panel (S07).
+    Structure {
+        document: DocumentId,
+        edit: crate::structure_panel::StructureEdit,
+    },
     /// Problem list (E09): close the gaps of problem `issue` (index into `DocumentViewModel.issues`)
     /// with the tolerance as typed. Gaps above the tolerance stay open.
     RepairIssue {
