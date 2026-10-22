@@ -440,7 +440,7 @@ impl AppController {
                 RuidaProfile { magic: Magic::FIXTURE_0X88, overscan: OverscanPolicy::ControllerManaged },
                 |m| m.ruida,
             );
-            self.machine = Some(Machine { profile: Arc::new(profile), ruida });
+            self.replace_active_machine(Machine { profile: Arc::new(profile), ruida });
         }
         AppUpdate { view_changed: true, ..AppUpdate::default() }
     }

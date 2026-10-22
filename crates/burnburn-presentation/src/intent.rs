@@ -89,6 +89,11 @@ pub enum UiIntent {
         profile: Box<MachineProfile>,
         ruida: RuidaProfile,
     },
+    /// The active machine becomes the known profile with this id (G5-machine-rest, P07): the one
+    /// it replaces is kept in the profile library. Unknown ids change nothing.
+    ChooseMachineProfile {
+        id: String,
+    },
     /// Process-layer panel (B10, C01): a new operation for the selected objects.
     AddOperation {
         document: DocumentId,

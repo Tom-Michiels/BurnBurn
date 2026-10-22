@@ -548,9 +548,10 @@ impl AppController {
             UiIntent::Camera { document, intent } => self.camera(document, intent),
             UiIntent::SetMachineProfile { profile, ruida } => {
                 // Profile data, not document data: existing plans become stale, nothing else changes.
-                self.machine = Some(Machine { profile: Arc::from(profile), ruida });
+                self.replace_active_machine(Machine { profile: Arc::from(profile), ruida });
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
+            UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
             UiIntent::ExportRd { document, path } => self.export_rd(document, path),
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
