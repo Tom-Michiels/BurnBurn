@@ -433,7 +433,7 @@ pub(super) fn editor_intent(
         EditorControl::ModStepOn { modifier, step } => {
             let current = chain(modifier)?.steps.get(step)?.enabled;
             let enabled = flag_of(values, G5Control::Editor(control))?;
-            (enabled != current).then(|| UiIntent::Structure {
+            (enabled != current).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::ToggleModifierStep { modifier, step, enabled },
             })
@@ -441,7 +441,7 @@ pub(super) fn editor_intent(
         EditorControl::ModStepValue { modifier, step } => {
             let text = typed(control)?;
             let current = chain(modifier)?.steps.get(step)?.value.as_ref().map(|(_, v)| v.clone())?;
-            (text.trim() != current).then(|| UiIntent::Structure {
+            (text.trim() != current).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::SetModifierStepValue { modifier, step, text },
             })
@@ -468,7 +468,7 @@ pub(super) fn editor_intent(
             };
             let text = typed(control)?;
             (text.trim() != current)
-                .then(|| UiIntent::Structure { document, edit: StructureEdit::SetPlateField { plate, field, text } })
+                .then_some(UiIntent::Structure { document, edit: StructureEdit::SetPlateField { plate, field, text } })
         }
         EditorControl::PlateAssign { plate } => {
             structure(document, StructureEdit::AssignSelectionToPlate { plate: Some(plate) })
@@ -496,7 +496,7 @@ pub(super) fn editor_intent(
                 0 => None,
                 i => Some(s.plates.get(i - 1)?.id),
             };
-            (chosen != current).then(|| UiIntent::Structure {
+            (chosen != current).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::SetInstancePlate { instance, plate: chosen },
             })
@@ -504,7 +504,7 @@ pub(super) fn editor_intent(
         EditorControl::VariantRename { part, variant } => {
             let from = doc.structure.parts.iter().find(|p| p.id == part)?.variants.get(variant)?.clone();
             let to = typed(control)?;
-            (to.trim() != from).then(|| UiIntent::Structure {
+            (to.trim() != from).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::RenameVariant { definition: part, from, to },
             })
@@ -516,7 +516,7 @@ pub(super) fn editor_intent(
         EditorControl::ShapeName { part, shape } => {
             let row = doc.structure.parts.iter().find(|p| p.id == part)?.shapes.iter().find(|s| s.key == shape)?;
             let name = typed(control)?;
-            (name.trim() != row.name).then(|| UiIntent::Structure {
+            (name.trim() != row.name).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::RenamePartShape { definition: part, shape, name },
             })
@@ -525,7 +525,7 @@ pub(super) fn editor_intent(
             let row = doc.structure.parts.iter().find(|p| p.id == part)?.shapes.iter().find(|s| s.key == shape)?;
             let current = row.fields.iter().find(|(f, _)| *f == field).map(|(_, v)| v.clone())?;
             let text = typed(control)?;
-            (text.trim() != current).then(|| UiIntent::Structure {
+            (text.trim() != current).then_some(UiIntent::Structure {
                 document,
                 edit: StructureEdit::SetPartShapeField { definition: part, shape, field, text },
             })
@@ -555,7 +555,7 @@ pub(super) fn editor_intent(
         EditorControl::TextPathReverse => {
             let on = flag_of(values, G5Control::Editor(control))?;
             (on != doc.text_toolbar.as_ref()?.path.as_ref()?.reverse)
-                .then(|| UiIntent::Text { document, edit: TextEdit::PathReverse(on) })
+                .then_some(UiIntent::Text { document, edit: TextEdit::PathReverse(on) })
         }
         EditorControl::TextPathDistort => {
             let chosen = if super::g5::index_of(values, G5Control::Editor(control))? == 1 {
@@ -564,7 +564,7 @@ pub(super) fn editor_intent(
                 Distort::Rigid
             };
             (chosen != doc.text_toolbar.as_ref()?.path.as_ref()?.distort)
-                .then(|| UiIntent::Text { document, edit: TextEdit::PathDistort(chosen) })
+                .then_some(UiIntent::Text { document, edit: TextEdit::PathDistort(chosen) })
         }
         EditorControl::TextPathUnbind => {
             doc.text_toolbar.as_ref()?.path.as_ref()?;
