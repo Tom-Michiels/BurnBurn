@@ -408,6 +408,26 @@ pub fn on_close_box(document: DocumentId, result: i32, vm: &AppViewModel) -> Rea
     Reaction::Intent(UiIntent::ConfirmClose { document, choice })
 }
 
+/// Closing the last window quits the application: that needs the quit guard's confirmation
+/// while the machine is busy (X07). Closing one of several windows never asks.
+pub fn close_guard(
+    activity: &burnburn_presentation::MachineActivity,
+    open_windows: usize,
+) -> Option<burnburn_runtime::update_gate::DeferReason> {
+    if open_windows > 1 {
+        return None;
+    }
+    crate::quit_guard::quit_guard(activity)
+}
+
+/// The guard box (Yes = quit anyway, anything else = stay; No is the default button).
+pub fn on_guard_box(result: i32) -> crate::quit_guard::GuardChoice {
+    match result {
+        button::IDYES => crate::quit_guard::GuardChoice::QuitAnyway,
+        _ => crate::quit_guard::GuardChoice::Stay,
+    }
+}
+
 /// Title bar text: file name, `*` when dirty, then the app name.
 pub fn window_title(vm: &AppViewModel, document: DocumentId) -> String {
     vm.document(document)

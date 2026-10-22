@@ -48,6 +48,7 @@ use super::classes::{AppDelegate, MenuTarget, app_delegate};
 use super::objc_try;
 use super::window::{CanvasStatus, DocWindow};
 use crate::accessibility::{AxElement, canvas_elements};
+use crate::adapter::guard_choice;
 use crate::adapter::{
     CLOSE_ALERT_BUTTONS, MenuItem, NativeEvent, Reaction, key_code, menu_items, menu_tag, recent_open_reaction,
     translate, window_title,
@@ -55,7 +56,7 @@ use crate::adapter::{
 use crate::l10n::{HostText, Locale, close_alert_title, host_text};
 use crate::lifecycle::{QuitFlow, QuitStep, RECOVERY_ALERT_BUTTONS, open_requests, recovery_message};
 use crate::panels::CameraControl;
-use crate::quit_guard::{GUARD_ALERT_BUTTONS, GuardChoice, guard_button, guard_choice, guard_message, quit_guard};
+use crate::quit_guard::{GUARD_ALERT_BUTTONS, GuardChoice, guard_button, guard_message, quit_guard};
 use crate::tasks::{TaskInbox, task_channel};
 
 /// Host behaviour that differs between the app and native tests.

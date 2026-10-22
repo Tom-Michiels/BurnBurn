@@ -575,6 +575,15 @@ pub mod flags {
 }
 
 /// AppKit `NSModalResponse` values the host sees from sheets.
+/// The quit guard's choice for an `NSAlert` response (the guard itself is shared with Windows);
+/// anything unexpected keeps the app open.
+pub fn guard_choice(response: isize) -> crate::quit_guard::GuardChoice {
+    match response.checked_sub(response::FIRST_BUTTON).and_then(|i| usize::try_from(i).ok()) {
+        Some(1) => crate::quit_guard::GuardChoice::QuitAnyway,
+        _ => crate::quit_guard::GuardChoice::Stay,
+    }
+}
+
 pub mod response {
     pub const OK: isize = 1;
     pub const CANCEL: isize = 0;

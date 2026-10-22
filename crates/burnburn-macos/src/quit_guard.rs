@@ -89,11 +89,3 @@ pub fn guard_button(choice: GuardChoice, locale: Locale) -> &'static str {
         (GuardChoice::QuitAnyway, Locale::En) => "Quit Anyway",
     }
 }
-
-/// The choice for an alert response; anything unexpected keeps the app open.
-pub fn guard_choice(response: isize) -> GuardChoice {
-    match response.checked_sub(crate::adapter::response::FIRST_BUTTON).and_then(|i| usize::try_from(i).ok()) {
-        Some(1) => GuardChoice::QuitAnyway,
-        _ => GuardChoice::Stay,
-    }
-}

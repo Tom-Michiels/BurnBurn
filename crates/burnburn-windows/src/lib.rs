@@ -45,6 +45,9 @@ pub mod panels;
 pub mod panels_files;
 #[path = "../../burnburn-macos/src/panels_image.rs"]
 pub mod panels_image;
+/// Quit guard (update gate X07), shared with the macOS host: the reason and its words.
+#[path = "../../burnburn-macos/src/quit_guard.rs"]
+pub mod quit_guard;
 #[path = "../../burnburn-macos/src/recent.rs"]
 pub mod recent;
 #[path = "../../burnburn-macos/src/toolbar.rs"]

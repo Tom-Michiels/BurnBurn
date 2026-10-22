@@ -4,11 +4,9 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
 
 use burnburn_machine::{ExecutionState, UnknownReason};
-use burnburn_macos::adapter::response;
+use burnburn_macos::adapter::{guard_choice, response};
 use burnburn_macos::l10n::{Locale, known_message_keys, message};
-use burnburn_macos::quit_guard::{
-    GUARD_ALERT_BUTTONS, GuardChoice, guard_button, guard_choice, guard_message, quit_guard,
-};
+use burnburn_macos::quit_guard::{GUARD_ALERT_BUTTONS, GuardChoice, guard_button, guard_message, quit_guard};
 use burnburn_presentation::{HeadlessEditorHarness, MachineActivity, MessageKey};
 use burnburn_runtime::update_gate::DeferReason;
 

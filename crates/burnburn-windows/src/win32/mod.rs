@@ -62,18 +62,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DefWindowProcW, DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GA_ROOT, GWLP_USERDATA,
     GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL,
     HMENU, IDC_ARROW, IsDialogMessageW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL,
-    LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL, MESSAGEBOX_RESULT, MSG, MessageBoxW,
-    MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW, SW_SHOWNOACTIVATE, SetTimer,
-    SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY,
-    WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD,
-    WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    LBS_NOTIFY, LoadCursorW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
+    MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
+    SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
+    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW,
+    WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
 use crate::adapter::{
-    CharDecoder, Control, MessageContext, Reaction, accelerators, message_text, msg, object_labels, on_close_box,
-    on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text, recovery_dir, selected_rows,
-    window_title,
+    CharDecoder, Control, MessageContext, Reaction, accelerators, close_guard, message_text, msg, object_labels,
+    on_close_box, on_guard_box, on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text,
+    recovery_dir, selected_rows, window_title,
 };
 use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
 use crate::forms::{
@@ -648,6 +648,9 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 layout(hwnd);
                 return LRESULT(0);
             }
+            // Closing the last window quits: while the machine is busy that needs a confirmation
+            // (X07 update gate, same reason and words as the macOS alert).
+            msg::WM_CLOSE if !quit_allowed(hwnd) => return LRESULT(0),
             msg::WM_MOUSEMOVE => {
                 // A disabled strip button gets no mouse input: say why from here (then go on).
                 let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
@@ -1212,6 +1215,23 @@ fn dialog_root(hwnd: HWND) -> Option<HWND> {
 /// The UI language from the user's default locale name (`nl-BE`, `en-US`, …), as the macOS host
 /// follows `NSLocale.preferredLanguages`.
 #[allow(unsafe_code)]
+/// Asks before the last window closes while the machine is busy; `true` when closing may go on.
+fn quit_allowed(frame: HWND) -> bool {
+    let reason = with_host(|h| close_guard(&h.controller.machine_activity(), h.windows.len())).flatten();
+    let Some(reason) = reason else { return true };
+    let locale = system_locale();
+    let (title, info) = crate::quit_guard::guard_message(reason, locale);
+    let question = match locale {
+        crate::l10n::Locale::Nl => "Toch afsluiten?",
+        crate::l10n::Locale::En => "Quit anyway?",
+    };
+    let text = HSTRING::from(format!("{title}\n\n{info}\n\n{question}"));
+    // SAFETY: modal message box owned by our frame; the strings outlive the call. No is the default.
+    let result: MESSAGEBOX_RESULT =
+        unsafe { MessageBoxW(Some(frame), &text, w!("BurnBurn"), MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) };
+    on_guard_box(result.0) == crate::quit_guard::GuardChoice::QuitAnyway
+}
+
 fn system_locale() -> crate::l10n::Locale {
     let mut buffer = [0u16; 85];
     // SAFETY: a writable buffer of LOCALE_NAME_MAX_LENGTH (85) UTF-16 units, as the API requires.
