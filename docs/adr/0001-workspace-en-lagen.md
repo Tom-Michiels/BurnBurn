@@ -38,8 +38,9 @@ crate en extern verboden pakketgroepen per target.
 | 5 | `burnburn-render` | GPU-adapter | types, geometry, image, editor, job (+ `wgpu`) | GUI |
 | 6 | `burnburn-runtime` | IO-adapter | types, geometry, job, ruida, machine, io, document, history, presentation, text | Protocol |
 | 6 | `burnburn-test-support` | testkit (alleen dev-dep) | lagen 0–5 behalve render | Testing |
-| 7 | `burnburn-macos` | host | presentation, render, runtime, image (+ lagere; io tijdelijk) | GUI |
-| 7 | `burnburn-windows` | host | presentation, render, runtime, image (+ lagere; io tijdelijk) | GUI |
+| 7 | `burnburn-host-models` | core | presentation, runtime, editor, document, image, io (+ lagere); ADR 0009 | GUI |
+| 8 | `burnburn-macos` | host | presentation, render, runtime, image (+ lagere; io tijdelijk) | GUI |
+| 8 | `burnburn-windows` | host | presentation, render, runtime, image (+ lagere; io tijdelijk) | GUI |
 | 7 | `burnburn-cli` | host | alles behalve render en GUI-hosts | Protocol |
 | 8 | `burnburn-scenarios` *(amendement 2)* | testkit (geen lib-code; alles dev-dep) | — normaal; dev: alles behalve hosts | Testing |
 | — | `xtask` | tool | vrijgesteld; niemand hangt ervan af | Testing |

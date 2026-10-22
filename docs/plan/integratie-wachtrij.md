@@ -14,7 +14,7 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 
 ### Software (eerlijk nog niet gebouwd)
 
-- **Hosts delen modellen via `#[path]`** in plaats van via `burnburn-presentation` (W4-L8a, contracts-phase-c §IM20).
+- **Hosts delen modellen via `#[path]`**: klaar in G8-refactor (22-10-2026). De 19 bestanden staan in `burnburn-host-models` (ADR 0009, `docs/dev-notes/G8-refactor.md`); `cargo xtask path-attrs` (onderdeel van `verify`) verbiedt `#[path]` naar andere crates in `src/`. Nog open: testbinaries delen fixtures via `#[path]` tussen crates (`macos/tests/g5_fixtures`, `g6_fixtures`, `presentation/tests/common`, `tests/native/macos/common/grbl_fake.rs`; 20 regels in `tests/`) — verhuis naar `burnburn-test-support`.
 - **CAM** (G7-cam en G8-cam-werk, 22-10-2026; zie `docs/dev-notes/G7-cam.md` en `docs/dev-notes/G8-cam-werk.md`): Tab Cut Power is
   gebouwd tot en met plan, preview, GRBL-S per beweging, het Cut Settings-veld op beide hosts en (G8) de plan-blob van de historie;
   common-line cutting (document, bestand, compile, nest, Cut Settings) snijdt het gedeelde stuk sinds G8 bij de *laatste* vorm, ná het
@@ -260,7 +260,7 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 
 | W4-L8a | Windows-host: menubalk Archief(basis)/Wijzig/Schikken/Gereedschap/Weergave/Vormen/Tekst/Schets/Laser(CAM) op pariteit met macOS | – (geen domein) | `MenuItem::{CamDialog, SchikkenPanel}`, `menus/*`, command-ids = macOS-tags | `windows/tests/menus.rs::{every_popup_this_lane_owns_has_the_macos_items_in_the_macos_order, every_macos_key_equivalent_of_this_lane_is_a_ctrl_accelerator_on_windows, a_cam_dialog_item_opens_that_dialog_and_the_schikken_item_toggles_its_panel, …}` | klaar (W4-L8a); echte Windows-run handmatig |
 | W4-L8a | Windows-host: panelen (inspecteur 9 velden/referentiepunt/aspectlock/spiegelen/eenheden/prioriteit, objectenlijst, lagen + Cut Settings, CAM-dialogen, Schikken-paneel, tekstpanelen, vormparameters, schetspaneel, catalogus-toolstrip) | – (zelfde viewmodels/intents als macOS) | `windows/src/forms/*` (headless `Form`), `win32/{forms,strip}.rs` | `windows/tests/{form_inspector, form_layers, form_cut_settings, form_cam, form_schikken, form_text, form_shapes, form_sketch, toolstrip, form_layout}.rs` | klaar (W4-L8a): headless bewezen, Win32-laag alleen type-check + clippy; handmatig: echte run, tooltips, tab-volgorde, mnemonics |
-| W4-L8a | Hosts delen AppKit-vrije macOS-bestanden via `#[path]` (`panels/`, `panels_files`, `panels_image`, `app_text`, `l10n_files`, `toolbar`) | – | `windows/src/lib.rs` | `cargo test -p burnburn-windows` | open voor integratie: verhuis naar `burnburn-presentation` (contracts-phase-c §IM20); W4-L8b mag dezelfde `#[path]`-regels gebruiken i.p.v. eigen kopieën |
+| W4-L8a | Hosts delen AppKit-vrije macOS-bestanden via `#[path]`, sinds G8-refactor via `burnburn-host-models` (`panels/`, `panels_files`, `panels_image`, `app_text`, `l10n_files`, `toolbar`) | – | `windows/src/lib.rs` | `cargo test -p burnburn-windows` | klaar: verhuisd naar `burnburn-host-models` (ADR 0009, G8-refactor) |
 
 ## W4-acceptatie
 

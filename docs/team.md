@@ -12,7 +12,7 @@ Iedere rol heeft een eigen eigenaarsgebied. Werk buiten je gebied gaat via een n
 | **Implementatie** (sketch) | Parameters, constraints, solver | `crates/burnburn-sketch/` |
 | **Implementatie** (beeld/trace) | Bronbeelden, contour- en later centerlinetracing | `crates/burnburn-{image,trace}/` |
 | **Implementatie** (CAM/job) | Proceslaag, JobPlan, compiler, preflight, RD-lowering | `crates/burnburn-{job,cam}/`, `crates/burnburn-document/src/process/`, `crates/burnburn-ruida/src/lower.rs` |
-| **GUI** | AppKit-host, gedeeld wgpu-canvas, Windows-host, bundling | `crates/burnburn-{macos,windows,render}/`, `tests/native/` |
+| **GUI** | AppKit-host, gedeeld wgpu-canvas, Windows-host, bundling | `crates/burnburn-{macos,windows,host-models,render}/`, `tests/native/` |
 | **User-flow** | Presentatie/editor-interactie, HeadlessEditorHarness, gebruikersscenario's per user story en integratiepoort | `crates/burnburn-{presentation,editor}/`, `tests/scenarios/`, `docs/user-flows/` |
 
 ## Gedeelde regels
