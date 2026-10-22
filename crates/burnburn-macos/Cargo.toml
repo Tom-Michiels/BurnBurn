@@ -204,6 +204,11 @@ path = "../../tests/native/macos/g7_editor_panels.rs"
 harness = false
 
 [[test]]
+name = "g9_editor_inspector_native"
+path = "../../tests/native/macos/g9_editor_inspector.rs"
+harness = false
+
+[[test]]
 name = "automation_native"
 path = "../../tests/native/macos/automation.rs"
 harness = false
