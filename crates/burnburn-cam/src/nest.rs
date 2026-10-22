@@ -318,6 +318,14 @@ struct Shape {
     grown: Vec<(i64, i64)>,
 }
 
+/// A cancelled offset is a cancelled nest, not a geometry problem.
+fn offset_error(e: burnburn_geometry::OffsetError, what: &'static str) -> NestError {
+    match e {
+        burnburn_geometry::OffsetError::Cancelled => NestError::Cancelled,
+        _ => NestError::Geometry { what },
+    }
+}
+
 fn rotated(part: &NestPart, deg: f64, p: &NestParams, cancel: &CancellationToken) -> Result<Shape, NestError> {
     let bad = |what| move |_| NestError::Geometry { what };
     let r = rotation_about(Point::ORIGIN, deg).map_err(bad("rotation"))?;
@@ -330,7 +338,7 @@ fn rotated(part: &NestPart, deg: f64, p: &NestParams, cancel: &CancellationToken
     let raw = touched_cells(&polygons(&shape, &p.tolerance)?, Point::ORIGIN, step);
     let grown_path = if p.spacing.mm() > 0.0 {
         burnburn_geometry::offset(&shape, p.spacing.mm(), OffsetJoin::Round, &p.tolerance, cancel)
-            .map_err(|_| NestError::Geometry { what: "spacing offset" })?
+            .map_err(|e| offset_error(e, "spacing offset"))?
     } else {
         shape
     };
@@ -351,12 +359,15 @@ fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Re
     let mut usable = stock.outline.clone();
     for k in &stock.keep_out {
         usable = burnburn_geometry::boolean(&usable, k, BooleanOp::Difference, &options, cancel)
-            .map_err(|_| NestError::Geometry { what: "keep-out" })?;
+            .map_err(|e| match e {
+                burnburn_geometry::BooleanError::Cancelled => NestError::Cancelled,
+                _ => NestError::Geometry { what: "keep-out" },
+            })?;
     }
     let net_area = net_area(&polygons(&usable, &p.tolerance)?);
     if p.edge_margin.mm() > 0.0 {
         usable = burnburn_geometry::offset(&usable, -p.edge_margin.mm(), OffsetJoin::Miter, &p.tolerance, cancel)
-            .map_err(|_| NestError::Geometry { what: "edge margin" })?;
+            .map_err(|e| offset_error(e, "edge margin"))?;
     }
     let polys = polygons(&usable, &p.tolerance)?;
     let b = stock.outline.bounds().ok_or(NestError::Geometry { what: "empty stock" })?;
@@ -562,4 +573,67 @@ pub fn apply_nest_command(
         return Err(NestError::InvalidInput { field: "stock" });
     }
     Ok(burnburn_document::structure::StructureCommand::ApplyNest { plate, placements })
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    //! Cancellation inside the geometry steps of a nest (G5-cam): a token that is cancelled while
+    //! the spacing offset, keep-out boolean or edge-margin offset runs must give `Cancelled`, never
+    //! a geometry error. Deterministic: the token is cancelled before the step is entered.
+    use super::*;
+    use burnburn_geometry::Rect;
+    use burnburn_types::CancellationSource;
+
+    fn mm(v: f64) -> Length {
+        Length::from_mm(v).unwrap()
+    }
+
+    fn square(size: f64) -> Path {
+        Path::rectangle(Rect::new(Point::ORIGIN, mm(size), mm(size)).unwrap())
+    }
+
+    fn params(spacing: f64, margin: f64) -> NestParams {
+        NestParams {
+            spacing: mm(spacing),
+            edge_margin: mm(margin),
+            step: mm(1.0),
+            tolerance: ProductionTolerance::new(mm(0.01)).unwrap(),
+            max_candidates: u64::MAX,
+            basis: UtilisationBasis::StockArea,
+        }
+    }
+
+    fn cancelled() -> CancellationToken {
+        let source = CancellationSource::new();
+        source.cancel();
+        source.token()
+    }
+
+    #[test]
+    fn a_cancel_during_the_spacing_offset_is_cancelled_not_a_geometry_error() {
+        let part = NestPart {
+            key: PartKey(1),
+            outline: square(10.0),
+            count: 1,
+            rotations: RotationSet::new(vec![0.0]).unwrap(),
+            grain_deg: None,
+        };
+        let r = rotated(&part, 0.0, &params(1.0, 0.0), &cancelled());
+        assert!(matches!(r, Err(NestError::Cancelled)), "{:?}", r.map(|_| ()));
+    }
+
+    #[test]
+    fn a_cancel_during_keep_out_and_edge_margin_is_cancelled_too() {
+        let stock = Stock {
+            id: StockId(1),
+            outline: square(100.0),
+            keep_out: vec![Path::rectangle(Rect::new(Point::new(10.0, 10.0), mm(5.0), mm(5.0)).unwrap())],
+            grain_deg: None,
+        };
+        let r = sheet(&stock, &params(0.0, 0.0), &cancelled());
+        assert!(matches!(r, Err(NestError::Cancelled)), "keep-out: {:?}", r.map(|_| ()));
+        let plain = Stock { keep_out: vec![], ..stock };
+        let r = sheet(&plain, &params(0.0, 2.0), &cancelled());
+        assert!(matches!(r, Err(NestError::Cancelled)), "edge margin: {:?}", r.map(|_| ()));
+    }
 }
