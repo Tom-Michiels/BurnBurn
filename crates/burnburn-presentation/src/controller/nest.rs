@@ -2,6 +2,7 @@
 //! the application of a finished result. The result belongs to one revision of one set of options:
 //! an edit or other options make it stale, and a stale result is never applied.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use burnburn_document::{ArrangeCommand, CommandPayload, DocumentCommand, GeometryCommand, NestCopy, PlaceCommand};
@@ -12,8 +13,8 @@ use crate::field::{parse_length, parse_position};
 use crate::intent::CommandKey;
 use crate::nest_task::{NestOutput, NestSettings, build_job, classify, failure_of, sheet_of};
 use crate::schikken::{
-    NestFailure, NestField, NestInput, NestPanelViewModel, NestPartRow, NestReportViewModel, NestRun, NestScope,
-    SchikkenIntent, SchikkenMessage,
+    NestFailure, NestField, NestInput, NestPanelViewModel, NestPartRow, NestReportViewModel, NestRun,
+    NestScope, SchikkenIntent, SchikkenMessage,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -79,6 +80,7 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         .map(|(object, text)| Ok((GeometryId::from_raw(*object), copies(text)?)))
         .collect::<Result<Vec<_>, NestField>>()?;
     Ok(NestSettings {
+        part_grain: input.part_grain.iter().map(|(object, rule)| (GeometryId::from_raw(*object), *rule)).collect(),
         copies: copies(&input.copies)?,
         part_copies,
         holes: input.holes,
@@ -251,10 +253,15 @@ fn apply(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> A
     let payload = if extra.is_empty() {
         CommandPayload::Edit(GeometryCommand::Place(PlaceCommand::Nest { moves }))
     } else {
-        let copies = extra
-            .iter()
-            .map(|p| NestCopy { items: super::clipboard::items_of(s, &p.objects), transform: p.transform })
+        // Names already in the drawing, and those given to copies on the way.
+        let mut taken: BTreeSet<String> = snapshot
+            .draw_order()
+            .into_iter()
+            .filter_map(|id| snapshot.object(id))
+            .map(|o| o.name().to_owned())
             .collect();
+        let copies =
+            extra.iter().map(|p| NestCopy { items: named_copy(s, &mut taken, p), transform: p.transform }).collect();
         CommandPayload::Arrange(ArrangeCommand::NestCopies { moves, copies })
     };
     let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
@@ -377,12 +384,37 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
                     name: snapshot.object(first).map(|o| o.name().to_owned()).unwrap_or_default(),
                     copies: own.clone().unwrap_or_else(|| panel.input.copies.clone()),
                     own: own.is_some(),
+                    grain: panel.settings.grain_of(first),
                 })
             })
             .collect(),
         report,
         can_apply: run == NestRun::Done && s.nest.done.as_ref().is_some_and(|d| !d.output.placements.is_empty()),
     })
+}
+
+/// The objects of an extra copy, each named after its source with the number of the copy
+/// ("Pad 1 (2)"), and a name that is taken is skipped, so no two objects share a name.
+fn named_copy(
+    s: &Session,
+    taken: &mut BTreeSet<String>,
+    placement: &crate::nest_task::PartPlacement,
+) -> Vec<burnburn_document::PasteItem> {
+    let mut items = super::clipboard::items_of(s, &placement.objects);
+    for item in &mut items {
+        let base = item.name.clone();
+        let mut number = placement.copy + 1;
+        let name = loop {
+            let candidate = format!("{base} ({number})");
+            if !taken.contains(&candidate) {
+                break candidate;
+            }
+            number += 1;
+        };
+        taken.insert(name.clone());
+        item.name = name;
+    }
+    items
 }
 
 /// The finished nest drawn on the canvas before it is applied: every part where it would go.

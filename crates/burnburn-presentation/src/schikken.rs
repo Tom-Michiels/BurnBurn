@@ -208,6 +208,11 @@ pub struct NestInput {
     pub copies: String,
     /// The parts that have their own number of copies: the first object of the part and the text.
     pub part_copies: Vec<(u64, String)>,
+    /// The parts with a grain rule of their own: the first object of the part and the rule. A part
+    /// that is not listed follows the sheet (its X axis along the grain).
+    pub part_grain: Vec<(u64, NestPartGrain)>,
+    /// The page of the part list the panel shows (counted from 0; the panel keeps it in range).
+    pub part_page: usize,
     /// Whether an object inside another one is a hole of that part (C10).
     pub holes: NestHoles,
     /// Grain direction of the sheet in degrees (blank: none). With a grain every part keeps its
@@ -218,6 +223,18 @@ pub struct NestInput {
     pub common_line: bool,
     /// Slide every placement against its neighbours with exact geometry (slower, packs tighter).
     pub tight: bool,
+}
+
+/// How one part relates to the grain of the sheet (C10). Only used when the sheet has a grain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestPartGrain {
+    /// The part's X axis runs along the grain.
+    #[default]
+    Along,
+    /// The part's Y axis runs along the grain (the part is drawn across it).
+    Across,
+    /// The part has no grain rule and turns freely.
+    Free,
 }
 
 /// What an object that lies inside another object is for the nest.
@@ -251,6 +268,8 @@ impl Default for NestInput {
             sheets: "1".to_owned(),
             copies: "1".to_owned(),
             part_copies: Vec::new(),
+            part_grain: Vec::new(),
+            part_page: 0,
             holes: NestHoles::default(),
             grain: String::new(),
             common_line: false,
@@ -404,6 +423,8 @@ pub struct NestPartRow {
     pub copies: String,
     /// The part has its own number.
     pub own: bool,
+    /// How the part relates to the grain of the sheet.
+    pub grain: NestPartGrain,
 }
 
 /// The nest panel (Quick Nest, Nest Selected) while it is open.

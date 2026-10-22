@@ -14,8 +14,8 @@ use burnburn_geometry::{Affine, Bounds, Path, Point, ProductionTolerance, Rect, 
 use burnburn_types::{CancellationToken, GeometryId, GroupId, Length, StableId};
 
 use crate::schikken::{
-    NestFailure, NestHoles, NestMirror, NestPartStatusRow, NestRotations, NestScope, NestSheetChoice, NestSheetUseRow,
-    NestSheetView, NestSkipReason, NestSkippedRow, NestUnplacedReason, NestUnplacedRow,
+    NestFailure, NestHoles, NestMirror, NestPartGrain, NestPartStatusRow, NestRotations, NestScope, NestSheetChoice,
+    NestSheetUseRow, NestSheetView, NestSkipReason, NestSkippedRow, NestUnplacedReason, NestUnplacedRow,
 };
 use crate::task::TaskError;
 
@@ -47,9 +47,16 @@ pub struct NestSettings {
     pub common_line: bool,
     /// Grain direction of the sheet; the parts keep their own X axis along it.
     pub grain_deg: Option<f64>,
+    /// The parts with a grain rule of their own: the first object of the part and the rule.
+    pub part_grain: Vec<(GeometryId, NestPartGrain)>,
 }
 
 impl NestSettings {
+    /// How the part whose first object is `first` relates to the grain of the sheet.
+    pub fn grain_of(&self, first: GeometryId) -> NestPartGrain {
+        self.part_grain.iter().find(|(id, _)| *id == first).map_or(NestPartGrain::Along, |(_, g)| *g)
+    }
+
     /// The number of copies of the part whose first object is `first`.
     pub fn copies_of(&self, first: GeometryId) -> u32 {
         self.part_copies.iter().find(|(id, _)| *id == first).map_or(self.copies, |(_, n)| *n)
@@ -372,7 +379,12 @@ pub fn build_job(
                 outline: Path::from_subpaths(subpaths),
                 count: members.first().map_or(1, |first| settings.copies_of(*first)),
                 rotations: rotations.clone(),
-                grain_deg: settings.grain_deg.map(|_| 0.0),
+                // The grain direction of the part in its own coordinates; a free part has no rule.
+                grain_deg: settings.grain_deg.and_then(|_| match members.first().map(|f| settings.grain_of(*f)) {
+                    Some(NestPartGrain::Across) => Some(90.0),
+                    Some(NestPartGrain::Free) => None,
+                    _ => Some(0.0),
+                }),
             }
         })
         .collect();

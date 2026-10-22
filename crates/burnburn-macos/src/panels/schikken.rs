@@ -14,8 +14,13 @@ use burnburn_presentation::{
 };
 use burnburn_types::DocumentId;
 
-/// Most parts that get a row of their own for the number of copies (the panel is a fixed form).
-const MAX_PART_ROWS: usize = 12;
+/// Parts per page of the part list (the panel is a fixed form, so a long list is paged, not cut off).
+const PART_PAGE_ROWS: usize = 8;
+
+/// The page of the part list that is shown: the one asked for, kept within the pages there are.
+fn shown_page(asked: usize, parts: usize) -> usize {
+    asked.min(parts.saturating_sub(1) / PART_PAGE_ROWS)
+}
 
 use crate::l10n::{
     Locale, center_problem_text, message_or_key, nest_skip_text, nest_unplaced_text, reshape_problem_text,
@@ -52,6 +57,11 @@ pub enum SchikkenControl {
     NestCopies,
     /// Copies of one part, by its row in the panel.
     NestPartCopies(usize),
+    /// The grain rule of one part, by its row in the panel.
+    NestPartGrain(usize),
+    /// The previous / next page of the part list.
+    NestPartsPrev,
+    NestPartsNext,
     /// Whether an inner contour is a hole of its part (C10).
     NestHoles,
     /// Exact, tight packing (C10).
@@ -186,6 +196,13 @@ pub enum SchikkenText {
     NestGrain,
     NestCopies,
     NestPartCopies,
+    NestPartsRange,
+    NestPartsPrev,
+    NestPartsNext,
+    NestPartGrain,
+    GrainAlong,
+    GrainAcross,
+    GrainFree,
     NestHoles,
     NestTight,
     NestCommonLine,
@@ -299,6 +316,13 @@ impl SchikkenText {
             T::NestGrain,
             T::NestCopies,
             T::NestPartCopies,
+            T::NestPartsRange,
+            T::NestPartsPrev,
+            T::NestPartsNext,
+            T::NestPartGrain,
+            T::GrainAlong,
+            T::GrainAcross,
+            T::GrainFree,
             T::NestHoles,
             T::NestTight,
             T::NestCommonLine,
@@ -418,6 +442,13 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestGrain => ("Nerfrichting plaat (°, leeg = geen)", "Sheet grain (°, blank = none)"),
         T::NestCopies => ("Exemplaren per onderdeel", "Copies per part"),
         T::NestPartCopies => ("Onderdeel {n}: {name}", "Part {n}: {name}"),
+        T::NestPartsRange => ("Onderdelen {from}-{to} van {total}", "Parts {from}-{to} of {total}"),
+        T::NestPartsPrev => ("Vorige onderdelen", "Previous parts"),
+        T::NestPartsNext => ("Volgende onderdelen", "Next parts"),
+        T::NestPartGrain => ("Onderdeel {n}: {name}, nerf", "Part {n}: {name}, grain"),
+        T::GrainAlong => ("Volgt de plaat (X langs de nerf)", "Follows the sheet (X along the grain)"),
+        T::GrainAcross => ("Dwars (Y langs de nerf)", "Across (Y along the grain)"),
+        T::GrainFree => ("Vrij draaien", "Turns freely"),
         T::NestHoles => ("Binnencontouren zijn gaten van het onderdeel", "Inner contours are holes of the part"),
         T::NestTight => ("Strak pakken (exact, trager)", "Pack tightly (exact, slower)"),
         T::NestCommonLine => (
@@ -822,18 +853,50 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
         text: n.input.copies.clone(),
         invalid: invalid(NestField::Copies),
     });
-    // A number of its own per part, for the first few parts (the panel is a fixed form).
-    if n.part_rows.len() > 1 {
-        for (i, row) in n.part_rows.iter().enumerate().take(MAX_PART_ROWS) {
+    // A number of its own per part, a page of parts at a time: every part can be reached.
+    let parts = n.part_rows.len();
+    let paged = parts > PART_PAGE_ROWS;
+    let page = shown_page(n.input.part_page, parts);
+    let range = page * PART_PAGE_ROWS..((page + 1) * PART_PAGE_ROWS).min(parts);
+    if paged {
+        lines.push(SchikkenLine::Text(fill(
+            SchikkenText::NestPartsRange,
+            locale,
+            &[("from", (range.start + 1).to_string()), ("to", range.end.to_string()), ("total", parts.to_string())],
+        )));
+        lines.push(SchikkenLine::Button {
+            control: SchikkenControl::NestPartsPrev,
+            title: t(SchikkenText::NestPartsPrev),
+            enabled: page > 0,
+        });
+        lines.push(SchikkenLine::Button {
+            control: SchikkenControl::NestPartsNext,
+            title: t(SchikkenText::NestPartsNext),
+            enabled: range.end < parts,
+        });
+    }
+    let grain_rules = !n.input.grain.trim().is_empty();
+    for (i, row) in n.part_rows.iter().enumerate().skip(range.start).take(range.len()) {
+        let names = [("n", (i + 1).to_string()), ("name", row.name.clone())];
+        if parts > 1 {
             lines.push(SchikkenLine::Field {
                 control: SchikkenControl::NestPartCopies(i),
-                caption: fill(
-                    SchikkenText::NestPartCopies,
-                    locale,
-                    &[("n", (i + 1).to_string()), ("name", row.name.clone())],
-                ),
+                caption: fill(SchikkenText::NestPartCopies, locale, &names),
                 text: row.copies.clone(),
                 invalid: invalid(NestField::Copies) && row.own,
+            });
+        }
+        // The grain rule of a part only means something when the sheet has a grain.
+        if grain_rules {
+            lines.push(SchikkenLine::Choice {
+                control: SchikkenControl::NestPartGrain(i),
+                caption: fill(SchikkenText::NestPartGrain, locale, &names),
+                options: vec![t(SchikkenText::GrainAlong), t(SchikkenText::GrainAcross), t(SchikkenText::GrainFree)],
+                selected: match row.grain {
+                    burnburn_presentation::NestPartGrain::Along => 0,
+                    burnburn_presentation::NestPartGrain::Across => 1,
+                    burnburn_presentation::NestPartGrain::Free => 2,
+                },
             });
         }
     }
@@ -1274,6 +1337,30 @@ pub fn schikken_intent(
                 if !text.is_empty() && text != i.copies.trim() {
                     i.part_copies.push((object, text.clone()));
                 }
+            })
+        }
+        SchikkenControl::NestPartGrain(row) => {
+            let object = s.nest.as_ref()?.part_rows.get(row)?.object;
+            let rule = match index(values, control) {
+                1 => burnburn_presentation::NestPartGrain::Across,
+                2 => burnburn_presentation::NestPartGrain::Free,
+                _ => burnburn_presentation::NestPartGrain::Along,
+            };
+            nest(&|i| {
+                i.part_grain.retain(|(o, _)| *o != object);
+                // Following the sheet is what a part does without an entry.
+                if rule != burnburn_presentation::NestPartGrain::Along {
+                    i.part_grain.push((object, rule));
+                }
+            })
+        }
+        SchikkenControl::NestPartsPrev | SchikkenControl::NestPartsNext => {
+            let parts = s.nest.as_ref()?.part_rows.len();
+            let last = parts.saturating_sub(1) / PART_PAGE_ROWS;
+            let forward = control == SchikkenControl::NestPartsNext;
+            nest(&|i| {
+                let page = shown_page(i.part_page, parts);
+                i.part_page = if forward { (page + 1).min(last) } else { page.saturating_sub(1) };
             })
         }
         SchikkenControl::NestHoles => nest(&|i| {
