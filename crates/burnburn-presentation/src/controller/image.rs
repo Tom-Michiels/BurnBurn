@@ -835,7 +835,7 @@ fn apply_replacement(
     }
     // Replace to Fit: the frame takes the shape of the new picture inside the old frame.
     let frame = op.targets().first().copied();
-    let old = frame.and_then(|f| snapshot.object(f)).and_then(|o| axis_aligned_frame(o.path()));
+    let old = frame.and_then(|f| snapshot.object(f)).and_then(|o| rectangular_frame(o.path()));
     let (Some(frame), Some(old)) = (frame, old) else {
         s.messages.push(StatusMessage { key: MessageKey::CommandRejected });
         return AppUpdate::default();
@@ -863,12 +863,22 @@ fn source_px_size(sources: &BTreeMap<ContentHash, Arc<SourceImage>>, hash: Conte
     sources.get(&hash).map_or((0, 0), |i| (i.width(), i.height()))
 }
 
-/// The bounds of `path` when it is one closed rectangle with its sides along the axes: the frame of
-/// an imported picture before anyone rotated it.
-fn axis_aligned_frame(path: &Path) -> Option<Bounds> {
-    use burnburn_geometry::Segment;
+/// A frame that is one closed rectangle, turned or not: its middle, the two unit directions of its sides
+/// and their lengths. `wide` is the side nearest the sheet's x axis (the burn covers the frame's bounds, so
+/// that is the side the picture's width follows); `high` is the other one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RectFrame {
+    centre: Point,
+    wide: burnburn_geometry::Vector,
+    high: burnburn_geometry::Vector,
+    width: f64,
+    height: f64,
+}
+
+/// The rectangle `path` is, when it is one closed polyline of four right-angled corners.
+fn rectangular_frame(path: &Path) -> Option<RectFrame> {
+    use burnburn_geometry::{Segment, Vector};
     let [sub] = path.subpaths() else { return None };
-    let bounds = path.bounds().filter(|b| b.width() > 0.0 && b.height() > 0.0)?;
     let mut vertices = vec![sub.start()];
     for segment in sub.segments() {
         match segment {
@@ -876,28 +886,53 @@ fn axis_aligned_frame(path: &Path) -> Option<Bounds> {
             _ => return None,
         }
     }
-    let on = |v: f64, lo: f64, hi: f64| (v - lo).abs() < 1e-9 || (v - hi).abs() < 1e-9;
-    let rectangle = vertices.len() >= 4
-        && vertices.iter().all(|p| on(p.x, bounds.min().x, bounds.max().x) && on(p.y, bounds.min().y, bounds.max().y));
-    rectangle.then_some(bounds)
+    if vertices.len() == 5 && vertices[4].distance(vertices[0]) < 1e-9 {
+        vertices.pop();
+    }
+    let [p0, p1, p2, p3] = vertices[..] else { return None };
+    let (e1, e2) = (p1 - p0, p2 - p1);
+    let (l1, l2) = (e1.length(), e2.length());
+    if !(l1 > 1e-9 && l2 > 1e-9) {
+        return None;
+    }
+    // Right angled, and the fourth corner closes the parallelogram (relative to the size of the frame).
+    let scale = l1.max(l2);
+    let right = (e1.x * e2.x + e1.y * e2.y).abs() <= 1e-9 * l1 * l2;
+    let closes = (p3 - (p0 + e2)).length() <= 1e-9 * scale;
+    if !(right && closes) {
+        return None;
+    }
+    let centre = Point::new((p0.x + p2.x) / 2.0, (p0.y + p2.y) / 2.0);
+    let (u1, u2) = (Vector::new(e1.x / l1, e1.y / l1), Vector::new(e2.x / l2, e2.y / l2));
+    Some(if e1.x.abs() >= e2.x.abs() {
+        RectFrame { centre, wide: u1, high: u2, width: l1, height: l2 }
+    } else {
+        RectFrame { centre, wide: u2, high: u1, width: l2, height: l1 }
+    })
 }
 
-/// The scaling and shift that put a picture of `px` pixels, in its own aspect ratio, as large as
-/// `old` allows into the middle of it. `None` when the frame already has that shape; `Some(Err)`
-/// when the picture has no size.
-fn fit_transform(old: Bounds, (pw, ph): (u32, u32)) -> Option<Result<burnburn_geometry::Affine, ()>> {
+/// The scaling along the frame's own sides, and nothing else, that puts a picture of `px` pixels, in its
+/// own aspect ratio, as large as `old` allows into the middle of it. `None` when the frame already has
+/// that shape; `Some(Err)` when the picture has no size.
+fn fit_transform(old: RectFrame, (pw, ph): (u32, u32)) -> Option<Result<burnburn_geometry::Affine, ()>> {
     use burnburn_geometry::Affine;
     if pw == 0 || ph == 0 {
         return Some(Err(()));
     }
     let aspect = f64::from(pw) / f64::from(ph);
-    let (w, h) = (old.width(), old.height());
+    let (w, h) = (old.width, old.height);
     let (new_w, new_h) = if aspect >= w / h { (w, w / aspect) } else { (h * aspect, h) };
     if (new_w - w).abs() < 1e-9 && (new_h - h).abs() < 1e-9 {
         return None;
     }
-    let centre = Point::new((old.min().x + old.max().x) / 2.0, (old.min().y + old.max().y) / 2.0);
-    Some(Affine::scale_about(centre, new_w / w, new_h / h).map_err(|_| ()))
+    // M = I + (sx - 1) wide wide^T + (sy - 1) high high^T, applied about the middle.
+    let (kx, ky) = (new_w / w - 1.0, new_h / h - 1.0);
+    let (u, v) = (old.wide, old.high);
+    let a = 1.0 + kx * u.x * u.x + ky * v.x * v.x;
+    let b = kx * u.x * u.y + ky * v.x * v.y;
+    let d = 1.0 + kx * u.y * u.y + ky * v.y * v.y;
+    let (cx, cy) = (old.centre.x, old.centre.y);
+    Some(Affine::new([a, b, b, d, cx - (a * cx + b * cy), cy - (b * cx + d * cy)]).map_err(|_| ()))
 }
 
 // ---- task results ------------------------------------------------------------------------------
