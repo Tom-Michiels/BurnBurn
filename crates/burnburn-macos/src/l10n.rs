@@ -1306,6 +1306,14 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             });
         }
         M::SaveFailed => ("Bewaren is mislukt.", "Saving failed."),
+        M::SaveNewerFileOnDisk => (
+            "Niet bewaard: het bestand op schijf is gemaakt met een nieuwere versie van BurnBurn en blijft ongewijzigd. Kies een andere naam.",
+            "Not saved: the file on disk was made with a newer version of BurnBurn and is left unchanged. Choose another name.",
+        ),
+        M::PreviousVersionKept => (
+            "Bewaard. De vorige versie van het bestand is naast het project bewaard (.bak).",
+            "Saved. The previous version of the file was kept next to the project (.bak).",
+        ),
         M::OpenFailed => ("Openen is mislukt.", "Opening failed."),
         M::OpenNewerSchema => (
             "Dit project is gemaakt met een nieuwere versie van BurnBurn en wordt niet geopend; het bestand is niet gewijzigd.",
@@ -1857,6 +1865,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::CommandRejected,
         MessageKey::SaveFailed,
         MessageKey::OpenFailed,
+        MessageKey::SaveNewerFileOnDisk,
+        MessageKey::PreviousVersionKept,
         MessageKey::OpenNewerSchema,
         MessageKey::BooleanFailed,
         MessageKey::NoMachineProfile,

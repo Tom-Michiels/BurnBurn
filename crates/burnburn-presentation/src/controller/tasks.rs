@@ -39,7 +39,7 @@ impl AppController {
             return self.files_finished(job, outcome);
         }
         let saved_path = match &outcome.result {
-            Ok(TaskOutput::Saved { path }) => Some(path.clone()),
+            Ok(TaskOutput::Saved { path } | TaskOutput::SavedWithBackup { path, .. }) => Some(path.clone()),
             _ => None,
         };
         let recent = saved_path.map(|p| self.note_recent(&p)).unwrap_or_default();
@@ -86,7 +86,16 @@ impl AppController {
                 });
                 update.effects.push(HostEffect::Redraw { document });
             }
-            Ok(TaskOutput::Saved { path }) => {
+            Ok(saved @ (TaskOutput::Saved { .. } | TaskOutput::SavedWithBackup { .. })) => {
+                let (path, backup) = match saved {
+                    TaskOutput::SavedWithBackup { path, backup } => (path, Some(backup)),
+                    TaskOutput::Saved { path } => (path, None),
+                    _ => return update,
+                };
+                if let Some(backup) = backup {
+                    s.previous_version = Some(backup);
+                    s.messages.push(StatusMessage { key: MessageKey::PreviousVersionKept });
+                }
                 s.doc.mark_saved(outcome.source);
                 if let Some(recovery) = s.recovery_path.take().filter(|_| !s.doc.is_dirty()) {
                     s.autosaved = None;
@@ -252,12 +261,14 @@ impl AppController {
                     return self.close_session(document);
                 }
             }
-            Err(TaskError::Save(_)) => {
+            Err(TaskError::Save(e)) => {
                 s.close_after_save = false;
-                s.messages.push(StatusMessage { key: MessageKey::SaveFailed });
-                update
-                    .effects
-                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::SaveFailed });
+                let key = match e {
+                    SaveError::NewerFileOnDisk { .. } => MessageKey::SaveNewerFileOnDisk,
+                    _ => MessageKey::SaveFailed,
+                };
+                s.messages.push(StatusMessage { key });
+                update.effects.push(HostEffect::ShowError { document: Some(document), message: key });
             }
             Err(TaskError::Open(_)) => {}
         }

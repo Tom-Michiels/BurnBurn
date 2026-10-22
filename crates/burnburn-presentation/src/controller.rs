@@ -252,6 +252,8 @@ struct Session {
     uuid: ProjectUuid,
     assets: AssetStore,
     close_after_save: bool,
+    /// Where the previous file was kept by the last save over an older or unreadable one (X07).
+    previous_version: Option<PathBuf>,
     /// Sketch mode: the open sketch and its selection (window state, never document data).
     sketch: sketch::SketchState,
     /// The geometry dialog (join, round corners, optimize) while it is open.
@@ -329,6 +331,7 @@ impl Session {
             uuid: project.0,
             assets: project.1,
             close_after_save: false,
+            previous_version: None,
             sketch: sketch::SketchState::default(),
             geometry_dialog: None,
             options: shapes::ToolOptions::default(),
@@ -429,6 +432,11 @@ pub struct AppController {
 }
 
 impl AppController {
+    /// Where the last save of `document` kept the previous file (an older or unreadable one), if it did.
+    pub fn previous_version(&self, document: DocumentId) -> Option<PathBuf> {
+        self.sessions.get(&document)?.previous_version.clone()
+    }
+
     pub fn new(ports: AppPorts) -> Self {
         AppController {
             ports,

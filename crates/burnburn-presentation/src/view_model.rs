@@ -711,6 +711,10 @@ pub enum MessageKey {
     InvalidLength(FieldError),
     CommandRejected,
     SaveFailed,
+    /// The file on disk was written by a newer BurnBurn: not overwritten, nothing was saved (X07).
+    SaveNewerFileOnDisk,
+    /// Saved; the previous version of the file was kept next to it (X07).
+    PreviousVersionKept,
     OpenFailed,
     /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
     OpenNewerSchema,
