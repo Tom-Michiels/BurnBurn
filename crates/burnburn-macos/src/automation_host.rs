@@ -37,7 +37,7 @@ pub const POLL: Duration = Duration::from_millis(100);
 /// What an automation request asks the UI thread to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Job {
-    /// Open the project at the path (in a window of its own).
+    /// Open the project at the path (in a window of its own, in place of the clean active window).
     Load(PathBuf),
     /// Import the drawing file into the active document.
     Import(PathBuf),
@@ -132,8 +132,9 @@ struct Active {
 }
 
 enum Stage {
-    /// `Open` sent; waiting for a window (or an error).
-    Opening,
+    /// `Open` sent; waiting for a window (or an error). `replaces` is the clean window the loaded
+    /// project takes the place of: it is closed once the project's window exists.
+    Opening { replaces: Option<DocumentId> },
     /// `Import` sent; waiting for the preview, which is then committed or cancelled at once.
     Previewing { document: DocumentId },
 }
@@ -230,11 +231,12 @@ impl AutomationPump {
             Job::Load(path) => {
                 // The service refused a changed document before; a change since then is a refusal too.
                 if status_of(&vm, false).dirty {
-                    let _ = request.reply.send(Err(HostError::Failed));
+                    let _ = request.reply.send(Err(HostError::Dirty));
                     return;
                 }
                 let path = path.clone();
-                self.active = Some(Active { request, stage: Stage::Opening, started_ms: now_ms });
+                let replaces = vm.active.filter(|d| vm.document(*d).is_some());
+                self.active = Some(Active { request, stage: Stage::Opening { replaces }, started_ms: now_ms });
                 let effects = app.dispatch(UiIntent::Open { path });
                 self.observe(&effects);
             }
@@ -254,7 +256,7 @@ impl AutomationPump {
     fn advance(&mut self, app: &mut dyn AutomationApp, now_ms: u64) {
         let Some(active) = &self.active else { return };
         let stage = match &active.stage {
-            Stage::Opening => Stage::Opening,
+            Stage::Opening { replaces } => Stage::Opening { replaces: *replaces },
             Stage::Previewing { document } => Stage::Previewing { document: *document },
         };
         let (abandoned, expired) = (
@@ -263,8 +265,14 @@ impl AutomationPump {
         );
         let errored = self.seen.iter().any(|e| matches!(e, HostEffect::ShowError { .. }));
         match stage {
-            Stage::Opening => {
+            Stage::Opening { replaces } => {
                 if self.seen.iter().any(|e| matches!(e, HostEffect::OpenWindow { .. })) {
+                    // The project took the place of the clean window; a window that got changes
+                    // meanwhile stays (closing it would raise a save sheet, or lose work).
+                    if let Some(old) = replaces.filter(|d| app.view().document(*d).is_some_and(|doc| !doc.dirty)) {
+                        let effects = app.dispatch(UiIntent::Close { document: old });
+                        self.observe(&effects);
+                    }
                     self.finish(Ok(()));
                 } else if abandoned || expired || errored {
                     self.finish(Err(HostError::Failed));
