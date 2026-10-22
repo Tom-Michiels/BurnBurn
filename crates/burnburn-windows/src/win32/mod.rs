@@ -193,6 +193,22 @@ fn react_for(document: Option<DocumentId>, reaction: Reaction) -> bool {
             }
             true
         }
+        Reaction::ToggleG5Panel(panel) => {
+            if let Some(document) = document.or_else(|| view().active) {
+                with_host(|h| {
+                    if let Some(w) = h.windows.get_mut(&document) {
+                        match w.state.g5_shown.iter().position(|p| *p == panel) {
+                            Some(at) => {
+                                w.state.g5_shown.remove(at);
+                            }
+                            None => w.state.g5_shown.push(panel),
+                        }
+                    }
+                });
+                refresh();
+            }
+            true
+        }
         Reaction::ShowOpenDialog => {
             let path = open_dialog();
             react(on_open_dialog(path));
@@ -800,6 +816,18 @@ fn form_closed(hwnd: HWND) {
         with_host(|h| {
             if let Some(w) = h.windows.get_mut(&ev.document) {
                 w.state.schikken_shown = false;
+            }
+        });
+        refresh();
+        return;
+    }
+    // Offset and repair and the structure panel wait for their menu item: the close box asks it away.
+    if let FormKind::G5(panel) = ev.kind
+        && !crate::panels::g5_opens_by_itself(panel)
+    {
+        with_host(|h| {
+            if let Some(w) = h.windows.get_mut(&ev.document) {
+                w.state.g5_shown.retain(|p| *p != panel);
             }
         });
         refresh();

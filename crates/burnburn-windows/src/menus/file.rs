@@ -43,6 +43,7 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
         cmd(CommandKey::Save),
         cmd(CommandKey::SaveAs),
         host(Item::SaveTemplate),
+        cmd(CommandKey::ShowNotes),
         sep(),
         host(Item::FilesPanel),
     ]

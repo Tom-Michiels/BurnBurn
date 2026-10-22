@@ -177,6 +177,8 @@ pub enum Reaction {
     ShowOpenDialog,
     /// Show or hide the Schikken options panel of the window.
     ToggleSchikkenPanel,
+    /// Show or hide the offset and repair panel or the structure panel of the window (G5-native).
+    ToggleG5Panel(crate::panels::G5Panel),
 }
 
 /// Decode and translate one message for the window showing `vm`.
@@ -244,6 +246,8 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
                 Some(MenuItem::Open) => return Reaction::ShowOpenDialog,
                 Some(MenuItem::CamDialog(dialog)) => UiIntent::OpenCamDialog { document, dialog },
                 Some(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
+                Some(MenuItem::OffsetPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Offset),
+                Some(MenuItem::StructurePanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Structure),
                 Some(MenuItem::Command(command)) => UiIntent::Invoke { document: Some(document), command },
                 // The panel families' ids are answered by `host_panels::menu` before this point.
                 Some(MenuItem::Host(_)) | None => return Reaction::PassOn,
