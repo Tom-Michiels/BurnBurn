@@ -89,6 +89,8 @@ pub struct TraceStats {
     pub source_mm_per_pixel: (f64, f64),
     /// Anchors of `contour.keep` that matched no outline of this trace.
     pub keep_unmatched: usize,
+    /// Protected corners (`contour.corners`) that named no vertex of an outline.
+    pub corners_unmatched: usize,
 }
 
 /// A finished trace. It carries the identity it was computed for; the caller applies it only when
@@ -149,6 +151,32 @@ impl TraceResult {
         let c = self.contour(id)?;
         let first = c.source_points.first()?;
         Some([first.x / self.scale.mm_per_pixel_x(), f64::from(self.height_px) - first.y / self.scale.mm_per_pixel_y()])
+    }
+
+    /// The corner a click at `click_px` (adjusted pixels, y down) means (G8-trace, T06): among the
+    /// vertices of the outlines within `reach_px` of it, the sharpest turn (a tie goes to the one
+    /// nearest the click), as adjusted pixels, the form `contour.corners` stores. `None` when no
+    /// vertex is within reach or the click is not a position.
+    pub fn corner_near_px(&self, click_px: [f64; 2], reach_px: f64) -> Option<[f64; 2]> {
+        if !(click_px[0].is_finite() && click_px[1].is_finite() && reach_px.is_finite()) {
+            return None;
+        }
+        let (sx, sy) = (self.scale.mm_per_pixel_x(), self.scale.mm_per_pixel_y());
+        let height = f64::from(self.height_px);
+        let to_px = |p: &Point| [p.x / sx, height - p.y / sy];
+        let window = self.recipe.fit.corner_window_px * 0.5 * (sx + sy);
+        let mut best: Option<(f64, f64, [f64; 2])> = None; // (turn cosine, distance, position)
+        for contour in &self.contours {
+            let cosines = fit::turn_cosines(&contour.source_points, window);
+            for (p, cos) in contour.source_points.iter().zip(cosines) {
+                let at = to_px(p);
+                let d = (at[0] - click_px[0]).hypot(at[1] - click_px[1]);
+                if d <= reach_px && best.is_none_or(|b| (cos, d) < (b.0, b.1)) {
+                    best = Some((cos, d, at));
+                }
+            }
+        }
+        best.map(|b| b.2)
     }
 
     pub fn contour(&self, id: ContourId) -> Option<&TracedContour> {
@@ -233,7 +261,7 @@ pub fn trace_observed(
     for (k, &i) in kept.iter().enumerate() {
         cancel.check()?;
         let (pts, area) = &outlines.raws[i];
-        let fitted = fit::fit_closed(pts, &params);
+        let fitted = fit::fit_closed_with_corners(pts, &outlines.forced_corners[i], &params);
         let path = Subpath::new(fitted.start, fitted.segments, true).map_err(|_| TraceError::NonFinite)?;
         contours.push(TracedContour {
             id: ContourId(k as u64),
@@ -252,6 +280,7 @@ pub fn trace_observed(
     cancel.check()?;
     let (components, mut stats) = summarize(&contours, &prepared.scale);
     stats.keep_unmatched = outlines.keep_unmatched;
+    stats.corners_unmatched = outlines.corners_unmatched;
     Ok(TraceResult {
         task: request.task,
         source_revision: request.source_revision,
@@ -293,6 +322,10 @@ pub(crate) struct Outlines {
     pub removed: Vec<RemovedFeature>,
     /// Anchors of `contour.keep` that named no outline.
     pub keep_unmatched: usize,
+    /// Per outline: indices of the vertices `contour.corners` protects.
+    pub forced_corners: Vec<Vec<usize>>,
+    /// Protected corners that named no vertex of any outline.
+    pub corners_unmatched: usize,
 }
 
 /// How near (pixels) a kept anchor has to be to a vertex of an outline to name it.
@@ -336,6 +369,24 @@ impl Outlines {
                 }
             }
         }
+        // Protected corners (T06) are named by a position: the nearest vertex of any outline within reach.
+        let mut forced_corners = vec![Vec::new(); raws.len()];
+        let mut corners_unmatched = 0;
+        for corner in &settings.corners {
+            let mut best: Option<(f64, usize, usize)> = None;
+            for (i, contour) in set.contours.iter().enumerate() {
+                for (j, p) in contour.points.iter().enumerate() {
+                    let d = (p[0] - corner[0]).hypot(p[1] - corner[1]);
+                    if d <= crate::recipe::CORNER_REACH_PX && best.is_none_or(|b| d < b.0) {
+                        best = Some((d, i, j));
+                    }
+                }
+            }
+            match best {
+                Some((_, i, j)) => forced_corners[i].push(j),
+                None => corners_unmatched += 1,
+            }
+        }
         // Drop parts/holes below the area threshold, with their whole subtree; report each dropped root.
         let mut dropped = vec![false; raws.len()];
         let mut removed = Vec::new();
@@ -353,7 +404,7 @@ impl Outlines {
                 });
             }
         }
-        Ok(Outlines { raws, tree, dropped, removed, keep_unmatched })
+        Ok(Outlines { raws, tree, dropped, removed, keep_unmatched, forced_corners, corners_unmatched })
     }
 
     pub(crate) fn kept(&self) -> Vec<usize> {
@@ -401,6 +452,7 @@ pub(crate) fn summarize(contours: &[TracedContour], scale: &PixelScale) -> (Vec<
         smallest_feature_mm2: contours.iter().map(|c| c.area_mm2).min_by(f64::total_cmp),
         source_mm_per_pixel: (scale.mm_per_pixel_x(), scale.mm_per_pixel_y()),
         keep_unmatched: 0,
+        corners_unmatched: 0,
     };
     (components, stats)
 }

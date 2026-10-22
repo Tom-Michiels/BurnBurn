@@ -110,7 +110,7 @@ fn polyline_distance(p: Point, data: &[Datum]) -> f64 {
 }
 
 /// Turning angle cosine at each vertex, measured between chords of arc length `window`.
-fn turn_cosines(pts: &[Point], window: f64) -> Vec<f64> {
+pub(crate) fn turn_cosines(pts: &[Point], window: f64) -> Vec<f64> {
     let n = pts.len();
     (0..n)
         .map(|i| {
@@ -196,6 +196,12 @@ struct Anchor {
 }
 
 pub(crate) fn fit_closed(pts: &[Point], params: &FitParams) -> Fitted {
+    fit_closed_with_corners(pts, &[], params)
+}
+
+/// [`fit_closed`] with corners the user protected (T06): vertex indices of `pts` that get a corner
+/// node whatever the turning angle there, unless an automatic corner is already within the window.
+pub(crate) fn fit_closed_with_corners(pts: &[Point], forced: &[usize], params: &FitParams) -> Fitted {
     let n = pts.len();
     if n < 3 {
         return polygon_fallback(pts);
@@ -234,6 +240,21 @@ pub(crate) fn fit_closed(pts: &[Point], params: &FitParams) -> Fitted {
             corners.push(i);
         }
     }
+    // Protected corners: added where no automatic corner lies within the window already.
+    for &f in forced {
+        if f >= n || corners.contains(&f) {
+            continue;
+        }
+        let near = corners.iter().any(|&c| {
+            let (lo, hi) = if c < f { (c, f) } else { (f, c) };
+            let inner: f64 = (lo..hi).map(|j| pts[j].distance(pts[j + 1])).sum();
+            inner.min(perimeter - inner) <= w
+        });
+        if !near {
+            corners.push(f);
+        }
+    }
+    corners.sort_unstable();
 
     let arc_between = |a: usize, b: usize| -> f64 {
         let mut acc = 0.0;

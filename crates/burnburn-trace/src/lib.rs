@@ -45,7 +45,7 @@ pub use preview::{
     ComparisonPreview, DeviationMap, DeviationSummary, SegmentDeviation, comparison_preview, deviation_map,
     deviation_summary,
 };
-pub use recipe::{ContourSettings, ENGINE_VERSION, FitSettings, TraceRecipe};
+pub use recipe::{CORNER_REACH_PX, ContourSettings, ENGINE_VERSION, FitSettings, TraceRecipe};
 pub use recipes::{
     BatchItem, BatchOutcome, BatchProblem, BatchReport, CompareCorrections, CorrectionReplay, Reapplied,
     RecipeComparison, RecipeSummary, UnboundCorrection, compare_recipes, compare_recipes_corrected, reapply_correction,

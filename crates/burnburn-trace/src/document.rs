@@ -44,6 +44,10 @@ pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
     if !recipe.contour.keep.is_empty() {
         r = r.with("contour.keep", V::List(recipe.contour.keep.iter().map(|a| V::List(pair(*a).into())).collect()));
     }
+    if !recipe.contour.corners.is_empty() {
+        r = r
+            .with("contour.corners", V::List(recipe.contour.corners.iter().map(|a| V::List(pair(*a).into())).collect()));
+    }
     r.with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
         .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))
         .with("fit.corner_window_px", V::Number(recipe.fit.corner_window_px))
@@ -284,9 +288,19 @@ pub fn recipe_from_engine(recipe: &EngineRecipe) -> Result<TraceRecipe, TraceErr
             })
             .collect::<Result<_, TraceError>>()?,
     };
+    let corners = match r.optional_list("contour.corners")? {
+        None => Vec::new(),
+        Some(items) => items
+            .iter()
+            .map(|a| match list("contour.corners", a)? {
+                [x, y] => Ok([number("contour.corners", x)?, number("contour.corners", y)?]),
+                _ => Err(TraceError::InvalidRecipe("contour.corners")),
+            })
+            .collect::<Result<_, TraceError>>()?,
+    };
     let out = TraceRecipe {
         image,
-        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")?, keep },
+        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")?, keep, corners },
         fit: FitSettings {
             tolerance_mm: r.number("fit.tolerance_mm")?,
             corner_angle_deg: r.number("fit.corner_angle_deg")?,

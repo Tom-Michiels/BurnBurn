@@ -64,6 +64,7 @@ fn every_field() -> TraceRecipe {
             diagonal: DiagonalPolicy::Separate,
             min_area_mm2: 0.75,
             keep: vec![[3.0, 4.5], [10.0, 1.0 / 3.0]],
+            corners: vec![[7.5, 8.25], [1.0 / 7.0, 22.0]],
         },
         fit: FitSettings { tolerance_mm: 0.02, corner_angle_deg: 45.0, corner_window_px: 3.5, curves: false },
     }
