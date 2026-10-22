@@ -146,3 +146,57 @@ pub fn deviation_map(result: &TraceResult) -> Result<DeviationMap, TraceError> {
     let worst = segments.iter().copied().max_by(|a, b| a.max_mm.total_cmp(&b.max_mm));
     Ok(DeviationMap { width_px: w, height_px: h, cells_mm: cells, segments, worst })
 }
+
+/// The few numbers a simplification report needs: the largest deviation (mm), the 95th percentile
+/// over all source points, and the worst segments with the place of their worst point.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviationSummary {
+    pub max_mm: f64,
+    pub p95_mm: f64,
+    /// At most `top` segments, largest deviation first.
+    pub worst: Vec<SegmentDeviation>,
+}
+
+/// [`DeviationSummary`] of `result` without a per-pixel map.
+pub fn deviation_summary(result: &TraceResult, top: usize) -> Result<DeviationSummary, TraceError> {
+    let mut segments = Vec::new();
+    let mut all = Vec::new();
+    for (ci, c) in result.contours.iter().enumerate() {
+        let n = c.source_points.len();
+        let mut from = c.path.start();
+        for (si, (seg, &(a, b))) in c.path.segments().iter().zip(&c.segment_spans).enumerate() {
+            let (mut max, mut sum, mut worst_at, mut count) = (0.0f64, 0.0, from, 0usize);
+            for idx in a..=b {
+                let Some(&p) = c.source_points.get(idx % n.max(1)) else { continue };
+                let d = dist_point_to_segment(p, from, seg);
+                if !d.is_finite() {
+                    return Err(TraceError::NonFinite);
+                }
+                all.push(d);
+                sum += d;
+                count += 1;
+                if d > max {
+                    max = d;
+                    worst_at = p;
+                }
+            }
+            let mean_mm = if count > 0 { sum / count as f64 } else { 0.0 };
+            segments.push(SegmentDeviation {
+                contour: ci,
+                contour_id: c.id,
+                segment: si,
+                max_mm: max,
+                mean_mm,
+                worst_at,
+            });
+            from = seg.end();
+        }
+    }
+    all.sort_by(f64::total_cmp);
+    let p95_mm = if all.is_empty() { 0.0 } else { all[((all.len() - 1) as f64 * 0.95).round() as usize] };
+    let max_mm = segments.iter().map(|d| d.max_mm).fold(0.0, f64::max);
+    // Largest first; equal deviations keep the order of the contours.
+    segments.sort_by(|a, b| b.max_mm.total_cmp(&a.max_mm));
+    segments.truncate(top);
+    Ok(DeviationSummary { max_mm, p95_mm, worst: segments })
+}

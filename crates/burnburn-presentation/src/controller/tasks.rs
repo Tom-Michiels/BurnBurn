@@ -161,6 +161,7 @@ impl AppController {
                     let current = t.recipe.as_ref().and_then(|r| r.key(t.source.content_hash()).ok());
                     let fresh = matches!((t.latest, current), (Some(latest), Some(key)) if result.check_fresh(latest, key).is_ok());
                     if fresh {
+                        t.report = Some(super::trace_prep::report_of(&result, t.recipe.as_ref()));
                         t.result = Some(result);
                         t.unbound.clear();
                         t.failed.clear();

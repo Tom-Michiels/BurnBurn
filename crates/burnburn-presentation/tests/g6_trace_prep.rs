@@ -193,11 +193,7 @@ fn four_corners_correct_the_plane_and_the_panel_shows_the_transform() {
     let (_, plain_width, _) = shapes(&h, doc);
     assert!((plain_width - 5.7).abs() < 0.3, "the skewed photo: {plain_width}");
     let want = corners([["10", "8"], ["54", "8"], ["60", "40"], ["4", "40"]]);
-    send(
-        &mut h,
-        doc,
-        TracePrepIntent::ApplyPerspective { corners: want.clone(), width: s("40"), height: s("32") },
-    );
+    send(&mut h, doc, TracePrepIntent::ApplyPerspective { corners: want.clone(), width: s("40"), height: s("32") });
     let p = prep(&h, doc);
     assert_eq!(p.issue, None);
     assert!(p.perspective.on);
@@ -211,10 +207,12 @@ fn four_corners_correct_the_plane_and_the_panel_shows_the_transform() {
         let w = m[6] * x + m[7] * y + m[8];
         ((m[0] * x + m[1] * y + m[2]) / w, (m[3] * x + m[4] * y + m[5]) / w)
     };
-    for ((x, y), (u, v)) in [(10.0, 8.0), (54.0, 8.0), (60.0, 40.0), (4.0, 40.0)]
-        .into_iter()
-        .zip([(0.0, 0.0), (40.0, 0.0), (40.0, 32.0), (0.0, 32.0)])
-    {
+    for ((x, y), (u, v)) in [(10.0, 8.0), (54.0, 8.0), (60.0, 40.0), (4.0, 40.0)].into_iter().zip([
+        (0.0, 0.0),
+        (40.0, 0.0),
+        (40.0, 32.0),
+        (0.0, 32.0),
+    ]) {
         let (gu, gv) = apply(x, y);
         assert!((gu - u).abs() < 1e-6 && (gv - v).abs() < 1e-6, "({x},{y}) -> ({gu},{gv}) not ({u},{v})");
     }

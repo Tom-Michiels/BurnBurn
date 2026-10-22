@@ -80,6 +80,8 @@ pub(super) struct Tracer {
     /// Positions in `corrections` the last trace did not apply, and why.
     pub(super) unbound: Vec<burnburn_trace::UnboundCorrection>,
     pub(super) failed: Vec<usize>,
+    /// What simplifying cost for the contour result in force (T06).
+    pub(super) report: Option<crate::trace_prep::PrepReport>,
 }
 
 impl Tracer {
@@ -109,6 +111,7 @@ impl Tracer {
             corrections: Vec::new(),
             unbound: Vec::new(),
             failed: Vec::new(),
+            report: None,
         }
     }
 

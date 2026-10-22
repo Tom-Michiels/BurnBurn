@@ -166,9 +166,10 @@ fn a_damaged_corrections_list_is_refused() {
     );
     assert!(corrections_from_engine(&short, &corrected.recipe, hash).is_err());
     let mut unknown = stored(&corrected);
-    unknown
-        .params
-        .insert("trace.corrections".into(), ParamValue::List(vec![ParamValue::List(vec![ParamValue::Text("blob".into())])]));
+    unknown.params.insert(
+        "trace.corrections".into(),
+        ParamValue::List(vec![ParamValue::List(vec![ParamValue::Text("blob".into())])]),
+    );
     assert!(corrections_from_engine(&unknown, &corrected.recipe, hash).is_err());
 }
 

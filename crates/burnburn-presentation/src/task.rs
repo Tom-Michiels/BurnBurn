@@ -19,7 +19,8 @@ use burnburn_io::{
 use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
 use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
 use burnburn_trace::{
-    CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, replay_corrections, retrace_region, trace,
+    CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, replay_corrections, retrace_region,
+    trace,
 };
 use burnburn_types::{
     CancellationToken, ContentHash, DocumentId, GeometryId, HashDomain, RevisionId, StableId, TaskId,
@@ -804,9 +805,8 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
         },
         TaskInput::TraceCorrected(job) => {
             let base = Arc::new(trace(&job.request, cancel).map_err(trace_error)?);
-            let replay =
-                replay_corrections(&base, &job.request.source, &job.corrections, job.request.task, cancel)
-                    .map_err(trace_error)?;
+            let replay = replay_corrections(&base, &job.request.source, &job.corrections, job.request.task, cancel)
+                .map_err(trace_error)?;
             Ok(TaskOutput::TracedCorrected(Arc::new(replay)))
         }
         TaskInput::CorrectRegion(request) => {

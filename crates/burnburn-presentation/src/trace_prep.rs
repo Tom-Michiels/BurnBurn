@@ -61,20 +61,44 @@ pub enum MaskMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracePrepIntent {
     /// Use the local threshold with this window and offset (replaces the global one).
-    UseLocalThreshold { radius: String, offset: String },
+    UseLocalThreshold {
+        radius: String,
+        offset: String,
+    },
     /// Back to the global threshold of the tracer form.
     UseGlobalThreshold,
     /// The four-point correction: corners as typed `(x, y)`, then the size of the corrected image.
     /// Empty size fields take the longer of each pair of opposite edges.
-    ApplyPerspective { corners: [[String; 2]; 4], width: String, height: String },
+    ApplyPerspective {
+        corners: [[String; 2]; 4],
+        width: String,
+        height: String,
+    },
     ClearPerspective,
-    AddMask { mode: MaskMode, x: String, y: String, width: String, height: String },
-    RemoveMask { index: usize },
+    AddMask {
+        mode: MaskMode,
+        x: String,
+        y: String,
+        width: String,
+        height: String,
+    },
+    RemoveMask {
+        index: usize,
+    },
     /// Trace the area again with its own gray level (empty: the level of the trace) and optional
     /// anchors `x, y; x, y` the new outline must pass through. Everything outside the area stays.
-    RetraceRegion { x: String, y: String, width: String, height: String, threshold: String, anchors: String },
+    RetraceRegion {
+        x: String,
+        y: String,
+        width: String,
+        height: String,
+        threshold: String,
+        anchors: String,
+    },
     /// Drop correction number `index`; the trace is made again with the others.
-    RemoveCorrection { index: usize },
+    RemoveCorrection {
+        index: usize,
+    },
 }
 
 /// The local threshold in force.
@@ -124,6 +148,8 @@ pub struct TracePrepViewModel {
     pub masks: Vec<PrepMask>,
     /// The local corrections in force, in the order they are applied.
     pub corrections: Vec<PrepCorrection>,
+    /// The cost of simplifying, once there is a contour result.
+    pub report: Option<PrepReport>,
     pub issue: Option<PrepIssue>,
     /// A trace of the prepared image is running.
     pub computing: bool,
@@ -135,7 +161,10 @@ pub enum CorrectionStatus {
     Applied,
     /// Not applied: the contours it was made on are no longer the same. `lost` contours it was bound
     /// to have no match; `new_in_region` contours in its area it never saw.
-    NeedsRelink { lost: usize, new_in_region: usize },
+    NeedsRelink {
+        lost: usize,
+        new_in_region: usize,
+    },
     /// The retrace itself was refused.
     Failed,
 }
@@ -151,4 +180,38 @@ pub struct PrepCorrection {
     pub threshold: String,
     pub anchors: usize,
     pub status: CorrectionStatus,
+}
+
+/// One of the largest deviations between the fitted outline and the source contour.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrepDeviation {
+    pub mm: f64,
+    /// Where the source point with that deviation is, millimetres in the frame of the trace (y up).
+    pub x_mm: f64,
+    pub y_mm: f64,
+}
+
+/// A part or hole the "ignore less than" filter took away, and where it was.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrepRemoved {
+    pub hole: bool,
+    pub area_mm2: f64,
+    /// The middle of its bounding box, millimetres in the frame of the trace (y up).
+    pub x_mm: f64,
+    pub y_mm: f64,
+}
+
+/// What simplifying cost (T06): the fit budget, the deviations that really occur, and what the
+/// filter dropped.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrepReport {
+    /// The fit budget in force, mm.
+    pub tolerance_mm: f64,
+    pub max_deviation_mm: f64,
+    pub p95_deviation_mm: f64,
+    /// The largest deviations, largest first.
+    pub worst: Vec<PrepDeviation>,
+    pub removed: Vec<PrepRemoved>,
+    pub parts: usize,
+    pub holes: usize,
 }

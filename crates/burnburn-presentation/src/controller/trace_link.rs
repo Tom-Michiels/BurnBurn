@@ -147,13 +147,7 @@ impl AppController {
             if s.pending.contains_key(&id) {
                 s.trace_link.reopening.insert(
                     id,
-                    Reopening {
-                        trace,
-                        recipe: Box::new(recipe),
-                        mode,
-                        decisions,
-                        stored: definition.recipe.clone(),
-                    },
+                    Reopening { trace, recipe: Box::new(recipe), mode, decisions, stored: definition.recipe.clone() },
                 );
             }
             update

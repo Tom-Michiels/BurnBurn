@@ -6,22 +6,26 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use burnburn_image::{
-    Homography, MAX_ADAPTIVE_RADIUS, Perspective, PixelRect, QuarterTurn, RegionMask, RegionMode, RegionShape, Threshold,
+    Homography, MAX_ADAPTIVE_RADIUS, Perspective, PixelRect, QuarterTurn, RegionMask, RegionMode, RegionShape,
+    Threshold,
 };
-use burnburn_trace::{Anchor, CorrectionReplay, CorrectionRequest, TraceRecipe, TraceResult};
+use burnburn_trace::{Anchor, ContourKind, CorrectionReplay, CorrectionRequest, TraceRecipe, TraceResult};
 use burnburn_types::{CancellationSource, ContentHash, DocumentId, TaskId};
 
 use crate::field::{format_mm, parse_number};
 use crate::image_panel::TraceMode;
 use crate::task::{TaskInput, TaskKind, TaskRequest, revision_key};
 use crate::trace_prep::{
-    CorrectionStatus, MaskMode, PrepCorrection, PrepField, PrepIssue, PrepMask, PrepPerspective, PrepThreshold,
-    PrepTransform, TracePrepIntent, TracePrepViewModel,
+    CorrectionStatus, MaskMode, PrepCorrection, PrepDeviation, PrepField, PrepIssue, PrepMask, PrepPerspective,
+    PrepRemoved, PrepReport, PrepThreshold, PrepTransform, TracePrepIntent, TracePrepViewModel,
 };
 use crate::view_model::MessageKey;
 
 use super::trace::{Tracer, form_of};
 use super::{AppController, AppUpdate, Session, error, submit};
+
+/// How many of the worst deviations the report names.
+const REPORT_WORST: usize = 3;
 
 /// Largest side of a corrected image (pixels): the working image is held in memory.
 const MAX_CORRECTED_SIDE: u32 = 16_384;
@@ -84,16 +88,13 @@ fn perspective_from(corners: &[[String; 2]; 4], width: &str, height: &str) -> Re
     Ok(Perspective { points, width: w, height: h })
 }
 
-fn mask_from(
-    mode: MaskMode,
-    rect: [&str; 4],
-    (image_w, image_h): (u32, u32),
-) -> Result<RegionMask, PrepIssue> {
+fn mask_from(mode: MaskMode, rect: [&str; 4], (image_w, image_h): (u32, u32)) -> Result<RegionMask, PrepIssue> {
     let x = whole(rect[0], PrepField::MaskX, (0, u32::MAX))?;
     let y = whole(rect[1], PrepField::MaskY, (0, u32::MAX))?;
     let width = whole(rect[2], PrepField::MaskWidth, (1, u32::MAX))?;
     let height = whole(rect[3], PrepField::MaskHeight, (1, u32::MAX))?;
-    let inside = x.checked_add(width).is_some_and(|r| r <= image_w) && y.checked_add(height).is_some_and(|b| b <= image_h);
+    let inside =
+        x.checked_add(width).is_some_and(|r| r <= image_w) && y.checked_add(height).is_some_and(|b| b <= image_h);
     if !inside {
         return Err(PrepIssue::MaskOutsideImage);
     }
@@ -207,6 +208,7 @@ pub(super) fn corrected_finished(
     let Some(t) = s.tracer.as_mut() else { return };
     let fresh = matches!((t.latest, current_key(t)), (Some(latest), Some(key)) if latest == id && replay.result.base_key == key);
     if fresh {
+        t.report = Some(report_of(&replay.result, t.recipe.as_ref()));
         t.result = Some(Arc::clone(&replay.result));
         t.unbound = replay.unbound.clone();
         t.failed = replay.failed.iter().map(|(i, _)| *i).collect();
@@ -223,11 +225,13 @@ pub(super) fn region_finished(
     document: DocumentId,
 ) {
     let Some(t) = s.tracer.as_mut() else { return };
-    let fresh = matches!((t.latest, current_key(t)), (Some(latest), Some(key)) if latest == id && result.base_key == key);
+    let fresh =
+        matches!((t.latest, current_key(t)), (Some(latest), Some(key)) if latest == id && result.base_key == key);
     if fresh {
         if let Some(record) = result.corrections.last() {
             t.corrections.push(record.clone());
         }
+        t.report = Some(report_of(&result, t.recipe.as_ref()));
         t.result = Some(result);
         update.scenes_changed.push(document);
     }
@@ -319,6 +323,33 @@ fn text(v: f64) -> String {
     format_mm(v)
 }
 
+/// What simplifying cost for `result`: the budget in force, the deviations that really occur and the
+/// features the filter dropped, all in millimetres of the trace.
+pub(super) fn report_of(result: &TraceResult, recipe: Option<&TraceRecipe>) -> PrepReport {
+    let summary = burnburn_trace::deviation_summary(result, REPORT_WORST).ok();
+    let center = |b: burnburn_geometry::Bounds| ((b.min().x + b.max().x) / 2.0, (b.min().y + b.max().y) / 2.0);
+    PrepReport {
+        tolerance_mm: recipe.map_or(result.recipe.fit.tolerance_mm, |r| r.fit.tolerance_mm),
+        max_deviation_mm: summary.as_ref().map_or(0.0, |s| s.max_mm),
+        p95_deviation_mm: summary.as_ref().map_or(0.0, |s| s.p95_mm),
+        worst: summary
+            .map(|s| {
+                s.worst.iter().map(|d| PrepDeviation { mm: d.max_mm, x_mm: d.worst_at.x, y_mm: d.worst_at.y }).collect()
+            })
+            .unwrap_or_default(),
+        removed: result
+            .removed
+            .iter()
+            .map(|f| {
+                let (x_mm, y_mm) = center(f.bounds);
+                PrepRemoved { hole: f.kind == ContourKind::Hole, area_mm2: f.area_mm2, x_mm, y_mm }
+            })
+            .collect(),
+        parts: result.stats.closed_shapes,
+        holes: result.stats.holes,
+    }
+}
+
 fn corrections_view(t: &Tracer) -> Vec<PrepCorrection> {
     t.corrections
         .iter()
@@ -374,7 +405,8 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
     };
     let perspective = match &recipe.image.perspective {
         Some(p) => {
-            let corner = |i: usize| p.points.get(i).map_or([String::new(), String::new()], |q| [text(q.0[0]), text(q.0[1])]);
+            let corner =
+                |i: usize| p.points.get(i).map_or([String::new(), String::new()], |q| [text(q.0[0]), text(q.0[1])]);
             let transform = Homography::from_points(&p.points)
                 .ok()
                 .map(|(hom, residual_px)| PrepTransform { matrix: hom.m, residual_px });
@@ -430,6 +462,7 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         perspective,
         masks,
         corrections: corrections_view(t),
+        report: t.report.clone().filter(|_| t.form.mode == TraceMode::Contour && t.result.is_some()),
         issue: t.prep_issue,
         computing: s.pending.values().any(|(kind, _)| matches!(kind, TaskKind::Trace | TaskKind::Centerline)),
     })

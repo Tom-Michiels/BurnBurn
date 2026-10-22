@@ -29,11 +29,11 @@ mod notes;
 mod offset;
 mod production;
 mod schikken;
-mod trace_prep;
 mod structure_panel;
 mod task;
 mod text_panel;
 mod thumbnail;
+mod trace_prep;
 mod variable_panel;
 mod view_model;
 
@@ -136,7 +136,6 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use schikken::*;
-pub use trace_prep::*;
 pub use structure_panel::{
     BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
     ReferenceStatus, StructureEdit, StructureViewModel,
@@ -149,6 +148,7 @@ pub use text_panel::{
     Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
+pub use trace_prep::*;
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
     VariablePanelViewModel, VariableProblem,
