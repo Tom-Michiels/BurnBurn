@@ -129,6 +129,61 @@ texts! {
     FieldMaskY => ("Gebied y", "Area y"),
     FieldThreshold => ("Drempel", "Threshold"),
     FieldAnchors => ("Vaste punten", "Fixed points"),
+    // --- Parts and references (S06, S07).
+    DefineHeading => ("Onderdeel maken", "Make a part"),
+    DefineSelected => (
+        "{0} object(en) geselecteerd. Rechthoeken en cirkels worden parametrisch, de rest vaste vorm; de objecten blijven staan.",
+        "{0} object(s) selected. Rectangles and circles become parametric, the rest fixed shapes; the objects stay."
+    ),
+    PartNameCaption => ("Naam van het onderdeel", "Name of the part"),
+    DefineButton => ("Maak onderdeel van selectie", "Make part from selection"),
+    PlaceXCaption => ("{0}: plaats x (mm)", "{0}: place at x (mm)"),
+    PlaceYCaption => ("{0}: plaats y (mm)", "{0}: place at y (mm)"),
+    PlaceButton => ("Plaats exemplaar van {0}", "Place an instance of {0}"),
+    ParamCaption => ("{0}: standaardwaarde van {1} (mm)", "{0}: default of {1} (mm)"),
+    VariantNameCaption => ("{0}: naam van een nieuwe variant", "{0}: name of a new variant"),
+    AddVariantButton => ("Voeg variant toe aan {0}", "Add a variant to {0}"),
+    VariantValueCaption => (
+        "{0}, variant {1}: waarde van {2} (mm, leeg = zoals de standaard)",
+        "{0}, variant {1}: value of {2} (mm, empty = as the default)"
+    ),
+    RemovePartButton => ("Verwijder onderdeel {0}", "Remove part {0}"),
+    RemoveInstanceButton => ("Verwijder exemplaar {0}", "Remove instance {0}"),
+    RefMakeHeading => ("Referentie maken", "Make a reference"),
+    RefNoEdges => (
+        "Selecteer precies één object om een van zijn randen als referentie te kiezen.",
+        "Select exactly one object to choose one of its edges as a reference."
+    ),
+    RefNameCaption => ("Naam van de referentie", "Name of the reference"),
+    RefEdgeCaption => ("Rand van het geselecteerde object", "Edge of the selected object"),
+    RefEdgeItem => ("Rand {0}: {1} mm", "Edge {0}: {1} mm"),
+    RefAddButton => ("Maak referentie", "Make reference"),
+    RefCandidateCaption => ("{0}: welke rand wordt bedoeld", "{0}: which edge is meant"),
+    RefRebindButton => ("Kies deze rand voor {0}", "Choose this edge for {0}"),
+    RefRemoveButton => ("Verwijder referentie {0}", "Remove reference {0}"),
+    // --- Why a structure edit was refused.
+    ProblemNeedsSelection => (
+        "Selecteer eerst de objecten waar het onderdeel van gemaakt wordt.",
+        "Select the objects the part is made of first."
+    ),
+    ProblemNeedsName => ("Geef een naam.", "Give a name."),
+    ProblemUnknownPart => ("Dit onderdeel bestaat niet.", "This part does not exist."),
+    ProblemUnknownInstance => ("Dit exemplaar bestaat niet.", "This instance does not exist."),
+    ProblemPartInUse => (
+        "Het onderdeel wordt nog gebruikt door een exemplaar: verwijder eerst de exemplaren.",
+        "The part is still used by an instance: remove the instances first."
+    ),
+    ProblemUnknownVariant => ("Deze variant bestaat niet.", "This variant does not exist."),
+    ProblemVariantExists => ("Er is al een variant met deze naam.", "A variant with this name exists already."),
+    ProblemUnknownParameter => ("Dit onderdeel heeft deze parameter niet.", "This part has no such parameter."),
+    ProblemUnknownObject => ("Dit object bestaat niet.", "This object does not exist."),
+    ProblemNotAnEdge => ("Het object heeft deze rand niet.", "The object has no such edge."),
+    ProblemUnknownReference => ("Deze referentie bestaat niet.", "This reference does not exist."),
+    ProblemNotAmbiguous => (
+        "Alleen een dubbelzinnige referentie kan opnieuw gekoppeld worden.",
+        "Only an ambiguous reference can be linked again."
+    ),
+    ProblemNoCandidate => ("Deze rand is geen kandidaat.", "This edge is not a candidate."),
 }
 
 /// `text` in `locale`.
@@ -147,4 +202,25 @@ pub fn g6_fmt(text: G6Text, locale: Locale, values: &[&str]) -> String {
         s = s.replace(&format!("{{{i}}}"), v);
     }
     s
+}
+
+/// The words for a refused structure edit.
+pub fn structure_problem_text(problem: burnburn_presentation::StructureProblem, locale: Locale) -> String {
+    use burnburn_presentation::StructureProblem as P;
+    let text = match problem {
+        P::NeedsSelection => G6Text::ProblemNeedsSelection,
+        P::NeedsName => G6Text::ProblemNeedsName,
+        P::UnknownPart => G6Text::ProblemUnknownPart,
+        P::UnknownInstance => G6Text::ProblemUnknownInstance,
+        P::PartInUse => G6Text::ProblemPartInUse,
+        P::UnknownVariant => G6Text::ProblemUnknownVariant,
+        P::VariantExists => G6Text::ProblemVariantExists,
+        P::UnknownParameter => G6Text::ProblemUnknownParameter,
+        P::UnknownObject => G6Text::ProblemUnknownObject,
+        P::NotAnEdge => G6Text::ProblemNotAnEdge,
+        P::UnknownReference => G6Text::ProblemUnknownReference,
+        P::NotAmbiguous => G6Text::ProblemNotAmbiguous,
+        P::NoCandidate | _ => G6Text::ProblemNoCandidate,
+    };
+    g6_text(text, locale).to_owned()
 }

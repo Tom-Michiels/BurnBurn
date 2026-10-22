@@ -137,8 +137,8 @@ pub use production::{
 };
 pub use schikken::*;
 pub use structure_panel::{
-    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
-    ReferenceStatus, StructureEdit, StructureViewModel,
+    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
+    ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,

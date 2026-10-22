@@ -101,6 +101,53 @@ pub enum G5Control {
     PrepRemoveCorrection {
         index: usize,
     },
+    // --- Parts and references (G6-werk, S06, S07).
+    StructDefineName,
+    StructDefine,
+    PartPlaceX {
+        part: u64,
+    },
+    PartPlaceY {
+        part: u64,
+    },
+    PartPlace {
+        part: u64,
+    },
+    /// The definition's default of parameter number `parameter`.
+    PartParam {
+        part: u64,
+        parameter: usize,
+    },
+    PartVariantName {
+        part: u64,
+    },
+    PartAddVariant {
+        part: u64,
+    },
+    /// What variant number `variant` sets for parameter number `parameter`.
+    PartVariantValue {
+        part: u64,
+        variant: usize,
+        parameter: usize,
+    },
+    PartRemove {
+        part: u64,
+    },
+    InstanceRemove {
+        instance: u64,
+    },
+    RefName,
+    RefEdge,
+    RefAdd,
+    RefCandidate {
+        reference: u64,
+    },
+    RefRebind {
+        reference: u64,
+    },
+    RefRemove {
+        reference: u64,
+    },
 }
 
 /// One line of a panel.
@@ -428,6 +475,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
         }));
     }
 
+    lines.extend(super::g6_werk::define_lines(s, locale));
     lines.push(G5Line::Heading(t(G5Text::PartsHeading)));
     if s.parts.is_empty() {
         lines.push(text(G5Text::PartsNone, locale));
@@ -467,13 +515,16 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
                 });
             }
             lines.push(G5Line::Text(g5_fmt(G5Text::EffectiveLine, locale, &[&pairs(&instance.effective)])));
+            lines.push(super::g6_werk::instance_remove_line(instance, locale));
         }
+        lines.extend(super::g6_werk::part_edit_lines(part, locale));
     }
 
     lines.push(G5Line::Heading(t(G5Text::ReferencesHeading)));
     if s.references.is_empty() {
         lines.push(text(G5Text::ReferencesNone, locale));
     }
+    lines.extend(super::g6_werk::reference_make_lines(s, locale));
     for r in &s.references {
         lines.push(match r.status {
             ReferenceStatus::Bound => {
@@ -489,6 +540,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
                 G5Line::Problem(g5_fmt(G5Text::RefOrigin, locale, &[&r.name]))
             }
         });
+        lines.extend(super::g6_werk::reference_edit_lines(r, locale));
     }
     lines
 }
@@ -532,6 +584,23 @@ pub fn g5_intent(
         | G5Control::PrepAnchors
         | G5Control::PrepRetrace
         | G5Control::PrepRemoveCorrection { .. } => super::g6_werk::trace_prep_intent(doc, document, control, values),
+        G5Control::StructDefineName
+        | G5Control::StructDefine
+        | G5Control::PartPlaceX { .. }
+        | G5Control::PartPlaceY { .. }
+        | G5Control::PartPlace { .. }
+        | G5Control::PartParam { .. }
+        | G5Control::PartVariantName { .. }
+        | G5Control::PartAddVariant { .. }
+        | G5Control::PartVariantValue { .. }
+        | G5Control::PartRemove { .. }
+        | G5Control::InstanceRemove { .. }
+        | G5Control::RefName
+        | G5Control::RefEdge
+        | G5Control::RefAdd
+        | G5Control::RefCandidate { .. }
+        | G5Control::RefRebind { .. }
+        | G5Control::RefRemove { .. } => super::g6_werk::structure_edit_intent(doc, document, control, values),
         G5Control::NotesSave => {
             let text = typed(G5Control::NotesText)?;
             let max = doc.notes.as_ref()?.max_chars;

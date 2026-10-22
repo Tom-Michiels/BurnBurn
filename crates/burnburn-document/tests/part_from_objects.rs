@@ -41,7 +41,10 @@ fn objects<'a>(s: &'a DocumentSession, ids: &[GeometryId]) -> Vec<GeometryObject
     ids.iter().map(|id| snap.object(*id).unwrap().clone()).collect()
 }
 
-fn made(s: &DocumentSession, ids: &[GeometryId]) -> Result<burnburn_document::structure::PartFromObjects, PartFromObjectsError> {
+fn made(
+    s: &DocumentSession,
+    ids: &[GeometryId],
+) -> Result<burnburn_document::structure::PartFromObjects, PartFromObjectsError> {
     let owned = objects(s, ids);
     let refs: Vec<&GeometryObject> = owned.iter().collect();
     part_from_objects("Beugel", &refs)
@@ -103,7 +106,8 @@ fn an_instance_at_the_origin_lays_the_shapes_exactly_where_the_objects_were() {
         plate: None,
     };
     let out = run(&mut s, CommandPayload::Structure(StructureCommand::PlaceInstance { instance }));
-    let derived: Vec<Bounds> = out.changes.created.iter().map(|id| bounds_of(s.snapshot().object(*id).unwrap().path())).collect();
+    let derived: Vec<Bounds> =
+        out.changes.created.iter().map(|id| bounds_of(s.snapshot().object(*id).unwrap().path())).collect();
     assert_eq!(derived.len(), 2);
     for (got, want) in derived.iter().zip(&before) {
         assert!(got.min().distance(want.min()) < 1e-6 && got.max().distance(want.max()) < 1e-6, "{got:?} vs {want:?}");
@@ -117,12 +121,7 @@ fn anything_that_is_not_a_plain_rectangle_or_circle_is_kept_as_fixed_geometry() 
     let rounded = run(
         &mut s,
         CommandPayload::Edit(burnburn_document::GeometryCommand::CreateShape {
-            shape: Shape::Polygon {
-                center: Point::new(30.0, 25.0),
-                radius: mm(15.0),
-                sides: 6,
-                rotation: Angle::ZERO,
-            },
+            shape: Shape::Polygon { center: Point::new(30.0, 25.0), radius: mm(15.0), sides: 6, rotation: Angle::ZERO },
             name: "Zeshoek".into(),
         }),
     )

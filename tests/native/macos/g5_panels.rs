@@ -24,12 +24,13 @@ fn main() -> ExitCode {
 
 #[cfg(target_os = "macos")]
 fn main() -> ExitCode {
-    let scenarios: [(&str, fn() -> Result<(), String>); 5] = [
+    let scenarios: [(&str, fn() -> Result<(), String>); 6] = [
         ("notes_panel_saves_one_undo_step", notes),
         ("offset_panel_previews_and_applies_with_the_options", offset),
         ("structure_panel_chooses_variant_override_and_plate", structure),
         ("centerline_panel_decides_a_junction", centerline),
         ("trace_prep_panel_adds_a_mask_and_a_local_threshold", trace_prep),
+        ("structure_panel_defines_places_and_references", structure_parts),
     ];
     for (name, scenario) in scenarios {
         let code = common::report(name, scenario());
@@ -347,5 +348,46 @@ fn trace_prep() -> Result<(), String> {
         || "the local threshold is in force".into(),
         s.doc(doc).and_then(|d| d.trace_prep).is_some_and(|p| p.threshold.local && p.threshold.radius == "9"),
     )?;
+    Ok(())
+}
+
+/// Venster ▸ Structuur (G6-werk, S06, S07): a drawn rectangle becomes a part, an instance is placed at
+/// the typed position, a default changes, and an edge of the object becomes a reference.
+#[cfg(target_os = "macos")]
+fn structure_parts() -> Result<(), String> {
+    use burnburn_macos::adapter::MenuItem;
+    use burnburn_macos::panels::{G5Control as C, G5Panel as P};
+    use burnburn_presentation::{CommandKey, UiIntent};
+    use common::expect;
+
+    let s = common::start()?;
+    let doc = s.new_document()?;
+    s.draw_rectangle(doc, (10.0, 10.0), (40.0, 30.0))?;
+    s.app.dispatch(UiIntent::Invoke { document: Some(doc), command: CommandKey::ToolSelect });
+    s.app.dispatch(UiIntent::Invoke { document: Some(doc), command: CommandKey::SelectAll });
+    s.pump(0.2);
+    s.menu(MenuItem::StructurePanel)?;
+    s.pump(0.2);
+    expect(|| "the structure panel is shown".into(), s.app.g5_panel_shown(doc, P::Structure))?;
+
+    type_into(&s, doc, P::Structure, C::StructDefineName, "Beugel")?;
+    press(&s, doc, P::Structure, C::StructDefine)?;
+    let part = s.doc(doc).and_then(|d| d.structure.parts.first().cloned()).ok_or("the part was not made")?;
+    expect(|| format!("the part is Beugel, got {}", part.name), part.name == "Beugel")?;
+
+    type_into(&s, doc, P::Structure, C::PartPlaceX { part: part.id }, "100")?;
+    press(&s, doc, P::Structure, C::PartPlace { part: part.id })?;
+    expect(|| "an instance is placed".into(), s.doc(doc).is_some_and(|d| d.structure.parts[0].instances.len() == 1))?;
+
+    // The rectangle is still selected only if the objects are; select the original one for an edge.
+    let first = s.doc(doc).and_then(|d| d.objects.first().map(|o| o.id)).ok_or("no object")?;
+    s.app.dispatch(UiIntent::Select {
+        document: doc,
+        ids: vec![first],
+        mode: burnburn_presentation::SelectMode::Replace,
+    });
+    s.pump(0.2);
+    press(&s, doc, P::Structure, C::RefAdd)?;
+    expect(|| "a reference is made".into(), s.doc(doc).is_some_and(|d| d.structure.references.len() == 1))?;
     Ok(())
 }

@@ -117,9 +117,16 @@ fn an_instance_lays_the_shapes_at_the_typed_position_and_every_instance_follows_
     let second = part.instances[1].id;
     edit(&mut h, doc, StructureEdit::SetOverride { instance: second, parameter: "breedte".into(), text: "25".into() });
     edit(&mut h, doc, StructureEdit::SetParameter { definition: def, parameter: "breedte".into(), text: "50".into() });
-    let widths: Vec<f64> = made.iter().filter(|id| (bounds(&h, doc, **id).height() - 20.0).abs() < 1e-6).map(|id| bounds(&h, doc, *id).width()).collect();
+    let widths: Vec<f64> = made
+        .iter()
+        .filter(|id| (bounds(&h, doc, **id).height() - 20.0).abs() < 1e-6)
+        .map(|id| bounds(&h, doc, *id).width())
+        .collect();
     assert_eq!(widths.len(), 2, "the two plates");
-    assert!(widths.contains(&50.0) && widths.contains(&25.0), "the definition reaches one, the override stays on the other: {widths:?}");
+    assert!(
+        widths.contains(&50.0) && widths.contains(&25.0),
+        "the definition reaches one, the override stays on the other: {widths:?}"
+    );
     let shown = &vm(&h, doc).structure.parts[0];
     assert_eq!(shown.parameters.iter().find(|p| p.name == "breedte").unwrap().value, "50");
     assert_eq!(shown.instances[1].overrides.len(), 1, "the override is visible and not written into the definition");
@@ -145,7 +152,10 @@ fn a_variant_is_named_gets_its_values_and_is_chosen_per_instance() {
     );
     let variants = &vm(&h, doc).structure.parts[0].variant_values;
     assert_eq!(variants.len(), 1);
-    assert_eq!((variants[0].name.as_str(), variants[0].values[0].name.as_str(), variants[0].values[0].value.as_str()), ("groot", "breedte", "60"));
+    assert_eq!(
+        (variants[0].name.as_str(), variants[0].values[0].name.as_str(), variants[0].values[0].value.as_str()),
+        ("groot", "breedte", "60")
+    );
     let instance = vm(&h, doc).structure.parts[0].instances[0].id;
     edit(&mut h, doc, StructureEdit::SetVariant { instance, variant: Some("groot".into()) });
     let made = new_objects(&h, doc, &ids);
@@ -158,10 +168,30 @@ fn a_variant_is_named_gets_its_values_and_is_chosen_per_instance() {
         StructureEdit::AddVariant { definition: def, name: "groot".into() },
         StructureEdit::AddVariant { definition: def, name: " ".into() },
         StructureEdit::AddVariant { definition: 999, name: "x".into() },
-        StructureEdit::SetVariantValue { definition: def, variant: "groot".into(), parameter: "breedte".into(), text: "abc".into() },
-        StructureEdit::SetVariantValue { definition: def, variant: "groot".into(), parameter: "breedte".into(), text: "-3".into() },
-        StructureEdit::SetVariantValue { definition: def, variant: "bestaat niet".into(), parameter: "breedte".into(), text: "3".into() },
-        StructureEdit::SetVariantValue { definition: def, variant: "groot".into(), parameter: "diepte".into(), text: "3".into() },
+        StructureEdit::SetVariantValue {
+            definition: def,
+            variant: "groot".into(),
+            parameter: "breedte".into(),
+            text: "abc".into(),
+        },
+        StructureEdit::SetVariantValue {
+            definition: def,
+            variant: "groot".into(),
+            parameter: "breedte".into(),
+            text: "-3".into(),
+        },
+        StructureEdit::SetVariantValue {
+            definition: def,
+            variant: "bestaat niet".into(),
+            parameter: "breedte".into(),
+            text: "3".into(),
+        },
+        StructureEdit::SetVariantValue {
+            definition: def,
+            variant: "groot".into(),
+            parameter: "diepte".into(),
+            text: "3".into(),
+        },
         StructureEdit::SetParameter { definition: def, parameter: "breedte".into(), text: "0".into() },
         StructureEdit::SetParameter { definition: def, parameter: "nee".into(), text: "3".into() },
     ] {
@@ -172,7 +202,12 @@ fn a_variant_is_named_gets_its_values_and_is_chosen_per_instance() {
     edit(
         &mut h,
         doc,
-        StructureEdit::SetVariantValue { definition: def, variant: "groot".into(), parameter: "breedte".into(), text: String::new() },
+        StructureEdit::SetVariantValue {
+            definition: def,
+            variant: "groot".into(),
+            parameter: "breedte".into(),
+            text: String::new(),
+        },
     );
     assert!(vm(&h, doc).structure.parts[0].variant_values[0].values.is_empty());
 }
@@ -216,10 +251,17 @@ fn the_edges_of_the_single_selected_object_are_listed_and_one_becomes_a_named_re
     assert_eq!(edges.len(), 4, "a rectangle has four edges");
     assert!(edges.contains(&(0, 0, "30")) && edges.contains(&(0, 1, "20")), "{edges:?}");
 
-    edit(&mut h, doc, StructureEdit::AddReference { name: "rechts".into(), object: ids[0].raw(), subpath: 0, segment: 1 });
+    edit(
+        &mut h,
+        doc,
+        StructureEdit::AddReference { name: "rechts".into(), object: ids[0].raw(), subpath: 0, segment: 1 },
+    );
     let refs = vm(&h, doc).structure.references;
     assert_eq!(refs.len(), 1);
-    assert_eq!((refs[0].name.as_str(), refs[0].source.as_deref(), refs[0].status), ("rechts", Some("Pad 1"), ReferenceStatus::Bound));
+    assert_eq!(
+        (refs[0].name.as_str(), refs[0].source.as_deref(), refs[0].status),
+        ("rechts", Some("Pad 1"), ReferenceStatus::Bound)
+    );
     assert!(refs[0].candidates.is_empty());
 
     // Not an edge, not an object, not twice the same name for nothing: refused without a change.
@@ -240,7 +282,11 @@ fn the_edges_of_the_single_selected_object_are_listed_and_one_becomes_a_named_re
 fn deleting_the_referenced_object_leaves_a_visible_broken_link() {
     let (mut h, doc, ids) = plate_with_hole();
     select(&mut h, doc, &ids[..1]);
-    edit(&mut h, doc, StructureEdit::AddReference { name: "rechts".into(), object: ids[0].raw(), subpath: 0, segment: 1 });
+    edit(
+        &mut h,
+        doc,
+        StructureEdit::AddReference { name: "rechts".into(), object: ids[0].raw(), subpath: 0, segment: 1 },
+    );
     h.invoke(doc, CommandKey::Delete);
     let refs = vm(&h, doc).structure.references;
     assert_eq!(refs.len(), 1, "the reference is not removed silently");
@@ -289,7 +335,10 @@ fn ambiguous_reference() -> (Harness, DocumentId, u64) {
     let StructureChange::Reference(r) = out.changes.structure[0] else { panic!() };
     run(
         &mut s,
-        CommandPayload::Transform { targets: vec![slot], transform: Affine::translate(Vector::new(0.0, -105.0)).unwrap() },
+        CommandPayload::Transform {
+            targets: vec![slot],
+            transform: Affine::translate(Vector::new(0.0, -105.0)).unwrap(),
+        },
     );
     let mut h = Harness::new();
     h.fs().create_dir_all_for_test(std::path::Path::new("/work"));
@@ -317,13 +366,21 @@ fn an_ambiguous_reference_lists_its_candidates_and_only_the_operators_choice_reb
     assert_ne!(row.candidates[0], row.candidates[1]);
 
     edit(&mut h, doc, StructureEdit::RebindReference { reference, candidate: 7 });
-    assert_eq!(vm(&h, doc).structure.references[0].status, ReferenceStatus::Ambiguous { candidates: 2 }, "no such candidate");
+    assert_eq!(
+        vm(&h, doc).structure.references[0].status,
+        ReferenceStatus::Ambiguous { candidates: 2 },
+        "no such candidate"
+    );
     edit(&mut h, doc, StructureEdit::RebindReference { reference, candidate: 1 });
     let row = vm(&h, doc).structure.references[0].clone();
     assert_eq!(row.status, ReferenceStatus::Bound);
     assert!(row.candidates.is_empty());
     h.invoke(doc, CommandKey::Undo);
-    assert_eq!(vm(&h, doc).structure.references[0].status, ReferenceStatus::Ambiguous { candidates: 2 }, "one undo step");
+    assert_eq!(
+        vm(&h, doc).structure.references[0].status,
+        ReferenceStatus::Ambiguous { candidates: 2 },
+        "one undo step"
+    );
 
     // A reference that is bound is not rebound by this route.
     edit(&mut h, doc, StructureEdit::RebindReference { reference, candidate: 1 });

@@ -271,3 +271,180 @@ pub(super) fn trace_prep_intent(
         _ => None,
     }
 }
+
+// --- Parts and references (S06, S07) ---------------------------------------------------------------
+
+use burnburn_presentation::{InstanceRow, PartRow, ReferenceRow, ReferenceStatus, StructureEdit, StructureViewModel};
+
+/// The "make a part" section: name, how many objects are selected, the button.
+pub(super) fn define_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
+    vec![
+        G5Line::Heading(t(G6Text::DefineHeading, locale)),
+        G5Line::Text(g6_fmt(G6Text::DefineSelected, locale, &[&s.selected.to_string()])),
+        field(G5Control::StructDefineName, t(G6Text::PartNameCaption, locale), String::new()),
+        button(G5Control::StructDefine, t(G6Text::DefineButton, locale), s.selected > 0),
+    ]
+}
+
+/// What a part can be done with: placed, its defaults changed, variants added and valued, removed.
+pub(super) fn part_edit_lines(part: &PartRow, locale: Locale) -> Vec<G5Line> {
+    let id = part.id;
+    let name = part.name.as_str();
+    let mut lines = vec![
+        field(G5Control::PartPlaceX { part: id }, g6_fmt(G6Text::PlaceXCaption, locale, &[name]), "0".to_owned()),
+        field(G5Control::PartPlaceY { part: id }, g6_fmt(G6Text::PlaceYCaption, locale, &[name]), "0".to_owned()),
+        button(G5Control::PartPlace { part: id }, g6_fmt(G6Text::PlaceButton, locale, &[name]), true),
+    ];
+    for (parameter, p) in part.parameters.iter().enumerate() {
+        lines.push(field(
+            G5Control::PartParam { part: id, parameter },
+            g6_fmt(G6Text::ParamCaption, locale, &[name, &p.name]),
+            p.value.clone(),
+        ));
+    }
+    for (variant, v) in part.variant_values.iter().enumerate() {
+        for (parameter, p) in part.parameters.iter().enumerate() {
+            let current = v.values.iter().find(|x| x.name == p.name).map_or("", |x| x.value.as_str());
+            lines.push(field(
+                G5Control::PartVariantValue { part: id, variant, parameter },
+                g6_fmt(G6Text::VariantValueCaption, locale, &[name, &v.name, &p.name]),
+                current.to_owned(),
+            ));
+        }
+    }
+    lines.push(field(
+        G5Control::PartVariantName { part: id },
+        g6_fmt(G6Text::VariantNameCaption, locale, &[name]),
+        String::new(),
+    ));
+    lines.push(button(G5Control::PartAddVariant { part: id }, g6_fmt(G6Text::AddVariantButton, locale, &[name]), true));
+    lines.push(button(
+        G5Control::PartRemove { part: id },
+        g6_fmt(G6Text::RemovePartButton, locale, &[name]),
+        part.instances.is_empty(),
+    ));
+    lines
+}
+
+pub(super) fn instance_remove_line(instance: &InstanceRow, locale: Locale) -> G5Line {
+    button(
+        G5Control::InstanceRemove { instance: instance.id },
+        g6_fmt(G6Text::RemoveInstanceButton, locale, &[&instance.id.to_string()]),
+        true,
+    )
+}
+
+/// The "make a reference" section: the edges of the single selected object to choose from.
+pub(super) fn reference_make_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
+    let mut lines = vec![G5Line::Heading(t(G6Text::RefMakeHeading, locale))];
+    if s.edges.is_empty() {
+        lines.push(G5Line::Text(t(G6Text::RefNoEdges, locale)));
+        return lines;
+    }
+    lines.push(field(G5Control::RefName, t(G6Text::RefNameCaption, locale), String::new()));
+    lines.push(G5Line::Choice {
+        control: G5Control::RefEdge,
+        caption: t(G6Text::RefEdgeCaption, locale),
+        options: s
+            .edges
+            .iter()
+            .enumerate()
+            .map(|(i, e)| g6_fmt(G6Text::RefEdgeItem, locale, &[&(i + 1).to_string(), &e.length]))
+            .collect(),
+        selected: 0,
+    });
+    lines.push(button(G5Control::RefAdd, t(G6Text::RefAddButton, locale), true));
+    lines
+}
+
+/// What can be done with one reference: remove it, or choose among the candidates when ambiguous.
+pub(super) fn reference_edit_lines(r: &ReferenceRow, locale: Locale) -> Vec<G5Line> {
+    let mut lines = Vec::new();
+    if matches!(r.status, ReferenceStatus::Ambiguous { .. }) && !r.candidates.is_empty() {
+        lines.push(G5Line::Choice {
+            control: G5Control::RefCandidate { reference: r.id },
+            caption: g6_fmt(G6Text::RefCandidateCaption, locale, &[&r.name]),
+            options: r.candidates.clone(),
+            selected: 0,
+        });
+        lines.push(button(
+            G5Control::RefRebind { reference: r.id },
+            g6_fmt(G6Text::RefRebindButton, locale, &[&r.name]),
+            true,
+        ));
+    }
+    lines.push(button(
+        G5Control::RefRemove { reference: r.id },
+        g6_fmt(G6Text::RefRemoveButton, locale, &[&r.name]),
+        true,
+    ));
+    lines
+}
+
+/// The intent of a control of the part and reference editing in the structure panel.
+pub(super) fn structure_edit_intent(
+    doc: &DocumentViewModel,
+    document: DocumentId,
+    control: G5Control,
+    values: &[(G5Control, String)],
+) -> Option<UiIntent> {
+    let s = &doc.structure;
+    let typed = |c: G5Control, shown: &str| value_of(values, c).unwrap_or(shown).to_owned();
+    let index_of = |c: G5Control| value_of(values, c).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(0);
+    let send = |edit: StructureEdit| Some(UiIntent::Structure { document, edit });
+    let part_of = |id: u64| s.parts.iter().find(|p| p.id == id);
+    match control {
+        G5Control::StructDefine => send(StructureEdit::DefinePart { name: typed(G5Control::StructDefineName, "") }),
+        G5Control::PartPlace { part } => send(StructureEdit::PlaceInstance {
+            definition: part,
+            x: typed(G5Control::PartPlaceX { part }, "0"),
+            y: typed(G5Control::PartPlaceY { part }, "0"),
+        }),
+        G5Control::PartParam { part, parameter } => {
+            let p = part_of(part)?;
+            let current = p.parameters.get(parameter)?;
+            let text = value_of(values, control)?.trim().to_owned();
+            (text != current.value).then(|| UiIntent::Structure {
+                document,
+                edit: StructureEdit::SetParameter { definition: part, parameter: current.name.clone(), text },
+            })
+        }
+        G5Control::PartVariantValue { part, variant, parameter } => {
+            let p = part_of(part)?;
+            let v = p.variant_values.get(variant)?;
+            let named = p.parameters.get(parameter)?;
+            let current = v.values.iter().find(|x| x.name == named.name).map_or("", |x| x.value.as_str());
+            let text = value_of(values, control)?.trim().to_owned();
+            (text != current).then(|| UiIntent::Structure {
+                document,
+                edit: StructureEdit::SetVariantValue {
+                    definition: part,
+                    variant: v.name.clone(),
+                    parameter: named.name.clone(),
+                    text,
+                },
+            })
+        }
+        G5Control::PartAddVariant { part } => {
+            send(StructureEdit::AddVariant { definition: part, name: typed(G5Control::PartVariantName { part }, "") })
+        }
+        G5Control::PartRemove { part } => send(StructureEdit::RemovePart { definition: part }),
+        G5Control::InstanceRemove { instance } => send(StructureEdit::RemoveInstance { instance }),
+        G5Control::RefAdd => {
+            let object = s.edge_object?;
+            let edge = s.edges.get(index_of(G5Control::RefEdge))?;
+            send(StructureEdit::AddReference {
+                name: typed(G5Control::RefName, ""),
+                object,
+                subpath: edge.subpath,
+                segment: edge.segment,
+            })
+        }
+        G5Control::RefRebind { reference } => send(StructureEdit::RebindReference {
+            reference,
+            candidate: index_of(G5Control::RefCandidate { reference }),
+        }),
+        G5Control::RefRemove { reference } => send(StructureEdit::RemoveReference { reference }),
+        _ => None,
+    }
+}

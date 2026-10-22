@@ -46,7 +46,8 @@ fn status_of(snapshot: &DocumentSnapshot, id: PartInstanceId) -> InstanceStatus 
 fn segment_length(sp: &Subpath, index: usize) -> f64 {
     let flat = |from: Point, seg: Segment| {
         let Ok(sub) = Subpath::new(from, vec![seg], false) else { return 0.0 };
-        let Ok(tol) = Length::from_mm(0.005).map_err(|_| ()).and_then(|l| DisplayTolerance::new(l).map_err(|_| ())) else {
+        let Ok(tol) = Length::from_mm(0.005).map_err(|_| ()).and_then(|l| DisplayTolerance::new(l).map_err(|_| ()))
+        else {
             return 0.0;
         };
         Path::from_subpaths(vec![sub])
@@ -161,10 +162,9 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
             object: r.target.object.raw(),
             source: snapshot.object(r.target.object).map(|o| o.name().to_owned()),
             candidates: match snapshot.resolve(&r.target) {
-                RefStatus::Ambiguous { candidates } => candidates
-                    .iter()
-                    .map(|name| candidate_label(&snapshot, r.target.object, name))
-                    .collect(),
+                RefStatus::Ambiguous { candidates } => {
+                    candidates.iter().map(|name| candidate_label(&snapshot, r.target.object, name)).collect()
+                }
                 _ => Vec::new(),
             },
             status: match snapshot.resolve(&r.target) {
@@ -244,7 +244,11 @@ fn typed_length(text: &str) -> Result<Length, MessageKey> {
 
 /// A position typed in a field: empty is 0.
 fn typed_position(text: &str) -> Result<f64, MessageKey> {
-    if text.trim().is_empty() { Ok(0.0) } else { parse_position(text).map(Length::mm).map_err(MessageKey::InvalidLength) }
+    if text.trim().is_empty() {
+        Ok(0.0)
+    } else {
+        parse_position(text).map(Length::mm).map_err(MessageKey::InvalidLength)
+    }
 }
 
 fn other_edit(s: &mut Session, document: DocumentId, edit: StructureEdit, request: Option<RequestId>) -> AppUpdate {
@@ -281,7 +285,8 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             let (id, _) = definition_of(definition)?;
             let (x, y) = (typed_position(&x)?, typed_position(&y)?);
             let transform = Affine::translate(Vector::new(x, y)).map_err(|_| MessageKey::CommandRejected)?;
-            let instance = PartInstance { definition: id, variant: None, overrides: BTreeMap::new(), transform, plate: None };
+            let instance =
+                PartInstance { definition: id, variant: None, overrides: BTreeMap::new(), transform, plate: None };
             Ok(StructureCommand::PlaceInstance { instance })
         }
         StructureEdit::RemoveInstance { instance } => {
@@ -358,12 +363,7 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
 
 /// One edit of one instance. Nothing is changed when the instance, the variant or the parameter
 /// does not exist, or when the typed value is not a positive length.
-fn instance_edit(
-    s: &mut Session,
-    document: DocumentId,
-    edit: StructureEdit,
-    request: Option<RequestId>,
-) -> AppUpdate {
+fn instance_edit(s: &mut Session, document: DocumentId, edit: StructureEdit, request: Option<RequestId>) -> AppUpdate {
     let snapshot = s.doc.snapshot();
     let layer = snapshot.structure();
     let (instance, new): (PartInstanceId, PartInstance) = match &edit {

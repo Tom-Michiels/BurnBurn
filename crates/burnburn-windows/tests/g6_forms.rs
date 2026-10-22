@@ -139,3 +139,27 @@ fn the_menu_item_has_the_macos_tag_and_toggles_the_panel() {
         Reaction::ToggleG5Panel(P::TracePrep)
     );
 }
+
+#[test]
+fn the_structure_form_offers_making_a_part_and_a_reference_from_the_selection() {
+    use burnburn_presentation::CommandKey;
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::ToolRectangle);
+    h.drag(doc, (100.0, 50.0), (130.0, 70.0));
+    h.invoke(doc, CommandKey::ToolSelect);
+    h.invoke(doc, CommandKey::SelectAll);
+    let state = PanelState { g5_shown: vec![P::Structure], ..PanelState::default() };
+    let form = forms(&h, doc, &state).into_iter().find(|f| f.kind == FormKind::G5(P::Structure)).unwrap();
+    for c in [C::StructDefineName, C::StructDefine, C::RefEdge, C::RefAdd, C::RefName] {
+        assert!(form.find(&ControlId::G5(c)).is_some(), "{c:?}");
+    }
+    let mut values = form.values();
+    let name = values.iter_mut().find(|(id, _)| *id == ControlId::G5(C::StructDefineName)).unwrap();
+    name.1 = ControlValue::Text("Beugel".into());
+    let vm = h.view();
+    let context = FormContext { vm: &vm, document: doc, locale: Locale::En };
+    let outcome = g5::react(P::Structure, &ControlId::G5(C::StructDefine), &values, &context);
+    let FormOutcome::Intent(UiIntent::Structure { edit, .. }) = outcome else { panic!("{outcome:?}") };
+    assert_eq!(edit, burnburn_presentation::StructureEdit::DefinePart { name: "Beugel".into() });
+}

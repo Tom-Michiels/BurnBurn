@@ -49,10 +49,8 @@ pub fn part_from_objects(name: &str, objects: &[&GeometryObject]) -> Result<Part
     if name.is_empty() {
         return Err(PartFromObjectsError::EmptyName);
     }
-    let boxes: Vec<Bounds> = objects
-        .iter()
-        .map(|o| o.bounds().ok_or(PartFromObjectsError::NoGeometry))
-        .collect::<Result<_, _>>()?;
+    let boxes: Vec<Bounds> =
+        objects.iter().map(|o| o.bounds().ok_or(PartFromObjectsError::NoGeometry)).collect::<Result<_, _>>()?;
     let union = boxes.iter().copied().reduce(|a, b| a.union(b)).ok_or(PartFromObjectsError::NoObjects)?;
     let origin = union.min();
     let shift = Affine::translate(Vector::new(-origin.x, -origin.y)).map_err(|_| PartFromObjectsError::NoGeometry)?;

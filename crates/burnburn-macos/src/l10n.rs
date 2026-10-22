@@ -1255,6 +1255,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     match key {
         M::LaserRefused(why) => return Some(laser_why_text(why, locale)),
         M::Schikken(m) => return Some(l10n_schikken::message(m, locale)),
+        M::Structure(p) => return Some(crate::l10n_g6_werk::structure_problem_text(p, locale)),
         M::HistoryTrimmed(n) => {
             return Some(match (n, locale) {
                 (1, Locale::Nl) => "De oudste stap is niet meer ongedaan te maken (geheugen).".to_owned(),

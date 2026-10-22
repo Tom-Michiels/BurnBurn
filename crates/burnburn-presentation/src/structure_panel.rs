@@ -140,28 +140,67 @@ pub struct StructureViewModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StructureEdit {
     /// Another variant (or none: the definition's own values).
-    SetVariant { instance: u64, variant: Option<String> },
+    SetVariant {
+        instance: u64,
+        variant: Option<String>,
+    },
     /// A local override of one parameter as typed (`80`, `80 mm`, `3,1 in`); empty removes it.
-    SetOverride { instance: u64, parameter: String, text: String },
+    SetOverride {
+        instance: u64,
+        parameter: String,
+        text: String,
+    },
     /// A part made of the selected objects (G6-werk, S07): rectangles and circles with their sizes
     /// as parameters, other shapes as fixed geometry. The objects stay; nothing is placed.
-    DefinePart { name: String },
+    DefinePart {
+        name: String,
+    },
     /// An instance at the typed position of the part's frame (`x`, `y` lengths; empty is 0).
-    PlaceInstance { definition: u64, x: String, y: String },
-    RemoveInstance { instance: u64 },
+    PlaceInstance {
+        definition: u64,
+        x: String,
+        y: String,
+    },
+    RemoveInstance {
+        instance: u64,
+    },
     /// Only when no instance uses the part.
-    RemovePart { definition: u64 },
+    RemovePart {
+        definition: u64,
+    },
     /// The definition's own value of a parameter; every instance follows (a local override stays).
-    SetParameter { definition: u64, parameter: String, text: String },
+    SetParameter {
+        definition: u64,
+        parameter: String,
+        text: String,
+    },
     /// A new, empty variant (it takes the definition's values until it is given its own).
-    AddVariant { definition: u64, name: String },
+    AddVariant {
+        definition: u64,
+        name: String,
+    },
     /// The value a variant sets for a parameter; empty takes it away.
-    SetVariantValue { definition: u64, variant: String, parameter: String, text: String },
+    SetVariantValue {
+        definition: u64,
+        variant: String,
+        parameter: String,
+        text: String,
+    },
     /// A named reference to edge `segment` of `subpath` of `object` (S06).
-    AddReference { name: String, object: u64, subpath: usize, segment: usize },
+    AddReference {
+        name: String,
+        object: u64,
+        subpath: usize,
+        segment: usize,
+    },
     /// The operator's choice among the candidates of an ambiguous reference.
-    RebindReference { reference: u64, candidate: usize },
-    RemoveReference { reference: u64 },
+    RebindReference {
+        reference: u64,
+        candidate: usize,
+    },
+    RemoveReference {
+        reference: u64,
+    },
 }
 
 /// Why a structure edit was refused (G6-werk). Nothing changed.
