@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use burnburn_geometry::{Affine, Path, Point, Rect, Shape};
+use burnburn_geometry::{Affine, Path, Point, Rect, Shape, Vector};
 use burnburn_types::{CanonicalEncode, CanonicalWriter, ContentHash, HashDomain, Length, StableId};
 
 use super::{FormulaError, PartDefinitionId, PartInstanceId, PlateId, parse_formula};
@@ -41,6 +41,9 @@ pub enum PartShape {
     },
     /// Fixed geometry (for example imported), not parametric.
     Fixed(Path),
+    /// Fixed geometry whose box follows parameters and formulas (G9-editor): `path` keeps its own
+    /// shape and is stretched from its own box to the box `x, y, width, height`.
+    Fitted { path: Path, x: Dim, y: Dim, width: Dim, height: Dim },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -165,6 +168,21 @@ fn shape_path(shape: &PartShape, values: &BTreeMap<String, Length>) -> Result<(O
             Ok((ObjectKind::Circle, path))
         }
         PartShape::Fixed(p) => Ok((ObjectKind::Path, p.clone())),
+        PartShape::Fitted { path, x, y, width, height } => {
+            let own = path.bounds().ok_or_else(|| "path".to_owned())?;
+            let (target_x, target_y) = (get(x, "x")?, get(y, "y")?);
+            let (target_w, target_h) = (positive(width, "width")?.mm(), positive(height, "height")?.mm());
+            if own.width() <= 0.0 || own.height() <= 0.0 {
+                return Err("path".to_owned());
+            }
+            let (sx, sy) = (target_w / own.width(), target_h / own.height());
+            // Own corner to the origin, stretch, then to the target corner.
+            let to_origin = Affine::translate(Vector::new(-own.min().x, -own.min().y)).map_err(|_| "path".to_owned())?;
+            let stretch = Affine::scale(sx, sy).map_err(|_| name(width, "width"))?;
+            let to_target = Affine::translate(Vector::new(target_x, target_y)).map_err(|_| "x".to_owned())?;
+            let fitted = path.transform(&to_origin).transform(&stretch).transform(&to_target);
+            Ok((ObjectKind::Path, fitted))
+        }
     }
 }
 
@@ -217,6 +235,13 @@ impl CanonicalEncode for PartDefinition {
                 PartShape::Fixed(p) => {
                     out.tag("fixed");
                     p.encode(out);
+                }
+                PartShape::Fitted { path, x, y, width, height } => {
+                    out.tag("fitted");
+                    path.encode(out);
+                    for d in [x, y, width, height] {
+                        dim(out, d);
+                    }
                 }
             }
         }

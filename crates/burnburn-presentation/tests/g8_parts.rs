@@ -272,12 +272,55 @@ fn a_fixed_shape_takes_lengths_only_and_no_size_of_zero() {
     assert_eq!(w.problem(), Some(MessageKey::InvalidLength(FieldError::NotPositive)));
     w.field(3, ShapeField::Height, "-4");
     assert_eq!(w.problem(), Some(MessageKey::InvalidLength(FieldError::NotPositive)));
-    // A name or a formula needs numbers that follow parameters; fixed geometry has none.
-    w.field(3, ShapeField::X, "breedte");
+    // A word that is no parameter of the part is no number either (a parameter or formula is G9).
+    w.field(3, ShapeField::X, "nergens");
     assert_eq!(w.problem(), Some(MessageKey::InvalidLength(FieldError::NotANumber)));
     w.field(3, ShapeField::Radius, "3");
     assert_eq!(w.problem(), Some(MessageKey::Structure(StructureProblem::NoSuchField)));
     assert_eq!(w.vm().undo, undo);
+}
+
+#[test]
+fn g9_a_fixed_shape_takes_parameters_and_formulas_for_its_box() {
+    let mut w = world();
+    // The width becomes half the parameter: the outline is stretched from its left edge (x = 2).
+    w.field(3, ShapeField::Width, "breedte / 2");
+    assert_eq!(w.problem(), None);
+    assert_eq!(
+        w.shape_fields(3),
+        [
+            (ShapeField::X, "2".to_owned()),
+            (ShapeField::Y, "3".to_owned()),
+            (ShapeField::Width, "breedte / 2".to_owned()),
+            (ShapeField::Height, "10".to_owned()),
+        ]
+    );
+    // klein (25): 12,5 wide, area 12,5 x 10 / 2 = 62,5; the default (40): 20 wide, area 100.
+    let (small, big) = (w.outline("driehoek", 0), w.outline("driehoek", 1));
+    assert!(near(small.2 - small.0, 12.5) && near(big.2 - big.0, 20.0), "{small:?} {big:?}");
+    assert!(near(w.items("driehoek")[0].1.signed_area().abs(), 62.5));
+    // A parameter name moves the corner; the outline keeps its width.
+    w.field(3, ShapeField::X, "breedte");
+    assert_eq!(w.problem(), None);
+    let (small, big) = (w.outline("driehoek", 0), w.outline("driehoek", 1));
+    assert!(near(small.0, 25.0) && near(big.0 - 100.0, 40.0), "{small:?} {big:?}");
+    // A plain number replaces the formula again, and one undo step undoes one edit.
+    w.field(3, ShapeField::Width, "30");
+    assert!(w.shape_fields(3).contains(&(ShapeField::Width, "30".to_owned())), "{:?}", w.shape_fields(3));
+    w.undo();
+    assert!(w.shape_fields(3).contains(&(ShapeField::Width, "breedte / 2".to_owned())));
+}
+
+#[test]
+fn g9_a_fixed_shape_refuses_a_formula_that_is_no_formula() {
+    let mut w = world();
+    let undo = w.vm().undo;
+    for bad in ["breed / 2", "((", "foo(2)"] {
+        w.field(3, ShapeField::Width, bad);
+        assert_eq!(w.problem(), Some(MessageKey::Structure(StructureProblem::BadFormula)), "{bad}");
+    }
+    assert_eq!(w.vm().undo, undo);
+    assert!(w.shape_fields(3).contains(&(ShapeField::Width, "20".to_owned())), "still a plain fixed outline");
 }
 
 // --- turning an instance -----------------------------------------------------------------------------------------

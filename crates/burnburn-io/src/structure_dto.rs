@@ -190,6 +190,8 @@ pub enum PartShape {
     Rectangle { x: Dim, y: Dim, width: Dim, height: Dim },
     Circle { x: Dim, y: Dim, radius: Dim },
     Fixed { subpaths: Vec<Subpath> },
+    /// Fixed geometry whose box follows parameters and formulas (G9-editor).
+    Fitted { subpaths: Vec<Subpath>, x: Dim, y: Dim, width: Dim, height: Dim },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

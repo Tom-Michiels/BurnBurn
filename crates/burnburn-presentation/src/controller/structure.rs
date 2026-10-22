@@ -370,6 +370,15 @@ fn shapes_view(def: &PartDefinition) -> Vec<PartShapeRow> {
                         ]
                     }),
                 ),
+                PartShape::Fitted { x, y, width, height, .. } => (
+                    PartShapeKind::Fixed,
+                    vec![
+                        (ShapeField::X, dim_text(x)),
+                        (ShapeField::Y, dim_text(y)),
+                        (ShapeField::Width, dim_text(width)),
+                        (ShapeField::Height, dim_text(height)),
+                    ],
+                ),
                 _ => (PartShapeKind::Fixed, Vec::new()),
             };
             PartShapeRow { key: *key, name: named.name.clone(), kind, fields }
@@ -777,14 +786,36 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
         }
         StructureEdit::SetPartShapeField { definition, shape, field, text } => {
             let (id, mut value) = definition_of(definition)?;
-            if let Some(NamedShape { shape: PartShape::Fixed(path), .. }) = value.shapes.get(&shape) {
-                let moved = fixed_shape_edit(path, field, &text)?;
-                if let Some(slot) = value.shapes.get_mut(&shape) {
-                    slot.shape = PartShape::Fixed(moved);
-                }
-                return Ok(StructureCommand::SetPartDefinition { definition: id, value });
-            }
             let known = value.parameters.keys().any(|p| *p == text.trim());
+            if let Some(NamedShape { shape: PartShape::Fixed(path), .. }) = value.shapes.get(&shape) {
+                // A parameter name or a formula makes the box of the outline follow the parameters
+                // (G9-editor): the fixed outline becomes a fitted one and the code below sets the
+                // number. A plain number moves or stretches the outline itself.
+                let box_field = matches!(field, ShapeField::X | ShapeField::Y | ShapeField::Width | ShapeField::Height);
+                let parametric = known || (looks_like_formula(&text) && parse_length(&text).is_err());
+                if parametric && box_field {
+                    let b = path.bounds().ok_or(problem(StructureProblem::NoSuchField))?;
+                    if !(b.width() > 0.0 && b.height() > 0.0) {
+                        return Err(problem(StructureProblem::NoSuchField));
+                    }
+                    let fitted = PartShape::Fitted {
+                        path: path.clone(),
+                        x: Dim::Mm(b.min().x),
+                        y: Dim::Mm(b.min().y),
+                        width: Dim::Mm(b.width()),
+                        height: Dim::Mm(b.height()),
+                    };
+                    if let Some(slot) = value.shapes.get_mut(&shape) {
+                        slot.shape = fitted;
+                    }
+                } else {
+                    let moved = fixed_shape_edit(path, field, &text)?;
+                    if let Some(slot) = value.shapes.get_mut(&shape) {
+                        slot.shape = PartShape::Fixed(moved);
+                    }
+                    return Ok(StructureCommand::SetPartDefinition { definition: id, value });
+                }
+            }
             let positioned = matches!(field, ShapeField::X | ShapeField::Y);
             let dim = if known {
                 Dim::Param(text.trim().to_owned())
@@ -801,10 +832,10 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             };
             let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
             let target = match (&mut slot.shape, field) {
-                (PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. }, ShapeField::X) => x,
-                (PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. }, ShapeField::Y) => y,
-                (PartShape::Rectangle { width, .. }, ShapeField::Width) => width,
-                (PartShape::Rectangle { height, .. }, ShapeField::Height) => height,
+                (PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. } | PartShape::Fitted { x, .. }, ShapeField::X) => x,
+                (PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. } | PartShape::Fitted { y, .. }, ShapeField::Y) => y,
+                (PartShape::Rectangle { width, .. } | PartShape::Fitted { width, .. }, ShapeField::Width) => width,
+                (PartShape::Rectangle { height, .. } | PartShape::Fitted { height, .. }, ShapeField::Height) => height,
                 (PartShape::Circle { radius, .. }, ShapeField::Radius) => radius,
                 _ => return Err(problem(StructureProblem::NoSuchField)),
             };

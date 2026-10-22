@@ -189,6 +189,13 @@ pub(crate) fn structure_to_dto(doc: &DocumentSnapshot) -> Result<Option<d::Struc
                             d::PartShape::Circle { x: dim_to(x), y: dim_to(y), radius: dim_to(radius) }
                         }
                         PartShape::Fixed(p) => d::PartShape::Fixed { subpaths: path_to_dto(p) },
+                        PartShape::Fitted { path, x, y, width, height } => d::PartShape::Fitted {
+                            subpaths: path_to_dto(path),
+                            x: dim_to(x),
+                            y: dim_to(y),
+                            width: dim_to(width),
+                            height: dim_to(height),
+                        },
                         _ => return None,
                     };
                     Some(d::Shape { key: *k, name: s.name.clone(), shape })
@@ -439,6 +446,13 @@ pub(crate) fn structure_from_dto(
                     PartShape::Circle { x: dim_from(&sp, x)?, y: dim_from(&sp, y)?, radius: dim_from(&sp, radius)? }
                 }
                 d::PartShape::Fixed { subpaths } => PartShape::Fixed(path_from_dto(&sp, subpaths)?),
+                d::PartShape::Fitted { subpaths, x, y, width, height } => PartShape::Fitted {
+                    path: path_from_dto(&sp, subpaths)?,
+                    x: dim_from(&sp, x)?,
+                    y: dim_from(&sp, y)?,
+                    width: dim_from(&sp, width)?,
+                    height: dim_from(&sp, height)?,
+                },
             };
             if shapes.insert(sh.key, NamedShape { name: sh.name.clone(), shape }).is_some() {
                 return Err(invalid(sp(), format!("duplicate shape key {}", sh.key)));
