@@ -257,3 +257,63 @@ mod recognition {
         assert!(texts(&r, Locale::Nl).contains("gespiegeld product (de kopie wordt ook gespiegeld)"));
     }
 }
+
+mod part_name {
+    use burnburn_macos::l10n::Locale;
+    use burnburn_macos::panels::{G5Control as C, G5Line, G5Panel, g5_intent, g5_panel};
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, UiIntent};
+    use burnburn_types::DocumentId;
+
+    fn window() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::ShowNotes);
+        (h, doc)
+    }
+
+    fn lines(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Vec<G5Line> {
+        g5_panel(&h.view(), doc, G5Panel::Notes, locale, &[]).expect("the notes panel").lines
+    }
+
+    fn find(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale, c: C) -> Option<G5Line> {
+        lines(h, doc, locale).into_iter().find(|l| match l {
+            G5Line::Field { control, .. } | G5Line::Button { control, .. } => *control == c,
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn the_notes_panel_has_a_part_name_field_that_shows_the_stored_name_in_both_languages() {
+        let (mut h, doc) = window();
+        let Some(G5Line::Field { caption, text, .. }) = find(&h, doc, Locale::En, C::NotesPartName) else {
+            panic!("a part name field")
+        };
+        assert_eq!(text, "");
+        assert!(caption.contains("Part name") && caption.contains("order"), "{caption}");
+        let Some(G5Line::Field { caption, .. }) = find(&h, doc, Locale::Nl, C::NotesPartName) else { panic!("field") };
+        assert!(caption.contains("Onderdeelnaam") && caption.contains("order"), "{caption}");
+
+        h.send(UiIntent::SetPartName { document: doc, name: "Houder".into() });
+        let Some(G5Line::Field { text, .. }) = find(&h, doc, Locale::En, C::NotesPartName) else { panic!("field") };
+        assert_eq!(text, "Houder");
+    }
+
+    #[test]
+    fn the_part_name_button_sends_the_typed_name_and_does_not_touch_the_notes() {
+        let (h, doc) = window();
+        let draft = vec![(C::NotesPartName, "Houder links".to_owned()), (C::NotesText, "Klant Jansen".to_owned())];
+        assert_eq!(
+            g5_intent(&h.view(), doc, G5Panel::Notes, C::NotesPartNameSave, &draft),
+            Some(UiIntent::SetPartName { document: doc, name: "Houder links".into() })
+        );
+        // Typing alone sends nothing; only the button does.
+        assert_eq!(g5_intent(&h.view(), doc, G5Panel::Notes, C::NotesPartName, &draft), None);
+        // Too long a name: the button is there but sends nothing (the model refuses it as well).
+        let long = vec![(C::NotesPartName, "a".repeat(201))];
+        assert_eq!(g5_intent(&h.view(), doc, G5Panel::Notes, C::NotesPartNameSave, &long), None);
+        let Some(G5Line::Button { enabled, .. }) = find(&h, doc, Locale::En, C::NotesPartNameSave) else {
+            panic!("a save button for the name")
+        };
+        assert!(enabled);
+    }
+}

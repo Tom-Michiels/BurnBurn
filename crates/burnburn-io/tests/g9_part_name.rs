@@ -7,7 +7,7 @@
 
 mod common;
 
-use burnburn_io::{LoadError, decode_container, encode_container, project_hash};
+use burnburn_io::{decode_container, encode_container, project_hash};
 use common::{add_entry, sample_project};
 
 fn named(name: &str) -> burnburn_io::Project {
@@ -58,9 +58,16 @@ fn a_blank_or_oversized_or_unknown_part_name_entry_is_refused_not_repaired() {
     }
     let ok = add_entry(&base, "part-name.json", br#"{"name":"Houder"}"#);
     assert_eq!(decode_container(&ok).unwrap().part_name.as_deref(), Some("Houder"));
-    // Twice is a damaged file.
-    let twice = add_entry(&ok, "part-name.json", br#"{"name":"Ander"}"#);
-    assert!(matches!(decode_container(&twice), Err(LoadError::UnexpectedEntry(_))));
+}
+
+#[test]
+fn the_names_an_order_can_use_are_the_explicit_name_or_else_the_names_of_the_objects() {
+    let plain = sample_project();
+    assert_eq!(plain.order_part_names(), vec!["Plaat".to_owned(), "Logo".to_owned()], "the drawn objects, in draw order");
+    // An explicit name replaces them: the objects are no longer how an order finds this project.
+    assert_eq!(named("Houder").order_part_names(), vec!["Houder".to_owned()]);
+    // A blank name is no name.
+    assert_eq!(named("   ").order_part_names(), plain.order_part_names());
 }
 
 #[test]

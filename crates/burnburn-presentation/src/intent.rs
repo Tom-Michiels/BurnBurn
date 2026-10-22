@@ -257,6 +257,13 @@ pub enum UiIntent {
     CloseNotes {
         document: DocumentId,
     },
+    /// Sets the name of the product this project makes, as an order names it (W01/W02, G9). It is
+    /// separate from the names of the drawn objects, is saved with the project, and is no undo step.
+    /// Blank clears it; a name beyond 200 characters is refused.
+    SetPartName {
+        document: DocumentId,
+        name: String,
+    },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {
         document: DocumentId,

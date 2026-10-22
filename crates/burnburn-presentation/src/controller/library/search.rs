@@ -198,7 +198,7 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Files(FilesOutput::RevisionOpened { project, path, number, label })) => {
-                let Project { uuid, document: snapshot, assets, library_links, layer_slots, .. } = *project;
+                let Project { uuid, document: snapshot, assets, library_links, layer_slots, part_name, .. } = *project;
                 let mut doc = burnburn_document::DocumentSession::from_snapshot(document, snapshot);
                 let unsaved = RevisionId::from_raw(doc.revision().raw().wrapping_add(1));
                 doc.mark_saved(unsaved);
@@ -209,6 +209,8 @@ impl AppController {
                 };
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
                 session.library_links = library_links;
+                session.part_name = part_name.clone();
+                session.saved_part_name = part_name;
                 session.layers.restore(&layer_slots);
                 self.sessions.insert(document, session);
                 self.active = Some(document);

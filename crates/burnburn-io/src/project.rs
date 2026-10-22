@@ -230,6 +230,16 @@ impl Project {
         }
     }
 
+    /// The names an order can use to find this project's product (W01/W02): the explicit part name
+    /// when there is one, otherwise the names of the drawn objects in draw order.
+    pub fn order_part_names(&self) -> Vec<String> {
+        if let Some(name) = self.part_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            return vec![name.to_owned()];
+        }
+        let snapshot = &self.document;
+        snapshot.draw_order().into_iter().filter_map(|id| snapshot.object(id)).map(|o| o.name().to_owned()).collect()
+    }
+
     pub fn revision(&self, number: u32) -> Option<&FrozenRevision> {
         self.revisions.iter().find(|r| r.number == number)
     }

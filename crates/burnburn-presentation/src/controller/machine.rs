@@ -32,12 +32,11 @@ pub(super) struct Prepared {
     pub(super) record: Option<burnburn_generators::ProductionRecord>,
 }
 
-/// The names of the parts (the drawn objects) of the project a job was prepared from; none for a job
-/// without its project in memory.
+/// The names an order can find the product of a job by: the explicit part name of the project it was
+/// prepared from, or else the names of its drawn objects; none for a job without its project in memory.
 fn part_names(job: &PreparedJob) -> Vec<String> {
     let Some(inputs) = job.inputs.as_ref() else { return Vec::new() };
-    let snapshot = &inputs.project.document;
-    snapshot.draw_order().into_iter().filter_map(|id| snapshot.object(id)).map(|o| o.name().to_owned()).collect()
+    inputs.project.order_part_names()
 }
 
 /// An order (IM31) with the explicitly chosen job, if any.

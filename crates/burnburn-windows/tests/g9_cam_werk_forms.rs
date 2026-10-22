@@ -71,3 +71,43 @@ fn the_angle_choice_adds_a_field_to_the_form_and_a_typed_angle_reaches_the_optio
     assert_eq!(input.part_grain.len(), 1);
     assert_eq!(input.part_grain[0].1, NestPartGrain::Angle(300));
 }
+
+mod part_name {
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, UiIntent};
+    use burnburn_types::DocumentId;
+    use burnburn_windows::forms::g5;
+    use burnburn_windows::forms::{
+        ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState,
+    };
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::{G5Control as C, G5Panel as P};
+
+    fn form(h: &HeadlessEditorHarness, doc: DocumentId) -> Form {
+        let vm = h.view();
+        let context = FormContext { vm: &vm, document: doc, locale: Locale::En };
+        let shown = PanelState { g5_shown: vec![P::Notes], ..PanelState::default() };
+        g5::forms(&context, &shown, &Vec::new())
+            .into_iter()
+            .find(|f| f.kind == FormKind::G5(P::Notes))
+            .expect("the notes form")
+    }
+
+    #[test]
+    fn the_notes_form_has_the_part_name_field_and_its_button_sends_the_name() {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::ShowNotes);
+        h.send(UiIntent::SetPartName { document: doc, name: "Houder".into() });
+        let f = form(&h, doc);
+        assert!(matches!(f.find(&ControlId::G5(C::NotesPartName)), Some(FormLine::Field { .. })));
+
+        let vm = h.view();
+        let context = FormContext { vm: &vm, document: doc, locale: Locale::En };
+        let mut values = f.values();
+        values.retain(|(id, _)| *id != ControlId::G5(C::NotesPartName));
+        values.push((ControlId::G5(C::NotesPartName), ControlValue::Text("Houder links".into())));
+        let outcome = g5::react(P::Notes, &ControlId::G5(C::NotesPartNameSave), &values, &context);
+        let FormOutcome::Intent(intent) = outcome else { panic!("{outcome:?}") };
+        assert_eq!(intent, UiIntent::SetPartName { document: doc, name: "Houder links".into() });
+    }
+}

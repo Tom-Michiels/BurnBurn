@@ -30,6 +30,11 @@ texts! {
     NotesTitle => ("Notities", "Notes"),
     NotesSave => ("Bewaar notities", "Save Notes"),
     NotesClose => ("Sluit", "Close"),
+    NotesPartName => (
+        "Onderdeelnaam (zo noemt een order dit product; los van de namen van de getekende objecten)",
+        "Part name (how an order names this product; separate from the names of the drawn objects)"
+    ),
+    NotesPartNameSave => ("Bewaar onderdeelnaam", "Save part name"),
     NotesLimit => (
         "{0} van maximaal {1} tekens; opslaan is één stap die je kunt terugdraaien.",
         "{0} of at most {1} characters; saving is one undoable step."

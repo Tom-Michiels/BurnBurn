@@ -61,6 +61,10 @@ fn plan(length_mm: f64) -> JobPlan {
 }
 
 fn job(length_mm: f64) -> Arc<PreparedJob> {
+    job_named(length_mm, None)
+}
+
+fn job_named(length_mm: f64, part_name: Option<&str>) -> Arc<PreparedJob> {
     let plan = Arc::new(plan(length_mm));
     let mut session = DocumentSession::new(DocumentId::from_raw(1));
     for (i, name) in ["Beugel", "Plaatje"].iter().enumerate() {
@@ -79,7 +83,8 @@ fn job(length_mm: f64) -> Arc<PreparedJob> {
         session.apply(cmd).unwrap();
     }
     let snapshot = (*session.snapshot()).clone();
-    let project = Project::new(ProjectUuid::from_bytes([1; 16]), snapshot);
+    let mut project = Project::new(ProjectUuid::from_bytes([1; 16]), snapshot);
+    project.part_name = part_name.map(str::to_owned);
     Arc::new(PreparedJob {
         plan: plan.id(),
         plan_revision: plan.source().document_revision,
@@ -127,4 +132,17 @@ fn a_job_the_history_does_not_hold_has_no_parts() {
     let store = start(&fs);
     store.record_approval(&job(10.0), Role::Designer).unwrap();
     assert!(store.job_parts(job(20.0).plan).is_empty());
+}
+
+#[test]
+fn an_explicit_part_name_replaces_the_object_names_in_the_frozen_project_also_after_a_restart() {
+    let fs = Arc::new(MemoryFileSystem::new());
+    let first = start(&fs);
+    let j = job_named(10.0, Some("Houder links"));
+    first.record_approval(&j, Role::Designer).unwrap();
+    assert_eq!(first.job_parts(j.plan), vec!["Houder links".to_owned()]);
+    drop(first);
+    let second = start(&fs);
+    let back = second.approved_jobs().unwrap().remove(0);
+    assert_eq!(second.job_parts(back.plan), vec!["Houder links".to_owned()], "the name came back with the frozen project");
 }

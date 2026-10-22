@@ -6,4 +6,6 @@ pub struct NotesViewModel {
     pub text: String,
     /// Longest text the document accepts, in characters.
     pub max_chars: usize,
+    /// The explicit part name of the project (blank: none), as an order names the product (G9).
+    pub part_name: String,
 }
