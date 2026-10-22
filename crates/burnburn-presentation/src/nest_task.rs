@@ -345,6 +345,23 @@ pub fn sheet_of(
     Some(NestSheetView { width_mm: b.width(), height_mm: b.height(), is_bed, contour: None })
 }
 
+/// The turns that bring a part whose grain runs `own` degrees from its X axis along a sheet grain of
+/// `sheet` degrees: the one turn that lines them up and, when the chosen rotations include a half
+/// turn, its opposite. A mirrored placement flips the grain direction, so with mirroring allowed the
+/// turns for the mirror image are offered as well (the nest keeps only the ones that follow the grain).
+fn angled_rotations(sheet: f64, own: f64, chosen: &RotationSet, mirror: NestMirror) -> RotationSet {
+    let half_turn = chosen.degrees().iter().any(|d| (d - 180.0).abs() < 1e-9);
+    let mut turns = vec![sheet - own];
+    if mirror == NestMirror::Allowed {
+        turns.push(sheet + own);
+    }
+    if half_turn {
+        turns.extend(turns.clone().into_iter().map(|t| t + 180.0));
+    }
+    // Turns are finite (the angles come from parsed numbers), so the set is never empty.
+    RotationSet::new(turns).unwrap_or_else(|_| chosen.clone())
+}
+
 /// Makes the job for `scope` over `selection`. `bed` is the machine's bed (width, height in mm)
 /// with its origin at the document origin; without one the sheet is the bounds of the parts.
 pub fn build_job(
@@ -374,15 +391,21 @@ pub fn build_job(
                 .filter_map(|id| snapshot.object(*id))
                 .flat_map(|o| o.path().subpaths().iter().cloned())
                 .collect();
+            let rule = members.first().map(|f| settings.grain_of(*f));
+            let angle = settings.grain_deg.zip(rule.and_then(NestPartGrain::angle_degrees));
             NestPart {
                 key: PartKey(i as u32),
                 outline: Path::from_subpaths(subpaths),
                 count: members.first().map_or(1, |first| settings.copies_of(*first)),
-                rotations: rotations.clone(),
+                rotations: match angle {
+                    Some((sheet, own)) => angled_rotations(sheet, own, &rotations, settings.mirror),
+                    None => rotations.clone(),
+                },
                 // The grain direction of the part in its own coordinates; a free part has no rule.
-                grain_deg: settings.grain_deg.and_then(|_| match members.first().map(|f| settings.grain_of(*f)) {
+                grain_deg: settings.grain_deg.and_then(|_| match rule {
                     Some(NestPartGrain::Across) => Some(90.0),
                     Some(NestPartGrain::Free) => None,
+                    Some(NestPartGrain::Angle(tenths)) => Some(f64::from(tenths) / 10.0),
                     _ => Some(0.0),
                 }),
             }

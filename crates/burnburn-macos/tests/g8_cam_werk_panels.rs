@@ -130,7 +130,7 @@ mod nest_panel {
             else {
                 panic!("a grain rule for part {i}")
             };
-            assert_eq!((options.len(), selected), (3, 0), "follows the sheet by default");
+            assert_eq!((options.len(), selected), (4, 0), "follows the sheet by default");
             assert!(caption.contains(&format!("Part {}", i + 1)), "{caption}");
         }
         let nl = lines(&h, doc, Locale::Nl);
