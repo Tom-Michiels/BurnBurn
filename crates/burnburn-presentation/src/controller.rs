@@ -87,6 +87,7 @@ mod text;
 mod trace;
 mod trace_g7;
 mod trace_link;
+mod trace_overlay;
 mod trace_prep;
 mod trace_recipes;
 mod variable;
