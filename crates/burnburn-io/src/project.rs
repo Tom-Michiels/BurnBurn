@@ -108,6 +108,9 @@ pub struct Project {
     /// Which library entry each project recipe was made from (C08). Provenance only: it is not
     /// part of the canonical project hash and never changes any setting.
     pub library_links: Vec<LibraryLink>,
+    /// Serial counter, chosen data row and advance policy of variable text (E11). Production
+    /// bookkeeping, not design: no undo step and not part of the canonical project hash.
+    pub production: Option<ProductionState>,
 }
 
 /// A project recipe that came from a material-library entry: the library, the entry and the
@@ -122,6 +125,48 @@ pub struct LibraryLink {
     pub entry: u64,
     /// Entry revision at the time of copying.
     pub revision: u32,
+}
+
+/// The production counters of a project (E11). Plain data; `burnburn-generators` turns it into its
+/// live counters and back. Checked on load: the series must be consistent and the data table must
+/// be an asset of the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductionState {
+    pub serial: Option<SerialState>,
+    /// The data row the next job uses (0-based).
+    pub row: u64,
+    pub policy: AdvanceChoice,
+    /// The chosen CSV, kept as an asset of the project.
+    pub rows: Option<RowsSource>,
+}
+
+/// A serial number series with its current value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SerialState {
+    pub start: i64,
+    pub end: i64,
+    pub advance_by: i64,
+    pub width: u8,
+    /// True: continue at the start after the end; false: stop.
+    pub wrap: bool,
+    pub current: i64,
+}
+
+/// When the live counters advance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdvanceChoice {
+    Manual,
+    OnUploadConfirmed,
+    OnJobStarted,
+}
+
+/// The chosen data table: its display name and the CSV asset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowsSource {
+    pub name: String,
+    pub asset: ContentHash,
+    /// The time value `{datum}` resolved to when the table was chosen (empty when there was no clock).
+    pub frozen_at: String,
 }
 
 /// A frozen copy of the design at one moment ("opnieuw maken als revisie X").
@@ -143,6 +188,7 @@ impl Project {
             profiles: Vec::new(),
             revisions: Vec::new(),
             library_links: Vec::new(),
+            production: None,
         }
     }
 
@@ -169,6 +215,7 @@ impl Project {
             profiles: Vec::new(),
             revisions: Vec::new(),
             library_links: Vec::new(),
+            production: None,
         }
     }
 

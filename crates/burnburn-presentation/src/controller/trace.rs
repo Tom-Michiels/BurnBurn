@@ -10,9 +10,15 @@ use std::sync::Arc;
 use burnburn_document::trace::TraceId;
 use burnburn_geometry::Path;
 use burnburn_image::{PixelScale, SourceImage, Threshold};
-use burnburn_trace::{CenterlineRequest, CenterlineResult, CenterlineSettings, TraceRecipe, TraceRequest, TraceResult};
+use burnburn_trace::{
+    CenterlineEditError, CenterlineRequest, CenterlineResult, CenterlineSettings, ChainId, Connections, NodeId,
+    NodeKind, Primitive, TraceRecipe, TraceRequest, TraceResult,
+};
 use burnburn_types::{CancellationSource, DocumentId, TaskId};
 
+use crate::centerline_panel::{
+    CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
+};
 use crate::field::{format_mm, parse_number};
 use crate::image_panel::{
     ImageField, ImageIssue, ThresholdChoice, TraceFormInput, TraceFormViewModel, TraceMode, TracePreset,
@@ -89,8 +95,8 @@ impl Tracer {
     }
 
     /// The tracer of an existing trace: its stored recipe is in force and the first trace starts.
-    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe) {
-        self.form = form_of(&recipe, TraceMode::Contour);
+    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe, mode: TraceMode) {
+        self.form = form_of(&recipe, mode);
         self.recipe = Some(recipe);
         self.editing = Some(trace);
         self.autostart = true;
@@ -353,17 +359,114 @@ pub(super) fn centerline_finished(
             let key = t.centerline_request(id, revision).and_then(|r| r.key().ok());
             let fresh = matches!((t.latest, key), (Some(latest), Some(key)) if latest == id && result.check_fresh(latest, key).is_ok());
             if fresh {
-                let strokes: Vec<Path> =
-                    result.strokes().into_iter().map(|st| Path::from_subpaths(vec![st.path])).collect();
-                let preview =
-                    Arc::new(Path::from_subpaths(strokes.iter().flat_map(|p| p.subpaths().iter().cloned()).collect()));
-                t.centerline = Some(CenterlineOutcome { result, strokes, preview });
+                t.centerline = Some(CenterlineOutcome::of(result));
                 t.latest = None;
                 update.scenes_changed.push(s.doc.id());
             }
         }
         Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
         _ => {}
+    }
+}
+
+impl CenterlineOutcome {
+    /// The outcome of `result`: its strokes (through resolved junctions only) and their preview.
+    fn of(result: Arc<CenterlineResult>) -> Self {
+        let strokes: Vec<Path> = result.strokes().into_iter().map(|st| Path::from_subpaths(vec![st.path])).collect();
+        let preview =
+            Arc::new(Path::from_subpaths(strokes.iter().flat_map(|p| p.subpaths().iter().cloned()).collect()));
+        CenterlineOutcome { result, strokes, preview }
+    }
+}
+
+/// An operator decision on the centre-line result: the new result replaces the old one (strokes
+/// and preview follow); a decision that does not apply says so and changes nothing. Re-tracing
+/// (a changed form) starts again without the decisions.
+pub(super) fn centerline_edit(s: &mut Session, document: DocumentId, edit: CenterlineEdit) -> AppUpdate {
+    let Some(current) =
+        s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline).and_then(|t| t.centerline.as_ref())
+    else {
+        return AppUpdate::default();
+    };
+    let result = Arc::clone(&current.result);
+    let next = match edit {
+        CenterlineEdit::ResolveJunction { node, candidate } => {
+            let node = NodeId(node);
+            let pairs = result.node(node).and_then(|n| match &n.connections {
+                Connections::Ambiguous { candidates } => candidates.get(candidate).map(|c| c.pairs.clone()),
+                _ => None,
+            });
+            match pairs {
+                Some(pairs) => result.resolve_junction(node, pairs),
+                None => Err(CenterlineEditError::InvalidPairing),
+            }
+        }
+        CenterlineEdit::ConfirmPrimitive { chain } => {
+            result.propose_replacement(ChainId(chain)).and_then(|p| result.confirm_replacement(&p))
+        }
+    };
+    match next {
+        Ok(next) => {
+            if let Some(t) = s.tracer.as_mut() {
+                t.centerline = Some(CenterlineOutcome::of(Arc::new(next)));
+            }
+            AppUpdate { view_changed: true, scenes_changed: vec![document], ..AppUpdate::default() }
+        }
+        Err(_) => {
+            s.messages.push(StatusMessage { key: MessageKey::TraceFailed });
+            AppUpdate { view_changed: true, ..AppUpdate::default() }
+        }
+    }
+}
+
+fn kind_of(p: &Primitive) -> PrimitiveKind {
+    match p {
+        Primitive::Line { .. } => PrimitiveKind::Line,
+        Primitive::Arc { .. } => PrimitiveKind::Arc,
+        Primitive::Circle { .. } => PrimitiveKind::Circle,
+    }
+}
+
+/// What can be decided on the open centre-line result (centre-line mode only).
+pub(super) fn centerline_panel(s: &Session) -> Option<CenterlineEditViewModel> {
+    let t = s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline)?;
+    t.centerline.as_ref().map(edit_view)
+}
+
+fn edit_view(c: &CenterlineOutcome) -> CenterlineEditViewModel {
+    let r = &c.result;
+    CenterlineEditViewModel {
+        junctions: r
+            .nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Junction)
+            .map(|n| JunctionRow {
+                node: n.id.0,
+                at: (n.at.x, n.at.y),
+                state: match &n.connections {
+                    Connections::Ambiguous { candidates } => JunctionState::Ambiguous { candidates: candidates.len() },
+                    _ => JunctionState::Resolved,
+                },
+            })
+            .collect(),
+        chains: r
+            .chains
+            .iter()
+            .map(|ch| ChainRow {
+                chain: ch.id.0,
+                candidates: ch
+                    .candidates
+                    .iter()
+                    .map(|k| PrimitiveRow {
+                        kind: kind_of(&k.primitive),
+                        max_residual_mm: k.max_residual_mm,
+                        within_tolerance: k.within_tolerance,
+                    })
+                    .collect(),
+                confirmed: ch.confirmed.as_ref().map(kind_of),
+            })
+            .collect(),
+        edits: r.revision,
     }
 }
 

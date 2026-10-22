@@ -51,17 +51,21 @@ mod layers;
 mod library;
 mod machine;
 mod nest;
+mod notes;
+mod offset_preview;
 mod prefs;
 mod preview;
 mod process;
 mod recent;
 mod recovery;
 mod registration;
+mod repair_preview;
 mod reshape;
 mod shapes;
 mod shortcuts;
 mod sketch;
 mod sketch_param;
+mod structure;
 
 pub(crate) use sketch_param::normalise_decimal_commas;
 mod support;
@@ -204,6 +208,17 @@ struct Session {
     doc: DocumentSession,
     /// Palette colours and canvas visibility of the operations (window state, see `layers`).
     layers: layers::LayerState,
+    /// The plate Compile uses, and the plate each compile in flight was started for (P06).
+    compile_plate: Option<burnburn_document::structure::PlateId>,
+    compile_plates: BTreeMap<TaskId, Option<burnburn_document::structure::PlateId>>,
+    /// The plate the plan in `compiled` was made for.
+    plan_plate: Option<burnburn_document::structure::PlateId>,
+    /// The open repair preview (E09; window state).
+    repair: repair_preview::RepairState,
+    /// Offset options and the open preview (E05; window state).
+    offset: offset_preview::OffsetState,
+    /// The project notes panel is open (P04; window state).
+    notes_open: bool,
     /// Text evaluator input (from `AppController::attach_fonts`).
     fonts: Option<SharedFonts>,
     /// Why the last operations-panel input sent no command.
@@ -295,6 +310,12 @@ impl Session {
         Some(Session {
             doc,
             layers: layers::LayerState::default(),
+            notes_open: false,
+            compile_plate: None,
+            compile_plates: BTreeMap::new(),
+            plan_plate: None,
+            repair: repair_preview::RepairState::default(),
+            offset: offset_preview::OffsetState::default(),
             editor: Editor::new(),
             selection: Selection::default(),
             camera,
@@ -472,9 +493,18 @@ impl AppController {
         }
         // Job events the machine reported since the last intent reach the counters first.
         let production = self.sync_production();
+        // The document keeps the selection in its undo records (P02): tell it before and after.
+        self.sync_selections();
         let mut update = self.dispatch(intent);
+        self.sync_selections();
         update.view_changed |= production.view_changed;
         update
+    }
+
+    fn sync_selections(&mut self) {
+        for s in self.sessions.values_mut() {
+            s.doc.set_selection(s.selection.ids());
+        }
     }
 
     fn dispatch(&mut self, intent: UiIntent) -> AppUpdate {
@@ -511,6 +541,24 @@ impl AppController {
                 }
                 AppUpdate::default()
             }
+            UiIntent::SetNotes { document, text } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| notes::set(s, document, text, request))
+            }
+            UiIntent::CenterlineEdit { document, edit } => {
+                self.with_session(document, |s| trace::centerline_edit(s, document, edit))
+            }
+            UiIntent::ChoosePlate { document, plate } => {
+                self.with_session(document, |s| structure::choose_plate(s, document, plate))
+            }
+            UiIntent::Structure { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| structure::edit(s, document, edit, request))
+            }
+            UiIntent::PreviewRepair { document, issue, tolerance } => self.preview_repair(document, issue, tolerance),
+            UiIntent::PreviewOffset { document, distance } => self.preview_offset(document, distance),
+            UiIntent::SetOffsetOptions { document, options } => self.set_offset_options(document, options),
+            UiIntent::CloseNotes { document } => self.with_session(document, |s| notes::close(s, document)),
             UiIntent::SelectByKind { document, kind, mode } => {
                 self.with_session(document, |s| arrange::select_by_kind(s, document, kind, mode))
             }
@@ -779,6 +827,13 @@ fn error(document: Option<DocumentId>, message: MessageKey) -> AppUpdate {
     AppUpdate { effects: vec![HostEffect::ShowError { document, message }], ..AppUpdate::default() }
 }
 
+impl Session {
+    /// Unsaved work: document changes, or counters that moved since the last save (E11).
+    fn unsaved(&self) -> bool {
+        self.doc.is_dirty() || self.variable.unsaved()
+    }
+}
+
 fn apply_selection(s: &mut Session, change: &SelectionChange) {
     s.selection.apply(change);
     s.selection.retain_existing(&s.doc.snapshot());
@@ -792,10 +847,15 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
     match result {
         Ok(outcome) => {
             s.cancel_revision_sensitive();
-            let mut focus: Vec<_> = outcome.changes.created.clone();
-            focus.extend(outcome.changes.modified.iter().copied());
-            if !focus.is_empty() {
-                s.selection.apply(&SelectionChange::Replace(focus));
+            if let Some(kept) = outcome.selection.clone() {
+                // Undo/redo: the document's record knows what was selected (P02).
+                s.selection.apply(&SelectionChange::Replace(kept));
+            } else {
+                let mut focus: Vec<_> = outcome.changes.created.clone();
+                focus.extend(outcome.changes.modified.iter().copied());
+                if !focus.is_empty() {
+                    s.selection.apply(&SelectionChange::Replace(focus));
+                }
             }
             let snapshot = s.doc.snapshot();
             s.selection.retain_existing(&snapshot);
@@ -854,6 +914,14 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::DialogCancelled { document, .. }
         | UiIntent::Select { document, .. }
         | UiIntent::SelectByKind { document, .. }
+        | UiIntent::SetNotes { document, .. }
+        | UiIntent::PreviewOffset { document, .. }
+        | UiIntent::PreviewRepair { document, .. }
+        | UiIntent::Structure { document, .. }
+        | UiIntent::ChoosePlate { document, .. }
+        | UiIntent::CenterlineEdit { document, .. }
+        | UiIntent::SetOffsetOptions { document, .. }
+        | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }

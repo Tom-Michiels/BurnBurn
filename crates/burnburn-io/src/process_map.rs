@@ -677,6 +677,10 @@ pub(crate) fn process_from_dto(
         priorities.push((geometry, priority));
     }
     let layer = layer.with_priorities(priorities);
+    if dto.notes.chars().count() > burnburn_document::process::ProcessCommand::MAX_NOTES_CHARS {
+        return Err(invalid(&|| "notes".to_owned(), "too long"));
+    }
+    let layer = layer.with_notes(dto.notes.clone());
     let layer = match &dto.optimization {
         Some(o) => layer.with_optimization(optimization_from_dto(o)?),
         None => layer,

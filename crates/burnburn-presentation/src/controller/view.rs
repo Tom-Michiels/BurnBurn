@@ -90,8 +90,11 @@ impl AppController {
         let s = self.sessions.get(&document)?;
         let snapshot = s.doc.snapshot();
         let preview = s.editor.preview();
-        let result_preview =
-            s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result));
+        let result_preview = super::offset_preview::current_result(s)
+            .or_else(|| super::repair_preview::current_result(s))
+            .or_else(|| {
+                s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result))
+            });
         let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         sketch_overlays.extend(super::nest::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
@@ -171,7 +174,7 @@ pub(super) fn document_view(
         id,
         revision: s.doc.revision(),
         title: s.title.clone(),
-        dirty: s.doc.is_dirty(),
+        dirty: s.unsaved(),
         tool: s.editor.tool(),
         preview: s.editor.preview(),
         objects,
@@ -222,6 +225,11 @@ pub(super) fn document_view(
         },
         text_toolbar: super::text::toolbar_view(s),
         text_on_path: super::text::path_view(s),
+        notes: super::notes::view(s),
+        structure: super::structure::view(s),
+        centerline: super::trace::centerline_panel(s),
+        offset: super::offset_preview::view(s),
+        repair_preview: super::repair_preview::view(s),
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
         barcode_scale_warning: super::barcode::scale_warning(s),
@@ -246,6 +254,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
         (CommandKey::ShowMaterialLibrary, Some(s)) => (true, s.files.material.is_some()),
         (CommandKey::ShowArtLibrary, Some(s)) => (true, s.files.art.is_some()),
+        (CommandKey::ShowNotes, Some(s)) => (true, s.notes_open),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (

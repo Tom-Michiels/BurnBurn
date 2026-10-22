@@ -15,7 +15,10 @@ use burnburn_image::{
 };
 use burnburn_types::ContentHash;
 
-use crate::{ContourSettings, DiagonalPolicy, ENGINE_VERSION, FitSettings, TraceError, TraceRecipe, TraceResult};
+use crate::{
+    CENTERLINE_ENGINE_VERSION, CenterlineResult, CenterlineSettings, ContourSettings, DiagonalPolicy, ENGINE_VERSION,
+    FitSettings, TraceError, TraceRecipe, TraceResult,
+};
 
 use ParamValue as V;
 
@@ -33,8 +36,24 @@ fn pair(p: [f64; 2]) -> [ParamValue; 2] {
 
 /// The recipe as engine parameters (engine = [`ENGINE_VERSION`]).
 pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
-    let i = &recipe.image;
-    let mut r = EngineRecipe::new(ENGINE_VERSION);
+    let r = image_to_params(EngineRecipe::new(ENGINE_VERSION), &recipe.image);
+    r.with("contour.diagonal", V::Text(diagonal_name(recipe.contour.diagonal).into()))
+        .with("contour.min_area_mm2", V::Number(recipe.contour.min_area_mm2))
+        .with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
+        .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))
+        .with("fit.corner_window_px", V::Number(recipe.fit.corner_window_px))
+        .with("fit.curves", V::Bool(recipe.fit.curves))
+}
+
+fn diagonal_name(d: DiagonalPolicy) -> &'static str {
+    match d {
+        DiagonalPolicy::Connect => "connect",
+        DiagonalPolicy::Separate => "separate",
+    }
+}
+
+/// The `image.*` parameters shared by the contour and the centerline recipes.
+fn image_to_params(mut r: EngineRecipe, i: &ImageRecipe) -> EngineRecipe {
     if let Some(s) = &i.scale {
         r = r.with("image.scale", V::List(vec![V::Number(s.mm_per_pixel_x()), V::Number(s.mm_per_pixel_y())]));
     }
@@ -105,16 +124,7 @@ pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
         }
         r = r.with("image.perspective", V::List(item));
     }
-    let diagonal = match recipe.contour.diagonal {
-        DiagonalPolicy::Connect => "connect",
-        DiagonalPolicy::Separate => "separate",
-    };
-    r.with("contour.diagonal", V::Text(diagonal.into()))
-        .with("contour.min_area_mm2", V::Number(recipe.contour.min_area_mm2))
-        .with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
-        .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))
-        .with("fit.corner_window_px", V::Number(recipe.fit.corner_window_px))
-        .with("fit.curves", V::Bool(recipe.fit.curves))
+    r
 }
 
 struct Reader<'a>(&'a EngineRecipe);
@@ -225,6 +235,28 @@ pub fn recipe_from_engine(recipe: &EngineRecipe) -> Result<TraceRecipe, TraceErr
         return Err(TraceError::InvalidRecipe("engine"));
     }
     let r = Reader(recipe);
+    let image = image_from_params(&r)?;
+    let diagonal = match r.text("contour.diagonal")? {
+        "connect" => DiagonalPolicy::Connect,
+        "separate" => DiagonalPolicy::Separate,
+        _ => return Err(TraceError::InvalidRecipe("contour.diagonal")),
+    };
+    let out = TraceRecipe {
+        image,
+        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")? },
+        fit: FitSettings {
+            tolerance_mm: r.number("fit.tolerance_mm")?,
+            corner_angle_deg: r.number("fit.corner_angle_deg")?,
+            corner_window_px: r.number("fit.corner_window_px")?,
+            curves: r.bool("fit.curves")?,
+        },
+    };
+    out.validate()?;
+    Ok(out)
+}
+
+/// The `image.*` parameters back into an image recipe.
+fn image_from_params(r: &Reader<'_>) -> Result<ImageRecipe, TraceError> {
     let scale = match r.optional_list("image.scale")? {
         None => None,
         Some([x, y]) => Some(
@@ -265,34 +297,18 @@ pub fn recipe_from_engine(recipe: &EngineRecipe) -> Result<TraceRecipe, TraceErr
         })
         .collect::<Result<_, _>>()?;
     let perspective = r.optional_list("image.perspective")?.map(perspective_from).transpose()?;
-    let diagonal = match r.text("contour.diagonal")? {
-        "connect" => DiagonalPolicy::Connect,
-        "separate" => DiagonalPolicy::Separate,
-        _ => return Err(TraceError::InvalidRecipe("contour.diagonal")),
-    };
-    let out = TraceRecipe {
-        image: ImageRecipe {
-            scale,
-            crop,
-            rotation,
-            alpha,
-            median_radius: r.uint("image.median_radius")?,
-            threshold,
-            invert: r.bool("image.invert")?,
-            regions,
-            morphology,
-            perspective,
-        },
-        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")? },
-        fit: FitSettings {
-            tolerance_mm: r.number("fit.tolerance_mm")?,
-            corner_angle_deg: r.number("fit.corner_angle_deg")?,
-            corner_window_px: r.number("fit.corner_window_px")?,
-            curves: r.bool("fit.curves")?,
-        },
-    };
-    out.validate()?;
-    Ok(out)
+    Ok(ImageRecipe {
+        scale,
+        crop,
+        rotation,
+        alpha,
+        median_radius: r.uint("image.median_radius")?,
+        threshold,
+        invert: r.bool("image.invert")?,
+        regions,
+        morphology,
+        perspective,
+    })
 }
 
 /// A finished result as one document command: `Create` for a new trace, `Replace` for
@@ -320,6 +336,92 @@ pub fn trace_command(
             local: outer.id.0,
             kind: ObjectKind::Path,
             path,
+            name: Some(format!("{name} {}", i + 1)),
+        });
+    }
+    Ok(match existing {
+        None => TraceCommand::Create { definition, outputs },
+        Some(trace) => TraceCommand::Replace { trace, definition, outputs },
+    })
+}
+
+/// The centerline recipe as engine parameters (engine = [`CENTERLINE_ENGINE_VERSION`]): the
+/// `image.*` parameters of the contour recipe plus `centerline.*` for the settings.
+pub fn centerline_to_engine(image: &ImageRecipe, settings: &CenterlineSettings) -> EngineRecipe {
+    let keep = settings.keep_spurs_near_px.iter().map(|k| V::List(pair(*k).into())).collect();
+    image_to_params(EngineRecipe::new(CENTERLINE_ENGINE_VERSION), image)
+        .with("centerline.min_spur_mm", V::Number(settings.min_spur_mm))
+        .with("centerline.spur_width_factor", V::Number(settings.spur_width_factor))
+        .with("centerline.keep_spurs_near_px", V::List(keep))
+        .with("centerline.junction_merge_factor", V::Number(settings.junction_merge_factor))
+        .with("centerline.tolerance_mm", V::Number(settings.tolerance_mm))
+        .with("centerline.primitive_tolerance_mm", V::Number(settings.primitive_tolerance_mm))
+        .with("centerline.near_contact_factor", V::Number(settings.near_contact_factor))
+        .with("centerline.max_join_factor", V::Number(settings.max_join_factor))
+}
+
+/// The centerline recipe from engine parameters. Refuses another engine (also the contour
+/// engine), a missing or mistyped parameter and values the settings do not accept.
+pub fn centerline_from_engine(recipe: &EngineRecipe) -> Result<(ImageRecipe, CenterlineSettings), TraceError> {
+    if recipe.engine != CENTERLINE_ENGINE_VERSION {
+        return Err(TraceError::InvalidRecipe("engine"));
+    }
+    let r = Reader(recipe);
+    let image = image_from_params(&r)?;
+    const KEEP: &str = "centerline.keep_spurs_near_px";
+    let keep_spurs_near_px = r
+        .list(KEEP)?
+        .iter()
+        .map(|k| match list(KEEP, k)? {
+            [x, y] => Ok([number(KEEP, x)?, number(KEEP, y)?]),
+            _ => Err(TraceError::InvalidRecipe(KEEP)),
+        })
+        .collect::<Result<_, TraceError>>()?;
+    let settings = CenterlineSettings {
+        min_spur_mm: r.number("centerline.min_spur_mm")?,
+        spur_width_factor: r.number("centerline.spur_width_factor")?,
+        keep_spurs_near_px,
+        junction_merge_factor: r.number("centerline.junction_merge_factor")?,
+        tolerance_mm: r.number("centerline.tolerance_mm")?,
+        primitive_tolerance_mm: r.number("centerline.primitive_tolerance_mm")?,
+        near_contact_factor: r.number("centerline.near_contact_factor")?,
+        max_join_factor: r.number("centerline.max_join_factor")?,
+    };
+    settings.validate()?;
+    Ok((image, settings))
+}
+
+/// A centerline result as one trace command: `Create`, or `Replace` for `existing`. The outputs
+/// are the strokes (open paths walked through resolved junctions only), trace-local, keyed by the
+/// id of their first chain. Operator decisions (junctions, confirmed primitives) are not part of
+/// the recipe: their count is recorded as `centerline.edits`, so such a trace is never mistaken
+/// for a plain run, and re-tracing from the recipe starts again without them.
+pub fn centerline_command(
+    result: &CenterlineResult,
+    image: &ImageRecipe,
+    source_asset: ContentHash,
+    name: &str,
+    placement: Affine,
+    existing: Option<TraceId>,
+) -> Result<TraceCommand, TraceError> {
+    let mut recipe = centerline_to_engine(image, result.settings());
+    if result.revision > 0 {
+        recipe = recipe.with("centerline.edits", V::Integer(i64::try_from(result.revision).unwrap_or(i64::MAX)));
+    }
+    let definition = Box::new(TraceDefinition {
+        name: name.to_owned(),
+        source: source_asset,
+        recipe,
+        key: result.inputs,
+        placement,
+    });
+    let mut outputs = Vec::new();
+    for (i, stroke) in result.strokes().into_iter().enumerate() {
+        let first = stroke.chains.first().ok_or(TraceError::NonFinite)?.0;
+        outputs.push(TraceOutput {
+            local: u64::from(first.0),
+            kind: ObjectKind::Path,
+            path: burnburn_geometry::Path::from_subpaths(vec![stroke.path]),
             name: Some(format!("{name} {}", i + 1)),
         });
     }

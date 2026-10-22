@@ -182,6 +182,16 @@ pub enum UiIntent {
         kind: burnburn_document::ObjectKind,
         mode: SelectMode,
     },
+    /// Bestand > Notities tonen (P04): stores the project notes as one undo step. The same text is
+    /// no new step; a text beyond the limit is refused and the panel stays open.
+    SetNotes {
+        document: DocumentId,
+        text: String,
+    },
+    /// Closes the notes panel without a change.
+    CloseNotes {
+        document: DocumentId,
+    },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {
         document: DocumentId,
@@ -244,6 +254,40 @@ pub enum UiIntent {
     Offset {
         document: DocumentId,
         distance: String,
+    },
+    /// Offset preview (E05): computes the result on a worker for the selected objects and shows its
+    /// size; the document does not change. A newer preview or any edit replaces/clears it.
+    PreviewOffset {
+        document: DocumentId,
+        distance: String,
+    },
+    /// Corner shape and keep-sources choice of the next offset; an open preview is recomputed.
+    SetOffsetOptions {
+        document: DocumentId,
+        options: crate::offset::OffsetOptions,
+    },
+    /// Repair preview (E09): what closing the gaps of problem `issue` at this tolerance would do,
+    /// computed on a worker; the document does not change.
+    PreviewRepair {
+        document: DocumentId,
+        issue: usize,
+        tolerance: String,
+    },
+    /// A decision on the open centre-line result (T04, T08).
+    CenterlineEdit {
+        document: DocumentId,
+        edit: crate::centerline_panel::CenterlineEdit,
+    },
+    /// The plate Compile uses (P06); `None` compiles the whole design. A plate that does not exist
+    /// is refused. The plan shown so far is dropped: it belongs to the other choice.
+    ChoosePlate {
+        document: DocumentId,
+        plate: Option<u64>,
+    },
+    /// An edit of a part instance in the structure panel (S07).
+    Structure {
+        document: DocumentId,
+        edit: crate::structure_panel::StructureEdit,
     },
     /// Problem list (E09): close the gaps of problem `issue` (index into `DocumentViewModel.issues`)
     /// with the tolerance as typed. Gaps above the tolerance stay open.
@@ -949,6 +993,8 @@ pub enum CommandKey {
     ShowMaterialLibrary,
     /// Venster ▸ Kunstbibliotheek: shows or hides the panel.
     ShowArtLibrary,
+    /// Bestand > Notities tonen: shows or hides the project notes (P04).
+    ShowNotes,
 }
 
 impl CommandKey {
@@ -1095,6 +1141,7 @@ impl CommandKey {
         CommandKey::ImportBundle,
         CommandKey::ShowMaterialLibrary,
         CommandKey::ShowArtLibrary,
+        CommandKey::ShowNotes,
     ];
 }
 

@@ -23,6 +23,8 @@ pub struct ProcessLayer {
     pub(crate) optimization: OptimizationSettings,
     /// Cut priority per geometry; absent = the default priority 0.
     pub(crate) priorities: BTreeMap<GeometryId, CutPriority>,
+    /// Free-text project notes (File > Show Notes); empty = none.
+    pub(crate) notes: String,
 }
 
 impl ProcessLayer {
@@ -60,6 +62,18 @@ impl ProcessLayer {
             && self.recipes.is_empty()
             && self.optimization.is_default()
             && self.priorities.is_empty()
+            && self.notes.is_empty()
+    }
+
+    /// Project notes: free text the user keeps with the project (empty = none).
+    pub fn notes(&self) -> &str {
+        &self.notes
+    }
+
+    /// The same layer with stored notes (open/recovery); too long notes are cut at the limit.
+    pub fn with_notes(mut self, notes: String) -> Self {
+        self.notes = notes.chars().take(super::ProcessCommand::MAX_NOTES_CHARS).collect();
+        self
     }
 
     /// Planner options of the document (order hierarchy, inner-first, overlap removal, …).

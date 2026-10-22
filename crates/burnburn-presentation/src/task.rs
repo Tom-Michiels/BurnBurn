@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use burnburn_cam::{CompileError, CompileOptions, PreflightReport, compile_with, preflight};
 use burnburn_document::DocumentSnapshot;
-use burnburn_geometry::{BooleanError, BooleanOp, Bounds, Path, boolean};
+use burnburn_geometry::{
+    BooleanError, BooleanOp, Bounds, OffsetError, OffsetJoin, Path, ProductionTolerance, boolean, offset,
+};
 use burnburn_image::{DecodeError, DecodeLimits, RasterError, SourceImage, decode};
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::{
@@ -106,6 +108,21 @@ pub enum TaskInput {
     CompileTest { job: Arc<burnburn_cam::test_job::TestJob>, profile: Arc<MachineProfile>, options: CompileOptions },
     /// Lower exactly this test plan to RD and write it atomically; never the project.
     ExportTest { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Offset of the targets' outlines by a signed distance (live preview, E05); never touches the
+    /// document.
+    OffsetPreview {
+        snapshot: Arc<DocumentSnapshot>,
+        targets: Vec<GeometryId>,
+        distance: burnburn_types::Length,
+        join: OffsetJoin,
+    },
+    /// What closing the gaps of the targets at this tolerance would give (E09 before/after); a
+    /// scratch copy of the snapshot, never the document.
+    RepairPreview {
+        snapshot: Arc<DocumentSnapshot>,
+        targets: Vec<GeometryId>,
+        tolerance: burnburn_geometry::DiagnosticTolerance,
+    },
     /// Pack the parts of a nest job on its sheet (W3-UI-schikken, C10); cancellable.
     Nest(Box<crate::nest_task::NestJob>),
 }
@@ -120,6 +137,15 @@ impl fmt::Debug for TaskInput {
             TaskInput::Open { path, .. } => write!(f, "Open({})", path.display()),
             TaskInput::Boolean { snapshot, op, operands } => {
                 write!(f, "Boolean({op:?} of {operands:?} at revision {})", snapshot.revision())
+            }
+            TaskInput::OffsetPreview { snapshot, targets, distance, join } => write!(
+                f,
+                "OffsetPreview({join:?} {} mm of {targets:?} at revision {})",
+                distance.mm(),
+                snapshot.revision()
+            ),
+            TaskInput::RepairPreview { snapshot, targets, .. } => {
+                write!(f, "RepairPreview({targets:?} at revision {})", snapshot.revision())
             }
             TaskInput::CompilePlaced { snapshot, profile, .. } => {
                 write!(f, "CompilePlaced(revision {} for {})", snapshot.revision(), profile.revision().id)
@@ -159,6 +185,8 @@ impl TaskInput {
             TaskInput::Save { .. } => TaskKind::Save,
             TaskInput::Open { .. } => TaskKind::Open,
             TaskInput::Boolean { .. } => TaskKind::Boolean,
+            TaskInput::RepairPreview { .. } => TaskKind::RepairPreview,
+            TaskInput::OffsetPreview { .. } => TaskKind::OffsetPreview,
             TaskInput::Compile { .. } | TaskInput::CompilePlaced { .. } => TaskKind::Compile,
             TaskInput::ExportRd { .. } => TaskKind::ExportRd,
             TaskInput::LoadImage { .. } | TaskInput::DecodeImage { .. } => TaskKind::LoadImage,
@@ -220,13 +248,25 @@ pub enum TaskKind {
     TestJob,
     /// A nest of one revision: cancelled by an edit, and a result of another revision is dropped.
     Nest,
+    /// The preview of an offset (E05): worthless after an edit.
+    OffsetPreview,
+    /// The before/after of a repair (E09): worthless after an edit.
+    RepairPreview,
 }
 
 impl TaskKind {
     /// Results that describe one revision and are worthless after an edit: cancelled when the
     /// document changes. A save is not: it must finish writing the revision it started with.
     pub fn is_revision_sensitive(self) -> bool {
-        matches!(self, TaskKind::Measure | TaskKind::Boolean | TaskKind::Compile | TaskKind::Nest)
+        matches!(
+            self,
+            TaskKind::Measure
+                | TaskKind::Boolean
+                | TaskKind::Compile
+                | TaskKind::Nest
+                | TaskKind::OffsetPreview
+                | TaskKind::RepairPreview
+        )
     }
 }
 
@@ -253,6 +293,16 @@ pub enum TaskOutput {
         op: BooleanOp,
         operands: Vec<GeometryId>,
         result: Path,
+    },
+    OffsetPreview {
+        distance: burnburn_types::Length,
+        join: OffsetJoin,
+        result: Path,
+    },
+    RepairPreview {
+        result: Path,
+        closes: usize,
+        stays_open: usize,
     },
     Compiled {
         plan: Arc<JobPlan>,
@@ -401,6 +451,10 @@ pub enum TaskError {
     Nest(burnburn_cam::nest::NestError),
     /// A file-feature job failed.
     Files(FilesError),
+    /// The offset of a preview is impossible (collapsed, open contour, ...).
+    Offset(OffsetError),
+    /// The repair preview could not be made.
+    Repair(burnburn_document::CommandError),
 }
 
 impl fmt::Display for TaskError {
@@ -425,6 +479,8 @@ impl fmt::Display for TaskError {
             TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
             TaskError::Nest(e) => write!(f, "nesting failed: {e}"),
             TaskError::Files(e) => write!(f, "{e}"),
+            TaskError::Offset(e) => write!(f, "offset failed: {e:?}"),
+            TaskError::Repair(e) => write!(f, "repair preview failed: {e}"),
         }
     }
 }
@@ -480,6 +536,15 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
         TaskInput::Boolean { snapshot, op, operands } => {
             let result = boolean_of(&snapshot, op, &operands, cancel)?;
             Ok(TaskOutput::Boolean { op, operands, result })
+        }
+        TaskInput::RepairPreview { snapshot, targets, tolerance } => {
+            cancel.check().map_err(|_| TaskError::Cancelled)?;
+            let (result, closes, stays_open) = repair_of(&snapshot, &targets, tolerance)?;
+            Ok(TaskOutput::RepairPreview { result, closes, stays_open })
+        }
+        TaskInput::OffsetPreview { snapshot, targets, distance, join } => {
+            let result = offset_of(&snapshot, &targets, distance.mm(), join, cancel)?;
+            Ok(TaskOutput::OffsetPreview { distance, join, result })
         }
         TaskInput::Compile { snapshot, profile, options, assets } => {
             let rasters = crate::image_task::compile_rasters(&snapshot, &assets);
@@ -668,6 +733,77 @@ pub(crate) fn write_atomically(fs: &dyn FileSystem, path: &std::path::Path, byte
     fs.sync_dir(dir)
 }
 
+/// The offset of every target, as one path (preview only; the document command offsets per target).
+fn offset_of(
+    snapshot: &DocumentSnapshot,
+    targets: &[GeometryId],
+    distance: f64,
+    join: OffsetJoin,
+    cancel: &CancellationToken,
+) -> Result<Path, TaskError> {
+    let tolerance = burnburn_types::Length::from_mm(OFFSET_PREVIEW_TOLERANCE_MM)
+        .ok()
+        .and_then(|l| ProductionTolerance::new(l).ok())
+        .ok_or(TaskError::Offset(OffsetError::NotFinite))?;
+    let mut subpaths = Vec::new();
+    for id in targets {
+        let object = snapshot.object(*id).ok_or(TaskError::UnknownObject(*id))?;
+        let grown = offset(object.path(), distance, join, &tolerance, cancel).map_err(|e| match e {
+            OffsetError::Cancelled => TaskError::Cancelled,
+            e => TaskError::Offset(e),
+        })?;
+        subpaths.extend(grown.subpaths().iter().cloned());
+    }
+    Ok(Path::from_subpaths(subpaths))
+}
+
+/// Closes the gaps of `targets` on a scratch copy and reports the repaired outlines, how many open
+/// contours closed and how many of the targets' nearly-closed contours stay open.
+fn repair_of(
+    snapshot: &Arc<DocumentSnapshot>,
+    targets: &[GeometryId],
+    tolerance: burnburn_geometry::DiagnosticTolerance,
+) -> Result<(Path, usize, usize), TaskError> {
+    use burnburn_document::{
+        CommandError, CommandPayload, DocumentCommand, DocumentSession, EditError, GeometryCommand,
+    };
+    let open_of = |s: &DocumentSnapshot| -> usize {
+        targets
+            .iter()
+            .filter_map(|id| s.object(*id))
+            .flat_map(|o| o.path().subpaths().iter())
+            .filter(|sp| !sp.is_closed())
+            .count()
+    };
+    let before = open_of(snapshot);
+    let mut scratch = DocumentSession::from_snapshot(DocumentId::from_raw(0), (**snapshot).clone());
+    let cmd = DocumentCommand {
+        document: scratch.id(),
+        expected: scratch.revision(),
+        request: burnburn_types::RequestId::from_raw(0),
+        payload: CommandPayload::Edit(GeometryCommand::CloseGaps { targets: targets.to_vec(), tolerance }),
+    };
+    match scratch.apply(cmd) {
+        Ok(_) | Err(CommandError::Edit(EditError::NothingChanged)) => {}
+        Err(e) => return Err(TaskError::Repair(e)),
+    }
+    let after = scratch.snapshot();
+    let mut subpaths = Vec::new();
+    for id in targets {
+        if let Some(o) = after.object(*id) {
+            subpaths.extend(o.path().subpaths().iter().cloned());
+        }
+    }
+    let nearly = burnburn_editor::geometry_issues(&after)
+        .iter()
+        .filter(|i| i.kind == burnburn_editor::IssueKind::OpenContour && i.objects.iter().any(|o| targets.contains(o)))
+        .count();
+    Ok((Path::from_subpaths(subpaths), before.saturating_sub(open_of(&after)), nearly))
+}
+
+/// Chord tolerance of the offset preview: the same as the one applied from the panel.
+const OFFSET_PREVIEW_TOLERANCE_MM: f64 = 0.01;
+
 /// Folds the domain `boolean` over the operands: union of all; first minus the union of the rest;
 /// intersection of all.
 fn boolean_of(
@@ -734,6 +870,8 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::Nest => 41,
         TaskKind::ImportPages => 42,
         TaskKind::Files => 43,
+        TaskKind::OffsetPreview => 60,
+        TaskKind::RepairPreview => 61,
     };
     bytes[8..16].copy_from_slice(&document.raw().to_le_bytes());
     bytes[16..24].copy_from_slice(&source.raw().to_le_bytes());

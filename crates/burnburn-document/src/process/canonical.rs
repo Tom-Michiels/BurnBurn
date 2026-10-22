@@ -22,6 +22,11 @@ impl CanonicalEncode for ProcessLayer {
         out.seq(self.constraints.iter());
         out.seq(self.recipes.values().map(|r| r.as_ref()));
         self.encode_optimization(out);
+        // Notes only when present, so projects without notes keep their hash.
+        if !self.notes.is_empty() {
+            out.tag("notes");
+            out.str(&self.notes);
+        }
     }
 }
 

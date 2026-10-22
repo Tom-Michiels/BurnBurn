@@ -117,6 +117,16 @@ pub struct DocumentViewModel {
     pub node_selection: Vec<NodeRef>,
     /// Dock, Move Together, reshape, slots, nesting and registration (W3-UI-schikken).
     pub schikken: crate::schikken::SchikkenViewModel,
+    /// Offset options and the preview of the open offset (E05).
+    pub offset: crate::offset::OffsetViewModel,
+    /// The before/after of the repair being considered (E09).
+    pub repair_preview: Option<crate::offset::RepairPreviewViewModel>,
+    /// Junctions and primitive candidates of the open centre-line result, in centre-line mode (T04, T08).
+    pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
+    /// Parts, variants, plates and references (S06, S07, P06).
+    pub structure: crate::structure_panel::StructureViewModel,
+    /// The project notes panel while it is open (P04).
+    pub notes: Option<crate::notes::NotesViewModel>,
     /// The text toolbar while exactly one text object is selected (W3-UI-tekst).
     pub text_toolbar: Option<crate::text_panel::TextToolbarViewModel>,
     /// The text-on-path dialog while it is open.

@@ -25,7 +25,7 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Opened { project, path }) => {
-                let Project { uuid, document: snapshot, assets, library_links, .. } = *project;
+                let Project { uuid, document: snapshot, assets, library_links, production, .. } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let session = match &restored {
                     // A recovered document is unsaved and untitled: Save asks for a location and
@@ -49,6 +49,10 @@ impl AppController {
                 let mut session = session;
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
                 session.library_links = library_links;
+                if let Some(production) = &production {
+                    let Session { variable, assets, .. } = &mut session;
+                    variable.restore(production, assets);
+                }
                 session.snap = self.app.prefs.snap_settings();
                 self.sessions.insert(document, session);
                 self.active = Some(document);
@@ -142,6 +146,7 @@ impl AppController {
             let mut project = Project::new(s.uuid, (*snapshot).clone());
             project.assets = s.assets.clone();
             project.library_links = s.library_links.clone();
+            project.production = s.variable.production(&mut project.assets);
             let cancel = CancellationSource::new();
             let request = TaskRequest {
                 id,
@@ -163,7 +168,7 @@ impl AppController {
 
     pub(super) fn close(&mut self, document: DocumentId) -> AppUpdate {
         match self.sessions.get(&document) {
-            Some(s) if s.doc.is_dirty() => {
+            Some(s) if s.unsaved() => {
                 AppUpdate { effects: vec![HostEffect::ConfirmClose { document }], ..AppUpdate::default() }
             }
             Some(_) => self.close_session(document),

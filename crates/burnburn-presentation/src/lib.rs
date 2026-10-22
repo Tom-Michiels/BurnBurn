@@ -9,6 +9,7 @@ mod cam_dialogs;
 mod camera;
 mod camera_workspace;
 mod catalog;
+mod centerline_panel;
 mod commit;
 mod controller;
 mod cut_options;
@@ -21,8 +22,11 @@ mod image_task;
 mod intent;
 mod laser;
 mod nest_task;
+mod notes;
+mod offset;
 mod production;
 mod schikken;
+mod structure_panel;
 mod task;
 mod text_panel;
 mod thumbnail;
@@ -63,6 +67,9 @@ pub use catalog::{
 };
 pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
+pub use centerline_panel::{
+    CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
+};
 pub use controller::{
     AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
     LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
@@ -96,6 +103,8 @@ pub use laser::{
     AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
 };
+pub use notes::NotesViewModel;
+pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use production::{
     ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,
     HistoryStoreError, IntentRecord, JobInputs, LaserCall, LaserIntent, LiveIntentRecord, LiveKind, LiveOutcomeRecord,
@@ -104,6 +113,10 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use schikken::*;
+pub use structure_panel::{
+    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
+    ReferenceStatus, StructureEdit, StructureViewModel,
+};
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,

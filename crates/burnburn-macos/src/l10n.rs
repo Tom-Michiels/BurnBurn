@@ -943,6 +943,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ImportBundle => ("Bundel importeren…", "Import Bundle…"),
         C::ShowMaterialLibrary => ("Materiaalbibliotheek", "Material Library"),
         C::ShowArtLibrary => ("Kunstbibliotheek", "Art Library"),
+        C::ShowNotes => ("Notities tonen", "Show Notes"),
         C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
         C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
         other => return l10n_schikken::command_pair(other),
@@ -969,6 +970,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
         UndoLabel::Compound(c) => match c {
             CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
             CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
+            CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1026,6 +1028,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ProcessLabel::ApplyRecipe => ("Recept toepassen", "Apply Recipe"),
             ProcessLabel::SetOptimization => ("Optimalisatie-instellingen wijzigen", "Change Optimization Settings"),
             ProcessLabel::SetPriority => ("Prioriteit wijzigen", "Change Cut Priority"),
+            ProcessLabel::SetNotes => ("Notities wijzigen", "Change Notes"),
             _ => return None,
         },
         UndoLabel::Sketch(s) => match s {
@@ -1686,7 +1689,9 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(UndoLabel::Edit),
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
-    undo.extend([CompoundLabel::ImportImage, CompoundLabel::MaskImage].map(UndoLabel::Compound));
+    undo.extend(
+        [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
+    );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend(
         [
@@ -1716,6 +1721,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             ProcessLabel::ApplyRecipe,
             ProcessLabel::SetOptimization,
             ProcessLabel::SetPriority,
+            ProcessLabel::SetNotes,
         ]
         .map(UndoLabel::Process),
     );

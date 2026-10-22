@@ -193,6 +193,9 @@ pub struct CommandOutcome {
     pub changes: ChangeSet,
     pub warnings: Vec<CommandWarning>,
     pub undo_label: UndoLabel,
+    /// Undo/redo only: the selection the history record kept for the state that was restored
+    /// (P02). `None` for a plain commit and for records without a known selection.
+    pub selection: Option<Vec<GeometryId>>,
 }
 
 /// Why a value in a command was rejected.

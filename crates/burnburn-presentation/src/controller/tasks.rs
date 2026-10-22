@@ -88,7 +88,8 @@ impl AppController {
             }
             Ok(TaskOutput::Saved { path }) => {
                 s.doc.mark_saved(outcome.source);
-                if let Some(recovery) = s.recovery_path.take().filter(|_| !s.doc.is_dirty()) {
+                s.variable.mark_saved();
+                if let Some(recovery) = s.recovery_path.take().filter(|_| !s.unsaved()) {
                     s.autosaved = None;
                     if let Ok(id) = self.ids.allocate::<TaskId>() {
                         let request = TaskRequest {
@@ -116,14 +117,32 @@ impl AppController {
                 update.scenes_changed.push(document);
                 update.effects.push(HostEffect::Redraw { document });
             }
+            Ok(TaskOutput::OffsetPreview { distance, join, result }) => {
+                super::offset_preview::arrived(s, outcome.source, distance, join, result);
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Ok(TaskOutput::RepairPreview { result, closes, stays_open }) => {
+                super::repair_preview::arrived(s, outcome.source, result, closes, stays_open);
+                update.scenes_changed.push(document);
+                update.effects.push(HostEffect::Redraw { document });
+            }
+            Err(TaskError::Repair(_)) => {
+                super::repair_preview::failed(s, outcome.source);
+                update.scenes_changed.push(document);
+            }
+            Err(TaskError::Offset(_)) => {
+                super::offset_preview::failed(s, outcome.source);
+                update.scenes_changed.push(document);
+            }
             Err(TaskError::Boolean(_) | TaskError::UnknownObject(_)) => {
                 s.messages.push(StatusMessage { key: MessageKey::BooleanFailed });
             }
             Ok(TaskOutput::ImageLoaded { source, bytes, .. }) => {
                 let media = super::image::media_of(&bytes);
                 let mut tracer = Tracer::new(source, bytes, media);
-                if let Some((trace, recipe)) = s.trace_link.take(outcome.id) {
-                    tracer.reopen(trace, *recipe);
+                if let Some((trace, recipe, mode)) = s.trace_link.take(outcome.id) {
+                    tracer.reopen(trace, *recipe, mode);
                 }
                 s.tracer = Some(tracer);
             }
@@ -145,11 +164,13 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
+                s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
+                s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record });
                 update.scenes_changed.push(document);
             }

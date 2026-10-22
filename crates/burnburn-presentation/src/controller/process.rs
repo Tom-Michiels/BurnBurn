@@ -83,6 +83,13 @@ impl AppController {
                 s.variable.bind_task(id, record);
             }
             let source = snapshot.revision();
+            // A chosen plate compiles on its own: only its objects and operations (P06).
+            let plate = s.compile_plate.filter(|p| snapshot.structure().plate(*p).is_some());
+            let snapshot = match plate.map(|p| snapshot.plate_view(p)) {
+                Some(Ok(view)) => Arc::new(view.snapshot),
+                _ => snapshot,
+            };
+            s.compile_plates.insert(id, plate);
             let snapshot = match registration {
                 Some(m) => Arc::new(snapshot.transformed(&m)),
                 None => snapshot,
@@ -110,6 +117,7 @@ impl AppController {
             let update = submit(s, &tasks, request, cancel, document);
             if !s.pending.contains_key(&id) {
                 s.variable.take_record(id);
+                s.compile_plates.remove(&id);
             }
             update
         })

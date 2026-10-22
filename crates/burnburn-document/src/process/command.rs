@@ -76,6 +76,15 @@ pub enum ProcessCommand {
         geometry: GeometryId,
         priority: CutPriority,
     },
+    /// Replaces the project notes (File > Show Notes). Touches no operation.
+    SetNotes {
+        text: String,
+    },
+}
+
+impl ProcessCommand {
+    /// Longest notes text, in characters.
+    pub const MAX_NOTES_CHARS: usize = 20_000;
 }
 
 /// Localisation key for undo/redo of a process command.
@@ -95,6 +104,7 @@ pub enum ProcessLabel {
     SetAdvanced,
     SetOptimization,
     SetPriority,
+    SetNotes,
 }
 
 impl ProcessCommand {
@@ -113,6 +123,7 @@ impl ProcessCommand {
             ProcessCommand::SetAdvanced { .. } => ProcessLabel::SetAdvanced,
             ProcessCommand::SetOptimization { .. } => ProcessLabel::SetOptimization,
             ProcessCommand::SetPriority { .. } => ProcessLabel::SetPriority,
+            ProcessCommand::SetNotes { .. } => ProcessLabel::SetNotes,
         }
     }
 }
@@ -216,6 +227,12 @@ pub(crate) fn apply(cmd: ProcessCommand, t: ProcessTxn<'_>) -> Result<(), Comman
                 t.layer.priorities.insert(geometry, priority);
             }
             t.operations.extend(t.layer.operations_using(geometry));
+        }
+        ProcessCommand::SetNotes { text } => {
+            if text.chars().count() > ProcessCommand::MAX_NOTES_CHARS {
+                return Err(err(ProcessError::OutOfRange { field: "notes" }));
+            }
+            t.layer.notes = text;
         }
     }
     Ok(())
