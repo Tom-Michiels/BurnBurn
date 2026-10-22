@@ -115,6 +115,7 @@ fn is_check(control: SchikkenControl) -> bool {
             | SchikkenControl::NestMirror
             | SchikkenControl::NestHoles
             | SchikkenControl::NestTight
+            | SchikkenControl::NestCommonLine
     )
 }
 

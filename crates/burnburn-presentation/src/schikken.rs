@@ -210,6 +210,12 @@ pub struct NestInput {
     pub part_copies: Vec<(u64, String)>,
     /// Whether an object inside another one is a hole of that part (C10).
     pub holes: NestHoles,
+    /// Grain direction of the sheet in degrees (blank: none). With a grain every part keeps its
+    /// own X axis along it, turning only to the orientations that follow it (C10).
+    pub grain: String,
+    /// Pack the parts without space so that they share edges (common-line cutting, C12): the
+    /// padding is not used, packing is tight, and the report counts the shared edge.
+    pub common_line: bool,
     /// Slide every placement against its neighbours with exact geometry (slower, packs tighter).
     pub tight: bool,
 }
@@ -246,6 +252,8 @@ impl Default for NestInput {
             copies: "1".to_owned(),
             part_copies: Vec::new(),
             holes: NestHoles::default(),
+            grain: String::new(),
+            common_line: false,
             tight: false,
         }
     }
@@ -259,6 +267,8 @@ pub enum NestField {
     Sheets,
     /// The number of copies of a part.
     Copies,
+    /// The grain direction of the sheet.
+    Grain,
 }
 
 /// Why a nest did not run or gave nothing.
@@ -363,6 +373,9 @@ pub struct NestReportViewModel {
     pub parts: Vec<NestPartStatusRow>,
     /// Complete sets placed: a set is one of every part.
     pub complete_sets: u32,
+    /// Length of the straight edges the placed parts share, in mm; `Some` only with common-line
+    /// cutting chosen.
+    pub shared_mm: Option<f64>,
 }
 
 /// What is used and left of one sheet, in mm².

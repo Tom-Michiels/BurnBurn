@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use burnburn_cam::nest::{
     MirrorPolicy, NestError, NestOptions, NestParams, NestPart, Packing, PartKey, RotationSet, Stock, StockId,
-    UnplacedReason, UtilisationBasis, complete_sets, nest_packed, order_status,
+    UnplacedReason, UtilisationBasis, complete_sets, nest_packed, order_status, shared_edge_length_mm,
 };
 use burnburn_document::{DocumentSnapshot, GeometrySource};
 use burnburn_editor::expand_to_groups;
@@ -43,6 +43,10 @@ pub struct NestSettings {
     pub part_copies: Vec<(GeometryId, u32)>,
     pub holes: NestHoles,
     pub tight: bool,
+    /// Pack without space so that parts share edges (C12).
+    pub common_line: bool,
+    /// Grain direction of the sheet; the parts keep their own X axis along it.
+    pub grain_deg: Option<f64>,
 }
 
 impl NestSettings {
@@ -62,6 +66,8 @@ pub struct NestJob {
     options: NestOptions,
     params: NestParams,
     packing: Packing,
+    /// Count the edges the parts share.
+    common_line: bool,
     skipped: Vec<NestSkippedRow>,
 }
 
@@ -94,6 +100,8 @@ pub struct NestOutput {
     pub sheets: Vec<NestSheetUseRow>,
     pub parts: Vec<NestPartStatusRow>,
     pub complete_sets: u32,
+    /// Length of the edges the placed parts share (mm); `Some` only for a common-line nest.
+    pub shared_mm: Option<f64>,
 }
 
 /// Why `build_job` made no job.
@@ -365,7 +373,7 @@ pub fn build_job(
                 outline: Path::from_subpaths(subpaths),
                 count: members.first().map_or(1, |first| settings.copies_of(*first)),
                 rotations: rotations.clone(),
-                grain_deg: None,
+                grain_deg: settings.grain_deg.map(|_| 0.0),
             }
         })
         .collect();
@@ -401,11 +409,12 @@ pub fn build_job(
                     Path::rectangle(rect)
                 }
             };
-            Ok(Stock { id: StockId(k), outline, keep_out: keep_out.clone(), grain_deg: None })
+            Ok(Stock { id: StockId(k), outline, keep_out: keep_out.clone(), grain_deg: settings.grain_deg })
         })
         .collect::<Result<_, BuildError>>()?;
     let params = NestParams {
-        spacing: length(settings.padding_mm)?,
+        // Common-line cutting needs the parts to touch: no space between them.
+        spacing: length(if settings.common_line { 0.0 } else { settings.padding_mm })?,
         edge_margin: length(settings.edge_buffer_mm)?,
         step: length(settings.step_mm)?,
         tolerance: ProductionTolerance::new(length(OUTLINE_TOLERANCE_MM)?).map_err(|_| BuildError::Geometry)?,
@@ -423,7 +432,8 @@ pub fn build_job(
             },
         },
         params,
-        packing: if settings.tight { Packing::Tight } else { Packing::Grid },
+        packing: if settings.tight || settings.common_line { Packing::Tight } else { Packing::Grid },
+        common_line: settings.common_line,
         skipped,
     })
 }
@@ -476,6 +486,10 @@ pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput,
             .collect(),
         // A set is one of every part.
         complete_sets: complete_sets(&result, &job.parts.iter().map(|p| (p.key, 1)).collect::<Vec<_>>()),
+        shared_mm: job.common_line.then(|| {
+            // Edges within the tolerance of the exact checks count as one line.
+            shared_edge_length_mm(&job.parts, &result, &job.params.tolerance, 0.02)
+        }),
     })
 }
 
@@ -515,6 +529,7 @@ mod tests {
             stocks: vec![Stock { id: StockId(0), outline: poly(&big), keep_out: vec![], grain_deg: None }],
             options: NestOptions { mirror: policy },
             packing: Packing::Grid,
+            common_line: false,
             params: NestParams {
                 spacing: mm(0.0),
                 edge_margin: mm(0.0),

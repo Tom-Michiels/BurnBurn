@@ -88,6 +88,39 @@ impl TabSpec {
     }
 }
 
+/// Common-line cutting (C12): where the toolpaths of different shapes of a Line operation coincide
+/// within `tolerance` over at least `min_overlap`, the stretch is cut once. Parts that touch (or
+/// lie a kerf apart) then share one cut. Needs the `CommonLine` capability of the machine.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CommonLine {
+    tolerance_mm: f64,
+    min_overlap_mm: f64,
+}
+
+impl CommonLine {
+    /// Largest tolerance (mm): beyond it two lines are no longer "the same line".
+    pub const MAX_TOLERANCE_MM: f64 = 5.0;
+
+    pub fn new(tolerance: Length, min_overlap: Length) -> Result<Self, ProcessError> {
+        let (tolerance_mm, min_overlap_mm) = (tolerance.mm(), min_overlap.mm());
+        if !(tolerance_mm > 0.0 && tolerance_mm <= Self::MAX_TOLERANCE_MM) {
+            return Err(ProcessError::OutOfRange { field: "common-line tolerance" });
+        }
+        if !(min_overlap_mm >= 0.0) {
+            return Err(ProcessError::OutOfRange { field: "common-line overlap" });
+        }
+        Ok(CommonLine { tolerance_mm, min_overlap_mm })
+    }
+
+    pub fn tolerance_mm(&self) -> f64 {
+        self.tolerance_mm
+    }
+
+    pub fn min_overlap_mm(&self) -> f64 {
+        self.min_overlap_mm
+    }
+}
+
 /// Shape of a lead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LeadStyle {
@@ -307,6 +340,8 @@ pub struct AdvancedOptions {
     pub shared_edges: SharedEdgePolicy,
     /// Set on a tool layer (T1/T2): no output, no cut options.
     pub tool: Option<ToolLayer>,
+    /// Common-line cutting of the shapes of a Line operation (C12); off by default.
+    pub common_line: Option<CommonLine>,
 }
 
 impl AdvancedOptions {
@@ -334,6 +369,7 @@ impl AdvancedOptions {
                 (self.z_step.is_some(), "z step"),
                 (self.z_offset.is_some(), "z offset"),
                 (!self.sub_operations.is_empty(), "sub-operations"),
+                (self.common_line.is_some(), "common line"),
             ];
             if let Some((_, second)) = cut_options.into_iter().find(|(on, _)| *on) {
                 return Err(ProcessError::ConflictingOptions { first: "tool layer", second });
@@ -346,6 +382,7 @@ impl AdvancedOptions {
                 (l.lead_out.is_some(), "lead-out"),
                 (l.overcut.is_some(), "overcut"),
                 (l.perforation.is_some(), "perforation"),
+                (self.common_line.is_some(), "common line"),
             ];
             if let Some((_, second)) = others.into_iter().find(|(on, _)| *on) {
                 return Err(ProcessError::ConflictingOptions { first: "dot mode", second });

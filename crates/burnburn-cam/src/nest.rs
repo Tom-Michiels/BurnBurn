@@ -802,6 +802,70 @@ fn first_fit(
     Ok(None)
 }
 
+/// Total length of the straight edges that placed parts share: edges of two different placed parts
+/// that lie within `edge_tolerance_mm` of one common line and overlap along it. Parts nested
+/// without spacing and packed tight touch like this, and the shared edge can be cut once
+/// (common-line cutting, C12). Outlines are flattened within `tolerance`.
+pub fn shared_edge_length_mm(
+    parts: &[NestPart],
+    result: &NestResult,
+    tolerance: &ProductionTolerance,
+    edge_tolerance_mm: f64,
+) -> f64 {
+    // The placed outlines as segments, with their bounds.
+    let mut placed: Vec<(Bounds, Vec<(Point, Point)>)> = Vec::new();
+    for pl in &result.placements {
+        let Some(part) = parts.iter().find(|p| p.key == pl.part) else { continue };
+        let moved = part.outline.transform(&pl.transform);
+        let Some(bounds) = moved.bounds() else { continue };
+        let mut segments = Vec::new();
+        for pl in moved.flatten(tolerance) {
+            let n = pl.points.len();
+            let closed = pl.closed && n > 2;
+            for k in 0..n.saturating_sub(1) {
+                segments.push((pl.points[k], pl.points[k + 1]));
+            }
+            if closed && pl.points.first() != pl.points.last() {
+                segments.push((pl.points[n - 1], pl.points[0]));
+            }
+        }
+        placed.push((bounds, segments));
+    }
+    let mut total = 0.0;
+    for (i, (bi, si)) in placed.iter().enumerate() {
+        for (bj, sj) in &placed[i + 1..] {
+            if !bi.expanded(edge_tolerance_mm).intersects(bj) {
+                continue;
+            }
+            for &(a, b) in si {
+                for &(c, d) in sj {
+                    total += collinear_overlap_mm(a, b, c, d, edge_tolerance_mm);
+                }
+            }
+        }
+    }
+    total
+}
+
+/// Length along which segment `c..d` lies within `tol` of the line through `a..b` and projects
+/// onto `a..b`.
+fn collinear_overlap_mm(a: Point, b: Point, c: Point, d: Point, tol: f64) -> f64 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len = dx.hypot(dy);
+    if len <= 0.0 {
+        return 0.0;
+    }
+    let (ux, uy) = (dx / len, dy / len);
+    // Distance of a point from the line, and its position along it.
+    let across = |p: Point| ((p.x - a.x) * -uy + (p.y - a.y) * ux).abs();
+    let along = |p: Point| (p.x - a.x) * ux + (p.y - a.y) * uy;
+    if across(c) > tol || across(d) > tol {
+        return 0.0;
+    }
+    let (t0, t1) = (along(c).min(along(d)), along(c).max(along(d)));
+    (t1.min(len) - t0.max(0.0)).max(0.0)
+}
+
 /// Slides at most this many steps in one direction in one sweep.
 const MAX_SLIDE_STEPS: u32 = 4;
 /// Sub-cell offsets tried for each free cell, in the order of a bottom-left search.

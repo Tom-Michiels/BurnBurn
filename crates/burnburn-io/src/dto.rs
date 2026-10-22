@@ -486,6 +486,16 @@ pub mod v1 {
         /// Tool layer T1/T2 (G5-cam); omitted for an ordinary layer.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub tool: Option<ToolDto>,
+        /// Common-line cutting (G7-cam, C12); omitted when off.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub common_line: Option<CommonLineDto>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct CommonLineDto {
+        pub tolerance_mm: Num,
+        pub min_overlap_mm: Num,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

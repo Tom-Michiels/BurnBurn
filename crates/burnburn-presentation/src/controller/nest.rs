@@ -84,6 +84,12 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         part_copies,
         holes: input.holes,
         tight: input.tight,
+        common_line: input.common_line,
+        grain_deg: if input.grain.trim().is_empty() {
+            None
+        } else {
+            Some(crate::field::parse_angle(&input.grain).map_err(|_| NestField::Grain)?)
+        },
         padding_mm: non_negative(&input.padding, NestField::Padding)?,
         edge_buffer_mm: non_negative(&input.edge_buffer, NestField::EdgeBuffer)?,
         step_mm: parse_length(&input.step).map(|l| l.mm()).map_err(|_| NestField::Step)?,
@@ -351,6 +357,7 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         sheets: d.output.sheets.clone(),
         parts: d.output.parts.clone(),
         complete_sets: d.output.complete_sets,
+        shared_mm: d.output.shared_mm,
     });
     Some(NestPanelViewModel {
         scope: panel.scope,

@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
+    AdvancedOptions, CommonLine, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
     ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
     Overcut, Passes, PathLock, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft,
@@ -187,6 +187,10 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
         tool: a.tool.map(|t| match t {
             ToolLayer::T1 => v1::ToolDto::T1,
             ToolLayer::T2 => v1::ToolDto::T2,
+        }),
+        common_line: a.common_line.map(|c| v1::CommonLineDto {
+            tolerance_mm: v1::Num(c.tolerance_mm()),
+            min_overlap_mm: v1::Num(c.min_overlap_mm()),
         }),
     }))
 }
@@ -566,6 +570,14 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
             v1::ToolDto::T1 => ToolLayer::T1,
             v1::ToolDto::T2 => ToolLayer::T2,
         }),
+        common_line: match a.common_line {
+            None => None,
+            Some(c) => {
+                let tolerance = length(&at("common_line.tolerance_mm"), c.tolerance_mm)?;
+                let overlap = length(&at("common_line.min_overlap_mm"), c.min_overlap_mm)?;
+                Some(CommonLine::new(tolerance, overlap).map_err(|e| invalid(&at("common_line"), e))?)
+            }
+        },
     })
 }
 

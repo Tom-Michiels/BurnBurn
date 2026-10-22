@@ -229,6 +229,35 @@ mod nest_panel {
     }
 
     #[test]
+    fn common_line_and_grain_are_controls_and_the_report_names_the_shared_edge() {
+        let (mut h, doc) = window();
+        let Some(SchikkenLine::Check { on, caption, .. }) = control(&h, doc, C::NestCommonLine) else {
+            panic!("common line check")
+        };
+        assert!(!on);
+        assert_eq!(caption, "Common-line cutting (parts touch, shared edges are cut once)");
+        let Some(SchikkenLine::Field { text, .. }) = control(&h, doc, C::NestGrain) else { panic!("grain field") };
+        assert_eq!(text, "");
+
+        press(&mut h, doc, C::NestGrain, "90");
+        press(&mut h, doc, C::NestCommonLine, "1");
+        let input = h.document(doc).unwrap().schikken.nest.unwrap().input;
+        assert_eq!((input.grain.as_str(), input.common_line), ("90", true));
+        press(&mut h, doc, C::NestStart, "");
+        h.run_tasks();
+        let texts: Vec<String> = schikken_panel(&h.view(), doc, Locale::En)
+            .unwrap()
+            .lines
+            .into_iter()
+            .filter_map(|l| if let SchikkenLine::Text(t) = l { Some(t) } else { None })
+            .collect();
+        assert!(texts.iter().any(|t| t.starts_with("Shared edge: ") && t.contains("mm")), "{texts:?}");
+        press(&mut h, doc, C::NestGrain, "abc");
+        let nl = schikken_panel(&h.view(), doc, Locale::Nl).unwrap().lines;
+        assert!(nl.iter().any(|l| matches!(l, SchikkenLine::Problem(t) if t.contains("nerfrichting"))));
+    }
+
+    #[test]
     fn a_wrong_number_is_marked_on_its_field_and_said_in_words() {
         let (mut h, doc) = window();
         press(&mut h, doc, C::NestCopies, "0");

@@ -74,6 +74,9 @@ pub fn required_features(op: &Operation) -> Vec<Feature> {
     if l.dot.is_some() {
         out.push(Feature::DotMode);
     }
+    if a.common_line.is_some() {
+        out.push(Feature::CommonLine);
+    }
     if a.z_step.is_some() || a.z_offset.is_some() {
         out.push(Feature::ZStep);
     }

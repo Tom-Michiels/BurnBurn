@@ -155,6 +155,12 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
         SharedEdgePolicy::CutPerRegion => "shared-cut-per-region",
     });
     encode_line_extensions(&a.line, out);
+    // Common-line cutting (C12): after the line extensions, and only when set.
+    if let Some(c) = a.common_line {
+        out.tag("advanced-common-line");
+        out.f64(c.tolerance_mm());
+        out.f64(c.min_overlap_mm());
+    }
     if let Some(z) = a.z_offset {
         out.tag("advanced-z");
         out.f64(z.mm());

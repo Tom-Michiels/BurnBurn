@@ -47,6 +47,12 @@ pub enum CutField {
     DotEnabled,
     DotSpacing,
     DotDwell,
+    /// Common-line cutting of the shapes of the layer (C12).
+    CommonLineEnabled,
+    /// Distance in mm within which two lines are one line.
+    CommonLineTolerance,
+    /// Shortest shared stretch in mm that is cut once.
+    CommonLineMinOverlap,
     FillInterval,
     FillAngle,
     FillBidirectional,
@@ -131,7 +137,7 @@ pub const IMAGE_MODES: [CutChoice; 11] = [
 
 impl CutField {
     /// Every field, in sheet order.
-    pub const ALL: [CutField; 42] = [
+    pub const ALL: [CutField; 45] = [
         CutField::TabsEnabled,
         CutField::TabsMode,
         CutField::TabsValue,
@@ -152,6 +158,9 @@ impl CutField {
         CutField::DotEnabled,
         CutField::DotSpacing,
         CutField::DotDwell,
+        CutField::CommonLineEnabled,
+        CutField::CommonLineTolerance,
+        CutField::CommonLineMinOverlap,
         CutField::FillInterval,
         CutField::FillAngle,
         CutField::FillBidirectional,
@@ -213,6 +222,7 @@ impl CutField {
             | F::LeadOutEnabled
             | F::PerforationEnabled
             | F::DotEnabled
+            | F::CommonLineEnabled
             | F::FillBidirectional
             | F::FillCrossHatch
             | F::FillFloodFill
@@ -243,6 +253,7 @@ impl CutField {
             F::LeadOutLength | F::LeadOutShape | F::LeadOutAngle => Some(F::LeadOutEnabled),
             F::PerforationOn | F::PerforationOff => Some(F::PerforationEnabled),
             F::DotSpacing | F::DotDwell => Some(F::DotEnabled),
+            F::CommonLineTolerance | F::CommonLineMinOverlap => Some(F::CommonLineEnabled),
             _ => None,
         }
     }
@@ -269,6 +280,9 @@ impl CutField {
                 | F::PerforationEnabled
                 | F::PerforationOn
                 | F::PerforationOff
+                | F::CommonLineEnabled
+                | F::CommonLineTolerance
+                | F::CommonLineMinOverlap
         )
     }
 

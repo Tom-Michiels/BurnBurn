@@ -128,11 +128,14 @@ fn covered_interval(a: Point, b: Point, c: Point, d: Point, tol: f64) -> Option<
 }
 
 /// `steps` with every cut stretch that overlaps an already kept one (within `tolerance_mm`)
-/// turned into travel. `start` is where the head is before the first step.
+/// turned into travel. A shared stretch shorter than `min_overlap_mm` stays a cut: two shapes that
+/// merely cross or touch at a corner share no line (common-line cutting, C12). `start` is where
+/// the head is before the first step.
 pub(crate) fn remove(
     steps: Vec<Step>,
     start: Point,
     tolerance_mm: f64,
+    min_overlap_mm: f64,
     kept: &mut Kept,
     cancel: &CancellationToken,
 ) -> Result<Vec<Step>, CompileError> {
@@ -168,9 +171,10 @@ pub(crate) fn remove(
                 covered.push(i);
             }
         }
+        let length = from.distance(to);
+        covered.retain(|(s, e)| (e - s) * length >= min_overlap_mm);
         covered.sort_by(|x, y| x.0.total_cmp(&y.0));
         // Uncovered pieces as parameter intervals.
-        let length = from.distance(to);
         let mut pieces: Vec<(f64, f64)> = Vec::new();
         let mut cursor = 0.0;
         for (s, e) in covered {

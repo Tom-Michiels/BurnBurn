@@ -111,12 +111,13 @@ fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
     }
 }
 
-const NEST_FAILURES: [NestFailure; 12] = [
+const NEST_FAILURES: [NestFailure; 13] = [
     NestFailure::InvalidField(NestField::Padding),
     NestFailure::InvalidField(NestField::EdgeBuffer),
     NestFailure::InvalidField(NestField::Step),
     NestFailure::InvalidField(NestField::Sheets),
     NestFailure::InvalidField(NestField::Copies),
+    NestFailure::InvalidField(NestField::Grain),
     NestFailure::SheetIsPart,
     NestFailure::SheetGone,
     NestFailure::NothingToNest,
@@ -141,6 +142,10 @@ fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
         NestFailure::InvalidField(NestField::Sheets) => (
             "Het aantal platen moet een geheel getal van 1 tot en met 20 zijn.",
             "The number of sheets must be a whole number from 1 to 20.",
+        ),
+        NestFailure::InvalidField(NestField::Grain) => (
+            "De nerfrichting moet een hoek in graden zijn (leeg = geen nerf).",
+            "The grain direction must be an angle in degrees (blank = no grain).",
         ),
         NestFailure::InvalidField(NestField::Copies) => (
             "Het aantal exemplaren moet een geheel getal van 1 tot en met 1000 zijn.",

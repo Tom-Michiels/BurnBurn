@@ -46,6 +46,8 @@ pub enum SchikkenControl {
     NestMirror,
     NestSheets,
     NestSheet,
+    /// Grain direction of the sheet (C10).
+    NestGrain,
     /// Copies of every part (C12).
     NestCopies,
     /// Copies of one part, by its row in the panel.
@@ -54,6 +56,8 @@ pub enum SchikkenControl {
     NestHoles,
     /// Exact, tight packing (C10).
     NestTight,
+    /// Common-line cutting: parts touch and share edges (C12).
+    NestCommonLine,
     NestStart,
     NestStop,
     NestApply,
@@ -179,10 +183,13 @@ pub enum SchikkenText {
     NestRotations,
     NestMirror,
     NestSheets,
+    NestGrain,
     NestCopies,
     NestPartCopies,
     NestHoles,
     NestTight,
+    NestCommonLine,
+    NestSharedRow,
     NestSheetCaption,
     NestSheetBedOption,
     NestSheetContour,
@@ -289,10 +296,13 @@ impl SchikkenText {
             T::NestRotations,
             T::NestMirror,
             T::NestSheets,
+            T::NestGrain,
             T::NestCopies,
             T::NestPartCopies,
             T::NestHoles,
             T::NestTight,
+            T::NestCommonLine,
+            T::NestSharedRow,
             T::NestSheetCaption,
             T::NestSheetBedOption,
             T::NestSheetContour,
@@ -405,6 +415,7 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestRotations => ("Draaiingen", "Rotations"),
         T::NestMirror => ("Spiegelen toestaan", "Allow mirroring"),
         T::NestSheets => ("Aantal platen", "Number of sheets"),
+        T::NestGrain => ("Nerfrichting plaat (°, leeg = geen)", "Sheet grain (°, blank = none)"),
         T::NestCopies => ("Exemplaren per onderdeel", "Copies per part"),
         T::NestPartCopies => ("Onderdeel {n}: {name}", "Part {n}: {name}"),
         T::NestHoles => (
@@ -412,6 +423,14 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
             "Inner contours are holes of the part",
         ),
         T::NestTight => ("Strak pakken (exact, trager)", "Pack tightly (exact, slower)"),
+        T::NestCommonLine => (
+            "Gemeenschappelijke snijlijn (delen raken elkaar, gedeelde randen worden één keer gesneden)",
+            "Common-line cutting (parts touch, shared edges are cut once)",
+        ),
+        T::NestSharedRow => (
+            "Gedeelde rand: {length} mm. Zet Gemeenschappelijke snijlijn aan in de Snij-instellingen van de laag om hem één keer te snijden.",
+            "Shared edge: {length} mm. Switch on Common-line cutting in the layer's Cut Settings to cut it once.",
+        ),
         T::NestSheetCaption => ("Plaat", "Sheet"),
         T::NestSheetBedOption => ("Machinebed", "Machine bed"),
         T::NestSheetContour => {
@@ -795,6 +814,12 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
         invalid: invalid(NestField::Sheets),
     });
     lines.push(SchikkenLine::Field {
+        control: SchikkenControl::NestGrain,
+        caption: t(SchikkenText::NestGrain),
+        text: n.input.grain.clone(),
+        invalid: invalid(NestField::Grain),
+    });
+    lines.push(SchikkenLine::Field {
         control: SchikkenControl::NestCopies,
         caption: t(SchikkenText::NestCopies),
         text: n.input.copies.clone(),
@@ -824,6 +849,11 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
         control: SchikkenControl::NestTight,
         caption: t(SchikkenText::NestTight),
         on: n.input.tight,
+    });
+    lines.push(SchikkenLine::Check {
+        control: SchikkenControl::NestCommonLine,
+        caption: t(SchikkenText::NestCommonLine),
+        on: n.input.common_line,
     });
     if let Some(e) = n.error {
         lines.push(SchikkenLine::Problem(message_or_key(burnburn_presentation::MessageKey::Schikken(e), locale)));
@@ -856,6 +886,13 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
                 SchikkenText::NestMirroredRow,
                 locale,
                 &[("count", r.mirrored.to_string())],
+            )));
+        }
+        if let Some(shared) = r.shared_mm {
+            lines.push(SchikkenLine::Text(fill(
+                SchikkenText::NestSharedRow,
+                locale,
+                &[("length", mm(shared, locale))],
             )));
         }
         for (i, sheet) in r.sheets.iter().enumerate() {
@@ -1229,6 +1266,7 @@ pub fn schikken_intent(
             i.mirror = if value(values, control) == "1" { NestMirror::Allowed } else { NestMirror::Forbidden };
         }),
         SchikkenControl::NestSheets => nest(&|i| i.sheets = value(values, control).to_owned()),
+        SchikkenControl::NestGrain => nest(&|i| i.grain = value(values, control).to_owned()),
         SchikkenControl::NestCopies => nest(&|i| i.copies = value(values, control).to_owned()),
         SchikkenControl::NestPartCopies(row) => {
             let object = s.nest.as_ref()?.part_rows.get(row)?.object;
@@ -1249,6 +1287,7 @@ pub fn schikken_intent(
             };
         }),
         SchikkenControl::NestTight => nest(&|i| i.tight = value(values, control) == "1"),
+        SchikkenControl::NestCommonLine => nest(&|i| i.common_line = value(values, control) == "1"),
         SchikkenControl::NestSheet => {
             let object = {
                 let choices = &s.nest.as_ref()?.sheet_choices;
