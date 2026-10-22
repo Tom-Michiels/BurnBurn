@@ -938,6 +938,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ViewWireframe => ("Draadmodel", "Wireframe"),
         C::SaveAsTemplate => ("Bewaar als template…", "Save as Template…"),
         C::NewFromTemplate => ("Nieuw van template…", "New from Template…"),
+        C::OpenMachineProfile => ("Machineprofiel openen…", "Open Machine Profile…"),
         C::ExportSvg => ("SVG…", "SVG…"),
         C::ExportDxf => ("DXF…", "DXF…"),
         C::ExportBundle => ("Bundel exporteren…", "Export Bundle…"),
@@ -1348,6 +1349,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         },
         M::BooleanFailed => ("De booleaanse bewerking is mislukt.", "The boolean operation failed."),
         M::NoMachineProfile => ("Kies eerst een machineprofiel.", "Choose a machine profile first."),
+        M::MachineProfileFileUnusable => (
+            "Dit bestand is geen bruikbaar machineprofiel; er is niets veranderd.",
+            "This file is not a usable machine profile; nothing was changed.",
+        ),
         M::CompileFailed => ("Compileren is mislukt.", "Compiling failed."),
         M::ExportFailed => ("Exporteren is mislukt.", "Exporting failed."),
         M::GcodeRefused => (

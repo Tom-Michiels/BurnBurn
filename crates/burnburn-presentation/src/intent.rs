@@ -94,6 +94,12 @@ pub enum UiIntent {
     ChooseMachineProfile {
         id: String,
     },
+    /// A machine profile file (Ruida or GRBL JSON) chosen in the host's open panel (G6-machine):
+    /// it is read off the UI thread and, when usable, becomes the active machine. An unusable file
+    /// changes nothing and is reported.
+    OpenMachineProfile {
+        path: PathBuf,
+    },
     /// Machine hub (W03): prepare a repeat of an earlier execution from its frozen job. Lists the
     /// differences with the document's recipes; nothing is sent or changed yet.
     RepeatExecution {
@@ -1018,6 +1024,9 @@ pub enum CommandKey {
     /// Archief ▸ Nieuw van template…: the host asks for a template, then sends
     /// `FilesIntent::NewFromTemplate`.
     NewFromTemplate,
+    /// Archief ▸ Machineprofiel openen…: the host asks for a profile file, then sends
+    /// `UiIntent::OpenMachineProfile`.
+    OpenMachineProfile,
     /// Archief ▸ Exporteren ▸ SVG: opens the export dialog.
     ExportSvg,
     /// Archief ▸ Exporteren ▸ DXF: opens the export dialog.
@@ -1174,6 +1183,7 @@ impl CommandKey {
         CommandKey::BarcodeNew,
         CommandKey::SaveAsTemplate,
         CommandKey::NewFromTemplate,
+        CommandKey::OpenMachineProfile,
         CommandKey::ExportSvg,
         CommandKey::ExportDxf,
         CommandKey::ExportBundle,

@@ -268,6 +268,7 @@ texts! {
     PanelTemplateOpen => ("Kies een template", "Choose a template"),
     PanelBundleSave => ("Bewaar bundel", "Save bundle"),
     PanelBundleOpen => ("Kies een bundel", "Choose a bundle"),
+    PanelMachineProfileOpen => ("Kies een machineprofiel (JSON)", "Choose a machine profile (JSON)"),
     PanelArtOpen => ("Kies een tekening voor de bibliotheek", "Choose a drawing for the library"),
     PanelExportSave => ("Bewaar tekening", "Save drawing"),
     // --- Menus.

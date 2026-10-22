@@ -257,7 +257,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         _ => MessageKey::Command(key),
     };
     let (enabled, checked) = match (key, s) {
-        (CommandKey::New | CommandKey::NewFromTemplate, _) => (true, false),
+        (CommandKey::New | CommandKey::NewFromTemplate | CommandKey::OpenMachineProfile, _) => (true, false),
         (_, None) => (false, false),
         (CommandKey::Undo, Some(s)) => (s.doc.can_undo(), false),
         (CommandKey::Redo, Some(s)) => (s.doc.can_redo(), false),

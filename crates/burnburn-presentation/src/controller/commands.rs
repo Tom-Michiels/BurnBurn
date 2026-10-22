@@ -104,6 +104,9 @@ impl AppController {
         if command == CommandKey::NewFromTemplate {
             return AppUpdate { effects: vec![HostEffect::ShowTemplateOpenPanel], ..AppUpdate::default() };
         }
+        if command == CommandKey::OpenMachineProfile {
+            return AppUpdate { effects: vec![HostEffect::ShowMachineProfileOpenPanel], ..AppUpdate::default() };
+        }
         let Some(document) = document.or(self.active) else { return AppUpdate::default() };
         match command {
             CommandKey::Save | CommandKey::SaveAs => self.save(document, None),

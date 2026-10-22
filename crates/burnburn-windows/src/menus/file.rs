@@ -41,6 +41,7 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
             files_text(FilesText::MenuBundleSubmenu, locale),
             vec![host(Item::BundleExport), host(Item::BundleImport)],
         ),
+        cmd(CommandKey::OpenMachineProfile),
         sep(),
         cmd(CommandKey::Close),
         cmd(CommandKey::Save),

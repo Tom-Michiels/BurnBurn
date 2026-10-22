@@ -40,6 +40,8 @@ pub(super) enum FilesJob {
         path: PathBuf,
     },
     LoadLibraries,
+    /// A machine profile file chosen by the host is being read.
+    OpenMachineProfile,
     SaveMaterials,
     SaveArt,
     SaveProfiles,
@@ -193,6 +195,7 @@ impl AppController {
             FilesJob::SaveTemplate { document } => self.template_saved(document, outcome),
             FilesJob::OpenTemplate { document, path } => self.template_opened(document, path, outcome),
             FilesJob::LoadLibraries => self.libraries_loaded(outcome),
+            FilesJob::OpenMachineProfile => self.machine_profile_read(outcome),
             FilesJob::SaveMaterials => self.material_saved(outcome),
             FilesJob::SaveArt => self.art_saved(outcome),
             FilesJob::SaveProfiles => self.profiles_saved(outcome),

@@ -11,13 +11,16 @@ use super::{HostApp, fill_recent_templates_menu};
 use crate::appkit::panels::files_ui::{open_file, save_file};
 use crate::l10n_files::{FilesText as T, files_text};
 use crate::panels_files::{
-    bundle_open_intent, recent_template_intent, template_open_intent, template_save_intent, template_scope_titles,
+    bundle_open_intent, machine_profile_open_intent, recent_template_intent, template_open_intent, template_save_intent,
+    template_scope_titles,
 };
 
 /// File extension of a template (the same as `burnburn_io::template::TEMPLATE_EXTENSION`).
 const TEMPLATE: &str = "burnburntemplate";
 /// File extension of a bundle (the same as `burnburn_io::bundle::BUNDLE_EXTENSION`).
 const BUNDLE: &str = "burnburnbundle";
+/// File extension of a machine profile file (JSON).
+const MACHINE_PROFILE: &str = "json";
 
 /// The layer palette as 8-bit sRGB, slot by slot (the canvas colours, so exports match the screen).
 fn layer_palette() -> Vec<[u8; 3]> {
@@ -109,6 +112,23 @@ impl HostApp {
             move |path| {
                 if let (Some(path), Some(app)) = (path, me.upgrade()) {
                     app.dispatch(template_open_intent(path));
+                }
+            },
+        );
+    }
+
+    /// Archief ▸ Machineprofiel openen…: a profile file (Ruida or GRBL JSON) for the active machine.
+    pub(super) fn show_machine_profile_open_panel(&self) {
+        let me = self.me.clone();
+        open_file(
+            self.mtm,
+            None,
+            files_text(T::PanelMachineProfileOpen, self.locale),
+            &[MACHINE_PROFILE],
+            "machine profile open panel completion",
+            move |path| {
+                if let (Some(path), Some(app)) = (path, me.upgrade()) {
+                    app.dispatch(machine_profile_open_intent(path));
                 }
             },
         );

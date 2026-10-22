@@ -200,6 +200,9 @@ pub enum HostEffect {
     },
     /// Open panel for a template; the host answers with `FilesIntent::NewFromTemplate`.
     ShowTemplateOpenPanel,
+    /// Open panel for a machine profile file (`.json`); the host answers with
+    /// `UiIntent::OpenMachineProfile`.
+    ShowMachineProfileOpenPanel,
     /// Open panel for a bundle file; the host answers with `FilesIntent::OpenBundleImport`.
     ShowBundleOpenPanel {
         document: DocumentId,
@@ -644,6 +647,7 @@ impl AppController {
                 AppUpdate { view_changed: true, ..AppUpdate::default() }
             }
             UiIntent::ChooseMachineProfile { id } => self.choose_machine_profile(&id),
+            UiIntent::OpenMachineProfile { path } => self.open_machine_profile(path),
             UiIntent::RepeatExecution { execution } => self.hub_repeat(execution),
             UiIntent::ConfirmRepeat { document } => self.hub_confirm_repeat(document),
             UiIntent::CancelRepeat => self.hub_cancel_repeat(),

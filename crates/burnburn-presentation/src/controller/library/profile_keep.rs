@@ -9,9 +9,11 @@ use std::sync::Arc;
 
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
 
-use super::super::machine::{Extras, Machine};
+use super::super::machine::{Declared, Extras, Machine};
 use super::super::{AppController, AppUpdate, error};
-use super::LoadState;
+use super::{FilesJob, LoadState};
+use crate::files_task::{FilesOutput, FilesTask};
+use crate::task::{TaskError, TaskOutcome, TaskOutput};
 use crate::view_model::MessageKey;
 
 impl AppController {
@@ -58,6 +60,35 @@ impl AppController {
             }
         }
         self.flush_profiles();
+    }
+
+    /// Reads a machine profile file and makes it the active machine.
+    pub(in crate::controller) fn open_machine_profile(&mut self, path: std::path::PathBuf) -> AppUpdate {
+        let task = FilesTask::ReadMachineProfile { path, fs: Arc::clone(&self.ports.fs) };
+        if self.submit_files(task, FilesJob::OpenMachineProfile) {
+            AppUpdate::default()
+        } else {
+            error(None, MessageKey::MachineProfileFileUnusable)
+        }
+    }
+
+    /// The file was read: its machine becomes the active one (the replaced one is kept), with the
+    /// dialect and the model and firmware the file declares. An unusable file changes nothing.
+    pub(super) fn machine_profile_read(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        match outcome.result {
+            Ok(TaskOutput::Files(FilesOutput::MachineProfileRead(file))) => {
+                let crate::profile_file::ProfileFile { profile, ruida, backend, identity } = *file;
+                let grbl = match backend {
+                    crate::profile_file::Backend::Grbl(g) => Some(g),
+                    crate::profile_file::Backend::Ruida => None,
+                };
+                let declared = identity.map_or_else(Declared::default, |i| Declared::of(&i.model.unwrap_or_default(), &i.firmware.unwrap_or_default()));
+                self.replace_active_machine(Machine { profile: Arc::new(profile), ruida, grbl, declared });
+                AppUpdate { view_changed: true, ..AppUpdate::default() }
+            }
+            Err(TaskError::Cancelled) => AppUpdate::default(),
+            _ => error(None, MessageKey::MachineProfileFileUnusable),
+        }
     }
 
     /// Makes the known profile `id` the active machine. A GRBL machine of the library comes back

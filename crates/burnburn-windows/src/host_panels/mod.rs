@@ -65,6 +65,7 @@ pub enum FilePurpose {
     ExportDrawing { document: DocumentId },
     TemplateSave { document: DocumentId, scope: burnburn_presentation::TemplateScope },
     TemplateOpen,
+    MachineProfileOpen,
     BundleOpen { document: DocumentId },
     BundleWrite { document: DocumentId },
     ArtAddFile { document: DocumentId, name: String, unit_item: isize },

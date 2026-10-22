@@ -862,6 +862,7 @@ pub fn on_files_file_chosen(vm: &AppViewModel, purpose: &FilePurpose, path: Chos
             }))
         }
         FilePurpose::TemplateOpen => PanelReaction::Intent(template_open_intent(path)),
+        FilePurpose::MachineProfileOpen => PanelReaction::Intent(machine_profile_open_intent(path)),
         FilePurpose::BundleOpen { document } if open(document) => {
             PanelReaction::Intent(bundle_open_intent(*document, path))
         }
@@ -906,6 +907,11 @@ pub fn effect_dialog(effect: &HostEffect, input: &FilesInput<'_>) -> Option<Dial
             purpose: FilePurpose::TemplateOpen,
             title: ft(FilesText::PanelTemplateOpen, locale).to_owned(),
             filters: vec![ext_filter("BurnBurn template", "burnburntemplate")],
+        }),
+        HostEffect::ShowMachineProfileOpenPanel => Some(DialogRequest::Open {
+            purpose: FilePurpose::MachineProfileOpen,
+            title: ft(FilesText::PanelMachineProfileOpen, locale).to_owned(),
+            filters: vec![ext_filter("Machineprofiel / machine profile (JSON)", "json")],
         }),
         HostEffect::ShowBundleOpenPanel { document } => Some(DialogRequest::Open {
             purpose: FilePurpose::BundleOpen { document: *document },

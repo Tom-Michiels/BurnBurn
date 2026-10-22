@@ -39,6 +39,8 @@ pub enum FilesTask {
     SaveMaterialLibrary { library: Box<MaterialLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the machine profiles a bundle brought in atomically (P07).
     SaveProfileLibrary { profiles: Vec<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Read a machine profile file (Ruida or GRBL JSON); nothing is written.
+    ReadMachineProfile { path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the whole art library atomically.
     SaveArtLibrary { library: Box<ArtLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Add a drawing to a copy of the art library (the file is read and proven to import here);
@@ -182,6 +184,7 @@ impl fmt::Debug for FilesTask {
             FilesTask::SaveProfileLibrary { profiles, path, .. } => {
                 write!(f, "SaveProfileLibrary({} to {})", profiles.len(), path.display())
             }
+            FilesTask::ReadMachineProfile { path, .. } => write!(f, "ReadMachineProfile({})", path.display()),
             FilesTask::SaveArtLibrary { path, .. } => write!(f, "SaveArtLibrary({})", path.display()),
             FilesTask::AddArt(add) => write!(f, "AddArt({:?} to {:?})", add.name, add.group),
             FilesTask::PlaceArt { item, .. } => write!(f, "PlaceArt({item})"),
@@ -217,6 +220,7 @@ pub enum FilesOutput {
     },
     MaterialLibrarySaved,
     ProfileLibrarySaved,
+    MachineProfileRead(Box<crate::profile_file::ProfileFile>),
     ArtLibrarySaved,
     ArtAdded {
         library: Box<ArtLibrary>,
@@ -278,6 +282,8 @@ pub enum FilesError {
     Export(ExportRefusal),
     /// The export file could not be written.
     ExportWrite(String),
+    /// The machine profile file cannot be read or is not a usable profile.
+    MachineProfile(String),
 }
 
 impl fmt::Display for FilesError {
@@ -292,6 +298,7 @@ impl fmt::Display for FilesError {
             FilesError::BundleWrite(e) => write!(f, "bundle: {e}"),
             FilesError::Export(e) => write!(f, "export: {e:?}"),
             FilesError::ExportWrite(e) => write!(f, "export: {e}"),
+            FilesError::MachineProfile(e) => write!(f, "machine profile: {e}"),
         }
     }
 }
@@ -336,6 +343,16 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             save_profile_library_entries(fs.as_ref(), &path, &profiles)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::ProfileLibrarySaved)
+        }
+        FilesTask::ReadMachineProfile { path, fs } => {
+            // A profile file is a few hundred bytes; a bigger file is not one.
+            let bytes = fs
+                .read(&path, 1 << 20)
+                .map_err(|e| TaskError::Files(FilesError::MachineProfile(format!("{e:?}"))))?;
+            cancelled(cancel)?;
+            let file = crate::profile_file::parse_profile(&bytes)
+                .map_err(|e| TaskError::Files(FilesError::MachineProfile(e.to_string())))?;
+            Ok(FilesOutput::MachineProfileRead(Box::new(file)))
         }
         FilesTask::SaveArtLibrary { library, path, fs } => {
             save_art_library(fs.as_ref(), &path, &library)
