@@ -181,7 +181,7 @@ Per lane één regel resultaat (dev-notes in `docs/dev-notes/`). Windows is in d
 - **G5-grbl-ui** (`G5-grbl-ui`): Device Settings met Ruida/GRBL, Exporteer G-code, GRBL-preflight en een GRBL-venster met console en
   macro's — alles tegen een nagebootste controller.
 - **G5-UI-machine / machine-rest** (`G5-UI-machine`): opslaan met vorige versie, updatepoort bij afsluiten (macOS), `HistoryTrimmed`,
-  actief profiel kiezen en bewaren, machinehub (M01/M02/M04/W02/W03/W09) op macOS; Windows-venster ontbreekt.
+  actief profiel kiezen en bewaren, machinehub (M01/M02/M04/W02/W03/W09) op macOS; het Windows-venster kwam via G5-native, de Windows-updatepoort bij de golf-6-integratie.
 
 ## Golf 6 (uitgevoerd)
 
@@ -201,7 +201,7 @@ Stand na golf 6 (main 9335726): `cargo xtask verify` exit 0, 3946 tests geslaagd
 - **Hardware (W1-HW, eigenaar B-2/B-3):** een geverifieerd Ruida-wire-dialect en het vrijgeven van `ScanAngle`, `GrayscaleModulation`,
   `CommonLine`, `ZStep`; Tab Cut Power, feeder, Y-scan en Z-offset in RD; GRBL op een echte controller met een seriële adapter; echte
   camerabron, lens- en uitlijnwizard op een machine; rotary Y-schaal; scanoffset- en kerfmetingen.
-- **Windows:** de hele Win32-laag draaien (nooit gedraaid), het machinehub-venster en de updatepoort, Media Foundation-camera, MSIX,
+- **Windows:** de hele Win32-laag draaien (nooit gedraaid; ook het hubvenster en de updatepoort), Media Foundation-camera, MSIX,
   de Windows-job in CI; B-1 (Win32 of WinUI 3) pas na een echte run.
 - **Release:** notarisatie, installatie op een schone Mac, Gatekeeper; CI en `release.yml` daadwerkelijk draaien; fuzz-doelen draaien (B-10).
 - **Software:** zie "Nog open na golf 6" in `integratie-wachtrij.md`: o.a. kalibraties bewaren (W04), herkenning (W06), restenbibliotheek (W07),

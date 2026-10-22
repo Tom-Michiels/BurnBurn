@@ -14,8 +14,6 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 
 ### Software (eerlijk nog niet gebouwd)
 
-- **Windows-parity van het machinehub**: venster "Machine en productie" (M02, M04, W02, W03, W09, P07) en de updatepoort
-  bij afsluiten ontbreken in de Windows-host (G5-machine-rest). Het Mac-item is een `AppAction`; Windows heeft geen venster.
 - **Hosts delen modellen via `#[path]`** in plaats van via `burnburn-presentation` (W4-L8a, contracts-phase-c §IM20).
 - **CAM**: Tab Cut Power (vermogen per beweging in het plan; G5-cam, G6-machine); C06 is klaar. Common-line cutting en
   korrelrichting in de UI; aantal exemplaren per onderdeel in de nest (C12); delen-in-gaten en raster-gebonden benutting (C10);
@@ -270,9 +268,9 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G5-native | S06/S07/P06 Structuurpaneel (platen, onderdelen, varianten, overrides, gebroken referenties, plaatkeuze voor Compile) | – | `UiIntent::{Structure, ChoosePlate}`; host-menu-item `MenuItem::StructurePanel` (tag/id 1031) | `g5_panels::{the_structure_panel_…, choosing_a_variant_…, a_local_override_…, the_plate_for_compile_…}`, `g5_forms::{the_structure_form_…, a_variant_an_override_…}`, native `structure_panel_chooses_variant_override_and_plate` | klaar; geen UI om onderdelen te definiëren/plaatsen of rand-referenties te maken (domein-UI ontbreekt, buiten dit pakket) |
 | G5-native | API01 Desktop-automatisering aangesloten op de hosts (vervangt de open regel van G5-tekst-api) | `burnburn_runtime::automation::*` (ongewijzigd) | gedeelde `automation_host.rs` (kanaal, pomp, luisterthread) in macOS-crate, door Windows via `#[path]` gecompileerd; alleen `Open`, `Import`, `CommitImport`, `CancelImport` | `macos/tests/automation_host::*` (13, één echte 127.0.0.1-socket), `windows/tests/automation_host::*` (3), native `automation_native` (echte main-thread + loopback) | klaar headless + macOS native; Windows-wiring alleen type-check + clippy |
 
-| G5-machine-rest | P07: actief apparaat kiezen (macOS) | – | `UiIntent::ChooseMachineProfile`, `machine_hub_view().devices` | `g5_machine_profiles::*`, `g5_machine_hub_panel::choosing_a_device_…` | macOS gebouwd (venster Machine en productie…, niet handmatig bekeken); Windows: venster en menu-item ontbreken |
-| G5-machine-rest | Machinehub op Windows (M02, M04, W02, W03, W09) | – | `AppController::machine_hub_view()` + intents Repeat/ConfirmRepeat/RecordCalibration | `burnburn-macos::hub_panel` is het headless model om te spiegelen | open (Windows-host: venster + AppAction/menu-item) |
-| G5-machine-rest | Updatepoort bij afsluiten (Windows) | – | `AppController::machine_activity()` + `runtime::update_gate::decide_update` | `macos::quit_guard`-tests spiegelen | open (Windows-host) |
+| G5-machine-rest | P07: actief apparaat kiezen (macOS) | – | `UiIntent::ChooseMachineProfile`, `machine_hub_view().devices` | `g5_machine_profiles::*`, `g5_machine_hub_panel::choosing_a_device_…` | macOS gebouwd (venster Machine en productie…, niet handmatig bekeken); Windows: hubvenster + menu-item (G5-native, `windows/tests/g5_hub.rs`), alleen headless |
+| G5-machine-rest | Machinehub op Windows (M02, M04, W02, W03, W09) | – | `AppController::machine_hub_view()` + intents Repeat/ConfirmRepeat/RecordCalibration | `windows/tests/g5_hub.rs`, `menus.rs` | klaar (G5-native: `host_panels/hub.rs`; Windows-run handmatig) |
+| G5-machine-rest | Updatepoort bij afsluiten (Windows) | – | `AppController::machine_activity()` + `runtime::update_gate::decide_update` | `windows/tests/quit_guard.rs` (3) | klaar (golf-6-integratie: WM_CLOSE van het laatste venster vraagt bevestiging; Windows-run handmatig) |
 | G5-machine-rest | W09: kalibratiewaarden in de compiler | scanoffset/kerf/pointeroffset uit `CalibrationSet` in het compileren | – | – | klaar voor kerf en scanoffset (G6-machine, zie onder); pointeroffset bewaard en getoond, niet in de compiler |
 | G5-machine-rest | W01: goedkeuring "approved" duurzaam | `HistoryStore`-API voor goedkeuring | – | – | klaar (G6-machine, zie onder) |
 ## G5-cam

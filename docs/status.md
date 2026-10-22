@@ -26,7 +26,7 @@ in `docs/plan/integratie-wachtrij.md` (sectie "Nog open na golf 6").
 | IM05 presentatie/input | gebouwd | — |
 | IM06 AppKit-host | gebouwd | handmatig: Cmd-Q-alert, Finder-dubbelklik, uiterlijk van de panelen uit golf 4–6 |
 | IM07 GPU-canvas | gebouwd; beeldvoorbeeld als bitmap (W4-UI-machine) | echt surface-/deviceverlies |
-| IM08 Windows-proef → Windows-host | headless gebouwd op pariteit (W4-L8a/b, G5-windows); typecheck + clippy voor `x86_64-pc-windows-msvc` | **nooit op Windows gedraaid**; Windows-venster voor het machinehub en updatepoort ontbreken |
+| IM08 Windows-proef → Windows-host | headless gebouwd op pariteit (W4-L8a/b, G5-windows); typecheck + clippy voor `x86_64-pc-windows-msvc` | **nooit op Windows gedraaid**; machinehub (`host_panels/hub.rs`, `tests/g5_hub.rs`) en updatepoort (`tests/quit_guard.rs`) headless gebouwd |
 | IM09 tekenen/repareren | gebouwd | extend/fillet-UI, curve-trim |
 | IM10 import/export | gebouwd; BMP/TIFF (W4-UI-gaten) | SVG `<use>`/tekst, DXF-blocks |
 | IM11 sketches | gebouwd; bogen (W4) en ellips (G6) | externe entiteiten; kleine as van een ellips als sturende maat |
@@ -53,7 +53,7 @@ in `docs/plan/integratie-wachtrij.md` (sectie "Nog open na golf 6").
 | IM32 kleurtracing | gebouwd | common-line snijden zelf niet gebouwd |
 | W4-L4 G-code/GRBL (`burnburn-gcode`) | gebouwd: lowering, capabilitymatrix, parser, sessie met character-counting, driver, console, macro's, CLI; GRBL bedienbaar in het Mac-venster (G5-grbl-ui) | **geen enkele GRBL-controller gecontacteerd**, geen seriële adapter; start/upload geweigerd; fake uit de publieke beschrijving |
 | W4-L8a/b, G5-windows Windows-host | menubalk, formulieren, laser/beeld/bestanden/camera/app-panelen, toetsenbord, recente lijsten, opstartargument, Media Foundation-adapter (alleen type-check) | alles op Windows handmatig |
-| W4-release (X07) release/installeren | dist-zip/dmg reproduceerbaar (ad-hoc ondertekend), MSIX-layout, workflows, updatepoort bij afsluiten (macOS), vorige versie bewaren | **notarisatie en MSIX (`makeappx`, ondertekenen, installeren) handmatig**; geen updater (B-9) |
+| W4-release (X07) release/installeren | dist-zip/dmg reproduceerbaar (ad-hoc ondertekend), MSIX-layout, workflows, updatepoort bij afsluiten (macOS en Windows), vorige versie bewaren | **notarisatie en MSIX (`makeappx`, ondertekenen, installeren) handmatig**; geen updater (B-9) |
 | W4-prestaties (X04) | 100k-fixtures, selectie/verplaatsen/scene; compile-schaal opgelost in G5-cam (F100K-C ~92 s → 1,45 s) | benchmarks `#[ignore]`, één machine onder belasting |
 | W4-acceptatie | `docs/user-flows/acceptatie.md` als scenario-tests; één bug (IM03) gevonden en opgelost | RD-corpus en transportcases zonder hardwarebank |
 | G5-cam | reeksen, toollagen, sublagen, preflight, feeder-planning, productienesting (domein) | Tab Cut Power; feeder naar RD/GRBL |
@@ -70,12 +70,12 @@ Open eigenaarsbeslissingen: `docs/design/open-beslissingen.md` (B-1..B-12).
   geldt nergens als bewijs. `Unverified`: `ScanAngle`, `GrayscaleModulation`, `CommonLine`, `ZStep`, Y-as-scan en scanhoek in RD,
   Tab Cut Power, feeder naar RD/GRBL, controllerinstellingen lezen/schrijven. Geen scanoffset- of kerfmeting op een machine.
 - **Nooit op Windows gedraaid.** De Win32-laag (`src/win32/**`, `src/win32_panels/**`) is alleen type-gecheckt en door clippy
-  gehaald. Het machinehub-venster en de updatepoort bestaan niet voor Windows. De Media Foundation-camera is nooit gedraaid.
+  gehaald. Machinehub en updatepoort bestaan voor Windows, maar alleen headless getest. De Media Foundation-camera is nooit gedraaid.
 - **CI nooit gedraaid.** `.github/workflows/ci.yml` en `release.yml` zijn lokaal structureel gecontroleerd, maar nooit door GitHub
   uitgevoerd; acties staan op major-tags. Fuzz-doelen compileren maar zijn niet gedraaid (nightly + `cargo-fuzz`: B-10).
 - **Notarisatie en MSIX handmatig.** Installatie van dmg/zip op een schone Mac, Gatekeeper, notarisatie, `makeappx`, ondertekenen,
   installeren en SmartScreen zijn niet gedaan.
 - **Handmatig niet bekeken (macOS):** het uiterlijk van de panelen uit golf 4–6, OS-dialogen (open/bewaar, het afsluit-alert),
   RTL-weergave, barcode-leesproef, DXF in een CAD-programma, echte AVFoundation-sessie.
-- **Software nog open:** zie de sectie "Nog open na golf 6" in `docs/plan/integratie-wachtrij.md` (o.a. Windows-hub, Tab Cut
+- **Software nog open:** zie de sectie "Nog open na golf 6" in `docs/plan/integratie-wachtrij.md` (o.a. Tab Cut
   Power, kalibraties bewaren, herkenning, restenbibliotheek, plug-inloader, extend/fillet-UI, benchmarks als regressiedrempel).
