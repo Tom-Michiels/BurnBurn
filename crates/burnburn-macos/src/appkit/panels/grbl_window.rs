@@ -638,6 +638,8 @@ pub(crate) fn refusal_popup(
     let popup =
         objc2_app_kit::NSPopUpButton::initWithFrame_pullsDown(objc2_app_kit::NSPopUpButton::alloc(mtm), frame, true);
     popup.setAutoresizingMask(crate::appkit::panels::widgets::TOP_PINNED);
+    popup.setControlSize(objc2_app_kit::NSControlSize::Small);
+    popup.setFont(Some(&NSFont::systemFontOfSize(10.0)));
     popup.setHidden(true);
     let target_object: &AnyObject = target.as_ref();
     wire(&popup, target_object, sel!(grblRefusal:), 0);

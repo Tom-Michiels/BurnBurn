@@ -193,14 +193,27 @@ impl DocWindow {
         let state = col.add_label("", 34.0);
         state.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         let findings = col.add_label("", 18.0);
+        // The GRBL refusals share the plan-identity row: that label truncates in the middle anyway.
+        let popup_width = 104.0;
+        let id_frame = plan_id.frame();
+        plan_id.setFrame(rect(
+            id_frame.origin.x,
+            id_frame.origin.y,
+            id_frame.size.width - popup_width - 4.0,
+            id_frame.size.height,
+        ));
         let (grbl_refusals, grbl_refusal_target) = super::panels::grbl_window::refusal_popup(
             mtm,
             app.clone(),
             document,
-            rect(12.0, col.y - 24.0, col.width, 24.0),
+            rect(
+                id_frame.origin.x + id_frame.size.width - popup_width,
+                id_frame.origin.y,
+                popup_width,
+                id_frame.size.height,
+            ),
         );
         inspector.addSubview(&grbl_refusals);
-        col.y -= 28.0;
 
         let controller = WindowController::new(
             mtm,
