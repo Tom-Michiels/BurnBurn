@@ -305,6 +305,10 @@ pub enum G5Control {
     // --- Recognition with rotation and scale, saved templates and pointing (G8-cam-werk, W06).
     RecogRotation,
     RecogScale,
+    // --- Mirrored, tilted and partly visible products (G9-cam-werk, W06).
+    RecogMirror,
+    RecogPerspective,
+    RecogPartial,
     RecogPoint,
     RecogEndPoint,
     RecogUse {
@@ -871,6 +875,9 @@ pub fn g5_intent(
         | G5Control::RecogReject { .. }
         | G5Control::RecogRotation
         | G5Control::RecogScale
+        | G5Control::RecogMirror
+        | G5Control::RecogPerspective
+        | G5Control::RecogPartial
         | G5Control::RecogPoint
         | G5Control::RecogEndPoint
         | G5Control::RecogUse { .. }

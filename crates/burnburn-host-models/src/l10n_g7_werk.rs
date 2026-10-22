@@ -196,6 +196,23 @@ texts! {
     // --- Recognition with rotation and scale, saved templates, pointing (G8-cam-werk).
     RecogRotation => ("Gedraaide producten herkennen", "Find turned products"),
     RecogScale => ("Grotere en kleinere producten herkennen", "Find larger and smaller products"),
+    RecogMirror => ("Gespiegelde producten herkennen", "Find mirrored products"),
+    RecogPerspective => (
+        "Producten onder een hoek herkennen (perspectief)",
+        "Find products seen at an angle (perspective)"
+    ),
+    RecogPartial => (
+        "Producten die deels buiten het beeld liggen herkennen",
+        "Find products partly outside the picture"
+    ),
+    RecogMirroredLine => (
+        "Treffer {0}: gespiegeld product (de kopie wordt ook gespiegeld)",
+        "Match {0}: mirrored product (the copy is mirrored too)"
+    ),
+    RecogPartlyVisible => (
+        "Treffer {0}: DEELS ZICHTBAAR, {1} % van het sjabloon ligt in het beeld. De treffer rust op dat deel alleen; kijk goed voordat je hem accepteert.",
+        "Match {0}: PARTLY VISIBLE, {1} % of the template is in the picture. The match rests on that part only; look closely before you accept it."
+    ),
     RecogPoint => ("Wijs het vak in het beeld", "Point at the box in the picture"),
     RecogPointing => (
         "Klik op twee tegenoverliggende hoeken van het vak in het camerabeeld op het blad (of sleep). Escape stopt.",

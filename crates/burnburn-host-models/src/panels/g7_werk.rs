@@ -354,6 +354,13 @@ pub(super) fn recognition_lines(
         caption: t(G7Text::RecogScale, locale),
         on: r.search.scale,
     });
+    for (control, text, on) in [
+        (G5Control::RecogMirror, G7Text::RecogMirror, r.search.mirror),
+        (G5Control::RecogPerspective, G7Text::RecogPerspective, r.search.perspective),
+        (G5Control::RecogPartial, G7Text::RecogPartial, r.search.partial),
+    ] {
+        lines.push(G5Line::Check { control, caption: t(text, locale), on });
+    }
     if !r.saved.is_empty() {
         lines.push(G5Line::Heading(t(G7Text::RecogSavedHeading, locale)));
         for (index, saved) in r.saved.iter().enumerate() {
@@ -420,6 +427,16 @@ pub(super) fn recognition_lines(
                     &[&n, &num(c.angle_deg, 1, locale), &num(c.scale * 100.0, 0, locale)],
                 )));
             }
+            if c.mirrored {
+                lines.push(G5Line::Text(g7_fmt(G7Text::RecogMirroredLine, locale, &[&n])));
+            }
+            if c.visible_percent < 100.0 {
+                lines.push(G5Line::Problem(g7_fmt(
+                    G7Text::RecogPartlyVisible,
+                    locale,
+                    &[&n, &num(c.visible_percent, 0, locale)],
+                )));
+            }
             lines.push(recog_button(
                 G5Control::RecogAccept { index: c.index },
                 g7_fmt(G7Text::RecogAccept, locale, &[&n]),
@@ -481,6 +498,14 @@ pub(super) fn recognition_intent(
             Some(UiIntent::Recognition(RecognitionIntent::SetSearch {
                 rotation: flag(G5Control::RecogRotation, r.search.rotation),
                 scale: flag(G5Control::RecogScale, r.search.scale),
+            }))
+        }
+        G5Control::RecogMirror | G5Control::RecogPerspective | G5Control::RecogPartial => {
+            let flag = |c: G5Control, now: bool| flag_of(values, c).unwrap_or(now);
+            Some(UiIntent::Recognition(RecognitionIntent::SetSearchExtras {
+                mirror: flag(G5Control::RecogMirror, r.search.mirror),
+                perspective: flag(G5Control::RecogPerspective, r.search.perspective),
+                partial: flag(G5Control::RecogPartial, r.search.partial),
             }))
         }
         G5Control::RecogPoint => {
