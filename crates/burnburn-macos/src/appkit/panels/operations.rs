@@ -1,5 +1,6 @@
 //! The operations section of the production strip: colour palette, layer table, add row.
 
+use crate::appkit::panels::production::LIFT;
 use crate::appkit::panels::widgets::{push_button, rect, set_text, strip_label};
 use crate::appkit::window::DocWindow;
 
@@ -20,7 +21,7 @@ use crate::panels::{
 
 /// Palette swatch width and pitch (points).
 pub(crate) const SWATCH: f64 = 19.0;
-pub(crate) const SWATCH_PITCH: f64 = 20.0;
+pub(crate) const SWATCH_PITCH: f64 = 19.0;
 
 /// The canvas theme's colour of layer `slot` (palette swatch, layer cell and canvas agree).
 pub(crate) fn layer_colour(slot: u8) -> Retained<NSColor> {
@@ -62,7 +63,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         b.setBordered(false);
         b.setFont(Some(&NSFont::systemFontOfSize(20.0)));
         b.setContentTintColor(Some(&layer_colour(slot)));
-        b.setFrame(rect(12.0 + f64::from(slot) * SWATCH_PITCH, 214.0, SWATCH, 26.0));
+        b.setFrame(rect(12.0 + f64::from(slot) * SWATCH_PITCH, 214.0 + LIFT, SWATCH, 26.0));
         b.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
         b.setTag(isize::from(slot));
         b.setAccessibilityLabel(Some(&NSString::from_str(&layer_label(slot))));
@@ -72,16 +73,18 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     strip.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::PaletteLabel))));
 
     let title =
-        strip_label(mtm, strip, t(HostText::OperationsTitle), rect(12.0, 186.0, ops_width - 170.0, 18.0), false);
+        strip_label(mtm, strip, t(HostText::OperationsTitle), rect(12.0, 186.0 + LIFT, ops_width - 184.0, 18.0), false);
     title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     let settings = push_button(mtm, t(HostText::CutSettingsButton));
-    settings.setFrame(rect(ops_width - 160.0, 182.0, 160.0, 26.0));
+    settings.setFrame(rect(ops_width - 164.0, 182.0 + LIFT, 160.0, 26.0));
     settings.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     strip.addSubview(&settings);
-    let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(12.0, 84.0, ops_width - 12.0, 98.0));
+    let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(12.0, 84.0 + LIFT, ops_width - 12.0, 98.0));
     scroll.setHasVerticalScroller(true);
     scroll.setHasHorizontalScroller(true);
-    scroll.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
+    scroll.setAutoresizingMask(NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewMinYMargin.0,
+    ));
     let table = NSTableView::initWithFrame(NSTableView::alloc(mtm), rect(0.0, 0.0, ops_width - 12.0, 98.0));
     for c in LAYER_COLUMNS {
         let column = NSTableColumn::initWithIdentifier(NSTableColumn::alloc(mtm), &NSString::from_str(c.id()));
@@ -107,7 +110,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
 
     let input = |x: f64, w: f64, caption: HostText| {
         let f = NSTextField::textFieldWithString(&NSString::from_str(""), mtm);
-        f.setFrame(rect(x, 50.0, w, 24.0));
+        f.setFrame(rect(x, 50.0 + LIFT, w, 24.0));
         f.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
         f.setPlaceholderString(Some(&NSString::from_str(t(caption))));
         f.setAccessibilityLabel(Some(&NSString::from_str(t(caption))));
@@ -115,7 +118,8 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         f
     };
     let name = input(12.0, 110.0, HostText::OperationName);
-    let kind = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(126.0, 48.0, 84.0, 26.0), false);
+    let kind =
+        NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(126.0, 48.0 + LIFT, 84.0, 26.0), false);
     for k in OPERATION_KINDS {
         kind.addItemWithTitle(&NSString::from_str(operation_kind_name(k, locale)));
     }
@@ -125,10 +129,10 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     let speed = input(214.0, 74.0, HostText::OperationSpeed);
     let power = input(292.0, 64.0, HostText::OperationPower);
     let add = push_button(mtm, t(HostText::OperationAdd));
-    add.setFrame(rect(360.0, 48.0, (ops_width - 360.0).max(120.0), 28.0));
+    add.setFrame(rect(12.0, 44.0, 172.0, 28.0));
     add.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     strip.addSubview(&add);
-    let error = strip_label(mtm, strip, "", rect(12.0, 8.0, ops_width, 36.0), true);
+    let error = strip_label(mtm, strip, "", rect(12.0, 6.0, ops_width, 34.0), true);
     error.setTextColor(Some(&NSColor::systemRedColor()));
     OperationsSection { table, inputs: [name, speed, power], kind, add, error, palette, settings }
 }

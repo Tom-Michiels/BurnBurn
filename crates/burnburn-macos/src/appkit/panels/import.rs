@@ -119,6 +119,7 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
         rect(w - 232.0, 12.0, 104.0, 28.0),
     );
     cancel.setTag(menu_tag(MenuItem::Command(CommandKey::CancelImport)));
+    cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
     let commit = button(
         mtm,
         host_text(HostText::ImportCommit, locale),
@@ -127,6 +128,7 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
         rect(w - 116.0, 12.0, 104.0, 28.0),
     );
     commit.setTag(menu_tag(MenuItem::Command(CommandKey::CommitImport)));
+    commit.setKeyEquivalent(&NSString::from_str("\r"));
     content.addSubview(&cancel);
     content.addSubview(&commit);
     sheet.setContentView(Some(&content));

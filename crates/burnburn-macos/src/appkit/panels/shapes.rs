@@ -164,6 +164,7 @@ pub(crate) fn shapes_section(
     panel.setHidesOnDeactivate(true);
     panel.setTitle(&NSString::from_str(t(HostText::ShapeSectionTitle)));
     let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, PANEL_WIDTH, 200.0));
+    content.setAutoresizesSubviews(false);
     let title = || {
         let l = label(mtm, "", rect(MARGIN, 0.0, PANEL_WIDTH - 2.0 * MARGIN, TITLE_HEIGHT - 4.0));
         l.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));

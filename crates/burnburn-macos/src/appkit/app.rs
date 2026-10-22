@@ -1337,6 +1337,16 @@ impl HostApp {
             canvas_status: &w.canvas_status,
             canvas_frames: w.controller.with_canvas(|c| c.frames()).unwrap_or(0),
             canvas_surfaces: w.controller.with_canvas(|c| c.surfaces_created()).unwrap_or(0),
+            built_sheets: vec![
+                ("import", &*w.import.sheet),
+                ("image-import", &*w.image.import.sheet),
+                ("image-adjust", &*w.image.adjust.sheet),
+                ("tracer", &*w.image.tracer.sheet),
+                ("cut-settings", &*w.cut_settings.sheet),
+                ("export", &*w.files.export.sheet),
+                ("bundle", &*w.files.bundle.sheet),
+                ("geometry", w.shapes.sheet()),
+            ],
         }))
     }
 
@@ -1524,6 +1534,8 @@ pub struct WindowParts<'a> {
     pub canvas_status: &'a CanvasStatus,
     pub canvas_frames: u64,
     pub canvas_surfaces: u64,
+    /// Every dialog sheet the window has built, shown or not (the layout test walks them all).
+    pub built_sheets: Vec<(&'static str, &'a objc2_app_kit::NSWindow)>,
 }
 
 impl WindowParts<'_> {

@@ -8,9 +8,9 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn,
-    NSFloatingWindowLevel, NSFont, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSlider, NSTableColumn, NSTableView,
-    NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
+    NSAccessibility, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff,
+    NSControlStateValueOn, NSFloatingWindowLevel, NSFont, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSlider,
+    NSTableColumn, NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
 
@@ -22,6 +22,12 @@ use crate::appkit::panels::image::{caption, mark_field, note, show_bitmap};
 use crate::appkit::panels::widgets::{button, rect, set_text};
 use crate::l10n::Locale;
 use crate::panels_image::BitmapImage;
+
+/// Pinned to the bottom (left, or right): the flexible side is above and beside.
+const BOTTOM_LEFT: NSAutoresizingMaskOptions = NSAutoresizingMaskOptions::ViewMaxYMargin;
+const BOTTOM_RIGHT: NSAutoresizingMaskOptions = NSAutoresizingMaskOptions(
+    NSAutoresizingMaskOptions::ViewMaxYMargin.0 | NSAutoresizingMaskOptions::ViewMinXMargin.0,
+);
 
 /// A titled, closable window that stays alive when closed (the host reopens it).
 #[allow(unsafe_code)]
@@ -89,6 +95,10 @@ fn make_table(
 ) -> (Retained<NSScrollView>, Retained<NSTableView>) {
     let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), frame);
     scroll.setHasVerticalScroller(true);
+    // The table takes what the window gains (the rows around it keep their place).
+    scroll.setAutoresizingMask(NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewHeightSizable.0,
+    ));
     let table =
         NSTableView::initWithFrame(NSTableView::alloc(mtm), rect(0.0, 0.0, frame.size.width, frame.size.height));
     for (id, title, width) in columns {
@@ -187,11 +197,11 @@ pub(crate) fn build_prefs(
     }
     y -= 10.0;
     let banner = note(mtm, &content, rect(16.0, y - 40.0, w - 32.0, 40.0), &NSColor::systemRedColor());
-    let hint = note(mtm, &content, rect(16.0, 44.0, w - 190.0, 52.0), &NSColor::secondaryLabelColor());
+    let hint = note(mtm, &content, rect(16.0, 44.0, w - 250.0, 52.0), &NSColor::secondaryLabelColor());
     hint.setFont(Some(&NSFont::systemFontOfSize(11.0)));
     set_text(&hint, app_text(AppText::PrefsNote, locale));
     let reset =
-        button(mtm, app_text(AppText::PrefsReset, locale), t, sel!(prefsReset:), rect(w - 170.0, 16.0, 154.0, 28.0));
+        button(mtm, app_text(AppText::PrefsReset, locale), t, sel!(prefsReset:), rect(w - 226.0, 16.0, 210.0, 28.0));
     content.addSubview(&reset);
     PrefsWindow { window, widgets, banner }
 }
@@ -277,6 +287,8 @@ pub(crate) fn build_shortcuts(
     .enumerate()
     {
         let b = button(mtm, text(title), t, sel!(shortcutButton:), rect(x, 150.0, width, 28.0));
+        // Under the table: they keep their distance from the bottom (the last one also from the right).
+        b.setAutoresizingMask(if i == 3 { BOTTOM_RIGHT } else { BOTTOM_LEFT });
         b.setTag(i as isize);
         content.addSubview(&b);
         buttons.push(b);
@@ -290,8 +302,10 @@ pub(crate) fn build_shortcuts(
     prompt.setTextColor(Some(&NSColor::secondaryLabelColor()));
     recorder.addSubview(&prompt);
     let notice = note(mtm, &content, rect(16.0, 40.0, w - 180.0, 62.0), &NSColor::systemRedColor());
+    notice.setAutoresizingMask(BOTTOM_LEFT);
     let replace =
         button(mtm, text(AppText::ShortcutReplace), t, sel!(shortcutButton:), rect(w - 150.0, 62.0, 134.0, 28.0));
+    replace.setAutoresizingMask(BOTTOM_RIGHT);
     replace.setTag(4);
     replace.setHidden(true);
     content.addSubview(&replace);
@@ -523,9 +537,14 @@ pub(crate) fn build_rd(mtm: MainThreadMarker, target: &AppPanelTarget, locale: L
     let text = |x| app_text(x, locale);
     let (w, h) = (940.0, 600.0);
     let (window, content) = utility_window(mtm, text(AppText::RdTitle), (w, h), true, float);
-    let header = caption(mtm, &content, "", rect(16.0, h - 34.0, w - 200.0, 20.0));
+    let header = caption(mtm, &content, "", rect(16.0, h - 34.0, w - 250.0, 20.0));
     header.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
-    let refresh = button(mtm, text(AppText::InspectRd), t, sel!(rdRefresh:), rect(w - 170.0, h - 38.0, 154.0, 28.0));
+    // The header keeps its width: the refresh button stays at the right edge beside it.
+    header.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
+    let refresh = button(mtm, text(AppText::InspectRd), t, sel!(rdRefresh:), rect(w - 226.0, h - 38.0, 210.0, 28.0));
+    refresh.setAutoresizingMask(NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewMinXMargin.0 | NSAutoresizingMaskOptions::ViewMinYMargin.0,
+    ));
     content.addSubview(&refresh);
     let banner = note(mtm, &content, rect(16.0, h - 76.0, w - 32.0, 34.0), &NSColor::systemOrangeColor());
     let (scroll, table) = make_table(
@@ -549,6 +568,9 @@ pub(crate) fn build_rd(mtm: MainThreadMarker, target: &AppPanelTarget, locale: L
     let notes = note(mtm, &content, rect(16.0, 8.0, w - 32.0, 40.0), &NSColor::secondaryLabelColor());
     notes.setFont(Some(&NSFont::systemFontOfSize(11.0)));
     notes.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
+    notes.setAutoresizingMask(NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewMaxYMargin.0,
+    ));
     set_text(&notes, &format!("{} {}", text(AppText::RdNoUpload), text(AppText::RdNameIsLabel)));
     RdWindow { window, table, header, banner }
 }

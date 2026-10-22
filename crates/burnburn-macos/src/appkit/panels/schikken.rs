@@ -171,6 +171,8 @@ pub(crate) fn schikken_section(
     panel.setHidesOnDeactivate(true);
     panel.setTitle(&NSString::from_str(&crate::panels::schikken_text(crate::panels::SchikkenText::PanelTitle, locale)));
     let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, PANEL_WIDTH, 120.0));
+    // Hand-laid from the top for the final height: AppKit must not shift the rows once more.
+    content.setAutoresizesSubviews(false);
     panel.setContentView(Some(&content));
     let ivars = TargetIvars { app, document, controls: RefCell::new(Vec::new()) };
     let this = SchikkenTarget::alloc(mtm).set_ivars(ivars);

@@ -137,6 +137,7 @@ pub(crate) fn tracer_sheet(mtm: MainThreadMarker, locale: Locale, command_button
     close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
     let apply =
         command_button(&content, t(HostText::TracerApply), CommandKey::ApplyTrace, rect(w - 124.0, 12.0, 112.0, 28.0));
+    apply.setKeyEquivalent(&NSString::from_str("\r"));
     let apply_linked = command_button(
         &content,
         t(HostText::TracerApplyLinked),

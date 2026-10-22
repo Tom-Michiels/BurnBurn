@@ -12,7 +12,7 @@ use objc2_foundation::NSString;
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{CameraControl, CameraText, camera_panel, camera_text};
 
-use crate::appkit::panels::production::CAMERA_WIDTH;
+use crate::appkit::panels::production::{CAMERA_WIDTH, LIFT};
 
 /// The bed-camera section.
 pub(crate) struct CameraSection {
@@ -37,23 +37,27 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, width: f64, locale: L
     let t = |text: HostText| host_text(text, locale);
     let x = width - CAMERA_WIDTH;
     let cw = CAMERA_WIDTH - 12.0;
-    let camera_title = strip_label(mtm, strip, t(HostText::CameraTitle), rect(x, 186.0, cw - 120.0, 18.0), false);
+    let camera_title =
+        strip_label(mtm, strip, t(HostText::CameraTitle), rect(x, 186.0 + LIFT, cw - 132.0, 18.0), false);
     camera_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     let window_button = push_button(mtm, camera_text(CameraText::OpenButton, locale));
-    window_button.setFrame(rect(x + cw - 116.0, 182.0, 116.0, 24.0));
+    window_button.setFrame(rect(x + cw - 128.0, 182.0 + LIFT, 128.0, 24.0));
     window_button.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     window_button.setTag(3);
     window_button.setAccessibilityLabel(Some(&NSString::from_str(camera_text(CameraText::Accessibility, locale))));
     strip.addSubview(&window_button);
-    let status = strip_label(mtm, strip, "", rect(x, 150.0, cw, 32.0), true);
-    let devices = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(x, 120.0, cw, 26.0), false);
+    let status = strip_label(mtm, strip, "", rect(x, 150.0 + LIFT, cw, 32.0), true);
+    let devices =
+        NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(x, 120.0 + LIFT, cw, 26.0), false);
     devices.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::CameraTitle))));
     devices.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     strip.addSubview(&devices);
-    let bw = (cw - 8.0) / 3.0;
+    // Two lines: the three titles do not fit side by side in the column.
+    let slots = [(0.0, 86.0 + LIFT, 130.0), (134.0, 86.0 + LIFT, 104.0), (0.0, 54.0 + LIFT, 104.0)];
     let camera_button = |i: usize, text: HostText| {
         let b = push_button(mtm, t(text));
-        b.setFrame(rect(x + i as f64 * (bw + 4.0), 86.0, bw, 28.0));
+        let (dx, y, w) = slots[i.min(2)];
+        b.setFrame(rect(x + dx, y, w, 28.0));
         b.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
         b.setTag(i as isize);
         b.setEnabled(false);
@@ -68,6 +72,17 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, width: f64, locale: L
     let frame = strip_label(mtm, strip, "", rect(x, 62.0, cw, 18.0), false);
     let note = strip_label(mtm, strip, "", rect(x, 8.0, cw, 50.0), true);
     note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
+    // The camera column keeps its width at the right edge when the window grows (the layer table,
+    // which takes the width, must not run into it).
+    let right_top = NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewMinXMargin.0 | NSAutoresizingMaskOptions::ViewMinYMargin.0,
+    );
+    for v in [&*camera_title as &NSView, &window_button, &status, &devices, &frame, &note]
+        .into_iter()
+        .chain(buttons.iter().map(|b| -> &NSView { b }))
+    {
+        v.setAutoresizingMask(right_top);
+    }
     CameraSection { labels: [status, frame, note], devices, buttons, window_button }
 }
 

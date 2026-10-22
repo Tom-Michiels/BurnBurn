@@ -31,7 +31,7 @@ use crate::panels_files::{
     material_panel, material_remove_intent, material_save_intent, material_select_intent, material_update_intent,
 };
 
-pub(crate) const WIDTH: f64 = 470.0;
+pub(crate) const WIDTH: f64 = 540.0;
 pub(crate) const HEIGHT: f64 = 560.0;
 
 pub(crate) struct MaterialSection {
@@ -97,12 +97,12 @@ pub(crate) fn material_section(
     y -= 44.0;
     // Search: material, thickness, machine.
     caption(mtm, &content, t(T::LabelMaterial), rect(12.0, y - 22.0, 76.0, 20.0));
-    let material = popup(mtm, &content, t(T::LabelMaterial), &[], rect(92.0, y - 24.0, 190.0, 26.0));
-    caption(mtm, &content, t(T::LabelThickness), rect(292.0, y - 22.0, 90.0, 20.0));
-    let thickness = input(mtm, &content, t(T::LabelThickness), rect(384.0, y - 24.0, 74.0, 24.0));
+    let material = popup(mtm, &content, t(T::LabelMaterial), &[], rect(92.0, y - 24.0, 260.0, 26.0));
+    caption(mtm, &content, t(T::LabelThickness), rect(362.0, y - 22.0, 90.0, 20.0));
+    let thickness = input(mtm, &content, t(T::LabelThickness), rect(454.0, y - 24.0, 74.0, 24.0));
     y -= 34.0;
     caption(mtm, &content, t(T::LabelMachine), rect(12.0, y - 22.0, 76.0, 20.0));
-    let machine = popup(mtm, &content, t(T::LabelMachine), &[], rect(92.0, y - 24.0, 366.0, 26.0));
+    let machine = popup(mtm, &content, t(T::LabelMachine), &[], rect(92.0, y - 24.0, 436.0, 26.0));
     y -= 40.0;
     caption(mtm, &content, t(T::LabelEntries), rect(12.0, y - 22.0, inner, 20.0));
     y -= 26.0;
@@ -126,9 +126,9 @@ pub(crate) fn material_section(
     content.addSubview(&rule);
     y -= 12.0;
     caption(mtm, &content, t(T::LabelName), rect(12.0, y - 22.0, 76.0, 20.0));
-    let name = input(mtm, &content, t(T::LabelName), rect(92.0, y - 24.0, 190.0, 24.0));
-    caption(mtm, &content, t(T::LabelNewMaterial), rect(292.0, y - 22.0, 76.0, 20.0));
-    let store_material = input(mtm, &content, t(T::LabelNewMaterial), rect(370.0, y - 24.0, 88.0, 24.0));
+    let name = input(mtm, &content, t(T::LabelName), rect(92.0, y - 24.0, 260.0, 24.0));
+    caption(mtm, &content, t(T::LabelNewMaterial), rect(362.0, y - 22.0, 76.0, 20.0));
+    let store_material = input(mtm, &content, t(T::LabelNewMaterial), rect(440.0, y - 24.0, 88.0, 24.0));
     y -= 32.0;
     caption(mtm, &content, t(T::LabelThickness), rect(12.0, y - 22.0, 100.0, 20.0));
     let store_thickness = input(mtm, &content, t(T::LabelThickness), rect(116.0, y - 24.0, 80.0, 24.0));

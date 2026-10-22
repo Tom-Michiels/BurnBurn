@@ -9,6 +9,8 @@
 // Not every test process uses every helper.
 #![allow(dead_code, unsafe_code)]
 
+pub mod windows;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;

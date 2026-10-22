@@ -115,7 +115,10 @@ pub(crate) fn transform_block(
     heading.setFont(Some(&small));
     col.view.addSubview(&heading);
     let lock = lock_checkbox(mtm, host_text(HostText::AspectLock, locale));
-    lock.setFrame(rect(beside, top - CAPTION_HEIGHT - 26.0, beside_width, 22.0));
+    // Under the grid, full width: beside it the title (in Dutch) does not fit.
+    col.y -= 4.0;
+    lock.setFrame(rect(12.0, col.y - 22.0, col.width, 22.0));
+    col.y -= 22.0;
     col.view.addSubview(&lock);
     col.y -= 8.0;
     (fields, InspectorControlsWidgets { reference, aspect_lock: lock, flip })

@@ -220,6 +220,8 @@ pub(crate) fn g5_section(
     scroll.setHasVerticalScroller(true);
     scroll.setDrawsBackground(false);
     let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, PANEL_WIDTH, 120.0));
+    // Hand-laid from the top for the final height: AppKit must not shift the rows once more.
+    content.setAutoresizesSubviews(false);
     scroll.setDocumentView(Some(&content));
     panel.setContentView(Some(&scroll));
     let ivars = TargetIvars { app, document, panel: panel_kind, controls: RefCell::new(Vec::new()) };
@@ -260,6 +262,8 @@ pub(crate) fn embed_stack(
     let needed = (window_height - lowest) + INSPECTOR_GAP + STACK_HEIGHT + INSPECTOR_GAP;
     let total = needed.max(window_height);
     let shift = total - window_height;
+    // The subviews are shifted by hand below: AppKit must not shift the top-pinned ones again.
+    inspector.setAutoresizesSubviews(false);
     if shift > 0.0 {
         // The column is laid out from the top: grow it at the bottom.
         for v in inspector.subviews().iter() {
@@ -505,22 +509,28 @@ impl G5Section {
     /// Copies the lines into the widgets and lays them out from the top. Returns the content height.
     fn fill(&mut self, lines: &[G5Line], locale: Locale) -> f64 {
         let full = self.width - 2.0 * MARGIN;
-        let wrapped = |t: &str, width: f64| {
-            let chars_per_line = (width / 6.5).max(10.0) as usize;
-            t.chars().count().div_ceil(chars_per_line).max(1) as f64
+        // The height wrapped text really takes in `label` at `width` (measured, not estimated).
+        let measured = |label: &NSTextField, text: &str, width: f64| {
+            set_text(label, text);
+            label
+                .cell()
+                .map_or(TEXT_LINE_HEIGHT, |c| c.cellSizeForBounds(rect(0.0, 0.0, width, 10_000.0)).height)
+                .max(TEXT_LINE_HEIGHT)
         };
         // Heights first (wrapped text), then positions from the top.
         let mut heights = Vec::with_capacity(lines.len());
-        for line in lines {
-            heights.push(match line {
-                G5Line::Heading(_) => HEADING_HEIGHT,
-                G5Line::Text(t) | G5Line::Problem(t) => wrapped(t, full) * TEXT_LINE_HEIGHT + 6.0,
-                G5Line::Memo { .. } => MEMO_HEIGHT + 8.0,
-                G5Line::Field { caption, .. } | G5Line::Choice { caption, .. } => {
-                    (wrapped(caption, self.caption_width) * TEXT_LINE_HEIGHT + 8.0).max(ROW_HEIGHT)
+        for (line, widget) in lines.iter().zip(self.widgets.iter()) {
+            heights.push(match (line, widget) {
+                (G5Line::Heading(_), _) => HEADING_HEIGHT,
+                (G5Line::Text(t) | G5Line::Problem(t), Widget::Label(l)) => measured(l, t, full) + 6.0,
+                (G5Line::Field { caption, .. } | G5Line::Choice { caption, .. }, Widget::Field { caption: c, .. })
+                | (G5Line::Field { caption, .. } | G5Line::Choice { caption, .. }, Widget::Choice { caption: c, .. }) => {
+                    (measured(c, caption, self.caption_width) + 8.0).max(ROW_HEIGHT)
                 }
-                G5Line::Check { .. } | G5Line::Button { .. } => ROW_HEIGHT,
-                G5Line::Image(_) => IMAGE_SIZE + 8.0,
+                (G5Line::Text(_) | G5Line::Problem(_) | G5Line::Field { .. } | G5Line::Choice { .. }, _) => ROW_HEIGHT,
+                (G5Line::Memo { .. }, _) => MEMO_HEIGHT + 8.0,
+                (G5Line::Check { .. } | G5Line::Button { .. }, _) => ROW_HEIGHT,
+                (G5Line::Image(_), _) => IMAGE_SIZE + 8.0,
             });
         }
         let total: f64 = heights.iter().sum::<f64>() + 2.0 * MARGIN;
