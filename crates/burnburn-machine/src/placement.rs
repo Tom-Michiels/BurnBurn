@@ -211,7 +211,10 @@ fn translated(plan: &JobPlan, (dx, dy): (f64, f64)) -> Result<JobPlan, Placement
             PlanEvent::PowerRun { line, power, origin } => {
                 PlanEvent::PowerRun { line: moved_line(line, &mv)?, power, origin }
             }
-            PlanEvent::OperationBoundary { .. } | PlanEvent::FocusOffset { .. } => *e,
+            PlanEvent::OperationBoundary { .. }
+            | PlanEvent::FocusOffset { .. }
+            | PlanEvent::Feed { .. }
+            | PlanEvent::Pause { .. } => *e,
             _ => return Err(PlacementError::UnsupportedEvent),
         };
         b.push(moved)?;

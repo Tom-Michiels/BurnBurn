@@ -24,6 +24,7 @@ mod array;
 mod compile;
 mod error;
 mod features;
+mod feeder;
 mod fill;
 mod image;
 mod line;
@@ -40,6 +41,10 @@ pub use array::{ArrayError, CircularArray, GridArray, MAX_COPIES, circular_array
 pub use compile::{COMPILER_VERSION, compile, compile_with};
 pub use error::CompileError;
 pub use features::required_features;
+pub use feeder::{
+    FeederError, FeederSettings, MAX_EVENTS as FEEDER_MAX_EVENTS, MAX_FEED_MM, MAX_FEED_SPEED_MM_S, MAX_PAUSE_SECONDS,
+    MAX_REPEAT, plan_feeder,
+};
 pub use image::{NoRasters, RasterSource, processed_bitmap};
 pub use options::{CompileOptions, JobAnchor, Placement, StartPoint};
 pub use preflight::{Finding, PreflightReport, Severity, SizeCheck, preflight};

@@ -269,4 +269,3 @@ fn tool_draft(tool: ToolLayer) -> Result<OperationDraft, ProcessError> {
         output_enabled: false,
     })
 }
-

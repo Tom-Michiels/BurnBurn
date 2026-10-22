@@ -191,6 +191,10 @@ pub fn check(plan: &JobPlan, profile: &GrblProfile) -> Vec<Refusal> {
             PlanEvent::RampRun { .. } => need(i, Feature::RampLength, &mut buf),
             PlanEvent::Dot { .. } => need(i, Feature::DotMode, &mut buf),
             PlanEvent::FocusOffset { .. } => need(i, Feature::ZStep, &mut buf),
+            // Feeder (FE01): GRBL has no feeder axis in the profile; refused, never skipped.
+            PlanEvent::Feed { .. } | PlanEvent::Pause { .. } => {
+                buf.push(Refusal { event: Some(i), kind: RefusalKind::NotRepresentable("feeder") });
+            }
             // A newer event kind this backend does not know can only be refused.
             _ => buf.push(Refusal { event: Some(i), kind: RefusalKind::NotRepresentable("event") }),
         }

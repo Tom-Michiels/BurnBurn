@@ -10,7 +10,9 @@ use burnburn_document::process::{
 };
 use burnburn_document::{CommandError, CommandPayload, DocumentCommand, DocumentSession};
 use burnburn_geometry::{Point, Rect};
-use burnburn_types::{CanonicalEncode, CanonicalWriter, DocumentId, GeometryId, Length, OperationId, RequestId, StableId};
+use burnburn_types::{
+    CanonicalEncode, CanonicalWriter, DocumentId, GeometryId, Length, OperationId, RequestId, StableId,
+};
 
 fn mm(v: f64) -> Length {
     Length::from_mm(v).unwrap()
@@ -126,7 +128,8 @@ fn the_role_itself_is_in_the_hash_not_just_the_name() {
         let g = rect(&mut s);
         let id = add_tool(&mut s, tool, g);
         let renamed = OperationDraft { name: "Hulp".into(), ..s.snapshot().process().operation(id).unwrap().draft() };
-        run(&mut s, CommandPayload::Process(ProcessCommand::UpdateOperation { operation: id, draft: renamed })).unwrap();
+        run(&mut s, CommandPayload::Process(ProcessCommand::UpdateOperation { operation: id, draft: renamed }))
+            .unwrap();
         canonical(&s)
     };
     assert_ne!(hash(ToolLayer::T1), hash(ToolLayer::T2));

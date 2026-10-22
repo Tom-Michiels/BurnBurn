@@ -185,6 +185,12 @@ pub enum PlanEvent {
     /// the first and the last `ramp_mm` of the run (each at most half the run), Scan/AngledScan
     /// modes only. Needs the `RampLength` capability; no backend lowers it yet.
     RampRun { line: ScanLine, ramp_mm: f64, origin: Option<SourceRef> },
+    /// Feeder (FE01): advance the material by `mm` at `speed_mm_s` while the laser is off. The
+    /// head does not move. No backend lowers it yet (the Ruida form is not proven).
+    Feed { mm: f64, speed_mm_s: f64 },
+    /// Feeder (FE01): wait `seconds` before the next event, for example for the operator to
+    /// change the workpiece. The head does not move.
+    Pause { seconds: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

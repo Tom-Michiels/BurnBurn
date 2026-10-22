@@ -19,7 +19,10 @@ fn a_tool_layer_adds_nothing_to_the_plan_and_is_not_reported_as_forgotten() {
     // A guide far outside the bed: on a tool layer it is not a cut and cannot be "outside the bed".
     let guide = rectangle(&mut with_tool, 5000.0, 5000.0, 10.0, 10.0);
     add_op(&mut with_tool, line_op("Snijden", 100.0, 20.0), vec![part]);
-    run(&mut with_tool, CommandPayload::Process(ProcessCommand::AddToolLayer { tool: ToolLayer::T1, targets: vec![guide] }));
+    run(
+        &mut with_tool,
+        CommandPayload::Process(ProcessCommand::AddToolLayer { tool: ToolLayer::T1, targets: vec![guide] }),
+    );
 
     let mut without = session();
     let part = rectangle(&mut without, 100.0, 100.0, 50.0, 50.0);
