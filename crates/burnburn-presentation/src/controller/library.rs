@@ -26,7 +26,7 @@ use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
     ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
-    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE, REMNANT_LIBRARY_FILE,
+    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE, RECOGNITION_LIBRARY_FILE, REMNANT_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -54,6 +54,8 @@ pub(super) enum FilesJob {
     SaveActiveMachine,
     /// The remnant library is being written (W07).
     SaveRemnants,
+    /// The learned recognition templates are being written (W06).
+    SaveRecognition,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -161,6 +163,10 @@ pub(super) struct Libraries {
     pub(in crate::controller) remnants_unreadable: bool,
     remnant_writer: Writer,
     pub(in crate::controller) remnant_problem: Option<crate::remnants::RemnantProblem>,
+    /// The learned recognition templates (W06): read once, changed on the UI thread, written back one write at a time.
+    pub(in crate::controller) recognition: Option<burnburn_io::recognition_library::RecognitionLibrary>,
+    pub(in crate::controller) recognition_unreadable: bool,
+    recognition_writer: Writer,
     /// The machine as it was last handed to the writer (or read), to see when it changed.
     active_seen: Option<super::machine::ActiveSeen>,
     /// Replaced active profiles waiting for the library file to be read before they are merged
@@ -252,6 +258,7 @@ impl AppController {
             FilesJob::SaveCameraCalibrations => self.camera_calibrations_saved(outcome),
             FilesJob::SaveActiveMachine => self.active_machine_saved(outcome),
             FilesJob::SaveRemnants => self.remnants_saved(outcome),
+            FilesJob::SaveRecognition => self.recognition_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -289,6 +296,7 @@ impl AppController {
             self.libs.art = Some(ArtLibrary::new(&self.new_library_id()));
             self.libs.remnants =
                 Some(burnburn_io::remnant_library::RemnantLibrary { remnants: Vec::new(), next_id: 1 });
+            self.libs.recognition = Some(burnburn_io::recognition_library::RecognitionLibrary::empty());
             self.libs.state = LoadState::Ready;
             return;
         };
@@ -330,6 +338,7 @@ impl AppController {
             FilesJob::SaveCameraCalibrations => self.libs.camera_writer.in_flight = Some(id),
             FilesJob::SaveActiveMachine => self.libs.active_writer.in_flight = Some(id),
             FilesJob::SaveRemnants => self.libs.remnant_writer.in_flight = Some(id),
+            FilesJob::SaveRecognition => self.libs.recognition_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -346,10 +355,22 @@ impl AppController {
                     camera_calibrations,
                     active_machine,
                     remnants,
+                    recognition,
                     materials,
                     art,
                     thumbnails,
                 } = *loaded;
+                match recognition {
+                    Loaded::Ready(library) => self.libs.recognition = Some(library),
+                    Loaded::Missing => {
+                        self.libs.recognition = Some(burnburn_io::recognition_library::RecognitionLibrary::empty());
+                    }
+                    Loaded::Unreadable(_) => {
+                        self.libs.recognition = Some(burnburn_io::recognition_library::RecognitionLibrary::empty());
+                        self.libs.recognition_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match remnants {
                     Loaded::Ready(library) => self.libs.remnants = Some(library),
                     Loaded::Missing => {
@@ -693,6 +714,41 @@ impl AppController {
         if self.submit_files(task, FilesJob::SaveRemnants) {
             self.libs.remnant_writer.dirty = false;
         }
+    }
+
+    /// Writes the learned templates when they changed and no write is running. Nothing is written
+    /// when the file could not be read (it would replace what is in it).
+    pub(super) fn flush_recognition(&mut self) {
+        self.libs.recognition_writer.dirty = true;
+        if self.libs.recognition_writer.in_flight.is_some() || self.libs.recognition_unreadable {
+            return;
+        }
+        let (Some(dir), Some(library)) = (self.libs.dir.clone(), self.libs.recognition.clone()) else { return };
+        let task = FilesTask::SaveRecognitionLibrary {
+            library: Box::new(library),
+            path: dir.join(RECOGNITION_LIBRARY_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveRecognition) {
+            self.libs.recognition_writer.dirty = false;
+        }
+    }
+
+    fn recognition_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.recognition_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.recognition_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.recognition_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.recognition_writer.dirty && !self.libs.recognition_writer.failed {
+            self.flush_recognition();
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
 
     fn remnants_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {

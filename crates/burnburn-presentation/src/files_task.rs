@@ -21,6 +21,7 @@ use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
 use burnburn_io::profile_library::{LibraryProfile, load_profile_library_entries, save_profile_library_entries};
+use burnburn_io::recognition_library::{RecognitionLibrary, load_recognition_library, save_recognition_library};
 use burnburn_io::remnant_library::{RemnantLibrary, load_remnant_library, save_remnant_library};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
@@ -47,6 +48,8 @@ pub enum FilesTask {
     SaveCalibrationLibrary { library: Box<CalibrationLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the remnant library atomically (W07).
     SaveRemnantLibrary { library: Box<RemnantLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write the learned recognition templates atomically (W06).
+    SaveRecognitionLibrary { library: Box<RecognitionLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the machine in use as a profile file of one machine, atomically (M01).
     SaveActiveMachine { entry: Box<LibraryProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the camera calibrations (lens calibrations and workspace alignments) atomically (W04).
@@ -194,6 +197,8 @@ pub const PROFILE_LIBRARY_FILE: &str = "profiles.json";
 pub const CALIBRATION_LIBRARY_FILE: &str = "calibration.json";
 /// File name of the remnant library (leftover sheets; W07).
 pub const REMNANT_LIBRARY_FILE: &str = "remnants.json";
+/// File name of the learned recognition templates (W06).
+pub const RECOGNITION_LIBRARY_FILE: &str = "recognition-templates.json";
 /// File name of the machine in use: a profile library of exactly one machine, with its settings (M01).
 pub const ACTIVE_MACHINE_FILE: &str = "active-machine.json";
 /// File name of the camera calibrations (lens calibrations and workspace alignments; W04).
@@ -217,6 +222,9 @@ impl fmt::Debug for FilesTask {
             }
             FilesTask::SaveRemnantLibrary { library, path, .. } => {
                 write!(f, "SaveRemnantLibrary({} to {})", library.remnants.len(), path.display())
+            }
+            FilesTask::SaveRecognitionLibrary { library, path, .. } => {
+                write!(f, "SaveRecognitionLibrary({} to {})", library.templates.len(), path.display())
             }
             FilesTask::SaveActiveMachine { entry, path, .. } => {
                 write!(f, "SaveActiveMachine({} to {})", entry.profile.revision().id, path.display())
@@ -264,6 +272,7 @@ pub enum FilesOutput {
     CameraCalibrationsSaved,
     ActiveMachineSaved,
     RemnantLibrarySaved,
+    RecognitionLibrarySaved,
     MachineProfileRead(Box<crate::profile_file::ProfileFile>),
     ArtLibrarySaved,
     ArtAdded {
@@ -317,6 +326,7 @@ pub struct LoadedLibraries {
     pub camera_calibrations: Loaded<CalibrationStore>,
     pub active_machine: Loaded<Vec<LibraryProfile>>,
     pub remnants: Loaded<RemnantLibrary>,
+    pub recognition: Loaded<RecognitionLibrary>,
     pub materials: Loaded<MaterialLibrary>,
     pub art: Loaded<ArtLibrary>,
     pub thumbnails: Vec<(u64, ArtThumbnail)>,
@@ -417,12 +427,15 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             let active_machine =
                 read_library(fs.as_ref(), &dir.join(ACTIVE_MACHINE_FILE), load_profile_library_entries);
             let remnants = read_library(fs.as_ref(), &dir.join(REMNANT_LIBRARY_FILE), load_remnant_library);
+            let recognition =
+                read_library(fs.as_ref(), &dir.join(RECOGNITION_LIBRARY_FILE), load_recognition_library);
             Ok(FilesOutput::LibrariesLoaded(Box::new(LoadedLibraries {
                 profiles,
                 calibration,
                 camera_calibrations,
                 active_machine,
                 remnants,
+                recognition,
                 materials,
                 art,
                 thumbnails,
@@ -447,6 +460,11 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
             save_remnant_library(fs.as_ref(), &path, &library)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::RemnantLibrarySaved)
+        }
+        FilesTask::SaveRecognitionLibrary { library, path, fs } => {
+            save_recognition_library(fs.as_ref(), &path, &library)
+                .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
+            Ok(FilesOutput::RecognitionLibrarySaved)
         }
         FilesTask::SaveActiveMachine { entry, path, fs } => {
             save_profile_library_entries(fs.as_ref(), &path, std::slice::from_ref(&*entry))

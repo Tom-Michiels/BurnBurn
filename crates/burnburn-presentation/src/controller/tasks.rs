@@ -309,7 +309,8 @@ impl AppController {
                 // File jobs are delivered by `files_finished` before a session is looked up.
                 | TaskOutput::Files(_)
                 // A template search is delivered by `located` before a session is looked up.
-                | TaskOutput::Located(_),
+                | TaskOutput::Located(_)
+                | TaskOutput::LocatedPoses(_),
             )
             | Err(
                 TaskError::Cancelled

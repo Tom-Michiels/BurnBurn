@@ -28,6 +28,9 @@ impl AppController {
         if let Some(update) = self.trace_pointer(document, &event) {
             return update;
         }
+        if let Some(update) = self.recognition_pointer(document, &event) {
+            return update;
+        }
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             // DR-04: the one place where canvas points become world millimetres.
@@ -117,6 +120,10 @@ impl AppController {
             s.sketch.entities.clear();
             s.sketch.constraints.clear();
             return AppUpdate::redraw(document);
+        }
+        // Escape puts the pointing at the box of a recognition template down.
+        if key == CanvasKey::Escape && self.sessions.contains_key(&document) && self.end_recognition_point() {
+            return self.workspace_update();
         }
         // Escape puts the brush or the corner pointing of the tracer down.
         if key == CanvasKey::Escape
