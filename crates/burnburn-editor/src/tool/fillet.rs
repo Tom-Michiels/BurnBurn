@@ -122,7 +122,7 @@ mod tests {
 
     use super::super::fixture::*;
     use super::super::modify::kit::*;
-    use super::super::modify::{ModifyParam, Rejection, Unavailable};
+    use super::super::modify::{ModifyParam, Rejection};
     use super::super::{EditCommit, ToolKind, ToolPreview, ToolStep};
     use crate::input::CanvasKey;
 

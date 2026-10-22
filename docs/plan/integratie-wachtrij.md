@@ -34,15 +34,24 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   (alleen in het geheugen) en het wijzen van het vak in het beeld (nu getypt); bij W07 open aantallen/exemplaren in de nest;
   bij W09 het bewijs van de tekenconventie van de pointeroffset op een machine; bij W01/W02 dat een order een job uit de
   historie op de naam van het onderdeel kiest (de naam van zo'n job is de bestandsnaam van het project).
-- **Editor** (G7-editor heeft E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md`; wat blijft):
-  E05 afronden/afschuinen alleen tussen rechte zijden (geen krommen) en het verlengen van een Bézier-uiteinde is begrensd tot
-  3 parameterlengtes; E06 een stap *toevoegen* kan alleen als offsetketen of via Schikken ▸ Reeks… (geen boolean-/raster-/
-  cirkelstap uit het paneel) en de stapel staat in het Structuurpaneel, niet in de Mac-inspecteur; E07 Omzetten naar pad en
-  tekst typen werken nog niet op meerdere teksten tegelijk; E08 geen binding voor meerregelige of variabele tekst en een
-  gebonden tekst kan niet zelf verplaatst worden (de gids verplaatsen kan);
-  CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`); S07/P06 vaste vormen (`Fixed`) zijn niet te bewerken, geen formules in vormen, geen
-  automatisch verdelen over platen, exemplaar draaien ontbreekt; S01 een maat die één solve door `a = b` heen stuurt convergeert
-  niet in één stap, geen ellips-ellips- of ellips-cirkel-raakrelatie.
+- **Editor** (G7-editor en G8-editor hebben E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md` en
+  `docs/dev-notes/G8-editor.md`; wat blijft):
+  E05 afronden/afschuinen tussen krommen is numeriek (Newton op de twee parameters); een straal die op geen van beide zijden past
+  is `TooLarge`, een hoek tussen twee bogen met een raaklijn-continu gladde overgang is geen hoek; verlengen van een Bézier voorbij
+  3 parameterlengtes gaat recht door langs de eindraaklijn (geen verdere kubiek); E06 de stapel staat in een zwevend paneel dat
+  vanzelf opent, niet ingebouwd in de vaste inspecteurkolom van het venster, en de native AppKit-test dekt het Stapelpaneel
+  niet; een lineaire reeks of een reeks langs een pad toevoegen kan alleen via Schikken ▸ Reeks…; E07 typen voegt tekens toe
+  aan elke geselecteerde tekst (geen wissen of invoegen midden in de tekst voor meerdere); E08 een gebonden tekst verplaatsen
+  past alleen de startafstand aan (de component langs de gids; een verplaatsing dwars op de gids, draaien en schalen worden
+  geweigerd), de richting is die van de eerste koorde van de gevlakte gids (binnen 0,02 rad), en de variabele tekst toont in het
+  document de sjabloon gebogen (de job bevat de opgeloste tekst); S07/P06 formules kennen `+ - * /`, haakjes en parameters
+  (geen functies), een vaste vorm kent alleen een doos (geen parameters of formules), het verdelen over platen kiest de plaat
+  met rijen van de bounding box (hoogste eerst, kwartslag toegestaan) en legt niets neer: de nest bepaalt de plek, een
+  instantie zonder uitvoer telt als zonder ruimte; S01 de ellips-ellipsraakrelatie convergeert wanneer de getekende ellipsen
+  hooguit enkele mm van elkaar liggen (getest tot 4 mm tussenruimte en een lichte overlap, niet bij diepe overlap), een boog
+  raakt een ellips niet, en een schets met een ellips die niet convergeert wordt één keer opnieuw opgelost met omgekeerde
+  asrol.
+  CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`).
 - **Trace** (G7-trace: gebouwd, zie `docs/dev-notes/G7-trace.md`; wat blijft): T03 radiaal lensmodel zonder tangentiële termen
   en het wijzen werkt via de canvas-aanwijzer (foto op het blad), het uiterlijk en het gevoel van de kwast zijn niet bekeken;
   T05 beschermen kiest uit een lijst, niet door op een contour te klikken; T06 beschermde *hoeken* (alleen gaten en
@@ -371,3 +380,13 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G7-editor | **voor G7-cam / integratie:** `compile`/`preflight` weigeren een geblokkeerd afgeleid object niet (`DocumentSnapshot::production_blocked` zegt "CAM must refuse") | `burnburn_cam::{compile, preflight}` moeten `production_blocked` lezen (bv. een `Finding`) | – | `scenarios/tests/g7_bound_text_job.rs::a_text_that_lost_its_guide_is_flagged_blocked_and_the_old_job_is_what_it_was` pint alleen de vlag | klaar (golf-7-integratie: `Finding::BlockedGeometry`, `cam/tests/blocked_geometry.rs`) |
 | G7-editor | S07/P06 platen maken/bewerken/toewijzen, variant hernoemen/verwijderen, vormen van een onderdeel bewerken | `StructureCommand::RenameVariant` (nieuw, additief) | `StructureEdit::{CreatePlate, SetPlateField, RemovePlate, AssignSelectionToPlate, SetInstancePlate, RenameVariant, RemoveVariant, AddPartShape, RemovePartShape, RenamePartShape, SetPartShapeField}`, `PartRow.shapes`, `InstanceRow.plate_id` | `document/tests/g7_variant_rename.rs::*`, `presentation/tests/g7_plates_parts.rs::*`, `macos/tests/g7_editor_panels.rs`, `windows/tests/g7_editor_forms.rs::plates_parts` | klaar |
 | G7-editor | S01 kleine as van een ellips als maat; punt-op-ellips; raaklijn aan ellips | `DimensionKind::MinorDiameter`, `SketchSolution.minors`, solver-hulpgeometrie (brandpunten) in `burnburn-sketch` | `SketchDimensionKind::MinorDiameter`, `SketchConstraintKind::MinorDiameter`, `ParamKey::MinorAxis`, `ModifyParam::MinorAxis` | `sketch/tests/g7_ellipse_relations.rs`, `io/tests/g7_sketch_ellipse_relations_roundtrip.rs`, `presentation/tests/g7_ellipse_ui.rs`, editor `constraint`/`dimension`/`overlays` | klaar; open: zie "Nog open" |
+
+## G8-editor
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G8-editor | E05 afronden en afschuinen tussen krommen; Bézier verlengen voorbij 3 parameterlengtes | `Path::cut_corner` (nu ook bogen en Bézier, `corner_curved.rs`), `extend_end` met `tangent_continuation` | – (de bestaande gereedschappen) | `geometry/tests/g8_curve_corners.rs::*`, editor `tool::fillet::tests` | klaar |
+| G8-editor | E06 stappen toevoegen (offset, boolean, raster, cirkel), keten maken met elke eerste stap, stapel van de selectie | – (`SetModifier`/`CreateModifier`) | `StructureEdit::{AddModifierStep, CreateModifierChain}`, `NewModifierStep`, `BooleanKind`, `ModifierRow.in_selection`, `G5Panel::Stack`, `EditorControl::{ModNew*, ModAddStep, ModNewChain}` | `presentation/tests/g8_modifier_add.rs::*`, `macos/tests/g8_editor_panels.rs`, `windows/tests/g8_editor_forms.rs` | klaar; open: zie "Nog open" |
+| G8-editor | E07 Omzetten naar pad en typen voor meerdere teksten | `CompoundLabel::{ConvertTexts, EditTexts}` | – (`ShapesConvertToPath`, `InsertText`) | `presentation/tests/g8_text_many.rs::*` | klaar |
+| G8-editor | E08 meerregelige tekst op pad; gebonden tekst verplaatsen = startafstand; variabele tekst op pad | `generators::{guide_frame_at, text_room}`, `text_on_path` meerregelig | – (`CommitField`, slepen) | `generators/tests/g8_multiline_path.rs`, `presentation/tests/g8_text_path.rs::*` | klaar; open: zie "Nog open" |
+| G8-editor | S07/P06 formules in vormen, vaste vormen verplaatsen/schalen, exemplaar draaien, verdelen over platen | `Dim::Expr`, `parse_formula`, `distribute_over_plates`, `CompoundLabel::DistributeOverPlates`, `structure_dto::Dim::Expr` | `StructureEdit::{RotateInstance, DistributeOverPlates}`, `InstanceRow.rotation`, `StructureProblem::{BadFormula, NoPlates, NothingToDistribute, NoRoomOnPlates}`, `EditorControl::{InstanceRotation, InstanceTurn, PlatesGap, PlatesDistribute}` | `document/tests/{g8_part_formulas,g8_distribute}.rs`, `io/tests/g8_part_formula_roundtrip.rs`, `presentation/tests/g8_parts.rs`, `macos/tests/g8_editor_panels_parts.rs`, `windows/tests/g8_editor_forms_parts.rs` | klaar |
+| G8-editor | S01 maat door a = b; ellips raakt cirkel en ellips | geen solverwijziging; hulpgeometrie in `burnburn-sketch/src/evaluate.rs` (contactpunt, normaal als som van eenheidsvectoren), rolwissel door doelmaat en tweede poging | `Relation::Tangent(ellips, cirkel/ellips)` toegestaan | `sketch/tests/g8_ellipse_swap_tangent.rs::*`, editor `constraint::...` | klaar; open: zie "Nog open" |
