@@ -25,10 +25,15 @@ pub enum G5Panel {
     Centerline,
     /// Venster ▸ Structuur.
     Structure,
+    /// Tekenen ▸ Doos of scharnier…: the generator dialog (E10, G6-editor).
+    Generator,
+    /// Archief ▸ Zoek projecten…: the project search (P08, G6-editor).
+    Search,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 4] = [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure];
+    pub const ALL: [G5Panel; 6] =
+        [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure, G5Panel::Generator, G5Panel::Search];
 }
 
 /// A control of a panel. Fields, choices, checks and the note report their value; buttons only the
@@ -67,6 +72,23 @@ pub enum G5Control {
         instance: u64,
         parameter: usize,
     },
+    /// The kind of generator (finger-jointed box, living hinge).
+    GeneratorKind,
+    GeneratorField(burnburn_presentation::GeneratorField),
+    /// Box: leave the lid off.
+    GeneratorLid,
+    GeneratorInsert,
+    GeneratorCancel,
+    SearchFolder,
+    SearchQuery,
+    SearchRescan,
+    /// The found project the panel shows (a pop-up of the results).
+    SearchResult,
+    /// The frozen revision of that project (a pop-up).
+    SearchRevision,
+    SearchOpenProject,
+    SearchOpenRevision,
+    SearchClose,
 }
 
 /// One line of a panel.
@@ -103,6 +125,8 @@ pub enum G5Line {
         title: String,
         enabled: bool,
     },
+    /// A small picture (the preview of a found project).
+    Image(crate::panels_image::BitmapImage),
 }
 
 impl G5Line {
@@ -113,7 +137,7 @@ impl G5Line {
             | G5Line::Choice { control, .. }
             | G5Line::Check { control, .. }
             | G5Line::Button { control, .. } => Some(*control),
-            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) => None,
+            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Image(_) => None,
         }
     }
 }
@@ -129,7 +153,7 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline)
+    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search)
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -144,15 +168,15 @@ fn num(value: f64, decimals: usize, locale: Locale) -> String {
     }
 }
 
-fn value_of(values: &[(G5Control, String)], control: G5Control) -> Option<&str> {
+pub(super) fn value_of(values: &[(G5Control, String)], control: G5Control) -> Option<&str> {
     values.iter().find(|(c, _)| *c == control).map(|(_, v)| v.as_str())
 }
 
-fn index_of(values: &[(G5Control, String)], control: G5Control) -> Option<usize> {
+pub(super) fn index_of(values: &[(G5Control, String)], control: G5Control) -> Option<usize> {
     value_of(values, control)?.trim().parse().ok()
 }
 
-fn flag_of(values: &[(G5Control, String)], control: G5Control) -> Option<bool> {
+pub(super) fn flag_of(values: &[(G5Control, String)], control: G5Control) -> Option<bool> {
     match value_of(values, control)? {
         "1" => Some(true),
         "0" => Some(false),
@@ -183,6 +207,20 @@ pub fn g5_panel(
         G5Panel::Offset => (G5Text::OffsetTitle, offset_lines(doc, locale)),
         G5Panel::Centerline => (G5Text::CenterlineTitle, centerline_lines(doc, locale)?),
         G5Panel::Structure => (G5Text::StructureTitle, structure_lines(doc, locale)),
+        G5Panel::Search => {
+            return Some(G5PanelModel {
+                panel,
+                title: crate::l10n_g6::g6_text(crate::l10n_g6::G6Text::SearchTitle, locale).to_owned(),
+                lines: super::g6::search_lines(doc, locale, draft)?,
+            });
+        }
+        G5Panel::Generator => {
+            return Some(G5PanelModel {
+                panel,
+                title: crate::l10n_g6::g6_text(crate::l10n_g6::G6Text::GeneratorTitle, locale).to_owned(),
+                lines: super::g6::generator_lines(doc, locale)?,
+            });
+        }
     };
     Some(G5PanelModel { panel, title: g5_text(title, locale).to_owned(), lines })
 }
@@ -527,6 +565,19 @@ pub fn g5_intent(
                 edit: StructureEdit::SetVariant { instance, variant: chosen },
             })
         }
+        G5Control::GeneratorKind
+        | G5Control::GeneratorField(_)
+        | G5Control::GeneratorLid
+        | G5Control::GeneratorInsert
+        | G5Control::GeneratorCancel => super::g6::generator_intent(doc, document, control, values),
+        G5Control::SearchFolder
+        | G5Control::SearchQuery
+        | G5Control::SearchRescan
+        | G5Control::SearchResult
+        | G5Control::SearchRevision
+        | G5Control::SearchOpenProject
+        | G5Control::SearchOpenRevision
+        | G5Control::SearchClose => super::g6::search_intent(doc, document, control, values),
         G5Control::Override { instance, parameter } => {
             let (part, row) = find_instance(doc, instance)?;
             let name = part.parameters.get(parameter)?.name.clone();

@@ -52,6 +52,8 @@ pub enum HostError {
     NotFound,
     /// The file is not of a kind the application can open or import.
     Unsupported,
+    /// The document changed after the service looked: it is not replaced.
+    Dirty,
     Failed,
 }
 
@@ -227,6 +229,7 @@ fn host_refusal(e: HostError) -> Refusal {
     match e {
         HostError::NotFound => Refusal::NotFound,
         HostError::Unsupported => Refusal::Format,
+        HostError::Dirty => Refusal::Dirty,
         HostError::Failed => Refusal::Failed,
     }
 }

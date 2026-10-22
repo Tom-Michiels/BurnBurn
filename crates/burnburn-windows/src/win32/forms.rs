@@ -103,6 +103,7 @@ fn signature_of(item: &Item) -> String {
         Item::Button(b) => format!("B{:?}", b.id),
         Item::List { id, items, .. } => format!("L{id:?}{}", items.len()),
         Item::Memo { id, .. } => format!("M{id:?}"),
+        Item::Image(_) => "I".to_owned(),
     }
 }
 
@@ -189,6 +190,13 @@ fn make(instance: HINSTANCE, parent: HWND, placed: &crate::forms::layout::Placed
             let hwnd = child(instance, parent, w!("EDIT"), &text.replace('\n', "\r\n"), bits, r, cid)?;
             (hwnd, Some(id.clone()), text.clone())
         }
+        Item::Image(image) => {
+            // The picture class of the panel layer draws the bitmap (registered once, lazily).
+            crate::win32_panels::ensure_registered()?;
+            let hwnd = child(instance, parent, w!("BurnBurnBitmap"), "", WS_BORDER.0, r, 0)?;
+            crate::win32_panels::set_bitmap(hwnd, Some(image.clone()));
+            (hwnd, None, String::new())
+        }
         Item::Check { id, caption, .. } => (
             child(instance, parent, w!("BUTTON"), caption, tab | BS_AUTOCHECKBOX, r, cid)?,
             Some(id.clone()),
@@ -251,6 +259,11 @@ fn push_values(ctl: &mut Ctl, placed: &crate::forms::layout::Placed) {
             }
             ctl.shown = text.clone();
             enable(ctl.hwnd, *enabled);
+        }
+        Item::Image(image) => {
+            if !matches!(&ctl.item, Item::Image(old) if old == image) {
+                crate::win32_panels::set_bitmap(ctl.hwnd, Some(image.clone()));
+            }
         }
         Item::Memo { text, .. } => {
             // What the user typed stays until the stored note changes.
@@ -616,7 +629,7 @@ fn read(ctl: &Ctl) -> Option<ControlValue> {
         } else {
             usize::try_from(send(ctl.hwnd, LB_GETCURSEL, 0, 0).0).ok().into_iter().collect()
         }),
-        Item::Button(_) | Item::Heading(_) | Item::Text(_) | Item::Problem(_) => return None,
+        Item::Button(_) | Item::Heading(_) | Item::Text(_) | Item::Problem(_) | Item::Image(_) => return None,
     })
 }
 
@@ -671,6 +684,10 @@ pub(super) fn close_command(kind: FormKind) -> Option<ControlId> {
         FormKind::Schikken => None,
         // The notes close like their button; the others close with the menu item or the trace.
         FormKind::G5(crate::panels::G5Panel::Notes) => Some(ControlId::G5(crate::panels::G5Control::NotesClose)),
+        // The generator dialog closes like its Cancel button (G6-editor).
+        FormKind::G5(crate::panels::G5Panel::Generator) => {
+            Some(ControlId::G5(crate::panels::G5Control::GeneratorCancel))
+        }
         FormKind::G5(_) => None,
         FormKind::Inspector | FormKind::Layers | FormKind::TextToolbar | FormKind::Variable | FormKind::Sketch => None,
     }

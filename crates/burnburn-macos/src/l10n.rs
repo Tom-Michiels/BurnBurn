@@ -7,6 +7,7 @@
 //! `match` over its own `#[non_exhaustive]` enums can be exhaustive). Until User-flow moves it
 //! there, the Windows host compiles this same file (`#[path]`), so both hosts share one source.
 
+use burnburn_document::generator::GeneratorLabel;
 use burnburn_document::process::ProcessLabel;
 use burnburn_document::sketch::SketchLabel;
 use burnburn_document::structure::StructureLabel;
@@ -154,6 +155,8 @@ pub enum HostText {
     SketchColumnStatus,
     SketchFreedom,
     SketchFullyConstrained,
+    /// S05: curves that ended on the other side / branch than drawn (followed by a count).
+    SketchBranchFlipped,
     SketchRemove,
     SketchToggleRole,
     SketchParametersTitle,
@@ -379,6 +382,7 @@ impl HostText {
         HostText::SketchColumnStatus,
         HostText::SketchFreedom,
         HostText::SketchFullyConstrained,
+        HostText::SketchBranchFlipped,
         HostText::SketchRemove,
         HostText::SketchToggleRole,
         HostText::SketchParametersTitle,
@@ -627,6 +631,7 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::SketchColumnStatus => ("Status", "Status"),
         T::SketchFreedom => ("Vrijheidsgraden", "Degrees of freedom"),
         T::SketchFullyConstrained => ("Volledig bepaald", "Fully constrained"),
+        T::SketchBranchFlipped => ("Naar de andere kant gesprongen", "Moved to the other side"),
         T::SketchRemove => ("Verwijder relatie", "Remove Constraint"),
         T::SketchToggleRole => ("Meten/Sturen", "Measure/Drive"),
         T::SketchRestoreLast => ("Herstel laatste geldige", "Restore last valid"),
@@ -947,6 +952,9 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ShowNotes => ("Notities tonen", "Show Notes"),
         C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
         C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
+        C::SearchProjects => ("Zoek projecten…", "Find Projects…"),
+        C::GeneratorNew => ("Doos of scharnier…", "Box or Hinge…"),
+        C::GeneratorEdit => ("Bewerk generator…", "Edit Generator…"),
         other => return l10n_schikken::command_pair(other),
     })
 }
@@ -1016,6 +1024,12 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             _ => return None,
         },
         UndoLabel::Structure(StructureLabel::CreateModifier) => ("Patroon maken", "Create Pattern"),
+        UndoLabel::Generator(l) => match l {
+            GeneratorLabel::Create => ("Generator maken", "Create Generator"),
+            GeneratorLabel::Edit => ("Generator wijzigen", "Edit Generator"),
+            GeneratorLabel::Delete => ("Generator verwijderen", "Delete Generator"),
+            _ => return None,
+        },
         UndoLabel::Process(p) => match p {
             ProcessLabel::AddOperation => ("Bewerking toevoegen", "Add Operation"),
             ProcessLabel::UpdateOperation => ("Bewerking wijzigen", "Change Operation"),
@@ -1242,6 +1256,14 @@ fn files_pair(m: burnburn_presentation::FilesMessage) -> Option<(&'static str, &
             "An option holds an unusable value; the last good options stay in use.",
         ),
         F::ExportWriteFailed => ("Het bestand kon niet geschreven worden.", "The file could not be written."),
+        F::RevisionMissing => (
+            "Dit project heeft geen bevroren revisie met dat nummer; er is geen venster geopend.",
+            "This project has no frozen revision with that number; no window was opened.",
+        ),
+        F::RevisionOpenFailed => (
+            "Het project van deze revisie kon niet gelezen worden; er is geen venster geopend.",
+            "The project of this revision could not be read; no window was opened.",
+        ),
         _ => return None,
     })
 }
@@ -1736,6 +1758,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
     );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
+    undo.extend([GeneratorLabel::Create, GeneratorLabel::Edit, GeneratorLabel::Delete].map(UndoLabel::Generator));
     undo.extend(
         [
             ArrangeLabel::DrawOrder,

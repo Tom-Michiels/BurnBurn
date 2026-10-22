@@ -243,7 +243,7 @@ fn width_sets_the_module_and_a_small_width_warns_instead_of_clamping() {
 }
 
 #[test]
-fn create_makes_one_path_in_the_middle_of_the_view_in_one_undo_step() {
+fn create_makes_one_barcode_object_in_the_middle_of_the_view_in_one_undo_step() {
     let (mut h, doc) = open();
     edit(&mut h, doc, BarcodeEdit::Payload("BURNBURN".into()));
     edit(&mut h, doc, BarcodeEdit::Module("0,5".into()));
@@ -253,7 +253,9 @@ fn create_makes_one_path_in_the_middle_of_the_view_in_one_undo_step() {
     let after = vm(&h, doc);
     assert!(after.barcode_dialog.is_none(), "creating closes the dialog");
     assert_eq!(after.revision.raw(), rev.raw() + 1);
-    assert_eq!(after.undo, Some(UndoLabel::Edit(burnburn_document::EditLabel::CreatePath)));
+    // G6-editor: the barcode is a generator of the document (an object with a stable key), not a
+    // baked path; creating it is still one history entry.
+    assert_eq!(after.undo, Some(UndoLabel::Generator(burnburn_document::generator::GeneratorLabel::Create)));
     assert_eq!(after.objects.len(), 1);
     assert_eq!(after.objects[0].label, "QR Code: BURNBURN");
     assert_eq!(after.selection, [after.objects[0].id], "the new symbol is selected");
@@ -272,8 +274,11 @@ fn create_makes_one_path_in_the_middle_of_the_view_in_one_undo_step() {
     assert!(vm(&h, doc).objects.is_empty());
 }
 
+/// G6-editor: a barcode is a generated object, so the inspector cannot scale it into an unreadable
+/// module behind the dialog's back; its size is its module, edited in the dialog where the limit is
+/// checked, and an unreadable module is refused there (never rounded up).
 #[test]
-fn scaling_a_created_barcode_below_the_minimum_module_warns_with_the_limit() {
+fn a_generated_barcode_changes_size_through_its_module_and_the_limit_holds() {
     let (mut h, doc) = open();
     edit(&mut h, doc, BarcodeEdit::Payload("BURNBURN".into()));
     edit(&mut h, doc, BarcodeEdit::Module("0,4".into()));
@@ -281,19 +286,57 @@ fn scaling_a_created_barcode_below_the_minimum_module_warns_with_the_limit() {
     edit(&mut h, doc, BarcodeEdit::Create);
     let id = vm(&h, doc).objects[0].id;
     h.send(UiIntent::Select { document: doc, ids: vec![id], mode: SelectMode::Replace });
-    assert!(vm(&h, doc).barcode_scale_warning.is_none(), "as made it is readable");
-    let width: f64 =
-        vm(&h, doc).inspector.unwrap().fields.iter().find(|f| f.key == FieldKey::Width).unwrap().text.parse().unwrap();
+    let width_of = |h: &HeadlessEditorHarness| {
+        let b = h.scene(doc).unwrap().items.iter().find(|i| i.source == id).unwrap().path.bounds().unwrap();
+        b.width()
+    };
+    let made = width_of(&h);
+    // The inspector does not scale derived geometry.
+    let revision = vm(&h, doc).revision;
+    h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: format!("{}", made * 0.5) });
+    assert_eq!(vm(&h, doc).revision, revision, "the object is regenerated from its definition, not scaled");
+    assert_eq!(width_of(&h), made);
 
-    // 80 % of the width: module 0.32 mm, still above 0.25.
-    h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: format!("{}", width * 0.8) });
-    assert!(vm(&h, doc).barcode_scale_warning.is_none());
-    // 50 % of the original: module 0.2 mm.
-    h.send(UiIntent::CommitField { document: doc, field: FieldKey::Width, text: format!("{}", width * 0.5) });
-    let w = vm(&h, doc).barcode_scale_warning.expect("below the minimum");
-    assert!((w.module_mm - 0.2).abs() < 0.01 && w.min_module_mm == 0.25, "{w:?}");
+    // The dialog opens on the object's own parameters ...
+    h.invoke(doc, CommandKey::GeneratorEdit);
+    let d = vm(&h, doc).barcode_dialog.expect("the barcode dialog");
+    assert!(d.editing);
+    assert_eq!((d.payload.as_str(), d.module.as_str(), d.min_module.as_str()), ("BURNBURN", "0.4", "0.25"));
+    // ... a module under the minimum is refused with the limit ...
+    edit(&mut h, doc, BarcodeEdit::Module("0,2".into()));
+    let d = vm(&h, doc).barcode_dialog.unwrap();
+    assert!(d.readability.is_some_and(|r| r.min_module_mm == 0.25 && r.module_mm < 0.25));
+    assert!(!d.can_create);
+    edit(&mut h, doc, BarcodeEdit::Create);
+    assert_eq!(vm(&h, doc).revision, revision, "nothing is applied while it is unreadable");
+    // ... and a readable one resizes the same object in one undo step.
+    edit(&mut h, doc, BarcodeEdit::Module("0,3".into()));
+    edit(&mut h, doc, BarcodeEdit::Create);
+    assert!(vm(&h, doc).barcode_dialog.is_none());
+    assert_eq!(vm(&h, doc).objects.iter().map(|o| o.id).collect::<Vec<_>>(), [id], "same object, same id");
+    assert!((width_of(&h) - made * 0.75).abs() < 1e-6, "{} vs {}", width_of(&h), made * 0.75);
+    h.invoke(doc, CommandKey::Undo);
+    assert!((width_of(&h) - made).abs() < 1e-9);
+}
 
-    // Selecting something else, or nothing, shows no warning.
-    h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
-    assert!(vm(&h, doc).barcode_scale_warning.is_none());
+/// A barcode stays editable after creation: type and payload change on the same object.
+#[test]
+fn a_generated_barcode_opens_again_and_keeps_its_object_when_type_and_payload_change() {
+    let (mut h, doc) = open();
+    edit(&mut h, doc, BarcodeEdit::Payload("EERSTE".into()));
+    edit(&mut h, doc, BarcodeEdit::Create);
+    let id = vm(&h, doc).objects[0].id;
+    h.invoke(doc, CommandKey::GeneratorEdit);
+    edit(&mut h, doc, BarcodeEdit::Symbology(Symbology::Code128));
+    edit(&mut h, doc, BarcodeEdit::Payload("TWEEDE".into()));
+    edit(&mut h, doc, BarcodeEdit::Create);
+    let after = vm(&h, doc);
+    assert_eq!(after.objects.len(), 1);
+    assert_eq!(after.objects[0].id, id, "the stable key keeps the id");
+    // The name given at creation stays (a rename survives re-evaluation); the geometry is the new symbol.
+    let mut params = SymbologyParams::new(0.5, 0.2);
+    params.height_mm = 10.0;
+    let direct = encode_symbol(Symbology::Code128, "TWEEDE", &params).unwrap().path.bounds().unwrap();
+    let b = h.scene(doc).unwrap().items.iter().find(|i| i.source == id).unwrap().path.bounds().unwrap();
+    assert!((b.width() - direct.width()).abs() < 1e-9 && (b.height() - direct.height()).abs() < 1e-9);
 }

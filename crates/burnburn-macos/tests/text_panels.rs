@@ -290,6 +290,20 @@ fn the_barcode_sheet_lists_29_types_with_unsupported_ones_greyed_and_reasoned() 
     assert!(b.problems.to_lowercase().contains("inhoud"), "{:?}", b.problems);
 }
 
+/// G6-editor: a generated barcode opens again and the sheet's button says Apply instead of Create.
+#[test]
+fn the_barcode_sheet_button_says_apply_when_a_generated_barcode_is_changed() {
+    let (mut h, doc) = open_barcode();
+    assert_eq!(panels(&h, doc, Locale::Nl).barcode.unwrap().create_title, "Maak");
+    h.send(UiIntent::Barcode { document: doc, edit: BarcodeEdit::Payload("HALLO".into()) });
+    h.send(UiIntent::Barcode { document: doc, edit: BarcodeEdit::Create });
+    assert!(panels(&h, doc, Locale::Nl).barcode.is_none(), "created: the sheet is gone");
+    h.invoke(doc, CommandKey::GeneratorEdit);
+    let nl = panels(&h, doc, Locale::Nl).barcode.expect("opened again");
+    assert_eq!((nl.create_title.as_str(), nl.payload.as_str()), ("Toepassen", "HALLO"));
+    assert_eq!(panels(&h, doc, Locale::En).barcode.unwrap().create_title, "Apply");
+}
+
 #[test]
 fn barcode_controls_become_barcode_edits_and_a_greyed_type_does_nothing() {
     let (h, doc) = open_barcode();
@@ -367,40 +381,4 @@ fn barcode_errors_and_the_readability_warning_say_what_and_where_in_the_window_l
     assert!(!b.create_enabled);
     let en = panels(&h, doc, Locale::En).barcode.unwrap();
     assert!(en.readability.to_lowercase().contains("readable"), "{:?}", en.readability);
-}
-
-#[test]
-fn the_scale_warning_names_the_module_and_its_limit() {
-    let (mut h, doc) = open_barcode();
-    for e in [
-        BarcodeEdit::Payload("BURNBURN".into()),
-        BarcodeEdit::Module("0,4".into()),
-        BarcodeEdit::MinModule("0,25".into()),
-        BarcodeEdit::Create,
-    ] {
-        h.send(UiIntent::Barcode { document: doc, edit: e });
-    }
-    let id = h.document(doc).unwrap().objects[0].id;
-    h.send(UiIntent::Select { document: doc, ids: vec![id], mode: SelectMode::Replace });
-    assert!(panels(&h, doc, Locale::Nl).scale_warning.is_empty());
-    let width: f64 = h
-        .document(doc)
-        .unwrap()
-        .inspector
-        .unwrap()
-        .fields
-        .iter()
-        .find(|f| f.key == burnburn_presentation::FieldKey::Width)
-        .unwrap()
-        .text
-        .parse()
-        .unwrap();
-    h.send(UiIntent::CommitField {
-        document: doc,
-        field: burnburn_presentation::FieldKey::Width,
-        text: format!("{}", width * 0.5),
-    });
-    let nl = panels(&h, doc, Locale::Nl).scale_warning;
-    assert!(nl.contains("0.2") && nl.contains("0.25"), "{nl:?}");
-    assert_ne!(panels(&h, doc, Locale::En).scale_warning, nl, "the window language");
 }

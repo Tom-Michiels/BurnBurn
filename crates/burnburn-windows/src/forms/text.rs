@@ -217,7 +217,7 @@ fn barcode(p: &BarcodePanel, locale: Locale) -> Form {
     }
     lines.push(FormLine::Buttons(vec![
         FormButton::new(id(Slot::BcCancel), t(TextText::Cancel), true),
-        FormButton::new(id(Slot::BcCreate), t(TextText::Create), p.create_enabled),
+        FormButton::new(id(Slot::BcCreate), p.create_title.clone(), p.create_enabled),
     ]));
     form_of(FormKind::Barcode, t(TextText::BarcodeTitle), lines)
 }

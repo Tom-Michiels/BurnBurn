@@ -35,6 +35,7 @@ pub enum Shape {
     Line { start: u32, end: u32 },
     Arc { center: u32, start: u32, end: u32, clockwise: bool },
     Circle { center: u32, radius: Num },
+    Ellipse { center: u32, major: u32, minor: Num },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

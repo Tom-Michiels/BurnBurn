@@ -137,8 +137,8 @@ pub struct DocumentViewModel {
     pub variable_panel: Option<crate::variable_panel::VariablePanelViewModel>,
     /// The barcode dialog while it is open.
     pub barcode_dialog: Option<crate::barcode_panel::BarcodeDialogViewModel>,
-    /// The selected barcode's module would drop below its minimum at the current size.
-    pub barcode_scale_warning: Option<crate::barcode_panel::BarcodeScaleWarning>,
+    /// The generator dialog (box, living hinge) while it is open.
+    pub generator_dialog: Option<crate::generator_panel::GeneratorDialogViewModel>,
     /// The file panels: Material Library, Art Library, bundles and the export dialog.
     pub files: crate::files::FilesViewModel,
 }
@@ -555,6 +555,9 @@ pub struct SketchModeViewModel {
     pub refused: Option<MessageKey>,
     /// "Herstel laatste geldige" applies: the sketch failed and there is history to go back in.
     pub can_restore: bool,
+    /// How many curves ended on another geometric branch than the one drawn (the other side of a
+    /// tangent, the other sweep of an arc): reported, never silent (S05).
+    pub branch_flips: usize,
 }
 
 /// Evaluation state shown with symbol and text (not colour only, X03).

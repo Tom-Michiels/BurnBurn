@@ -1,23 +1,26 @@
 //! The barcode dialog (W3-UI-tekst, E10). Every edit re-encodes with the domain's
 //! `encode_symbol`; whatever the domain refuses is shown at its field and nothing is rounded or
-//! substituted. Create makes the dark modules as one ordinary path in the middle of the view; the
-//! window remembers the module size of what it made, so scaling it through the inspector can warn
-//! when the module would fall below the minimum (window state, not part of the project file).
+//! substituted. Create makes a `symbology` generator in the document (G6-editor): the barcode is
+//! an object with a stable key whose type, payload and size stay editable ("Bewerk generator"),
+//! placed in the middle of the view in one history entry. The size of a barcode is its module: the
+//! inspector cannot scale it (only turn and move it), so the dialog is where the minimum module is
+//! checked.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use burnburn_document::{CommandPayload, GeometryCommand};
+use burnburn_document::CommandPayload;
+use burnburn_document::engine::{EngineRecipe, ParamValue};
+use burnburn_document::generator::{GeneratorCommand, GeneratorDefinition, GeneratorId};
 use burnburn_generators::{
-    EncodedSymbol, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus, Symbology,
-    SymbologyParams, encode_symbol, symbology_catalog,
+    EncodedSymbol, GENERATOR_ENGINE, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus,
+    Symbology, SymbologyParams, encode_symbol, symbology_catalog,
 };
 use burnburn_geometry::{Affine, Vector};
-use burnburn_types::{DocumentId, GeometryId, RequestId};
+use burnburn_types::{DocumentId, RequestId};
 
 use crate::barcode_panel::{
-    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
-    BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability,
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeTypeRow, EccStepViewModel,
+    EccViewModel, Readability,
 };
 use crate::field::{format_mm, parse_length};
 
@@ -28,18 +31,9 @@ const DEFAULT_MODULE_MM: &str = "0.5";
 const DEFAULT_MIN_MODULE_MM: &str = "0.2";
 const DEFAULT_HEIGHT_MM: &str = "10";
 
-/// What this window made: the module and its minimum, and the width the symbol had.
-#[derive(Debug, Clone, Copy)]
-struct Made {
-    module_mm: f64,
-    min_module_mm: f64,
-    width_mm: f64,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct BarcodeState {
     dialog: Option<Dialog>,
-    made: BTreeMap<GeometryId, Made>,
 }
 
 #[derive(Debug)]
@@ -57,6 +51,8 @@ struct Dialog {
     width: Option<String>,
     problems: Vec<BarcodeProblem>,
     encoded: Option<EncodedSymbol>,
+    /// The generated barcode being changed (Create becomes Apply: `GeneratorCommand::Set`).
+    editing: Option<(GeneratorId, GeneratorDefinition)>,
 }
 
 impl Dialog {
@@ -74,9 +70,76 @@ impl Dialog {
             width: None,
             problems: Vec::new(),
             encoded: None,
+            editing: None,
         };
         d.recompute();
         d
+    }
+
+    /// A dialog on the parameters of a stored `symbology` definition.
+    fn from_definition(generator: GeneratorId, definition: GeneratorDefinition) -> Option<Self> {
+        let r = &definition.recipe;
+        let text = |name: &str| match r.get(name) {
+            Some(ParamValue::Text(t)) => Some(t.clone()),
+            _ => None,
+        };
+        let number = |name: &str| match r.get(name) {
+            Some(ParamValue::Number(n)) => Some(format!("{n}")),
+            Some(ParamValue::Integer(i)) => Some(i.to_string()),
+            _ => None,
+        };
+        let count = |name: &str| match r.get(name) {
+            Some(ParamValue::Integer(i)) => u8::try_from(*i).ok(),
+            _ => None,
+        };
+        let symbology = Symbology::from_stable_name(&text("symbology")?)?;
+        let mut d = Dialog::new();
+        d.symbology = symbology;
+        d.payload = text("payload")?;
+        d.module = number("module")?;
+        d.min_module = number("min_module").unwrap_or_else(|| DEFAULT_MIN_MODULE_MM.into());
+        d.height = number("height").unwrap_or_else(|| DEFAULT_HEIGHT_MM.into());
+        d.quiet = number("quiet").unwrap_or_default();
+        d.ecc = count("ecc");
+        d.columns = number("columns").unwrap_or_default();
+        d.input_mode = match text("input_mode").as_deref() {
+            Some("unicode") => Some(SymbolInputMode::Unicode),
+            Some("gs1") => Some(SymbolInputMode::Gs1),
+            Some("data") => Some(SymbolInputMode::Data),
+            _ => None,
+        };
+        d.editing = Some((generator, definition));
+        d.recompute();
+        Some(d)
+    }
+
+    /// The recipe of the typed parameters (only called when the symbol encodes).
+    fn recipe(&mut self) -> Option<EngineRecipe> {
+        let params = self.params()?;
+        let mut recipe = EngineRecipe::new(GENERATOR_ENGINE)
+            .with("symbology", ParamValue::Text(self.symbology.stable_name().into()))
+            .with("payload", ParamValue::Text(self.payload.clone()))
+            .with("module", ParamValue::Number(params.module_mm))
+            .with("min_module", ParamValue::Number(params.min_module_mm))
+            .with("height", ParamValue::Number(params.height_mm));
+        if let Some(q) = params.quiet_modules {
+            recipe = recipe.with("quiet", ParamValue::Integer(i64::from(q)));
+        }
+        if let Some(e) = params.ecc_step {
+            recipe = recipe.with("ecc", ParamValue::Integer(i64::from(e)));
+        }
+        if let Some(c) = params.columns {
+            recipe = recipe.with("columns", ParamValue::Integer(i64::from(c)));
+        }
+        if let Some(m) = params.input_mode {
+            let name = match m {
+                SymbolInputMode::Unicode => "unicode",
+                SymbolInputMode::Gs1 => "gs1",
+                _ => "data",
+            };
+            recipe = recipe.with("input_mode", ParamValue::Text(name.into()));
+        }
+        Some(recipe)
     }
 
     fn problem(&mut self, field: BarcodeField, issue: BarcodeIssue) {
@@ -263,28 +326,58 @@ pub(super) fn edit(s: &mut Session, document: DocumentId, edit: BarcodeEdit, req
     changed()
 }
 
-/// The symbol, centred on the view centre, as one `CreatePath`.
+/// The symbol as a `symbology` generator: centred on the view centre when new, where it was when
+/// edited; one history entry either way.
 fn create(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> AppUpdate {
-    let Some(d) = s.barcode.dialog.as_ref() else { return AppUpdate::default() };
+    let Some(d) = s.barcode.dialog.as_mut() else { return AppUpdate::default() };
     let Some(symbol) = d.encoded.clone() else { return AppUpdate::default() };
-    let (module_mm, min_module_mm) = (symbol.module_mm, parse_length(&d.min_module).map_or(0.0, |l| l.mm()));
     let Some(bounds) = symbol.path.bounds() else { return AppUpdate::default() };
-    let centre = s.camera.center_mm();
-    let shift = Vector { x: centre.x - bounds.center().x, y: centre.y - bounds.center().y };
-    let Ok(place) = Affine::translate(shift) else { return AppUpdate::default() };
+    let Some(recipe) = d.recipe() else { return AppUpdate::default() };
     let canonical: String = symbol.canonical_payload.chars().take(40).collect();
     let name = format!("{}: {canonical}", symbol.symbology.display_name());
-    let path = symbol.path.transform(&place);
+    let editing = d.editing.clone();
+    let command = match editing {
+        Some((generator, old)) => {
+            let definition =
+                GeneratorDefinition { name, generator: "symbology".into(), recipe, placement: old.placement };
+            if definition == old {
+                s.barcode.dialog = None;
+                return AppUpdate::redraw(document);
+            }
+            GeneratorCommand::Set { generator, definition: Box::new(definition) }
+        }
+        None => {
+            let centre = s.camera.center_mm();
+            let shift = Vector { x: centre.x - bounds.center().x, y: centre.y - bounds.center().y };
+            let Ok(placement) = Affine::translate(shift) else { return AppUpdate::default() };
+            GeneratorCommand::Create {
+                definition: Box::new(GeneratorDefinition { name, generator: "symbology".into(), recipe, placement }),
+            }
+        }
+    };
     let before = s.doc.revision();
-    let update = apply_edit(s, document, CommandPayload::Edit(GeometryCommand::CreatePath { path, name }), request);
+    let update = apply_edit(s, document, CommandPayload::Generator(command), request);
     if s.doc.revision() == before {
         return update;
     }
     s.barcode.dialog = None;
-    if let [id] = s.selection.ids() {
-        s.barcode.made.insert(*id, Made { module_mm, min_module_mm, width_mm: bounds.width() });
-    }
     update
+}
+
+/// Opens the dialog on a generated barcode.
+pub(super) fn open_edit(
+    s: &mut Session,
+    document: DocumentId,
+    generator: GeneratorId,
+    definition: GeneratorDefinition,
+) -> AppUpdate {
+    match Dialog::from_definition(generator, definition) {
+        Some(d) => {
+            s.barcode.dialog = Some(d);
+            AppUpdate::redraw(document)
+        }
+        None => AppUpdate::default(),
+    }
 }
 
 fn type_rows() -> Arc<[BarcodeTypeRow]> {
@@ -347,15 +440,6 @@ pub(super) fn dialog_view(s: &Session) -> Option<BarcodeDialogViewModel> {
         problems: d.problems.clone(),
         readability,
         can_create: d.encoded.is_some(),
+        editing: d.editing.is_some(),
     })
-}
-
-/// The selected barcode of this window would have a module below its minimum at its current width.
-pub(super) fn scale_warning(s: &Session) -> Option<BarcodeScaleWarning> {
-    let [id] = s.selection.ids() else { return None };
-    let made = s.barcode.made.get(id)?;
-    let width = s.doc.snapshot().object(*id)?.bounds()?.width();
-    let module_mm = made.module_mm * width / made.width_mm;
-    (module_mm < made.min_module_mm - 1e-9)
-        .then_some(BarcodeScaleWarning { module_mm, min_module_mm: made.min_module_mm })
 }

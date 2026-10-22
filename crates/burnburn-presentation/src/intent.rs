@@ -549,6 +549,11 @@ pub enum UiIntent {
         document: DocumentId,
         edit: BarcodeEdit,
     },
+    /// The generator dialog (box, living hinge): kind, fields, lid; Insert makes the generator.
+    Generator {
+        document: DocumentId,
+        edit: crate::generator_panel::GeneratorEdit,
+    },
 }
 
 /// A numeric (or on/off) setting of a basic shape or of a tool; the host shows one row per key
@@ -1012,6 +1017,13 @@ pub enum CommandKey {
     TextOnPath,
     /// Tekenen ▸ Streepjescode…: the barcode dialog (type, payload, size, readability).
     BarcodeNew,
+    /// Archief ▸ Zoek projecten…: the project search panel (P08).
+    SearchProjects,
+    /// Tekst ▸ Doos of scharnier…: the generator dialog (finger-jointed box, living hinge).
+    GeneratorNew,
+    /// Tekst ▸ Bewerk generator…: the selected generated object (box, hinge or barcode) opens
+    /// again with its parameters.
+    GeneratorEdit,
     /// Archief ▸ Bewaar als template…: the host asks for a file and what the template holds, then
     /// sends `FilesIntent::SaveAsTemplate`.
     SaveAsTemplate,
@@ -1172,6 +1184,9 @@ impl CommandKey {
         CommandKey::CenterFinder,
         CommandKey::TextOnPath,
         CommandKey::BarcodeNew,
+        CommandKey::SearchProjects,
+        CommandKey::GeneratorNew,
+        CommandKey::GeneratorEdit,
         CommandKey::SaveAsTemplate,
         CommandKey::NewFromTemplate,
         CommandKey::ExportSvg,

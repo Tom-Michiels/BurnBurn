@@ -17,18 +17,20 @@ use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSApplication, NSBackingStoreType, NSButton, NSColor, NSControl, NSControlStateValueOff,
-    NSControlStateValueOn, NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField, NSTextView,
-    NSView, NSWindowStyleMask,
+    NSControlStateValueOn, NSFont, NSImageView, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField,
+    NSTextView, NSView, NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
+use crate::appkit::panels::image::{image_view, show_bitmap};
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
 use crate::panels::{G5Control, G5Line, G5Panel, g5_opens_by_itself, g5_panel};
+use crate::panels_image::BitmapImage;
 
 const PANEL_WIDTH: f64 = 440.0;
 const MARGIN: f64 = 12.0;
@@ -37,6 +39,8 @@ const ROW_HEIGHT: f64 = 28.0;
 const HEADING_HEIGHT: f64 = 24.0;
 const TEXT_LINE_HEIGHT: f64 = 16.0;
 const MEMO_HEIGHT: f64 = 160.0;
+/// A preview picture is drawn this high and wide (the thumbnail is 64 x 64 pixels).
+const IMAGE_SIZE: f64 = 96.0;
 /// The panel never grows beyond this; the content scrolls instead.
 const MAX_HEIGHT: f64 = 640.0;
 
@@ -48,6 +52,7 @@ enum Widget {
     Choice { caption: Retained<NSTextField>, popup: Retained<NSPopUpButton>, pushed: usize },
     Check { button: Retained<NSButton> },
     Button { button: Retained<NSButton> },
+    Image { view: Retained<NSImageView>, shown: Option<BitmapImage> },
 }
 
 /// What the lines look like without their values: a change rebuilds the widgets.
@@ -61,6 +66,7 @@ enum Shape {
     Choice(G5Control, usize),
     Check(G5Control),
     Button(G5Control),
+    Image,
 }
 
 fn shape_of(line: &G5Line) -> Shape {
@@ -73,6 +79,7 @@ fn shape_of(line: &G5Line) -> Shape {
         G5Line::Choice { control, options, .. } => Shape::Choice(*control, options.len()),
         G5Line::Check { control, .. } => Shape::Check(*control),
         G5Line::Button { control, .. } => Shape::Button(*control),
+        G5Line::Image(_) => Shape::Image,
     }
 }
 
@@ -215,7 +222,7 @@ impl G5Section {
                 Widget::Field { field, .. } => Some(&***field),
                 Widget::Choice { popup, .. } => Some(&****popup),
                 Widget::Check { button } | Widget::Button { button } => Some(&***button),
-                Widget::Label(_) | Widget::Memo { .. } => None,
+                Widget::Label(_) | Widget::Memo { .. } | Widget::Image { .. } => None,
             })
             .collect();
         for c in controls {
@@ -382,6 +389,10 @@ impl G5Section {
                     controls.push((*control, Retained::into_super(Retained::into_super(b.clone()))));
                     self.widgets.push(Widget::Check { button: b });
                 }
+                G5Line::Image(_) => {
+                    let view = image_view(mtm, &self.content, "", rect(MARGIN, 0.0, IMAGE_SIZE, IMAGE_SIZE));
+                    self.widgets.push(Widget::Image { view, shown: None });
+                }
                 G5Line::Button { control, .. } => {
                     let b = push_button(mtm, "");
                     b.setFrame(rect(MARGIN, 0.0, full, 26.0));
@@ -418,6 +429,7 @@ impl G5Section {
                     (wrapped(caption, CAPTION_WIDTH) * TEXT_LINE_HEIGHT + 8.0).max(ROW_HEIGHT)
                 }
                 G5Line::Check { .. } | G5Line::Button { .. } => ROW_HEIGHT,
+                G5Line::Image(_) => IMAGE_SIZE + 8.0,
             });
         }
         let total: f64 = heights.iter().sum::<f64>() + 2.0 * MARGIN;
@@ -489,6 +501,10 @@ impl G5Section {
                     button.setFrame(rect(MARGIN, y, full, 22.0));
                     set_button_title(button, caption);
                     button.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff });
+                }
+                (G5Line::Image(image), Widget::Image { view, shown }) => {
+                    view.setFrame(rect(MARGIN, y + 4.0, IMAGE_SIZE, IMAGE_SIZE));
+                    show_bitmap(view, shown, Some(image));
                 }
                 (G5Line::Button { title, enabled, .. }, Widget::Button { button }) => {
                     button.setFrame(rect(MARGIN, y, full, 26.0));

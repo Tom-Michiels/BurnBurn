@@ -15,5 +15,6 @@ mod pick;
 pub use convert::sketch_from_paths;
 pub use draw::{PlanError, ShapePlan, Suggestion, SuggestionKind, plan_commit, suggest_preview};
 pub use geometry::SketchGeometry;
+pub(crate) use geometry::ellipse_distance;
 pub use overlays::{PointFreedom, SketchGlyph, SketchMark, SketchOverlays, SketchView, glyph_of, sketch_overlays};
 pub use pick::{pick_constraint, pick_entity};

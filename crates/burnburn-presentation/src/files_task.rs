@@ -59,6 +59,12 @@ pub enum FilesTask {
     ExportWrite { job: Box<ExportJob>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write templates (from an imported bundle) into a folder; an existing file of that name is replaced.
     WriteTemplates { dir: PathBuf, templates: Vec<BundleTemplate>, fs: Arc<dyn FileSystem> },
+    /// Read every `.burnburn` file in `dir` for the search panel (P08): names, revisions, a preview.
+    /// Read-only.
+    SearchProjects { dir: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Read frozen production revision `number` of a project as a project of its own (new
+    /// identity `uuid`, no profiles, revisions or production record). Read-only.
+    OpenRevision { path: PathBuf, number: u32, uuid: ProjectUuid, fs: Arc<dyn FileSystem> },
 }
 
 /// Why an export wrote nothing, without the loss list (that is in the preflight).
@@ -195,6 +201,8 @@ impl fmt::Debug for FilesTask {
             FilesTask::WriteTemplates { dir, templates, .. } => {
                 write!(f, "WriteTemplates({} to {})", templates.len(), dir.display())
             }
+            FilesTask::SearchProjects { dir, .. } => write!(f, "SearchProjects({})", dir.display()),
+            FilesTask::OpenRevision { path, number, .. } => write!(f, "OpenRevision({} #{number})", path.display()),
         }
     }
 }
@@ -246,6 +254,19 @@ pub enum FilesOutput {
         path: PathBuf,
         losses: Vec<ExportLoss>,
     },
+    /// The projects of a folder, indexed, with a preview of each.
+    ProjectsSearched {
+        dir: PathBuf,
+        index: Arc<burnburn_io::search::ProjectIndex>,
+        thumbnails: Vec<(PathBuf, ArtThumbnail)>,
+    },
+    /// A frozen revision as a project of its own.
+    RevisionOpened {
+        project: Box<Project>,
+        path: PathBuf,
+        number: u32,
+        label: String,
+    },
 }
 
 /// What reading one library file gave.
@@ -278,6 +299,12 @@ pub enum FilesError {
     Export(ExportRefusal),
     /// The export file could not be written.
     ExportWrite(String),
+    /// The folder of a project search could not be read.
+    SearchFolder(FsError),
+    /// The project of a frozen revision could not be read.
+    ProjectUnreadable(String),
+    /// The project has no frozen revision with this number.
+    RevisionMissing(u32),
 }
 
 impl fmt::Display for FilesError {
@@ -292,6 +319,9 @@ impl fmt::Display for FilesError {
             FilesError::BundleWrite(e) => write!(f, "bundle: {e}"),
             FilesError::Export(e) => write!(f, "export: {e:?}"),
             FilesError::ExportWrite(e) => write!(f, "export: {e}"),
+            FilesError::SearchFolder(e) => write!(f, "search: {e}"),
+            FilesError::ProjectUnreadable(e) => write!(f, "project: {e}"),
+            FilesError::RevisionMissing(n) => write!(f, "no frozen revision {n}"),
         }
     }
 }
@@ -450,6 +480,32 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                 crate::task::write_atomically(fs.as_ref(), &file, &t.bytes).map_err(|e| failed(&format!("{e:?}")))?;
             }
             Ok(FilesOutput::TemplatesWritten { count: templates.len() })
+        }
+        FilesTask::SearchProjects { dir, fs } => {
+            let index = burnburn_io::search::index_projects(fs.as_ref(), &dir)
+                .map_err(|e| TaskError::Files(FilesError::SearchFolder(e)))?;
+            let mut thumbnails = Vec::new();
+            for entry in index.entries() {
+                cancelled(cancel)?;
+                if let Some(t) = crate::thumbnail::render(entry.outline.iter().map(|p| p.as_ref())) {
+                    thumbnails.push((entry.path.clone(), t));
+                }
+            }
+            Ok(FilesOutput::ProjectsSearched { dir, index: Arc::new(index), thumbnails })
+        }
+        FilesTask::OpenRevision { path, number, uuid, fs } => {
+            let project = burnburn_io::load_project(fs.as_ref(), &path)
+                .map_err(|e| TaskError::Files(FilesError::ProjectUnreadable(e.to_string())))?;
+            cancelled(cancel)?;
+            let label = project
+                .revision(number)
+                .map(|r| r.label.clone())
+                .ok_or(TaskError::Files(FilesError::RevisionMissing(number)))?;
+            let mut revision = project
+                .recreate_revision_project(number)
+                .ok_or(TaskError::Files(FilesError::RevisionMissing(number)))?;
+            revision.uuid = uuid;
+            Ok(FilesOutput::RevisionOpened { project: Box::new(revision), path, number, label })
         }
         FilesTask::PlaceArt { library, item } => {
             let placement = library.place(item).map_err(|e| TaskError::Files(FilesError::Art(e)))?;

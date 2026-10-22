@@ -248,6 +248,7 @@ impl DocWindow {
         set_text(&s.problems, &p.problems);
         set_text(&s.readability, &p.readability);
         s.create.setEnabled(p.create_enabled);
+        s.create.setTitle(&objc2_foundation::NSString::from_str(&p.create_title));
         let height = s.form.lay_out();
         s.sheet.show(&window, (SHEET_WIDTH, height));
     }

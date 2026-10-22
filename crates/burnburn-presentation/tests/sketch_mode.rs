@@ -296,9 +296,12 @@ fn a_line_that_starts_on_an_end_point_shares_it_so_the_contour_stays_in_one_piec
 fn a_shape_a_sketch_cannot_hold_is_refused_and_changes_nothing() {
     let (mut h, doc) = new_doc();
     begin(&mut h, doc);
-    h.invoke(doc, CommandKey::ToolEllipse);
+    // An ellipse is a sketch entity since G6-editor; a slot (lines and arcs in one outline) is not.
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.slot.center_to_center".to_owned() });
     let revision = vm(&h, doc).revision;
-    h.drag(doc, (0.0, 0.0), (30.0, 20.0));
+    for at in [(0.0, 0.0), (30.0, 0.0), (15.0, 5.0)] {
+        h.click(doc, at, Modifiers::default());
+    }
     assert_eq!(vm(&h, doc).revision, revision);
     assert_eq!(mode(&h, doc).refused, Some(MessageKey::SketchShapeUnsupported));
 }

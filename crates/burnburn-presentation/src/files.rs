@@ -158,6 +158,41 @@ pub enum FilesIntent {
         item: u64,
         at: Option<(f64, f64)>,
     },
+    /// Archief ▸ Zoek projecten: opens the search panel (P08); the folder of the project is read on
+    /// a worker.
+    OpenSearch {
+        document: DocumentId,
+    },
+    CloseSearch {
+        document: DocumentId,
+    },
+    /// The folder as typed; it is read again.
+    SetSearchFolder {
+        document: DocumentId,
+        folder: String,
+    },
+    /// The query as typed; the index in memory is filtered, nothing is read again.
+    SetSearchQuery {
+        document: DocumentId,
+        query: String,
+    },
+    /// Read the folder again (files may have been saved meanwhile).
+    RescanSearch {
+        document: DocumentId,
+    },
+    /// Open a found project in a window of its own.
+    OpenFoundProject {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// Open frozen production revision `number` of a found project next to the current design: an
+    /// unsaved copy with a new identity; the project file is only read and nothing is queued for a
+    /// machine.
+    OpenFoundRevision {
+        document: DocumentId,
+        path: PathBuf,
+        number: u32,
+    },
     /// Archief ▸ Bundels ▸ Exporteren: opens the dialog that lists what can go in a bundle.
     OpenBundleExport {
         document: DocumentId,
@@ -502,6 +537,10 @@ pub enum FilesMessage {
     ExportInvalidOption,
     /// The file could not be written.
     ExportWriteFailed,
+    /// The project has no frozen revision with that number (search panel); no window was opened.
+    RevisionMissing,
+    /// The project of a frozen revision could not be read; no window was opened.
+    RevisionOpenFailed,
 }
 
 impl FilesMessage {
@@ -535,6 +574,8 @@ impl FilesMessage {
         FilesMessage::ExportNeedsAcknowledgement,
         FilesMessage::ExportInvalidOption,
         FilesMessage::ExportWriteFailed,
+        FilesMessage::RevisionMissing,
+        FilesMessage::RevisionOpenFailed,
     ];
 }
 
@@ -574,6 +615,8 @@ mod tests {
             FilesMessage::ExportNeedsAcknowledgement => 25,
             FilesMessage::ExportInvalidOption => 26,
             FilesMessage::ExportWriteFailed => 27,
+            FilesMessage::RevisionMissing => 28,
+            FilesMessage::RevisionOpenFailed => 29,
         }
     }
 
@@ -591,6 +634,8 @@ pub struct FilesViewModel {
     pub art: Option<ArtPanelViewModel>,
     pub bundle: Option<BundleDialogViewModel>,
     pub export: Option<ExportDialogViewModel>,
+    /// The project search panel (P08).
+    pub search: Option<crate::search_panel::SearchPanelViewModel>,
 }
 
 /// The Material Library panel (M217): search, the entries found and what each layer's settings came from.

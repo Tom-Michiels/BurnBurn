@@ -1,7 +1,9 @@
 //! Project search over one folder (IM28, P08) through the `FileSystem` port.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use burnburn_geometry::Path as Outline;
 use burnburn_types::ContentHash;
 
 use crate::fs::{FileSystem, FsError};
@@ -34,10 +36,17 @@ pub struct IndexEntry {
     pub plates: Vec<String>,
     /// Frozen revisions (number, label): a production revision stays findable next to the design.
     pub revisions: Vec<(u32, String)>,
+    /// When the file was last saved (seconds since the Unix epoch), if the file system says.
+    pub modified: Option<u64>,
+    /// The outlines of the first [`MAX_OUTLINE_OBJECTS`] objects, for a preview next to a hit.
+    pub outline: Vec<Arc<Outline>>,
 }
 
+/// How many objects of a project its search preview is made of.
+pub const MAX_OUTLINE_OBJECTS: usize = 400;
+
 impl IndexEntry {
-    fn of(path: &Path, p: &Project) -> Self {
+    fn of(path: &Path, p: &Project, modified: Option<u64>) -> Self {
         let doc = &p.document;
         let st = doc.structure();
         let mut materials: Vec<String> = doc.process().recipes().map(|r| r.material().to_owned()).collect();
@@ -53,6 +62,8 @@ impl IndexEntry {
             parts: st.definitions().map(|(_, d)| d.name.clone()).collect(),
             plates: st.plates().map(|(_, pl)| pl.name.clone()).collect(),
             revisions: p.revisions.iter().map(|r| (r.number, r.label.clone())).collect(),
+            modified,
+            outline: doc.objects().take(MAX_OUTLINE_OBJECTS).map(|(_, o)| o.path().clone()).collect(),
         }
     }
 }
@@ -128,7 +139,11 @@ pub fn index_projects(fs: &dyn FileSystem, dir: &Path) -> Result<ProjectIndex, F
             continue;
         }
         match load_project(fs, &path) {
-            Ok(p) => index.entries.push(IndexEntry::of(&path, &p)),
+            Ok(p) => {
+                // A file system that cannot say leaves the time unknown (a failure to ask too).
+                let modified = fs.modified(&path).ok().flatten();
+                index.entries.push(IndexEntry::of(&path, &p, modified));
+            }
             Err(error) => index.issues.push(IndexIssue { path, error }),
         }
     }

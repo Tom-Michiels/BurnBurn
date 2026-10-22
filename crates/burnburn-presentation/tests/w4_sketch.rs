@@ -329,6 +329,105 @@ fn setting_a_parameter_to_the_value_it_already_has_is_not_a_new_entry() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// S01: ellips in een schets (G6-editor)
+// ---------------------------------------------------------------------------------------------
+
+/// Both ellipse tools inside sketch mode draw an ellipse entity: one history entry, the sketch
+/// solves, the output is the ellipse; the axis relation is suggested and applied, and a diameter
+/// dimension through the panel drives the major axis.
+#[test]
+fn an_ellipse_drawn_in_sketch_mode_becomes_an_ellipse_entity_that_relations_and_dimensions_drive() {
+    let mut h = HeadlessEditorHarness::new();
+    let doc = h.new_document().unwrap();
+    h.invoke(doc, CommandKey::SketchNew);
+    // Centre, major end, minor point: a 2 x 1 ellipse around (10, 10).
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.ellipse".to_owned() });
+    for at in [(10.0, 10.0), (14.0, 10.0), (10.0, 12.0)] {
+        h.click(doc, at, Modifiers::default());
+    }
+    let after = vm(&h, doc);
+    assert_eq!(after.sketch_mode.as_ref().unwrap().refused, None, "the ellipse was accepted");
+    assert_eq!(
+        after.undo.map(|u| matches!(u, burnburn_document::UndoLabel::Sketch(_))),
+        Some(true),
+        "one sketch entry"
+    );
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
+    assert_eq!(sketch_row(&h, doc).constraints, 1, "the suggested horizontal axis");
+    let b = h.scene(doc).unwrap().items[0].path.bounds().unwrap();
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-3;
+    assert!(near(b.min().x, 6.0) && near(b.max().x, 14.0) && near(b.min().y, 8.0) && near(b.max().y, 12.0), "{b:?}");
+
+    // The ellipse entity is the third entity (centre, major end, ellipse): a diameter dimension.
+    let ellipse = burnburn_document::sketch::EntityId::from_raw(2);
+    h.send(UiIntent::SketchSelect {
+        document: doc,
+        entities: vec![ellipse],
+        constraints: vec![],
+        mode: SelectMode::Replace,
+    });
+    h.send(UiIntent::AddSketchDimension {
+        document: doc,
+        kind: burnburn_presentation::SketchDimensionKind::Diameter,
+        text: "12 mm".into(),
+    });
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
+    assert_eq!(sketch_row(&h, doc).constraints, 2);
+    let b = h.scene(doc).unwrap().items[0].path.bounds().unwrap();
+    assert!(near(b.width(), 12.0), "the major axis follows the dimension: {b:?}");
+    h.invoke(doc, CommandKey::Undo);
+    assert_eq!(sketch_row(&h, doc).constraints, 1, "the dimension is one entry");
+
+    // The bounding-box tool draws one too: a second output of the same sketch.
+    h.send(UiIntent::SelectTool { document: Some(doc), id: "sketch.ellipse.box".to_owned() });
+    h.drag(doc, (30.0, 30.0), (40.0, 36.0));
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid);
+    assert_eq!(vm(&h, doc).objects.len(), 2, "one output contour per ellipse");
+}
+
+// ---------------------------------------------------------------------------------------------
+// S05: geen stille sprong naar een andere oplossing (G6-editor)
+// ---------------------------------------------------------------------------------------------
+
+/// A circle tangent to a line, drawn above it at the height of a dimension. Editing the dimension
+/// to a negative height moves the circle to the other side of the line: sketch mode counts that
+/// branch change (the panel says so) instead of jumping silently; the next calm edit clears it.
+#[test]
+fn a_geometric_branch_change_is_visible_in_sketch_mode() {
+    let mut s = Sketch::new("raaklijn");
+    let a = s.point(0.0, 0.0).unwrap();
+    let b = s.point(20.0, 0.0).unwrap();
+    let line = s.line(a, b).unwrap();
+    let c = s.point(10.0, 8.0).unwrap();
+    let circle = s.circle(c, 3.0).unwrap();
+    s.relate(Relation::Fix { point: a, at: Point::new(0.0, 0.0) }).unwrap();
+    s.relate(Relation::Fix { point: b, at: Point::new(20.0, 0.0) }).unwrap();
+    s.relate(Relation::Horizontal(line)).unwrap();
+    s.relate(Relation::Tangent(line, circle)).unwrap();
+    s.dimension(DimensionKind::Distance { a, b: c, along: Along::Y }, "8 mm", DimensionRole::Driving).unwrap();
+    s.dimension(DimensionKind::Distance { a, b: c, along: Along::X }, "10 mm", DimensionRole::Driving).unwrap();
+    let (mut h, doc) = in_sketch(s);
+    let flips = |h: &H| vm(h, doc).sketch_mode.unwrap().branch_flips;
+    assert_eq!(flips(&h), 0, "nothing moved yet");
+    let sketch = sketch_row(&h, doc).id;
+    let height = vm(&h, doc)
+        .sketch_mode
+        .unwrap()
+        .rows
+        .iter()
+        .find(|r| r.kind == SketchConstraintKind::DistanceY)
+        .map(|r| r.id)
+        .unwrap();
+    h.send(UiIntent::SetSketchDimension { document: doc, sketch, constraint: height, text: "-8 mm".into() });
+    assert_eq!(sketch_row(&h, doc).status, SketchStatus::Valid, "the other side is a valid solution");
+    assert_eq!(flips(&h), 1, "the jump to the other side is counted, not silent");
+    let b = h.scene(doc).unwrap().items.iter().map(|i| i.path.bounds().unwrap().min().y).fold(f64::MAX, f64::min);
+    assert!(b < -10.0, "the circle really is below the line: {b}");
+    h.send(UiIntent::SetSketchDimension { document: doc, sketch, constraint: height, text: "-9 mm".into() });
+    assert_eq!(flips(&h), 0, "a calm edit on the same side reports nothing");
+}
+
+// ---------------------------------------------------------------------------------------------
 // S01: bogen in een schets
 // ---------------------------------------------------------------------------------------------
 

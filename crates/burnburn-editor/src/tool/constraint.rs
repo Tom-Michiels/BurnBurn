@@ -66,13 +66,15 @@ impl ConstraintKind {
 /// The order of the entities does not matter, except for which of two equal-kind entities is the
 /// first argument of the relation.
 pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[EntityId]) -> Option<Vec<Relation>> {
-    use PickKind::{Line, Point as Pt};
+    use PickKind::{Ellipse, Line, Point as Pt};
     if entities.iter().enumerate().any(|(i, e)| entities[..i].contains(e)) {
         return None; // one entity twice is not a pair
     }
     let kinds: Vec<PickKind> = entities.iter().map(|e| pick_kind(sketch, *e)).collect::<Option<_>>()?;
     let e = entities;
     let is_curve = |k: PickKind| k.is_curve();
+    // A line or an ellipse (through its major axis) has a direction.
+    let is_axis = |k: PickKind| k == Line || k == Ellipse;
     Some(match (kind, kinds.as_slice()) {
         (ConstraintKind::Coincident, [Pt, Pt]) => vec![Relation::Coincident(e[0], e[1])],
         (ConstraintKind::Coincident, [Pt, k]) if *k == Line || is_curve(*k) => {
@@ -85,7 +87,7 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
             let Entity::Line { start, .. } = sketch.entity(e[1])?.entity else { return None };
             vec![Relation::Parallel(e[0], e[1]), Relation::PointOn { point: start, curve: e[0] }]
         }
-        (ConstraintKind::Concentric, [a, b]) if is_curve(*a) && is_curve(*b) => {
+        (ConstraintKind::Concentric, [a, b]) if (is_curve(*a) || *a == Ellipse) && (is_curve(*b) || *b == Ellipse) => {
             vec![Relation::Concentric(e[0], e[1])]
         }
         (ConstraintKind::Equal, [Line, Line]) => vec![Relation::Equal(e[0], e[1])],
@@ -93,8 +95,17 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
         (ConstraintKind::Fix, points) if !points.is_empty() && points.iter().all(|k| *k == Pt) => {
             e.iter().map(|p| Some(Relation::Fix { point: *p, at: point_of(sketch, *p)? })).collect::<Option<_>>()?
         }
-        (ConstraintKind::Horizontal, [Line]) => vec![Relation::Horizontal(e[0])],
-        (ConstraintKind::Vertical, [Line]) => vec![Relation::Vertical(e[0])],
+        (ConstraintKind::Horizontal, [k]) if is_axis(*k) => vec![Relation::Horizontal(e[0])],
+        (ConstraintKind::Vertical, [k]) if is_axis(*k) => vec![Relation::Vertical(e[0])],
+        (ConstraintKind::HorizontalVertical, [Ellipse]) => {
+            let Entity::Ellipse { center, major, .. } = sketch.entity(e[0])?.entity else { return None };
+            let (a, b) = (point_of(sketch, center)?, point_of(sketch, major)?);
+            vec![if (b.x - a.x).abs() >= (b.y - a.y).abs() {
+                Relation::Horizontal(e[0])
+            } else {
+                Relation::Vertical(e[0])
+            }]
+        }
         (ConstraintKind::HorizontalVertical, [Line]) => {
             let Entity::Line { start, end } = sketch.entity(e[0])?.entity else { return None };
             let (a, b) = (point_of(sketch, start)?, point_of(sketch, end)?);
@@ -106,8 +117,10 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
         }
         (ConstraintKind::Midpoint, [Pt, Line]) => vec![Relation::Midpoint { point: e[0], line: e[1] }],
         (ConstraintKind::Midpoint, [Line, Pt]) => vec![Relation::Midpoint { point: e[1], line: e[0] }],
-        (ConstraintKind::Parallel, [Line, Line]) => vec![Relation::Parallel(e[0], e[1])],
-        (ConstraintKind::Perpendicular, [Line, Line]) => vec![Relation::Perpendicular(e[0], e[1])],
+        (ConstraintKind::Parallel, [a, b]) if is_axis(*a) && is_axis(*b) => vec![Relation::Parallel(e[0], e[1])],
+        (ConstraintKind::Perpendicular, [a, b]) if is_axis(*a) && is_axis(*b) => {
+            vec![Relation::Perpendicular(e[0], e[1])]
+        }
         (ConstraintKind::Symmetry, kinds) if kinds.len() == 3 => {
             let of = |wanted: PickKind| -> Vec<EntityId> {
                 e.iter().zip(kinds).filter(|(_, k)| **k == wanted).map(|(id, _)| *id).collect()
@@ -130,6 +143,7 @@ fn pick_kind(sketch: &Sketch, id: EntityId) -> Option<PickKind> {
         Entity::Line { .. } => PickKind::Line,
         Entity::Circle { .. } => PickKind::Circle,
         Entity::Arc { .. } => PickKind::Arc,
+        Entity::Ellipse { .. } => PickKind::Ellipse,
         _ => return None,
     })
 }
@@ -562,5 +576,31 @@ mod tests {
         assert_eq!(table(ConstraintKind::Parallel, &[L1, L1]), None, "one entity twice is not a pair");
         assert_eq!(table(ConstraintKind::Parallel, &[L1, 99]), None, "an entity the sketch does not have");
         assert_eq!(table(ConstraintKind::Midpoint, &[L1, L2]), None);
+    }
+    /// S01/S05: an ellipse takes part through its major axis and its centre; nothing can lie on it,
+    /// be tangent to it or be equal to a circle, and the table says no instead of the solver failing.
+    #[test]
+    fn an_ellipse_is_an_axis_and_a_centre_but_no_circular_curve() {
+        let mut s = sketch();
+        let (c, m) = (s.point(0.0, 30.0).unwrap(), s.point(8.0, 30.0).unwrap());
+        let ellipse = s.ellipse(c, m, 3.0).unwrap();
+        let ask = |kind, entities: &[EntityId]| constraint_relations(kind, &s, entities);
+        let (l1, circle, point) = (id(L1), id(C1), id(A));
+        assert_eq!(ask(ConstraintKind::Horizontal, &[ellipse]), Some(vec![Relation::Horizontal(ellipse)]));
+        assert_eq!(ask(ConstraintKind::Vertical, &[ellipse]), Some(vec![Relation::Vertical(ellipse)]));
+        assert_eq!(ask(ConstraintKind::HorizontalVertical, &[ellipse]), Some(vec![Relation::Horizontal(ellipse)]));
+        assert_eq!(ask(ConstraintKind::Parallel, &[l1, ellipse]), Some(vec![Relation::Parallel(l1, ellipse)]));
+        assert_eq!(
+            ask(ConstraintKind::Perpendicular, &[ellipse, l1]),
+            Some(vec![Relation::Perpendicular(ellipse, l1)])
+        );
+        assert_eq!(
+            ask(ConstraintKind::Concentric, &[ellipse, circle]),
+            Some(vec![Relation::Concentric(ellipse, circle)])
+        );
+        assert_eq!(ask(ConstraintKind::Coincident, &[point, ellipse]), None, "nothing lies on an ellipse");
+        assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), None);
+        assert_eq!(ask(ConstraintKind::Equal, &[ellipse, circle]), None);
+        assert_eq!(ask(ConstraintKind::Equal, &[ellipse, l1]), None, "which length would be meant?");
     }
 }

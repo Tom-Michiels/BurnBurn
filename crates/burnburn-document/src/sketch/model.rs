@@ -78,6 +78,15 @@ pub enum Entity {
         center: EntityId,
         radius: f64,
     },
+    /// An ellipse around `center`. `major` is the point at the end of the semi-major axis: the
+    /// axis direction and the semi-major radius follow from the two points, so relations on the
+    /// points (and on the ellipse as its major axis) move it. `minor` is the semi-minor radius
+    /// (mm, > 0). It is a plain value: only the two points move under the solver.
+    Ellipse {
+        center: EntityId,
+        major: EntityId,
+        minor: f64,
+    },
 }
 
 impl Entity {
@@ -88,6 +97,7 @@ impl Entity {
             Entity::Line { start, end } => vec![start, end],
             Entity::Arc { center, start, end, .. } => vec![center, start, end],
             Entity::Circle { center, .. } => vec![center],
+            Entity::Ellipse { center, major, .. } => vec![center, major],
         }
     }
 }
@@ -372,6 +382,7 @@ impl Sketch {
         let finite = match *e {
             Entity::Point { at } => at.is_finite(),
             Entity::Circle { radius, .. } => radius.is_finite() && radius >= 0.0,
+            Entity::Ellipse { minor, .. } => minor.is_finite() && minor > 0.0,
             _ => true,
         };
         if finite { Ok(()) } else { Err(SketchError::InvalidValue) }
@@ -387,6 +398,21 @@ impl Sketch {
             && !at.is_finite()
         {
             return Err(SketchError::InvalidValue);
+        }
+        // An ellipse is no circular curve: nothing can lie on it, be tangent to it or equal to a
+        // circle (its major axis and centre take part in the other relations).
+        let is_ellipse =
+            |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Ellipse { .. }, .. }));
+        if let SketchConstraint::Relation(r) = c {
+            let bad = match *r {
+                Relation::PointOn { curve, .. } if is_ellipse(&curve) => Some(curve),
+                Relation::Tangent(a, b) => [a, b].into_iter().find(|e| is_ellipse(e)),
+                Relation::Equal(a, b) if is_ellipse(&a) || is_ellipse(&b) => Some(if is_ellipse(&a) { a } else { b }),
+                _ => None,
+            };
+            if let Some(e) = bad {
+                return Err(SketchError::WrongEntityKind(e));
+            }
         }
         Ok(())
     }
@@ -484,6 +510,10 @@ impl Sketch {
 
     pub fn circle(&mut self, center: EntityId, radius: f64) -> Result<EntityId, SketchError> {
         self.add_entity(SketchEntity { entity: Entity::Circle { center, radius }, construction: false })
+    }
+
+    pub fn ellipse(&mut self, center: EntityId, major: EntityId, minor: f64) -> Result<EntityId, SketchError> {
+        self.add_entity(SketchEntity { entity: Entity::Ellipse { center, major, minor }, construction: false })
     }
 
     pub fn relate(&mut self, relation: Relation) -> Result<ConstraintId, SketchError> {

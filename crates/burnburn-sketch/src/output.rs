@@ -58,6 +58,11 @@ pub(crate) fn outputs(s: &SolvedSketch) -> Result<Vec<(u64, Path)>, GeometryErro
                     PathBuilder::new().move_to(arc.start_point()).arc(arc).close().build()?,
                 ));
             }
+            Entity::Ellipse { center, major, minor } => {
+                let (c, m) = (pt(center)?, pt(major)?);
+                let rotation = angle(libm::atan2(m.y - c.y, m.x - c.x))?;
+                out.push((u64::from(id.raw()), Path::ellipse(c, c.distance(m), minor, rotation)?));
+            }
             _ => {}
         }
     }

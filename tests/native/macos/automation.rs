@@ -108,11 +108,15 @@ fn scenario() -> Result<(), String> {
     s.app.take_dispatched();
     let reply = ask(&s, &client, addr, &format!("LOADFILE:{}", project.display()))?;
     expect(|| format!("loaded, got {reply:?}"), reply.as_deref() == Some("OK"))?;
-    expect(|| "a window for the project".into(), s.app.open_documents().len() == before.len() + 1)?;
+    // The clean window is replaced by the project (G6-editor): the window count stays, the old
+    // window is gone.
+    s.wait(3.0, "the old window to close", || s.doc(doc).is_none())?;
+    expect(|| "the project's window took its place".into(), s.app.open_documents().len() == before.len())?;
     let intents = s.app.take_dispatched();
     expect(
-        || format!("exactly one Open was sent, got {intents:?}"),
-        intents.iter().filter(|i| matches!(i, UiIntent::Open { .. })).count() == 1,
+        || format!("exactly one Open and one Close were sent, got {intents:?}"),
+        intents.iter().filter(|i| matches!(i, UiIntent::Open { .. })).count() == 1
+            && intents.iter().filter(|i| matches!(i, UiIntent::Close { .. })).count() == 1,
     )?;
     // Nothing that reaches a machine: no machine or laser intent in the whole session.
     expect(

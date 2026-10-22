@@ -75,6 +75,22 @@ fn the_panel_lists_each_constraint_with_its_kind_and_status_in_words() {
     assert_eq!(SKETCH_COLUMNS.map(|c| SketchColumn::from_id(c.id())), SKETCH_COLUMNS.map(Some));
 }
 
+/// S05: a curve that ended on another geometric branch is said in words next to the freedom
+/// (shared by the macOS and Windows panels); without a flip the text is the plain freedom.
+#[test]
+fn a_branch_change_is_said_in_the_panel_next_to_the_freedom() {
+    let (h, doc) = rectangle_sketch();
+    let mut vm = (*h.view()).clone();
+    let plain = sketch_panel(&vm, doc, Locale::Nl).unwrap().freedom;
+    assert!(!plain.contains("andere kant"), "{plain}");
+    let index = vm.documents.iter().position(|d| d.id == doc).unwrap();
+    vm.documents[index].sketch_mode.as_mut().unwrap().branch_flips = 2;
+    let nl = sketch_panel(&vm, doc, Locale::Nl).unwrap().freedom;
+    assert!(nl.starts_with(&plain) && nl.contains("andere kant") && nl.contains('2'), "{nl}");
+    let en = sketch_panel(&vm, doc, Locale::En).unwrap().freedom;
+    assert!(en.contains("other side") && en.contains('2'), "{en}");
+}
+
 #[test]
 fn a_dimension_row_shows_its_text_and_is_editable_and_a_fully_constrained_sketch_says_so() {
     let (mut h, doc) = rectangle_sketch();

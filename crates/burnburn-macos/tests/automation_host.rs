@@ -162,6 +162,44 @@ fn loadfile_opens_the_project_when_nothing_is_unsaved() {
     assert_eq!(r.ask("STATUS"), "OK:READY:CLEAN");
 }
 
+/// A clean, untouched window is replaced by the loaded project: one window remains, it is the
+/// project and the old window is closed (no second window piles up).
+#[test]
+fn loadfile_replaces_the_clean_active_window() {
+    let mut r = rig();
+    let path = r.put_project("/work/a.burnburn");
+    let old = r.h.new_document().unwrap();
+    assert_eq!(r.ask(&format!("LOADFILE:{}", path.display())), "OK");
+    let view = r.h.view();
+    assert_eq!(view.documents.len(), 1, "the old window is gone");
+    assert!(view.document(old).is_none());
+    assert_eq!(r.sent, [UiIntent::Open { path }, UiIntent::Close { document: old }]);
+    assert_eq!(r.ask("STATUS"), "OK:READY:CLEAN");
+}
+
+/// A change between the service's check and the UI thread starting the job is ERR:DIRTY (not FAILED),
+/// and nothing is opened or closed.
+#[test]
+fn a_race_with_a_change_after_the_status_check_is_dirty_not_failed() {
+    let mut r = rig();
+    let path = r.put_project("/work/a.burnburn");
+    let doc = r.h.new_document().unwrap();
+    r.turn(); // the published status says: clean
+    r.h.invoke(doc, CommandKey::ToolRectangle);
+    r.h.drag(doc, (0.0, 0.0), (10.0, 10.0));
+    let mut host = r.host.clone();
+    let listener = std::thread::spawn(move || host.load(&path));
+    let started = Instant::now();
+    while !listener.is_finished() {
+        assert!(started.elapsed() < Duration::from_secs(10));
+        r.turn();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(listener.join().unwrap(), Err(HostError::Dirty));
+    assert_eq!(r.documents(), 1);
+    assert!(r.sent.is_empty(), "{:?}", r.sent);
+}
+
 /// A changed document is never replaced: ERR:DIRTY, and nothing is opened or sent.
 #[test]
 fn loadfile_never_replaces_unsaved_work() {

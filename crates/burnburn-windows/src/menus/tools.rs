@@ -53,7 +53,14 @@ pub(super) fn shapes_items() -> Vec<MenuNode> {
 }
 
 pub(super) fn text_items() -> Vec<MenuNode> {
-    vec![cmd(CommandKey::TextOnPath), cmd(CommandKey::ShapesConvertToPath), sep(), cmd(CommandKey::BarcodeNew)]
+    vec![
+        cmd(CommandKey::TextOnPath),
+        cmd(CommandKey::ShapesConvertToPath),
+        sep(),
+        cmd(CommandKey::BarcodeNew),
+        cmd(CommandKey::GeneratorNew),
+        cmd(CommandKey::GeneratorEdit),
+    ]
 }
 
 pub(super) fn sketch_items() -> Vec<MenuNode> {

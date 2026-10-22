@@ -148,6 +148,7 @@ fn host_failures_are_distinct_replies() {
     for (error, reply) in [
         (HostError::NotFound, "ERR:NOTFOUND"),
         (HostError::Unsupported, "ERR:FORMAT"),
+        (HostError::Dirty, "ERR:DIRTY"),
         (HostError::Failed, "ERR:FAILED"),
     ] {
         let mut host = FakeHost::clean();

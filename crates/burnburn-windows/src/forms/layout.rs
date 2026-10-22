@@ -64,6 +64,8 @@ pub enum Item {
         id: ControlId,
         text: String,
     },
+    /// A picture.
+    Image(crate::panels_image::BitmapImage),
 }
 
 /// An item at its place; `caption` is the label of a field or pop-up, drawn beside or above it.
@@ -91,6 +93,7 @@ struct Metrics {
     button: i32,
     list: i32,
     memo: i32,
+    image: i32,
     line: i32,
     cell: i32,
     char_w: i32,
@@ -108,6 +111,7 @@ impl Metrics {
             button: px(26.0),
             list: px(120.0),
             memo: px(150.0),
+            image: px(96.0),
             line: px(15.0),
             cell: px(28.0),
             char_w: px(7.0),
@@ -226,6 +230,11 @@ fn place(line: &FormLine, x: i32, y: i32, w: i32, stacked: bool, m: &Metrics, ou
                 caption: None,
             });
             m.memo
+        }
+        FormLine::Image(image) => {
+            let side = m.image.min(w).max(1);
+            out.push(Placed { item: Item::Image(image.clone()), rect: rect(x, y, side, side), caption: None });
+            side
         }
         FormLine::Row(children) => {
             let fixed = |l: &FormLine| match l {

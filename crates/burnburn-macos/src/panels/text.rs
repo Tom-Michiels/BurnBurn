@@ -12,7 +12,7 @@ use burnburn_presentation::{
     AdvancePolicy, Align, AppViewModel, BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue,
     BarcodeProblem, CommandKey, Distort, SerialField, SymbolInputMode, TextEdit, TextField, TextIssue,
     TextOnPathViewModel, TextPathEdit, TextToggle, TextToolbarViewModel, UiIntent, VAlign, VariableEdit, VariableIssue,
-    VariablePanelViewModel, VariableProblem, format_mm,
+    VariablePanelViewModel, VariableProblem,
 };
 use burnburn_types::DocumentId;
 
@@ -253,6 +253,8 @@ pub struct BarcodePanel {
     pub symbology: usize,
     pub payload: String,
     pub payload_hint: String,
+    /// "Maak", or "Pas toe" while a generated barcode is changed.
+    pub create_title: String,
     pub module: String,
     pub min_module: String,
     pub quiet: String,
@@ -277,8 +279,6 @@ pub struct TextPanels {
     pub path: Option<PathPanel>,
     pub variable: Option<VariablePanel>,
     pub barcode: Option<BarcodePanel>,
-    /// Shown near the inspector while a created barcode is scaled below its minimum module.
-    pub scale_warning: String,
 }
 
 /// Alignment choices, in the order of the control's segments.
@@ -803,6 +803,7 @@ fn barcode_panel(b: &BarcodeDialogViewModel, locale: Locale) -> BarcodePanel {
         symbology: b.types.iter().position(|t| t.symbology == b.symbology).unwrap_or(0),
         payload: b.payload.clone(),
         payload_hint: b.payload_hint.to_owned(),
+        create_title: text_text(if b.editing { TextText::Apply } else { TextText::Create }, locale).to_owned(),
         module: b.module.clone(),
         min_module: b.min_module.clone(),
         quiet: b.quiet.clone(),
@@ -849,18 +850,6 @@ pub fn text_panels(vm: &AppViewModel, document: DocumentId, locale: Locale) -> T
         path: doc.text_on_path.as_ref().map(|p| path_panel(p, locale)),
         variable: doc.variable_panel.as_ref().map(|v| variable_panel(v, locale)),
         barcode: doc.barcode_dialog.as_ref().map(|b| barcode_panel(b, locale)),
-        scale_warning: doc.barcode_scale_warning.map_or_else(String::new, |w| match locale {
-            Locale::Nl => format!(
-                "Streepjescode: module {} mm ligt onder het minimum {} mm",
-                format_mm(w.module_mm),
-                format_mm(w.min_module_mm)
-            ),
-            Locale::En => format!(
-                "Bar code: module {} mm is below the minimum {} mm",
-                format_mm(w.module_mm),
-                format_mm(w.min_module_mm)
-            ),
-        }),
     }
 }
 

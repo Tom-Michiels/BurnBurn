@@ -16,6 +16,7 @@ mod cut_options;
 mod field;
 mod files;
 mod files_task;
+mod generator_panel;
 mod grbl;
 mod grbl_panel;
 mod harness;
@@ -29,6 +30,7 @@ mod notes;
 mod offset;
 mod production;
 mod schikken;
+mod search_panel;
 mod structure_panel;
 mod task;
 mod text_panel;
@@ -37,8 +39,8 @@ mod variable_panel;
 mod view_model;
 
 pub use barcode_panel::{
-    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
-    BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeTypeRow, EccStepViewModel,
+    EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
 };
 /// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).
 pub use burnburn_generators::JobClock;
@@ -100,6 +102,10 @@ pub use files::{
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
 };
+pub use generator_panel::{
+    GeneratorDialogViewModel, GeneratorEdit, GeneratorField, GeneratorFieldRow, GeneratorIssue, GeneratorKind,
+    GeneratorPreview, GeneratorProblem,
+};
 pub use grbl::{GcodeExportViewModel, GrblFinding};
 pub use grbl_panel::{
     GRBL_START_NEEDS, GrblConsoleView, GrblControl, GrblControlKind, GrblEntryKind, GrblIntent, GrblJobFailure,
@@ -135,6 +141,7 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use schikken::*;
+pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
 pub use structure_panel::{
     BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
     ReferenceStatus, StructureEdit, StructureViewModel,

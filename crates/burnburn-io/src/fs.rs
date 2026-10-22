@@ -90,4 +90,11 @@ pub trait FileSystem: Send + Sync {
     fn list_dir(&self, dir: &Path) -> Result<Vec<PathBuf>, FsError> {
         Err(FsError::new(FsOp::List, dir, FsErrorKind::Other))
     }
+
+    /// When the file was last written, in seconds since the Unix epoch; `None` when the port does
+    /// not know (never invented). The default does not know.
+    fn modified(&self, path: &Path) -> Result<Option<u64>, FsError> {
+        let _ = path;
+        Ok(None)
+    }
 }

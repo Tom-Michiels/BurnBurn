@@ -9,6 +9,7 @@ use burnburn_document::{CommandError, CommandOutcome, CommandPayload, DocumentCo
 use burnburn_editor::{
     Camera, Editor, GeometryIssue, Selection, SelectionChange, SnapSettings, Viewport, geometry_issues,
 };
+use burnburn_generators::GeneratorEvaluator;
 use burnburn_geometry::Point;
 use burnburn_io::fs::FileSystem;
 use burnburn_io::{AssetStore, ProjectUuid};
@@ -44,6 +45,7 @@ mod device;
 mod document;
 mod feeder_dialog;
 mod fields;
+mod generator;
 mod geometry;
 mod grbl;
 mod history_panel;
@@ -314,6 +316,8 @@ struct Session {
     variable: variable::VariableState,
     /// The barcode dialog and the barcodes this window created (window state).
     barcode: barcode::BarcodeState,
+    /// The generator dialog (box, living hinge) while it is open (window state).
+    generator: generator::GeneratorState,
     /// Which library entry each recipe was copied from (provenance, saved with the project).
     library_links: Vec<burnburn_io::LibraryLink>,
     /// Window state of the file panels (Material Library, Art Library, bundles, export).
@@ -387,6 +391,7 @@ impl Session {
             text: text::TextState::default(),
             variable: variable::VariableState::default(),
             barcode: barcode::BarcodeState::default(),
+            generator: generator::GeneratorState::default(),
             library_links: Vec::new(),
             files: library::FilesUi::default(),
         })
@@ -821,6 +826,10 @@ impl AppController {
                 let request = self.next_id::<RequestId>();
                 self.with_session(document, |s| barcode::edit(s, document, edit, request))
             }
+            UiIntent::Generator { document, edit } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| generator::edit(s, document, edit, request))
+            }
             UiIntent::TextPath { document, edit } => {
                 let request = self.next_id::<RequestId>();
                 let fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
@@ -853,10 +862,12 @@ fn apply_command(
     doc: &mut DocumentSession,
     cmd: DocumentCommand,
 ) -> Result<CommandOutcome, CommandError> {
+    // Moving a generated object edits its definition (C-8), wherever the move comes from.
+    let cmd = DocumentCommand { payload: generator::retarget(&doc.snapshot(), cmd.payload), ..cmd };
     let sketches = SketchEvaluator::new(SketchSolverAdapter);
     match fonts {
-        Some(f) => doc.apply_with(cmd, &[&sketches, &TextEvaluator::new(f.clone())]),
-        None => doc.apply_with(cmd, &[&sketches]),
+        Some(f) => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator, &TextEvaluator::new(f.clone())]),
+        None => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator]),
     }
 }
 
@@ -1014,6 +1025,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::TextPath { document, .. }
         | UiIntent::Variable { document, .. }
         | UiIntent::Barcode { document, .. }
+        | UiIntent::Generator { document, .. }
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
         UiIntent::Schikken(intent) => Some(intent.document()),

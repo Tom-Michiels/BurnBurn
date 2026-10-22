@@ -32,7 +32,7 @@ pub struct ShapePlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlanError {
-    /// Only lines, polylines, rectangles and circles can be drawn into a sketch for now.
+    /// Only lines, polylines, rectangles, circles, circular arcs and ellipses can be drawn into a sketch.
     Unsupported,
 }
 
@@ -48,6 +48,7 @@ pub fn plan_commit(sketch: &Sketch, commit: &EditCommit, tol_mm: f64, suppress: 
         lines: Vec::new(),
         circle: None,
         arc: None,
+        ellipse: None,
         axis_aligned: false,
         suggestions: Vec::new(),
     };
@@ -61,6 +62,7 @@ pub fn plan_commit(sketch: &Sketch, commit: &EditCommit, tol_mm: f64, suppress: 
             Shape::Line { from, to } => plan.polygon(&[*from, *to], false, false),
             Shape::Polyline { points, closed } => plan.polygon(points, *closed, false),
             Shape::Circle { center, radius } => plan.circle(*center, radius.mm()),
+            Shape::Ellipse { center, rx, ry, rotation } => plan.ellipse(*center, rx.mm(), ry.mm(), rotation.radians()),
             _ => return Err(PlanError::Unsupported),
         },
         EditCommit::CreatePath { path } => {
@@ -102,6 +104,8 @@ struct Planner<'a> {
     circle: Option<(EntityId, f64)>,
     /// Centre, start, end and direction of a drawn arc.
     arc: Option<(EntityId, EntityId, EntityId, bool)>,
+    /// Centre, major-axis end and semi-minor radius of a drawn ellipse.
+    ellipse: Option<(EntityId, EntityId, f64)>,
     axis_aligned: bool,
     suggestions: Vec<Suggestion>,
 }
@@ -169,6 +173,18 @@ impl Planner<'_> {
         self.arc = Some((c, s, e, clockwise));
     }
 
+    /// The longer semi-axis is the major one: a tall ellipse has its major axis turned a quarter.
+    fn ellipse(&mut self, center: Point, rx: f64, ry: f64, rotation: f64) {
+        let (major, minor, turn) = if ry > rx { (ry, rx, std::f64::consts::FRAC_PI_2) } else { (rx, ry, 0.0) };
+        // A quarter turn must give an exactly vertical axis, not one 3e-16 off.
+        let snap = |v: f64| if v.abs() < 1e-12 { 0.0 } else { v };
+        let (sin, cos) = (rotation + turn).sin_cos();
+        let (sin, cos) = (snap(sin), snap(cos));
+        let end = Point::new(center.x + major * cos, center.y + major * sin);
+        let (c, m) = (self.point(center), self.point(end));
+        self.ellipse = Some((c, m, minor));
+    }
+
     fn position(&self, id: EntityId) -> Option<Point> {
         match id.raw().checked_sub(self.next) {
             Some(i) => self.points.get(usize::try_from(i).ok()?).copied(),
@@ -186,6 +202,24 @@ impl Planner<'_> {
         }
         if let Some((center, start, end, clockwise)) = self.arc {
             steps.push(entity(Entity::Arc { center, start, end, clockwise }));
+        }
+        if let Some((center, major, minor)) = self.ellipse {
+            let id = EntityId::from_raw(first_line + u32::try_from(self.lines.len()).unwrap_or(u32::MAX));
+            steps.push(entity(Entity::Ellipse { center, major, minor }));
+            if let (false, Some(pc), Some(pm)) = (self.suppress, self.position(center), self.position(major)) {
+                let (dx, dy) = ((pm.x - pc.x).abs(), (pm.y - pc.y).abs());
+                let kind = if dy <= self.tol && dx > self.tol {
+                    Some((SuggestionKind::Horizontal, Relation::Horizontal(id)))
+                } else if dx <= self.tol && dy > self.tol {
+                    Some((SuggestionKind::Vertical, Relation::Vertical(id)))
+                } else {
+                    None
+                };
+                if let Some((kind, relation)) = kind {
+                    steps.push(SketchStep::AddConstraint(SketchConstraint::Relation(relation)));
+                    self.suggestions.push(Suggestion { at: pc.lerp(pm, 0.5), kind });
+                }
+            }
         }
         if !self.suppress {
             for (k, (a, b)) in self.lines.clone().into_iter().enumerate() {
@@ -466,13 +500,74 @@ mod tests {
         );
     }
 
+    fn ellipse_commit(center: (f64, f64), rx: f64, ry: f64, degrees: f64) -> EditCommit {
+        EditCommit::CreateShape {
+            shape: Shape::Ellipse {
+                center: Point::new(center.0, center.1),
+                rx: mm(rx),
+                ry: mm(ry),
+                rotation: Angle::from_degrees(degrees).unwrap(),
+            },
+        }
+    }
+
+    fn ellipse_step(center: u32, major: u32, minor: f64) -> SketchStep {
+        SketchStep::AddEntity(SketchEntity {
+            entity: Entity::Ellipse { center: id(center), major: id(major), minor },
+            construction: false,
+        })
+    }
+
+    /// S01: an ellipse is centre point, major-axis end point and the semi-minor radius; an axis-aligned
+    /// one suggests the matching relation on its major axis.
     #[test]
-    fn an_ellipse_cannot_be_drawn_into_a_sketch() {
-        let shape = Shape::Ellipse { center: Point::new(0.0, 0.0), rx: mm(5.0), ry: mm(3.0), rotation: Angle::ZERO };
+    fn a_wide_ellipse_is_drawn_as_centre_major_end_and_minor_radius_with_a_horizontal_axis() {
+        let plan = plan_commit(&Sketch::new("t"), &ellipse_commit((2.0, 1.0), 5.0, 3.0, 0.0), 0.5, false).unwrap();
         assert_eq!(
-            plan_commit(&Sketch::new("t"), &EditCommit::CreateShape { shape }, 0.5, false),
-            Err(PlanError::Unsupported)
+            plan.steps,
+            vec![
+                point_step(2.0, 1.0),
+                point_step(7.0, 1.0),
+                ellipse_step(0, 1, 3.0),
+                relation(Relation::Horizontal(id(2)))
+            ]
         );
+        assert_eq!(plan.suggestions, vec![Suggestion { at: Point::new(4.5, 1.0), kind: SuggestionKind::Horizontal }]);
+    }
+
+    #[test]
+    fn a_tall_ellipse_has_its_major_axis_vertical() {
+        let plan = plan_commit(&Sketch::new("t"), &ellipse_commit((0.0, 0.0), 3.0, 5.0, 0.0), 0.5, false).unwrap();
+        assert_eq!(plan.steps[1], point_step(0.0, 5.0), "the major end is above the centre");
+        assert_eq!(plan.steps[2], ellipse_step(0, 1, 3.0));
+        assert_eq!(plan.steps[3], relation(Relation::Vertical(id(2))));
+        assert_eq!(plan.suggestions[0].kind, SuggestionKind::Vertical);
+    }
+
+    #[test]
+    fn a_rotated_ellipse_gets_no_axis_relation_and_suppressing_adds_none_either() {
+        let plan = plan_commit(&Sketch::new("t"), &ellipse_commit((0.0, 0.0), 5.0, 3.0, 30.0), 0.5, false).unwrap();
+        assert_eq!(plan.steps.len(), 3, "two points and the ellipse, no relation: {:?}", plan.steps);
+        let SketchStep::AddEntity(SketchEntity { entity: Entity::Point { at }, .. }) = &plan.steps[1] else {
+            panic!("a point")
+        };
+        assert!((at.x - 5.0 * 30f64.to_radians().cos()).abs() < 1e-9 && (at.y - 2.5).abs() < 1e-9, "{at:?}");
+        let plain = plan_commit(&Sketch::new("t"), &ellipse_commit((0.0, 0.0), 5.0, 3.0, 0.0), 0.5, true).unwrap();
+        assert_eq!(plain.steps.len(), 3);
+        assert!(plain.suggestions.is_empty());
+    }
+
+    #[test]
+    fn an_ellipse_centred_on_an_existing_point_shares_it() {
+        let plan = plan_commit(&existing(), &ellipse_commit((0.1, 0.0), 4.0, 2.0, 0.0), 0.5, false).unwrap();
+        assert_eq!(plan.steps[0], point_step(4.1, 0.0), "only the major end is new");
+        assert_eq!(plan.steps[1], ellipse_step(0, 3, 2.0));
+    }
+
+    #[test]
+    fn a_round_ellipse_stays_an_ellipse_in_a_sketch() {
+        let plan = plan_commit(&Sketch::new("t"), &ellipse_commit((0.0, 0.0), 4.0, 4.0, 0.0), 0.5, false).unwrap();
+        assert!(plan.steps.contains(&ellipse_step(0, 1, 4.0)));
     }
 
     #[test]

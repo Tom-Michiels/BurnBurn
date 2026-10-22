@@ -27,6 +27,7 @@ struct State {
     /// The next append keeps only this many bytes and fails.
     tear_append: Option<usize>,
     log: Vec<(FsOp, PathBuf)>,
+    modified: BTreeMap<PathBuf, u64>,
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +73,11 @@ impl MemoryFileSystem {
     /// The next `append` writes only the first `keep` bytes and then fails (torn append).
     pub fn tear_next_append(&self, keep: usize) {
         self.lock().tear_append = Some(keep);
+    }
+
+    /// Test setup helper: says when `path` was last written (seconds since the Unix epoch).
+    pub fn set_modified_for_test(&self, path: &Path, seconds: u64) {
+        self.lock().modified.insert(path.to_path_buf(), seconds);
     }
 
     /// Test setup helper: makes `dir` exist without logging or fault checks.
@@ -213,6 +219,10 @@ impl FileSystem for MemoryFileSystem {
             return Err(FsError::new(FsOp::List, dir, FsErrorKind::NotFound));
         }
         Ok(st.files.keys().filter(|p| p.parent() == Some(dir)).cloned().collect())
+    }
+
+    fn modified(&self, path: &Path) -> Result<Option<u64>, FsError> {
+        Ok(self.lock().modified.get(path).copied())
     }
 
     fn remove_file(&self, path: &Path) -> Result<(), FsError> {
