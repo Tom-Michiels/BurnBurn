@@ -1019,9 +1019,9 @@ pub enum CommandKey {
     BarcodeNew,
     /// Archief ▸ Zoek projecten…: the project search panel (P08).
     SearchProjects,
-    /// Tekenen ▸ Doos of scharnier…: the generator dialog (finger-jointed box, living hinge).
+    /// Tekst ▸ Doos of scharnier…: the generator dialog (finger-jointed box, living hinge).
     GeneratorNew,
-    /// Bewerken ▸ Bewerk generator…: the selected generated object (box, hinge or barcode) opens
+    /// Tekst ▸ Bewerk generator…: the selected generated object (box, hinge or barcode) opens
     /// again with its parameters.
     GeneratorEdit,
     /// Archief ▸ Bewaar als template…: the host asks for a file and what the template holds, then
