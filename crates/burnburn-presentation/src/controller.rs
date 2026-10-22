@@ -63,9 +63,9 @@ mod repair_preview;
 mod reshape;
 mod shapes;
 mod shortcuts;
-mod structure;
 mod sketch;
 mod sketch_param;
+mod structure;
 
 pub(crate) use sketch_param::normalise_decimal_commas;
 mod support;

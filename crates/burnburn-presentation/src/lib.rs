@@ -104,11 +104,6 @@ pub use laser::{
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
 };
 pub use notes::NotesViewModel;
-pub use structure_panel::{
-    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
-    ReferenceStatus,
-    StructureEdit, StructureViewModel,
-};
 pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use production::{
     ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,
@@ -118,6 +113,10 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use schikken::*;
+pub use structure_panel::{
+    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
+    ReferenceStatus, StructureEdit, StructureViewModel,
+};
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,

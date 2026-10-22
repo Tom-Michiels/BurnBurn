@@ -138,7 +138,10 @@ fn the_panel_lists_parts_with_their_variants_and_each_instance_fails_alone() {
     assert_eq!(parts.len(), 1);
     let part = &parts[0];
     assert_eq!(part.name, "Beugel");
-    assert_eq!(part.parameters.iter().map(|p| (p.name.as_str(), p.value.as_str())).collect::<Vec<_>>(), [("breedte", "40")]);
+    assert_eq!(
+        part.parameters.iter().map(|p| (p.name.as_str(), p.value.as_str())).collect::<Vec<_>>(),
+        [("breedte", "40")]
+    );
     assert_eq!(part.variants, ["kapot", "klein"]);
     assert_eq!(part.instances.len(), 3);
 
@@ -194,7 +197,10 @@ fn a_local_override_is_visible_and_never_written_into_the_definition() {
         edit: StructureEdit::SetOverride { instance: klein, parameter: "breedte".into(), text: "80 mm".into() },
     });
     let r = row(&h, doc, klein);
-    assert_eq!(r.overrides.iter().map(|p| (p.name.as_str(), p.value.as_str())).collect::<Vec<_>>(), [("breedte", "80")]);
+    assert_eq!(
+        r.overrides.iter().map(|p| (p.name.as_str(), p.value.as_str())).collect::<Vec<_>>(),
+        [("breedte", "80")]
+    );
     assert_eq!(r.effective[0].value, "80", "the override wins over the variant (25)");
     assert_eq!(vm(&h, doc).structure.parts[0].parameters[0].value, "40", "the definition keeps its value");
     assert_eq!(row(&h, doc, plain).overrides.len(), 0, "other instances are untouched");
@@ -226,7 +232,10 @@ fn a_plate_shows_its_size_material_and_instances() {
     let plates = vm(&h, doc).structure.plates;
     assert_eq!(plates.len(), 1);
     let p = &plates[0];
-    assert_eq!((p.name.as_str(), p.width.as_str(), p.height.as_str(), p.material.as_str()), ("Plaat A", "600", "400", "Berken"));
+    assert_eq!(
+        (p.name.as_str(), p.width.as_str(), p.height.as_str(), p.material.as_str()),
+        ("Plaat A", "600", "400", "Berken")
+    );
     assert_eq!(p.thickness.as_deref(), Some("3"));
     assert_eq!(p.instances, 2, "klein and kapot are on this plate; the third is not");
 }
@@ -240,7 +249,6 @@ fn a_reference_to_a_deleted_object_shows_a_broken_link() {
     assert_eq!(refs[0].name, "Rand");
     assert_eq!(refs[0].status, ReferenceStatus::Broken { reason: burnburn_presentation::BrokenReason::ObjectMissing });
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // P06: compileren met alleen de gekozen plaat

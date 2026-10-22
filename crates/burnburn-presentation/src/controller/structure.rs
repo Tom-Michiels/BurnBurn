@@ -14,8 +14,8 @@ use burnburn_types::{DocumentId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length};
 use crate::structure_panel::{
-    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow, ReferenceStatus,
-    StructureEdit, StructureViewModel,
+    BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
+    ReferenceStatus, StructureEdit, StructureViewModel,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
 
@@ -144,9 +144,9 @@ pub(super) fn edit(
         StructureEdit::SetVariant { instance, variant } => {
             let id = PartInstanceId::from_raw(*instance);
             let Some(current) = layer.instance(id) else { return refused(s, document, MessageKey::CommandRejected) };
-            let known = variant.as_ref().is_none_or(|v| {
-                layer.definition(current.definition).is_some_and(|d| d.variants.contains_key(v))
-            });
+            let known = variant
+                .as_ref()
+                .is_none_or(|v| layer.definition(current.definition).is_some_and(|d| d.variants.contains_key(v)));
             if !known {
                 return refused(s, document, MessageKey::CommandRejected);
             }
@@ -178,12 +178,7 @@ pub(super) fn edit(
         return AppUpdate::redraw(document);
     }
     s.problem = None;
-    apply_edit(
-        s,
-        document,
-        CommandPayload::Structure(StructureCommand::SetInstance { instance, value: new }),
-        request,
-    )
+    apply_edit(s, document, CommandPayload::Structure(StructureCommand::SetInstance { instance, value: new }), request)
 }
 
 /// Chooses the plate Compile uses. The plan shown so far belonged to the other choice and goes;

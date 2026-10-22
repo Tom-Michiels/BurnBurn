@@ -68,9 +68,13 @@ pub enum BrokenReason {
 pub enum ReferenceStatus {
     Bound,
     /// The origin yields several edges now; the user must choose.
-    Ambiguous { candidates: usize },
+    Ambiguous {
+        candidates: usize,
+    },
     /// A visible broken link; nothing rebinds by itself.
-    Broken { reason: BrokenReason },
+    Broken {
+        reason: BrokenReason,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
