@@ -1602,6 +1602,10 @@ pub fn rd_refusal_text(reason: burnburn_presentation::RdRefusal, locale: Locale)
             "Meer instellingenblokken dan het RD-formaat toelaat (128): RD-uitvoer wordt geweigerd.",
             "More settings blocks than the RD format allows (128): RD output is refused.",
         ),
+        RdRefusal::Feeder => (
+            "Voeden en pauzeren van de feeder hebben nog geen bewezen RD-vorm: RD-uitvoer wordt geweigerd.",
+            "Feeder feeds and pauses have no proven RD form yet: RD output is refused.",
+        ),
         RdRefusal::NegativeCoordinate => (
             "Een coördinaat onder nul is niet bevestigd voor RD: RD-uitvoer wordt geweigerd.",
             "A coordinate below zero is not confirmed for RD: RD output is refused.",
@@ -1765,6 +1769,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             burnburn_presentation::RdRefusal::Other,
             burnburn_presentation::RdRefusal::TooManyParts,
             burnburn_presentation::RdRefusal::NegativeCoordinate,
+            burnburn_presentation::RdRefusal::Feeder,
         ]
         .map(MessageKey::RdRefused),
     );

@@ -30,6 +30,10 @@ const ACTION_KINDS: [DialogActionKind; 5] = [
 ];
 
 fn choice_items(row: &DialogRow, locale: Locale) -> Vec<ChoiceItem> {
+    // A pop-up whose entries depend on the document brings its own titles.
+    if !row.labels.is_empty() {
+        return row.labels.iter().map(|l| ChoiceItem::plain(l.clone())).collect();
+    }
     row.field
         .choices()
         .iter()

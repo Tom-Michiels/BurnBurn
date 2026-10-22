@@ -5,7 +5,7 @@ use super::{MenuNode, cmd, cmds, nested, sep};
 use crate::adapter::MenuItem;
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{SchikkenText, schikken_text};
-use burnburn_presentation::CommandKey;
+use burnburn_presentation::{CamDialog, CommandKey};
 
 pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
     let mut items = cmds(&[CommandKey::Group, CommandKey::Ungroup, CommandKey::AutoGroup, CommandKey::BreakApart]);
@@ -40,6 +40,7 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
         schikken_text(SchikkenText::MenuMoveTogether, locale),
         cmds(&[CommandKey::MoveTogetherHorizontal, CommandKey::MoveTogetherVertical]),
     ));
+    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Array)));
     items.push(sep());
     items.push(cmd(CommandKey::QuickNest));
     items.push(cmd(CommandKey::NestSelected));

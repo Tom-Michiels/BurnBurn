@@ -31,6 +31,7 @@ use crate::view_model::{
 
 mod app_panels;
 mod arrange;
+mod array_dialog;
 mod barcode;
 mod camera;
 mod camera_marks;
@@ -41,6 +42,7 @@ mod commands;
 mod cut_options;
 mod device;
 mod document;
+mod feeder_dialog;
 mod fields;
 mod geometry;
 mod history_panel;

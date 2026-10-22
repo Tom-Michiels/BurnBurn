@@ -1,5 +1,7 @@
 //! Copies along a path: analytic positions and orientations.
 
+#![allow(clippy::unwrap_used)]
+
 use burnburn_geometry::array::{ArrayError, MAX_COPIES, PathArray, path_array};
 use burnburn_geometry::{Path, Point, ProductionTolerance};
 use burnburn_types::Length;

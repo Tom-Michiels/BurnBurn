@@ -108,6 +108,9 @@ pub enum TaskInput {
     ExportTest { plan: Arc<JobPlan>, ruida: RuidaProfile, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Pack the parts of a nest job on its sheet (W3-UI-schikken, C10); cancellable.
     Nest(Box<crate::nest_task::NestJob>),
+    /// A compile (plain or placed) whose plan gets the feeder applied before its preview is made
+    /// (FE01), so preview, preflight and RD attempt refer to the same fed plan.
+    Fed { inner: Box<TaskInput>, feeder: burnburn_cam::FeederSettings },
 }
 
 impl fmt::Debug for TaskInput {
@@ -148,6 +151,7 @@ impl fmt::Debug for TaskInput {
             }
             TaskInput::ExportTest { plan, path, .. } => write!(f, "ExportTest({:?} to {})", plan.id(), path.display()),
             TaskInput::Nest(job) => write!(f, "Nest({} parts)", job.part_count()),
+            TaskInput::Fed { inner, feeder } => write!(f, "Fed({inner:?}, repeat {})", feeder.repeat()),
         }
     }
 }
@@ -176,6 +180,7 @@ impl TaskInput {
             TaskInput::WriteText { .. } => TaskKind::TextExport,
             TaskInput::CompileTest { .. } | TaskInput::ExportTest { .. } => TaskKind::TestJob,
             TaskInput::Nest(_) => TaskKind::Nest,
+            TaskInput::Fed { inner, .. } => inner.kind(),
         }
     }
 }
@@ -401,6 +406,8 @@ pub enum TaskError {
     Nest(burnburn_cam::nest::NestError),
     /// A file-feature job failed.
     Files(FilesError),
+    /// The feeder could not be planned around the compiled plan.
+    Feeder(burnburn_cam::FeederError),
 }
 
 impl fmt::Display for TaskError {
@@ -425,6 +432,7 @@ impl fmt::Display for TaskError {
             TaskError::UnsupportedFormat => f.write_str("unsupported import format"),
             TaskError::Nest(e) => write!(f, "nesting failed: {e}"),
             TaskError::Files(e) => write!(f, "{e}"),
+            TaskError::Feeder(e) => write!(f, "{e}"),
         }
     }
 }
@@ -455,6 +463,31 @@ pub trait TaskPort: Send + Sync {
 /// runs exactly the same function as production.
 pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutput, TaskError> {
     match input {
+        TaskInput::Fed { inner, feeder } => {
+            let profile = match &*inner {
+                TaskInput::Compile { profile, .. } | TaskInput::CompilePlaced { profile, .. } => Arc::clone(profile),
+                // Only compiles carry a plan to wrap.
+                _ => return run_task(*inner, cancel),
+            };
+            let fed = |plan: &JobPlan| match burnburn_cam::plan_feeder(plan, &feeder, cancel) {
+                Ok(p) => Ok(p),
+                Err(burnburn_cam::FeederError::Cancelled) => Err(TaskError::Cancelled),
+                Err(e) => Err(TaskError::Feeder(e)),
+            };
+            match run_task(*inner, cancel)? {
+                TaskOutput::Compiled { plan, report, .. } => {
+                    let plan = Arc::new(fed(&plan)?);
+                    let preview = Arc::new(preview(&plan, &profile));
+                    Ok(TaskOutput::Compiled { plan, preview, report })
+                }
+                TaskOutput::CompiledPlaced { plan, report, placement, .. } => {
+                    let plan = Arc::new(fed(&plan)?);
+                    let preview = Arc::new(preview(&plan, &profile));
+                    Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement })
+                }
+                other => Ok(other),
+            }
+        }
         TaskInput::Measure(snapshot) => {
             let mut bounds: Option<Bounds> = None;
             for (_, obj) in snapshot.objects() {

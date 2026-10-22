@@ -29,6 +29,8 @@ pub fn cam_title(dialog: CamDialog, locale: Locale) -> &'static str {
             CamDialog::IntervalTest => ("Intervaltest", "Interval Test"),
             CamDialog::FocusTest => ("Focustest", "Focus Test"),
             CamDialog::Device => ("Apparaatinstellingen", "Device Settings"),
+            CamDialog::Array => ("Reeks", "Array"),
+            CamDialog::Feeder => ("Feeder", "Feeder"),
         },
         locale,
     )
@@ -120,6 +122,24 @@ pub fn cam_caption(field: DialogField, vm: &DialogViewModel, locale: Locale) -> 
             F::StepsPerRotation => ("Stappen per omwenteling", "Steps per rotation"),
             F::YStepsPerMm => ("Y-stappen per mm (uit de machine lezen)", "Y steps per mm (read from the machine)"),
             F::RotaryMirror => ("Spiegelen", "Mirror"),
+            F::ArrayKind => ("Soort reeks", "Kind of array"),
+            F::GridColumns => ("Kolommen", "Columns"),
+            F::GridRows => ("Rijen", "Rows"),
+            F::GridPitchX => ("Afstand tussen kolommen (mm)", "Column pitch (mm)"),
+            F::GridPitchY => ("Afstand tussen rijen (mm)", "Row pitch (mm)"),
+            F::CircularCount => ("Aantal kopieën", "Number of copies"),
+            F::CircularCentreX => ("Middelpunt X (mm)", "Centre X (mm)"),
+            F::CircularCentreY => ("Middelpunt Y (mm)", "Centre Y (mm)"),
+            F::CircularSweep => ("Hoek (graden, 360 = rond)", "Sweep (degrees, 360 = full circle)"),
+            F::CircularRotate => ("Kopieën meedraaien", "Turn the copies with the circle"),
+            F::PathCount => ("Aantal kopieën", "Number of copies"),
+            F::PathAlong => ("Langs dit pad", "Along this path"),
+            F::FeederRepeat => ("Herhalingen", "Repeats"),
+            F::FeederFeedBefore => ("Voeden voor elke run (mm)", "Feed before each run (mm)"),
+            F::FeederFeedAfter => ("Voeden na elke run (mm)", "Feed after each run (mm)"),
+            F::FeederPause => ("Pauze tussen de runs (s)", "Pause between runs (s)"),
+            F::FeederSpeed => ("Voedsnelheid (mm/s)", "Feed speed (mm/s)"),
+            F::PathOrient => ("Kopieën volgen de richting van het pad", "Copies follow the direction of the path"),
             _ => ("", ""),
         },
         locale,
@@ -145,6 +165,9 @@ pub fn cam_choice_label(choice: DialogChoice, locale: Locale) -> &'static str {
             C::OriginBottomRight => ("Rechtsonder", "Bottom right"),
             C::RotaryChuck => ("Klauwplaat (chuck)", "Chuck"),
             C::RotaryRoller => ("Rollers", "Roller"),
+            C::ArrayGrid => ("Raster (kolommen en rijen)", "Grid (columns and rows)"),
+            C::ArrayCircular => ("Cirkel", "Circular"),
+            C::ArrayPath => ("Langs een pad", "Along a path"),
             _ => ("", ""),
         },
         locale,
@@ -179,6 +202,14 @@ pub fn cam_error(error: DialogError, locale: Locale) -> String {
                 Locale::Nl => format!("Ontbrekende capability: {name} (zie Apparaatinstellingen)."),
                 Locale::En => format!("Missing capability: {name} (see Device Settings)."),
             }
+        }
+        DialogError::TooManyCopies => pick(
+            ("Aantal moet minstens 1 zijn en hoogstens 100 000.", "The count must be at least 1 and at most 100,000."),
+            locale,
+        )
+        .to_owned(),
+        DialogError::NoPath => {
+            pick(("Er is geen ander object om te volgen.", "There is no other object to follow."), locale).to_owned()
         }
         _ => pick(("Ongeldig.", "Invalid."), locale).to_owned(),
     }
@@ -227,6 +258,21 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
         DialogNote::TestSaved => ("De test is als RD-bestand opgeslagen.", "The test was saved as an RD file."),
         DialogNote::ExportFailed => ("Het RD-bestand kon niet worden geschreven.", "The RD file could not be written."),
         DialogNote::RdRefused(reason) => return rd_refusal_text(reason, locale).to_owned(),
+        DialogNote::FeederHasNoRdForm => (
+            "Voeden en pauzeren hebben nog geen bewezen RD-vorm: het plan is alleen een voorbeeld, opslaan als RD en verzenden worden geweigerd.",
+            "Feeds and pauses have no proven RD form yet: the plan is a preview only, saving as RD and sending are refused.",
+        ),
+        DialogNote::ArrayNeedsOneObject => (
+            "Selecteer precies één object om een reeks van te maken.",
+            "Select exactly one object to make an array of.",
+        ),
+        DialogNote::ArrayExtent { copies, width_um, height_um } => {
+            let (w, h) = (width_um as f64 / 1000.0, height_um as f64 / 1000.0);
+            return match locale {
+                Locale::Nl => format!("{copies} kopieën (met het origineel), samen {w:.3} × {h:.3} mm."),
+                Locale::En => format!("{copies} copies (with the original), together {w:.3} × {h:.3} mm."),
+            };
+        }
         _ => ("", ""),
     };
     pick(pair, locale).to_owned()
@@ -236,6 +282,7 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
 pub fn cam_action_title(kind: DialogActionKind, dialog: CamDialog, locale: Locale) -> &'static str {
     pick(
         match (kind, dialog) {
+            (DialogActionKind::Apply, CamDialog::Array) => ("Reeks maken", "Make array"),
             (DialogActionKind::Apply, _) => ("Toepassen", "Apply"),
             (DialogActionKind::Close, _) => ("Sluiten", "Close"),
             (DialogActionKind::Generate, _) => ("Maak test", "Generate test"),

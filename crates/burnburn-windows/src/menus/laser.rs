@@ -11,6 +11,7 @@ pub(super) fn items() -> Vec<MenuNode> {
         MenuNode::Item(MenuItem::CamDialog(CamDialog::MaterialTest)),
         MenuNode::Item(MenuItem::CamDialog(CamDialog::IntervalTest)),
         MenuNode::Item(MenuItem::CamDialog(CamDialog::FocusTest)),
+        MenuNode::Item(MenuItem::CamDialog(CamDialog::Feeder)),
         cmd(CommandKey::PrintAndCut),
         cmd(CommandKey::CenterFinder),
     ]

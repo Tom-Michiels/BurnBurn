@@ -358,8 +358,8 @@ fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Re
     let options = BooleanOptions { fill: FillRule::EvenOdd, tolerance: p.tolerance };
     let mut usable = stock.outline.clone();
     for k in &stock.keep_out {
-        usable = burnburn_geometry::boolean(&usable, k, BooleanOp::Difference, &options, cancel)
-            .map_err(|e| match e {
+        usable =
+            burnburn_geometry::boolean(&usable, k, BooleanOp::Difference, &options, cancel).map_err(|e| match e {
                 burnburn_geometry::BooleanError::Cancelled => NestError::Cancelled,
                 _ => NestError::Geometry { what: "keep-out" },
             })?;

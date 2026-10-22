@@ -481,7 +481,12 @@ impl CamPanelUi {
     fn fill_popup(&self, p: &NSPopUpButton, row: &burnburn_presentation::DialogRow, locale: Locale) {
         let choices = row.field.choices();
         let titles: Vec<String> = p.itemTitles().iter().map(|t| t.to_string()).collect();
-        let wanted: Vec<&str> = choices.iter().map(|c| cam_choice_label(*c, locale)).collect();
+        // A pop-up whose entries depend on the document brings its own titles.
+        let wanted: Vec<&str> = if row.labels.is_empty() {
+            choices.iter().map(|c| cam_choice_label(*c, locale)).collect()
+        } else {
+            row.labels.iter().map(String::as_str).collect()
+        };
         if titles.iter().map(String::as_str).collect::<Vec<_>>() != wanted {
             p.removeAllItems();
             for title in &wanted {

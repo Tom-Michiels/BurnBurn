@@ -342,6 +342,7 @@ impl AppController {
                 error: draft.errors.get(&field).copied(),
                 blocked_choices: Vec::new(),
                 reorder: None,
+                labels: Vec::new(),
             });
         }
         let mut notes = vec![DialogNote::ProfileChangeMakesPlansStale, DialogNote::DialectUnverified];

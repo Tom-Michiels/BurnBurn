@@ -25,15 +25,22 @@ pub enum CamDialog {
     IntervalTest,
     FocusTest,
     Device,
+    /// Arrange ▸ Array: grid, circular and along-a-path arrays with a live preview (AR02).
+    Array,
+    /// Laser ▸ Feeder: repeat, feed before and after, pause (FE01).
+    Feeder,
 }
 
 impl CamDialog {
-    pub const ALL: [CamDialog; 5] = [
+    /// The order is the order of the command ids of the hosts: new dialogs are appended.
+    pub const ALL: [CamDialog; 7] = [
         CamDialog::Optimization,
         CamDialog::MaterialTest,
         CamDialog::IntervalTest,
         CamDialog::FocusTest,
         CamDialog::Device,
+        CamDialog::Array,
+        CamDialog::Feeder,
     ];
 
     /// The three generators; their result is a private test job.
@@ -105,6 +112,32 @@ pub enum DialogField {
     StepsPerRotation,
     YStepsPerMm,
     RotaryMirror,
+    // Array
+    /// Grid, circular or along a path ([`DialogChoice::ArrayGrid`] …).
+    ArrayKind,
+    GridColumns,
+    GridRows,
+    GridPitchX,
+    GridPitchY,
+    CircularCount,
+    CircularCentreX,
+    CircularCentreY,
+    /// Degrees; 360 spaces the copies over the full circle.
+    CircularSweep,
+    CircularRotate,
+    PathCount,
+    /// The object to follow: a pop-up whose entries are the row's `labels`.
+    PathAlong,
+    PathOrient,
+    // Feeder
+    FeederRepeat,
+    /// Material advance before each run, mm.
+    FeederFeedBefore,
+    FeederFeedAfter,
+    /// Seconds between two runs.
+    FeederPause,
+    /// Feed speed, mm/s.
+    FeederSpeed,
 }
 
 /// An entry of a pop-up field.
@@ -124,6 +157,9 @@ pub enum DialogChoice {
     OriginBottomRight,
     RotaryChuck,
     RotaryRoller,
+    ArrayGrid,
+    ArrayCircular,
+    ArrayPath,
 }
 
 const CELL_MODES: [DialogChoice; 2] = [DialogChoice::CellLine, DialogChoice::CellFill];
@@ -141,6 +177,7 @@ const ORIGINS: [DialogChoice; 4] = [
     DialogChoice::OriginBottomRight,
 ];
 const ROTARY_KINDS: [DialogChoice; 2] = [DialogChoice::RotaryChuck, DialogChoice::RotaryRoller];
+const ARRAY_KINDS: [DialogChoice; 3] = [DialogChoice::ArrayGrid, DialogChoice::ArrayCircular, DialogChoice::ArrayPath];
 
 impl DialogField {
     /// The entries of a pop-up field (empty for the others).
@@ -150,6 +187,7 @@ impl DialogField {
             DialogField::ColumnParameter | DialogField::RowParameter => &PARAMETERS,
             DialogField::BedOrigin => &ORIGINS,
             DialogField::RotaryKind => &ROTARY_KINDS,
+            DialogField::ArrayKind => &ARRAY_KINDS,
             _ => &[],
         }
     }
@@ -168,12 +206,16 @@ impl DialogField {
             | DialogField::LabelsEnabled
             | DialogField::BorderEnabled
             | DialogField::RotaryEnabled
-            | DialogField::RotaryMirror => DialogControl::Flag,
+            | DialogField::RotaryMirror
+            | DialogField::CircularRotate
+            | DialogField::PathOrient => DialogControl::Flag,
             DialogField::CellMode
             | DialogField::ColumnParameter
             | DialogField::RowParameter
             | DialogField::BedOrigin
-            | DialogField::RotaryKind => DialogControl::Choice,
+            | DialogField::RotaryKind
+            | DialogField::ArrayKind
+            | DialogField::PathAlong => DialogControl::Choice,
             _ => DialogControl::Text,
         }
     }
@@ -239,6 +281,10 @@ pub enum DialogError {
     TooManyCells,
     /// The machine profile does not support the feature the field needs.
     Unsupported(Feature),
+    /// An array of zero copies, or of more than the document allows.
+    TooManyCopies,
+    /// Array along a path: there is no object to follow.
+    NoPath,
 }
 
 /// What a dialog says in words besides its fields.
@@ -271,6 +317,12 @@ pub enum DialogNote {
     RdRefused(RdRefusal),
     /// Writing the file failed.
     ExportFailed,
+    /// Array: the dialog works on exactly one selected object.
+    ArrayNeedsOneObject,
+    /// Array: what the draft makes, in whole micrometres (copies include the original).
+    ArrayExtent { copies: u32, width_um: u64, height_um: u64 },
+    /// Feeder: the plan has feeds or pauses, which have no proven RD form: preview only.
+    FeederHasNoRdForm,
 }
 
 /// Why a plan cannot be written as RD (the Ruida backend has no proven form for it). Said in
@@ -292,6 +344,8 @@ pub enum RdRefusal {
     TooManyParts,
     /// A negative machine coordinate (not confirmed for RD).
     NegativeCoordinate,
+    /// Feeder feeds and pauses.
+    Feeder,
 }
 
 impl RdRefusal {
@@ -304,6 +358,7 @@ impl RdRefusal {
             "focus offset" => RdRefusal::FocusOffset,
             "scan angle" => RdRefusal::ScanAngle,
             "grayscale modulation" => RdRefusal::GrayscaleModulation,
+            "feeder" => RdRefusal::Feeder,
             _ => RdRefusal::Other,
         }
     }
@@ -321,6 +376,9 @@ pub struct DialogRow {
     pub blocked_choices: Vec<(DialogChoice, MessageKey)>,
     /// Optimization order rows: whether the level can move up / down.
     pub reorder: Option<(bool, bool)>,
+    /// A pop-up whose entries depend on the document (the objects an array can follow): their
+    /// titles. Empty: the entries are [`DialogField::choices`].
+    pub labels: Vec<String>,
 }
 
 /// What an action button does.
