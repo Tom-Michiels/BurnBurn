@@ -159,7 +159,8 @@ pub(crate) fn cut_curved(
     let prev = (i + m - 1) % m;
     let a = Side { from: ring.starts[prev], seg: ring.segs[prev] };
     let b = Side { from: ring.starts[i], seg: ring.segs[i] };
-    let (ta, tb) = (a.unit_tangent(1.0).ok_or(CornerError::Collinear)?, b.unit_tangent(0.0).ok_or(CornerError::Collinear)?);
+    let (ta, tb) =
+        (a.unit_tangent(1.0).ok_or(CornerError::Collinear)?, b.unit_tangent(0.0).ok_or(CornerError::Collinear)?);
     let sin_turn = ta.cross(tb);
     if sin_turn.abs() < 1e-9 {
         return Err(CornerError::Collinear);
@@ -196,7 +197,14 @@ pub(crate) fn cut_curved(
     rebuild_curved(ring, i, s, t, join, subpath_start)
 }
 
-fn chamfer_by_distance(a: &Side, b: &Side, la: f64, lb: f64, d1: f64, d2: f64) -> Result<(f64, f64, Segment), CornerError> {
+fn chamfer_by_distance(
+    a: &Side,
+    b: &Side,
+    la: f64,
+    lb: f64,
+    d1: f64,
+    d2: f64,
+) -> Result<(f64, f64, Segment), CornerError> {
     if d1 > la + EPS || d2 > lb + EPS {
         return Err(CornerError::TooLarge);
     }

@@ -223,7 +223,12 @@ fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> R
 /// curve no longer says anything about its shape. The end then continues straight along its
 /// own end tangent (tangent continuous with the curve, which stays exactly as drawn) to the
 /// first boundary crossing. `poly` is the cubic walked towards the extended end.
-fn tangent_continuation(sp: &Subpath, poly: [Point; 4], at_end: bool, boundaries: &[&Path]) -> Result<Subpath, ExtendError> {
+fn tangent_continuation(
+    sp: &Subpath,
+    poly: [Point; 4],
+    at_end: bool,
+    boundaries: &[&Path],
+) -> Result<Subpath, ExtendError> {
     let end = poly[3];
     // The last control point that differs from the end gives the heading.
     let heading = [poly[2], poly[1], poly[0]]

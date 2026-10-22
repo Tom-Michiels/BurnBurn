@@ -166,9 +166,8 @@ fn a_fillet_between_a_line_and_a_bezier_is_tangent_to_both_at_the_stated_radius(
 #[test]
 fn chamfer_distances_on_a_curved_side_are_measured_along_the_curve() {
     // 3 mm down the line, 4 mm along the circle: 4 / 10 rad from its lowest point.
-    let out = line_then_circle()
-        .cut_corner(p(0.1, 1.0), 1.5, CornerCut::ChamferTwo { first: 3.0, second: 4.0 })
-        .unwrap();
+    let out =
+        line_then_circle().cut_corner(p(0.1, 1.0), 1.5, CornerCut::ChamferTwo { first: 3.0, second: 4.0 }).unwrap();
     let parts = pieces(&out);
     assert_eq!(parts.len(), 3);
     let on_circle = p(10.0 * 0.4_f64.sin(), 10.0 - 10.0 * 0.4_f64.cos());
@@ -177,9 +176,8 @@ fn chamfer_distances_on_a_curved_side_are_measured_along_the_curve() {
     assert!(to.distance(on_circle) < 1e-6, "{to:?} vs {on_circle:?}");
     assert!(parts[2].0.distance(on_circle) < 1e-6);
     // The same pair the other way round puts 4 mm on the line and 3 mm on the circle.
-    let swapped = line_then_circle()
-        .cut_corner(p(1.0, 0.1), 1.5, CornerCut::ChamferTwo { first: 3.0, second: 4.0 })
-        .unwrap();
+    let swapped =
+        line_then_circle().cut_corner(p(1.0, 0.1), 1.5, CornerCut::ChamferTwo { first: 3.0, second: 4.0 }).unwrap();
     let parts = pieces(&swapped);
     assert!(parts[0].1.end().distance(p(0.0, 4.0)) < 1e-6, "{:?}", parts[0].1.end());
     assert!(parts[2].0.distance(p(10.0 * 0.3_f64.sin(), 10.0 - 10.0 * 0.3_f64.cos())) < 1e-6);
@@ -187,7 +185,8 @@ fn chamfer_distances_on_a_curved_side_are_measured_along_the_curve() {
 
 #[test]
 fn an_equal_chamfer_between_two_arcs_cuts_the_same_arc_length_from_each() {
-    let out = valley_between_two_arcs().cut_corner(p(6.0, 7.9), 1.0, CornerCut::ChamferEqual { distance: 2.0 }).unwrap();
+    let out =
+        valley_between_two_arcs().cut_corner(p(6.0, 7.9), 1.0, CornerCut::ChamferEqual { distance: 2.0 }).unwrap();
     let parts = pieces(&out);
     assert_eq!(parts.len(), 3);
     // 2 mm on a radius-10 circle is 0.2 rad: back from angle a on the first, on from b on the second.
