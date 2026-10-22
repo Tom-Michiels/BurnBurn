@@ -25,14 +25,18 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 - **Editor**: extend- en fillet-UI, curve-trim (E05, IM09); modifierstapel in de inspecteur (E06); meerdere teksten
   tegelijk bewerken en tekst op pad als live binding (E07/E08); platen aanmaken/toewijzen, vormen van een onderdeel
   bewerken, variant hernoemen/verwijderen (S07, P06); kleine as van een ellips als sturende maat, raakt/punt-op-ellips (S01).
-- **Trace**: wijzen in het beeld (kwast, hoekpunten) en lensvervorming (T03); beschermde contouren en knooppuntdoel (T05);
-  beschermde gaten en terugzetten per stuk (T06); Replace to Fit (T09); eigen recepten bewaren, A/B in de UI, multi-file
-  trace (T10); stroke-overlay op het canvas (T04); lagen per kleur/pen bij PDF/HPGL (P04).
+- **Trace** (G7-trace: gebouwd, zie `docs/dev-notes/G7-trace.md`; wat blijft): T03 radiaal lensmodel zonder tangentiële termen
+  en het wijzen werkt via de canvas-aanwijzer (foto op het blad), het uiterlijk en het gevoel van de kwast zijn niet bekeken;
+  T05 beschermen kiest uit een lijst, niet door op een contour te klikken; T06 beschermde *hoeken* (alleen gaten en
+  stukken zijn gedaan); T10 batch krijgt de paden uit een tekstvak (geen NSOpenPanel-/Win32-meervoudskeuze), A/B vergelijkt
+  zonder lokale correcties en toont de twee omtrekken in het paneel, niet op het canvas; T04 tekent de strepen maar geen
+  knooppuntmarkeringen; P04 maakt Line-/Fill-operaties met standaardsnelheid en -vermogen (geen koppeling aan palet-
+  kleuren).
 - **Machine**: bevestigingspaneel voor Start (M06); UI voor controllerinstellingen schrijven/herstellen (M09, wacht op
   hardwarebewijs); plugin-loader en -paneel (X06, wacht op B-5).
 - **Prestaties/CI**: de 100k-benchmarks zijn `#[ignore]` en geen regressiedrempel in `verify` (X04); de GitHub-workflows
   (`ci.yml`, `release.yml`) zijn nooit gedraaid; fuzz-doelen (o.a. `grbl_status`) zijn gebouwd maar niet gedraaid (B-10).
-- **Tekst**: Arabisch/contextuele vormen niet getest (alleen Hebreeuws); geen SHX-parser (geen permissieve Rust-crate).
+- **Tekst**: Arabisch (isol/init/medi/fina, lam-alef, tekenreeks in RTL) is getest met DejaVu Sans en gaf geen fout (G7-trace); marktekens (GPOS), kashida en Indische scripts niet; geen SHX-parser (geen permissieve Rust-crate).
 
 ### Handmatig (macOS-uiterlijk en OS-dialogen; niet bekeken)
 
@@ -310,3 +314,16 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G6-werk | S06 rand-referentie maken, dubbelzinnig herkoppelen | `DocumentSnapshot::{edge_ref, resolve}`, `StructureCommand::{AddReference, RebindReference, RemoveReference}` (bestonden) | `StructureEdit::{AddReference, RebindReference, RemoveReference}`, `StructureViewModel.{selected, edges, edge_object}`, `ReferenceRow.candidates` | `presentation/tests/g6_structure.rs::{the_edges_of_the_single_selected_object_…, an_ambiguous_reference_…, deleting_the_referenced_object_…}` | klaar; open: rand kiezen door op het canvas te wijzen |
 | G6-werk | W08 compacte operatorweergave (revisie, afmeting, materiaal, orders) | – (`AppController::operator_view` bestond) | `OperatorJobRow.{revision, bounds, material}`, `DocumentViewModel.operator`, `G5Panel::Operator`, `MenuItem::OperatorPanel` (tag/id 1033) | `presentation/tests/g6_operator.rs::*`, `macos/tests/g6_werk_operator.rs::*`, `windows/tests/g6_operator_form.rs::*` | klaar (headless); open: tweede proces/IPC, native run van dit paneel |
 | G6-werk | W04 kalibraties bewaren (io-DTO), W06 herkenning (template-localisatie met beoordeling) | `LensCalibration`/`WorkspaceAlignment` DTO's; een locatie-algoritme in `burnburn-image` | – | – | open (niet gebouwd in dit pakket) |
+
+## G7-trace
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G7-trace | T03 lensvervorming (k1, k2) voor de vlakcorrectie | `image::{LensDistortion, ImageRecipe.lens}`, param `image.lens` | `TracePrepIntent::{UseLens, ClearLens}`, `TracePrepViewModel.lens` | `image/tests/lens_distortion.rs::*`, `trace/tests/document_recipe.rs::*`, `presentation/tests/g7_trace_pick.rs::the_lens_*`, `macos/tests/g7_trace_panels.rs::the_lens_buttons_*`, `windows/tests/g7_trace_forms.rs::lens_pointing_*` | klaar |
+| G7-trace | T03 wijzen: vier hoeken klikken, kwast voor maskers, op het canvas | `RegionShape::Stroke{points, radius}` | `UiIntent::TracePick`, `TracePick::{BeginCorners, BeginBrush, BeginBrushTyped, Point, Stroke, End}`, `TracePrepViewModel.pick`, `Overlay::BedImage` van de foto | `image/tests/brush_mask.rs::*`, `presentation/tests/{g7_trace_pick, g7_trace_canvas}.rs::*`, `macos/tests/g7_trace_panels.rs`, `windows/tests/g7_trace_forms.rs` | klaar; uiterlijk en gevoel handmatig |
+| G7-trace | T05 beschermde contouren en knooppuntdoel bij lokale hertrace | `CorrectionRequest.{protected, node_target}` (bestond) | `TracePrepIntent::{ProtectContour, SetNodeTarget}`, `PrepContour`, `PrepCorrection.{protected, node_goal}` | `presentation/tests/g7_trace_protect.rs::*`, `macos/tests/g7_trace_panels.rs::{every_contour_*, the_node_goal_*}` | klaar |
+| G7-trace | T06 beschermde gaten en terugzetten per stuk | `ContourSettings.keep`, `RemovedFeature.anchor_px`, `TraceResult::contour_anchor_px`, param `contour.keep` | `TracePrepIntent::{KeepContour, RestoreRemoved}` | `trace/tests/keep_features.rs::*`, `presentation/tests/g7_trace_protect.rs::*` | klaar; beschermde hoeken open |
+| G7-trace | T09 Replace to Fit | `CompoundLabel::ReplaceToFit` | `UiIntent::ReplaceImageToFit`, `CommandKey::ReplaceImageToFit`, menu Beeld, Beeld-paneel (Windows) | `presentation/tests/g7_replace_fit.rs::*`, `macos/tests/g7_replace_fit_menu.rs`, `windows/tests/g7_replace_fit.rs` | klaar |
+| G7-trace | T10 eigen recepten, A/B, batch (annuleerbaar) | `io::trace_recipe_library`, `TaskInput::TraceStudy` | `UiIntent::TraceRecipe`, `TraceRecipeIntent`, `DocumentViewModel.trace_recipes` | `io/tests/g7_trace_recipe_library.rs`, `presentation/tests/g7_trace_recipes.rs::*`, `macos/tests/g7_trace_panels.rs::{recipes_*, a_batch_*}` | klaar; meervoudskeuzedialoog open |
+| G7-trace | T04 strepen van de centerline op het canvas | – | scene-overlay `Overlay::ResultPreview` | `presentation/tests/g7_trace_overlay.rs::*` | klaar |
+| G7-trace | P04 lagen per kleur/pen bij PDF/HPGL | `ImportedPath.layer`, `ImportLayer` | `FilesIntent::SetImportLayers`, `ImportViewModel.layers_accepted`, `CompoundLabel::ImportLayers` | `io/tests/{pdf, hpgl}.rs`, `presentation/tests/g7_import_layers.rs::*`, `macos/tests/g7_import_layers_panel.rs`, `windows/tests/g7_import_layers_form.rs`, native `import_layers_native` | klaar |
+| G7-trace | Tekst: Arabische contextvormen | – (geen codefout gevonden) | – | `text/tests/arabic.rs::*` | klaar |
