@@ -217,9 +217,10 @@ pub fn encode_profile_library_entries(entries: &[LibraryProfile]) -> Result<Vec<
             })
         })
         .collect();
+    let calibrated = entries.iter().any(|e| !e.profile.calibration().is_empty());
     let dto = FileDto {
         format: FORMAT.to_owned(),
-        schema: if settings.is_empty() { SCHEMA_PLAIN } else { PROFILE_LIBRARY_SCHEMA },
+        schema: if settings.is_empty() && !calibrated { SCHEMA_PLAIN } else { PROFILE_LIBRARY_SCHEMA },
         profiles: entries.iter().map(|e| profile_to_dto(&e.profile)).collect(),
         settings,
     };
