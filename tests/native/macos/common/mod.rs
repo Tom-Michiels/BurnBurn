@@ -39,12 +39,16 @@ pub fn start() -> Result<Session, String> {
 /// As [`start`], with changed host options (language, …).
 pub fn start_with(change: impl FnOnce(&mut HostOptions)) -> Result<Session, String> {
     let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
-    // Accessory: real windows without a Dock icon or menu-bar takeover during the test.
-    prepare_application(mtm, NSApplicationActivationPolicy::Accessory);
-    let dir = std::env::temp_dir().join(format!("burnburn-native-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // `cargo xtask verify` runs the native tests quietly unless `--native` is given.
     let quiet = std::env::var_os("BURNBURN_NATIVE_QUIET").is_some_and(|v| v != "0");
+    // Accessory: real windows without a Dock icon or menu-bar takeover during the test. Quiet:
+    // Prohibited, so the system can never make a test process the active app (for example when
+    // the previous test process quits and macOS hands the focus to the next app).
+    let policy =
+        if quiet { NSApplicationActivationPolicy::Prohibited } else { NSApplicationActivationPolicy::Accessory };
+    prepare_application(mtm, policy);
+    let dir = std::env::temp_dir().join(format!("burnburn-native-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut options = HostOptions {
         quit_when_last_window_closes: false,
         float_windows: !quiet,

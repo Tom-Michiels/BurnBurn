@@ -82,3 +82,8 @@ tijdstempel 0 (de palet-test zet er één in de wachtrij voor de volgfunctie van
 
 Een poging om het met een in de wachtrij geplaatste `MouseMoved` native te bewijzen slaagde ook zonder fix (zo'n event
 bereikt het canvas niet via de tracking-area) en is teruggedraaid: de regel is daarom als zuivere functie getest.
+
+**Stille modus: testproces werd toch actief.** In de volle stille `verify` faalde native `quiet_windows` één keer op "the test
+app never takes the focus", terwijl hij los altijd slaagt: macOS kan de focus doorgeven aan een ander proces als het actieve
+testproces afsluit. In stille modus start de harness het testproces daarom met `NSApplicationActivationPolicy::Prohibited`
+(nooit activeerbaar) i.p.v. `Accessory`. Hele macOS-crate stil gedraaid: geen FAILED.
