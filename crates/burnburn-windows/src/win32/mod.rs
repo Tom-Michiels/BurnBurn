@@ -57,7 +57,7 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_MENU};
 use windows::Win32::UI::WindowsAndMessaging::{
     ACCEL, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW,
-    DestroyWindow, DispatchMessageW, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA, GetClientRect, GetCursorPos,
+    DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GWLP_USERDATA, GetClientRect, GetCursorPos,
     GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL, HMENU, IDC_ARROW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT,
     LB_SETSEL, LBS_EXTENDEDSEL, LBS_NOTIFY, LoadCursorW, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
@@ -399,7 +399,8 @@ fn surface_for(instance: HINSTANCE, canvas: HWND) -> Option<SurfaceCanvas> {
 
 fn open_window(document: DocumentId) {
     let vm = view();
-    let menu = build_menu(&vm, system_locale());
+    let built = build_menu(&vm, system_locale());
+    let menu = built.as_ref().map(|b| b.bar);
     let Some(instance) = with_host(|h| h.instance) else { return };
     let child = |class: PCWSTR, style, parent: HWND, id: usize| {
         // SAFETY: creating a child control of our frame; class names are system or ours.
@@ -476,6 +477,9 @@ fn open_window(document: DocumentId) {
             },
         );
     });
+    if let Some(built) = &built {
+        crate::win32_panels::manager::register_recent_menus(frame, built.recent_projects, built.recent_templates);
+    }
     // SAFETY: showing our own frame.
     let _ = unsafe { ShowWindow(frame, SW_SHOW) };
     refresh();
@@ -564,6 +568,7 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 return LRESULT(0);
             }
             WM_DESTROY => {
+                crate::win32_panels::manager::forget_recent_menus(hwnd);
                 let remaining = with_host(|h| {
                     if let Some(mut w) = h.windows.remove(&document) {
                         w.canvas_surface = None;
@@ -940,6 +945,9 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
             let mut f = FVIRTKEY;
             if a.ctrl {
                 f |= FCONTROL;
+            }
+            if a.alt {
+                f |= FALT;
             }
             if a.shift {
                 f |= FSHIFT;

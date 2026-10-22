@@ -10,10 +10,13 @@ use burnburn_windows::adapter::{
     Control, MenuItem, MessageContext, Reaction, accelerators, command_id, menu_checked, menu_enabled, menu_item,
     menu_items, menu_title, msg, notify, on_message,
 };
+use burnburn_windows::host_panels::menu::Item;
 use burnburn_windows::l10n::{HostText, Locale, host_text};
 use burnburn_windows::menus::{MenuNode, Submenu, menu_bar};
 
 const MAC_APP: &str = include_str!("../../burnburn-macos/src/appkit/app.rs");
+/// The macOS Window and Help menus are built in the app host.
+const MAC_APP_HOST: &str = include_str!("../../burnburn-macos/src/appkit/app/app_host.rs");
 
 /// The text of `fn main_menu` in the macOS host.
 fn mac_main_menu() -> &'static str {
@@ -45,6 +48,15 @@ fn mac_tokens(src: &str) -> Vec<String> {
         } else if rest.starts_with("CamDialog::") {
             out.push(format!("Cam:{}", ident_at(i + 11)));
             i += 11;
+        } else if rest.starts_with("AppAction::") {
+            out.push(format!("App:{}", ident_at(i + 11)));
+            i += 11;
+        } else if rest.starts_with("recent_templates_holder,") {
+            out.push("Dyn:recent_templates".into());
+            i += 24;
+        } else if rest.starts_with("recent_holder,") {
+            out.push("Dyn:recent_projects".into());
+            i += 14;
         } else if rest.starts_with("MenuItem::SchikkenPanel") {
             out.push("Schikken".into());
             i += 20;
@@ -53,7 +65,7 @@ fn mac_tokens(src: &str) -> Vec<String> {
             i += 14;
         } else if rest.starts_with("MenuItem::") {
             let name = ident_at(i + 10);
-            if !matches!(name.as_str(), "Command" | "CamDialog") {
+            if !matches!(name.as_str(), "Command" | "CamDialog" | "App" | "separatorItem") {
                 out.push(format!("Other:{name}"));
             }
             i += 10;
@@ -69,13 +81,13 @@ fn mac_popups() -> Vec<(String, String)> {
     let body = mac_main_menu();
     let marker = "main.addItem(&submenu(";
     let mut parts: Vec<&str> = body.split(marker).skip(1).collect();
-    // The last popup's source ends where the function's closing assertion starts.
-    if let Some(last) = parts.last_mut()
-        && let Some(end) = last.find("debug_assert!")
-    {
-        *last = &last[..end];
+    // The last popups' source ends where the Window menu (built by the app host) starts.
+    for part in parts.iter_mut() {
+        if let Some(end) = part.find("main.addItem(&app_host::") {
+            *part = &part[..end];
+        }
     }
-    parts
+    let mut out: Vec<(String, String)> = parts
         .into_iter()
         .map(|p| {
             let mut lines = p.lines();
@@ -83,7 +95,21 @@ fn mac_popups() -> Vec<(String, String)> {
             let title = if first.is_empty() { lines.next().unwrap_or("").trim().to_owned() } else { first };
             (title, p.to_owned())
         })
-        .collect()
+        .collect();
+    // Window: the library panels main_menu hands over, then the app host's own items.
+    let window_args = &body[body.find("app_host::window_menu(").unwrap()..];
+    let window_args = &window_args[..window_args.find("main.addItem(&app_host::help_menu").unwrap()];
+    out.push(("AppText::MenuWindow".into(), format!("{window_args}\n{}", fn_body(MAC_APP_HOST, "fn window_menu("))));
+    out.push(("AppText::MenuHelp".into(), fn_body(MAC_APP_HOST, "fn help_menu(")));
+    out
+}
+
+/// The source of the function that starts with `signature`, up to its closing brace.
+fn fn_body(src: &str, signature: &str) -> String {
+    let start = src.find(signature).unwrap_or_else(|| panic!("{signature} exists"));
+    let rest = &src[start..];
+    let end = rest[signature.len()..].find("\n}\n").map_or(rest.len(), |e| e + signature.len());
+    rest[..end].to_owned()
 }
 
 fn win_tokens(menu: &Submenu) -> Vec<String> {
@@ -94,10 +120,9 @@ fn win_tokens(menu: &Submenu) -> Vec<String> {
                 MenuNode::Item(MenuItem::Open) => out.push("Open".into()),
                 MenuNode::Item(MenuItem::CamDialog(d)) => out.push(format!("Cam:{d:?}")),
                 MenuNode::Item(MenuItem::SchikkenPanel) => out.push("Schikken".into()),
-                // Items the other lane adds to `MenuItem` land here.
-                #[allow(unreachable_patterns)]
-                MenuNode::Item(other) => out.push(format!("Other:{other:?}")),
+                MenuNode::Item(MenuItem::Host(item)) => out.push(host_token(*item)),
                 MenuNode::Separator => {}
+                MenuNode::Submenu(s) if s.id.starts_with("recent_") => out.push(format!("Dyn:{}", s.id)),
                 MenuNode::Submenu(s) => walk(&s.items, out),
             }
         }
@@ -107,28 +132,24 @@ fn win_tokens(menu: &Submenu) -> Vec<String> {
     out
 }
 
-/// Items that belong to the other Windows lane (files, laser window, images, production, libraries)
-/// or to the macOS application menu: left out of the comparison.
-fn other_lane(token: &str) -> bool {
-    const OTHER: &[&str] = &[
-        "NewFromTemplate",
-        "SaveAsTemplate",
-        "ExportSvg",
-        "ExportDxf",
-        "ExportBundle",
-        "ImportBundle",
-        "ShowMaterialLibrary",
-        "ShowArtLibrary",
-        "AdjustImage",
-        "MaskImage",
-        "ReplaceImage",
-        "RefreshImage",
-        "SaveProcessedBitmap",
-        "Compile",
-        "ExportRd",
-        "ApplyPreview",
-    ];
-    token.starts_with("Other:") || token.strip_prefix("Cmd:").is_some_and(|n| OTHER.contains(&n))
+/// The macOS token of a panel-family item: commands are commands, host items keep their name.
+fn host_token(item: Item) -> String {
+    if let Some(command) = item.command() {
+        return format!("Cmd:{command:?}");
+    }
+    match item {
+        Item::App(action) => format!("App:{action:?}"),
+        Item::Import | Item::ImportImage | Item::TraceImage | Item::LaserWindow | Item::ExportDiagnostics => {
+            format!("Other:{item:?}")
+        }
+        other => format!("Win:{other:?}"),
+    }
+}
+
+/// Entries only the Windows menu has: the family windows that the Mac opens from elsewhere and the
+/// application-menu items (the Mac has an application menu; Windows puts them at the end of Help).
+fn windows_only(token: &str) -> bool {
+    token.starts_with("Win:") || matches!(token, "App:About" | "App:Preferences" | "App:Shortcuts")
 }
 
 /// Mac popup title source → Windows popup id, for the popups this lane owns.
@@ -141,7 +162,11 @@ const POPUPS: &[(&str, &str)] = &[
     ("HostText::MenuShapes", "shapes"),
     ("TextText::MenuText", "text"),
     ("HostText::MenuSketch", "sketch"),
+    ("HostText::ImageMenu", "image"),
+    ("HostText::MenuProduction", "production"),
     ("LaserText::MenuLaser", "laser"),
+    ("AppText::MenuWindow", "window"),
+    ("AppText::MenuHelp", "help"),
 ];
 
 fn popup<'a>(bar: &'a [Submenu], id: &str) -> &'a Submenu {
@@ -151,29 +176,22 @@ fn popup<'a>(bar: &'a [Submenu], id: &str) -> &'a Submenu {
 }
 
 #[test]
-fn every_popup_this_lane_owns_has_the_macos_items_in_the_macos_order() {
+fn every_popup_has_the_macos_items_in_the_macos_order() {
     let bar = menu_bar(Locale::En);
     let popups = mac_popups();
-    assert!(popups.len() >= 10, "the macOS menu source was parsed: {} popups", popups.len());
+    assert!(popups.len() >= 13, "the macOS menu source was parsed: {} popups", popups.len());
     for (token, id) in POPUPS {
         let (_, src) = popups.iter().find(|(t, _)| t.contains(token)).unwrap_or_else(|| panic!("mac popup {token}"));
         let mut expected: Vec<String> = mac_tokens(src);
         let mut got: Vec<String> = win_tokens(popup(&bar, id));
-        // File: only the basic items; the rest is the files lane.
-        if *id == "file" {
-            let basic = |t: &String| matches!(t.as_str(), "Cmd:New" | "Open" | "Cmd:Close" | "Cmd:Save" | "Cmd:SaveAs");
-            expected.retain(basic);
-            got.retain(basic);
+        expected.retain(|t| !windows_only(t));
+        // The Mac builds the diagnostics item before the list it sits in (third entry of Help).
+        if *id == "help" {
+            expected.retain(|t| t != "Other:ExportDiagnostics");
+            let at = expected.iter().position(|t| t == "App:SupportData").map_or(expected.len(), |p| p + 1);
+            expected.insert(at, "Other:ExportDiagnostics".into());
         }
-        // Laser: the CAM tests, Print and Cut and the Center Finder; the window item is the laser lane.
-        if *id == "laser" {
-            let mine =
-                |t: &String| t.starts_with("Cam:") || matches!(t.as_str(), "Cmd:PrintAndCut" | "Cmd:CenterFinder");
-            expected.retain(mine);
-            got.retain(mine);
-        }
-        expected.retain(|t| !other_lane(t));
-        got.retain(|t| !other_lane(t));
+        got.retain(|t| !windows_only(t));
         assert!(!expected.is_empty(), "popup {id} has items in the macOS menu");
         assert_eq!(got, expected, "popup {id}");
     }
@@ -318,28 +336,60 @@ fn dialog_and_panel_items_need_a_window_and_titles_and_checks_come_from_the_view
     assert!(!menu_checked(MenuItem::Open, &h.view()));
 }
 
-/// `item(c(CommandKey::X), "k", shift)` and `chain(CommandKey::X, sel!(..), "k", CMD[_SHIFT])` in
-/// the macOS menu source: `(command, key, shift)`.
-fn mac_key_equivalents() -> Vec<(String, String, bool)> {
+/// A key equivalent of the macOS menu: the item, the key, Shift and Option.
+struct MacKey {
+    /// `Cmd:Name` for a command, `Other:Name` for a host item.
+    token: String,
+    key: String,
+    shift: bool,
+    option: bool,
+}
+
+/// `item(c(CommandKey::X), "k", shift)`, `item(MenuItem::X, "k", shift)`, `keyed(c(CommandKey::X), "k",
+/// CMD_OPT)` and `chain(CommandKey::X, sel!(..), "k", CMD[_SHIFT])` in the macOS menu source.
+fn mac_key_equivalents() -> Vec<MacKey> {
     let body = mac_main_menu();
     let mut out = Vec::new();
+    let name_of = |rest: &str| -> String { rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect() };
     for line in body.lines() {
         let l = line.trim();
+        let args: Vec<&str> = l.split(',').collect();
+        let clean = |a: Option<&&str>| a.map(|a| a.trim().trim_matches('"').to_owned()).unwrap_or_default();
         if let Some(rest) = l.strip_prefix("item(c(CommandKey::") {
-            let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-            let args: Vec<&str> = rest.split(',').collect();
-            if let (Some(key), Some(shift)) = (args.get(1), args.get(2)) {
-                let key = key.trim().trim_matches('"').to_owned();
-                if !key.is_empty() {
-                    out.push((name, key, shift.contains("true")));
-                }
+            let key = clean(args.get(1));
+            if !key.is_empty() {
+                out.push(MacKey {
+                    token: format!("Cmd:{}", name_of(rest)),
+                    key,
+                    shift: clean(args.get(2)).contains("true"),
+                    option: false,
+                });
             }
+        } else if let Some(rest) = l.strip_prefix("item(MenuItem::") {
+            let key = clean(args.get(1));
+            if !key.is_empty() {
+                out.push(MacKey {
+                    token: format!("Other:{}", name_of(rest)),
+                    key,
+                    shift: clean(args.get(2)).contains("true"),
+                    option: false,
+                });
+            }
+        } else if let Some(rest) = l.strip_prefix("keyed(c(CommandKey::") {
+            let mask = clean(args.get(2));
+            out.push(MacKey {
+                token: format!("Cmd:{}", name_of(rest)),
+                key: clean(args.get(1)),
+                shift: mask.contains("SHIFT"),
+                option: mask.contains("OPT"),
+            });
         } else if let Some(rest) = l.strip_prefix("chain(CommandKey::") {
-            let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-            let args: Vec<&str> = rest.split(',').collect();
-            if let (Some(key), Some(mask)) = (args.get(2), args.get(3)) {
-                out.push((name, key.trim().trim_matches('"').to_owned(), mask.contains("CMD_SHIFT")));
-            }
+            out.push(MacKey {
+                token: format!("Cmd:{}", name_of(rest)),
+                key: clean(args.get(2)),
+                shift: clean(args.get(3)).contains("CMD_SHIFT"),
+                option: false,
+            });
         }
     }
     out
@@ -356,23 +406,41 @@ fn virtual_key(key: &str) -> Option<u16> {
     }
 }
 
-#[test]
-fn every_macos_key_equivalent_of_this_lane_is_a_ctrl_accelerator_on_windows() {
-    let table = accelerators();
-    let equivalents = mac_key_equivalents();
-    assert!(equivalents.len() >= 15, "parsed {} key equivalents", equivalents.len());
-    for (name, key, shift) in equivalents {
-        // Compile and Export RD belong to the preview lane.
-        if matches!(name.as_str(), "Compile" | "ExportRd") {
-            continue;
-        }
-        let command = MenuItem::Command(
+/// The menu item a token of the macOS menu stands for.
+fn item_of(token: &str) -> MenuItem {
+    if let Some(name) = token.strip_prefix("Cmd:") {
+        return MenuItem::Command(
             *CommandKey::ALL.iter().find(|k| format!("{k:?}") == name).unwrap_or_else(|| panic!("{name}")),
         );
+    }
+    let name = token.strip_prefix("Other:").unwrap_or(token);
+    if name == "Open" {
+        return MenuItem::Open;
+    }
+    MenuItem::Host(
+        burnburn_windows::host_panels::menu::items()
+            .into_iter()
+            .find(|i| format!("{i:?}") == name)
+            .unwrap_or_else(|| panic!("{name}")),
+    )
+}
+
+#[test]
+fn every_macos_key_equivalent_is_a_ctrl_accelerator_on_windows() {
+    let table = accelerators();
+    let equivalents = mac_key_equivalents();
+    assert!(equivalents.len() >= 20, "parsed {} key equivalents", equivalents.len());
+    for MacKey { token, key, shift, option } in equivalents {
+        let item = item_of(&token);
         let vk = virtual_key(&key).unwrap_or_else(|| panic!("key {key}"));
         assert!(
-            table.iter().any(|a| a.id == command_id(command) && a.key == vk && a.ctrl && a.shift == shift),
-            "{name}: Ctrl{} + {key} missing",
+            table.iter().any(|a| a.id == command_id(item)
+                && a.key == vk
+                && a.ctrl
+                && a.shift == shift
+                && a.alt == option),
+            "{token}: Ctrl{}{} + {key} missing",
+            if option { "+Alt" } else { "" },
             if shift { "+Shift" } else { "" }
         );
     }

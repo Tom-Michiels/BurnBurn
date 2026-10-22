@@ -28,13 +28,12 @@ use burnburn_types::{DocumentId, StableId};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreateMenu, DeleteMenu, EnableMenuItem, HMENU, MF_BYCOMMAND, MF_ENABLED, MF_GRAYED, MF_POPUP,
-    MF_SEPARATOR, MF_STRING, SW_SHOWNORMAL,
+    DeleteMenu, EnableMenuItem, HMENU, InsertMenuW, MF_BYCOMMAND, MF_BYPOSITION, MF_ENABLED, MF_GRAYED, MF_STRING,
+    SW_SHOWNORMAL,
 };
 use windows::core::{HSTRING, w};
 
 use super::{PanelKey, dialogs};
-use crate::app_menu::AppAction;
 use crate::host_panels::app::{self, AppInput, AppSheet};
 use crate::host_panels::camera::{self, CameraInput};
 use crate::host_panels::files::{self, FilesInput, Sheet};
@@ -106,8 +105,7 @@ struct HostState {
     pending_replace: Option<(String, KeyBinding)>,
     support_options: DiagnosticOptions,
     camera_mark: Option<usize>,
-    recent_menu: Option<isize>,
-    templates_menu: Option<isize>,
+    recent_menus: Vec<RecentMenus>,
 }
 
 thread_local! {
@@ -603,87 +601,57 @@ pub fn handle_menu(id: u16) -> bool {
     true
 }
 
-fn append(menu: HMENU, id: u16, title: &str, enabled: bool) {
-    let text = HSTRING::from(title);
-    let flags = MF_STRING | if enabled { MF_ENABLED } else { MF_GRAYED };
-    // SAFETY: our menu; the string outlives the call.
-    let _ = unsafe { AppendMenuW(menu, flags, usize::from(id), &text) };
+/// The recent-list popups of one document window's menu bar.
+#[derive(Clone, Copy)]
+struct RecentMenus {
+    frame: isize,
+    projects: Option<isize>,
+    templates: Option<isize>,
 }
 
-fn popup(bar: HMENU, title: &str, build: impl FnOnce(HMENU)) -> Option<HMENU> {
-    // SAFETY: creates a menu this thread owns (handed to the menu bar).
-    let menu = unsafe { CreateMenu() }.ok()?;
-    build(menu);
-    let text = HSTRING::from(title);
-    // SAFETY: our menu bar and popup; the string outlives the call.
-    let _ = unsafe { AppendMenuW(bar, MF_POPUP, menu.0 as usize, &text) };
-    Some(menu)
-}
-
-/// Appends this lane's popups to a menu bar: Laser, Beeld, Bestanden, Camera and Help.
-pub fn append_menus(bar: HMENU) {
-    let Some(bridge) = bridge() else { return };
-    let locale = bridge.locale();
-    let (nl, none): (bool, Vec<PathBuf>) = (locale == Locale::Nl, Vec::new());
-    let Some(snap) = bridge.snapshot(None) else { return };
-    let ctx = menu_context(&snap, locale);
-    let add = |menu: HMENU, item: Item| append(menu, item.id(), &item.title(&ctx), item.enabled(&ctx));
-    popup(bar, "&Laser", |m| {
-        add(m, Item::LaserWindow);
-        add(m, Item::ExportDiagnostics);
-    });
-    popup(bar, if nl { "&Beeld" } else { "&Image" }, |m| {
-        add(m, Item::ImagePanel);
-        add(m, Item::ImportImage);
-        add(m, Item::TraceImage);
-    });
-    let files = popup(bar, if nl { "Be&standen" } else { "&Files" }, |m| {
-        add(m, Item::FilesPanel);
-        add(m, Item::Import);
-        // SAFETY: separator in our own menu.
-        let _ = unsafe { AppendMenuW(m, MF_SEPARATOR, 0, None) };
-        for item in [Item::ExportSvg, Item::ExportDxf, Item::SaveTemplate, Item::NewTemplate] {
-            add(m, item);
-        }
-        for item in [Item::Material, Item::Art, Item::BundleExport, Item::BundleImport] {
-            add(m, item);
-        }
-    });
-    let _ = (files, &none);
-    popup(bar, "&Camera", |m| add(m, Item::CameraWindow));
-    popup(bar, "&Help", |m| {
-        for action in AppAction::ALL {
-            add(m, Item::App(action));
-        }
-    });
-    // The recent lists are separate popups under the files popup's neighbour.
-    let recent = popup(bar, "&Recent", |_| {});
-    let templates = popup(bar, if nl { "Recente &templates" } else { "Recent &templates" }, |_| {});
+/// A window got its menu bar: its two recent-list popups are filled now and on every change.
+pub fn register_recent_menus(frame: HWND, projects: Option<HMENU>, templates: Option<HMENU>) {
     host(|h| {
-        h.recent_menu = recent.map(|m| m.0 as isize);
-        h.templates_menu = templates.map(|m| m.0 as isize);
+        h.recent_menus.retain(|m| m.frame != frame.0 as isize);
+        h.recent_menus.push(RecentMenus {
+            frame: frame.0 as isize,
+            projects: projects.map(|m| m.0 as isize),
+            templates: templates.map(|m| m.0 as isize),
+        });
     });
     refill_recent_menus();
 }
 
-/// Rebuilds the two recent lists from the controller's lists.
+/// A window is gone (its menus are destroyed with it).
+pub fn forget_recent_menus(frame: HWND) {
+    host(|h| h.recent_menus.retain(|m| m.frame != frame.0 as isize));
+}
+
+/// Rebuilds the two recent lists of every open window from the controller's lists.
 pub fn refill_recent_menus() {
     let Some(bridge) = bridge() else { return };
     let Some(snap) = bridge.snapshot(None) else { return };
     let ctx = menu_context(&snap, bridge.locale());
-    let (recent, templates) = host(|h| (h.recent_menu, h.templates_menu)).unwrap_or((None, None));
-    for (menu, items) in [
-        (recent, (0..RECENT_SLOTS).map(Item::RecentProject).collect::<Vec<_>>()),
-        (templates, (0..RECENT_SLOTS).map(Item::RecentTemplate).collect::<Vec<_>>()),
-    ] {
-        let Some(raw) = menu else { continue };
-        let menu = HMENU(raw as *mut _);
-        for item in &items {
-            // SAFETY: removing an item of our own menu by id (absent ids are ignored).
-            let _ = unsafe { DeleteMenu(menu, u32::from(item.id()), MF_BYCOMMAND) };
-        }
-        for item in items.into_iter().filter(|i| i.enabled(&ctx)) {
-            append(menu, item.id(), &item.title(&ctx), true);
+    let windows = host(|h| h.recent_menus.clone()).unwrap_or_default();
+    for window in windows {
+        for (menu, entries) in [
+            (window.projects, (0..RECENT_SLOTS).map(Item::RecentProject).collect::<Vec<_>>()),
+            (window.templates, (0..RECENT_SLOTS).map(Item::RecentTemplate).collect::<Vec<_>>()),
+        ] {
+            let Some(raw) = menu else { continue };
+            let menu = HMENU(raw as *mut _);
+            for item in &entries {
+                // SAFETY: removing an item of our own menu by id (absent ids are ignored).
+                let _ = unsafe { DeleteMenu(menu, u32::from(item.id()), MF_BYCOMMAND) };
+            }
+            // The entries go in front of the separator and the "clear" item that stay in the popup.
+            for (position, item) in entries.into_iter().filter(|i| i.enabled(&ctx)).enumerate() {
+                let text = HSTRING::from(crate::menus::mnemonics::numbered(position, &item.title(&ctx)));
+                // SAFETY: inserting into our own menu at a position; the string outlives the call.
+                let _ = unsafe {
+                    InsertMenuW(menu, position as u32, MF_BYPOSITION | MF_STRING, usize::from(item.id()), &text)
+                };
+            }
         }
     }
 }

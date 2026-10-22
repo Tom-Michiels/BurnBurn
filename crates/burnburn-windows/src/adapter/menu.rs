@@ -4,6 +4,7 @@
 
 use burnburn_presentation::{AppViewModel, CamDialog, CommandKey, MessageKey};
 
+use crate::host_panels::menu::{Item as HostItem, MenuContext};
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
 
 /// A menu item: Open needs `IFileOpenDialog` first; the rest are presentation commands.
@@ -15,12 +16,17 @@ pub enum MenuItem {
     CamDialog(CamDialog),
     /// Schikken: shows or hides the Schikken options panel of the active window.
     SchikkenPanel,
+    /// An item of the panel families (laser window, import, export, bundles, templates, images,
+    /// camera, help; ids `6000..6500`): what it does is decided in [`crate::host_panels::menu`].
+    Host(HostItem),
 }
 
-/// Every menu item the host offers.
+/// Every menu item the host offers. The recent-list entries are not in it: they come and go with
+/// the stored lists (as `Recent(n)` on the Mac).
 pub fn menu_items() -> Vec<MenuItem> {
     [MenuItem::Open, MenuItem::SchikkenPanel]
         .into_iter()
+        .chain(crate::host_panels::menu::items().into_iter().map(MenuItem::Host))
         .chain(CamDialog::ALL.iter().map(|d| MenuItem::CamDialog(*d)))
         .chain(CommandKey::ALL.iter().map(|k| MenuItem::Command(*k)))
         .collect()
@@ -38,6 +44,7 @@ const CAM_ID_BASE: u16 = 4000;
 pub fn command_id(item: MenuItem) -> u16 {
     match item {
         MenuItem::Open => FIRST_ID,
+        MenuItem::Host(item) => item.id(),
         MenuItem::SchikkenPanel => SCHIKKEN_PANEL_ID,
         MenuItem::CamDialog(dialog) => CamDialog::ALL
             .iter()
@@ -53,6 +60,9 @@ pub fn command_id(item: MenuItem) -> u16 {
 }
 
 pub fn menu_item(id: u16) -> Option<MenuItem> {
+    if let Some(item) = HostItem::from_id(id) {
+        return Some(MenuItem::Host(item));
+    }
     if id == SCHIKKEN_PANEL_ID {
         return Some(MenuItem::SchikkenPanel);
     }
@@ -65,11 +75,12 @@ pub fn menu_item(id: u16) -> Option<MenuItem> {
     }
 }
 
-/// An accelerator: virtual key, Ctrl, Shift, command id.
+/// An accelerator: virtual key, Ctrl, Alt, Shift, command id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Accelerator {
     pub key: u16,
     pub ctrl: bool,
+    pub alt: bool,
     pub shift: bool,
     pub id: u16,
 }
@@ -83,34 +94,43 @@ pub fn accelerators() -> Vec<Accelerator> {
     const OEM_MINUS: u8 = 0xBD;
     const OEM_4: u8 = 0xDB;
     const OEM_6: u8 = 0xDD;
+    let host = MenuItem::Host;
+    // (key, Alt, Shift, item); Ctrl is always held.
     [
-        (b'N', false, c(CommandKey::New)),
-        (b'O', false, MenuItem::Open),
-        (b'S', false, c(CommandKey::Save)),
-        (b'S', true, c(CommandKey::SaveAs)),
-        (b'W', false, c(CommandKey::Close)),
-        (b'Z', false, c(CommandKey::Undo)),
-        (b'Y', false, c(CommandKey::Redo)),
-        (b'Z', true, c(CommandKey::Redo)),
-        (b'X', false, c(CommandKey::Cut)),
-        (b'C', false, c(CommandKey::Copy)),
-        (b'V', false, c(CommandKey::Paste)),
-        (b'V', true, c(CommandKey::PasteInPlace)),
-        (b'D', false, c(CommandKey::Duplicate)),
-        (b'A', false, c(CommandKey::SelectAll)),
-        (b'G', false, c(CommandKey::Group)),
-        (b'G', true, c(CommandKey::Ungroup)),
-        (OEM_6, false, c(CommandKey::PushForward)),
-        (OEM_4, false, c(CommandKey::PushBackward)),
-        (OEM_6, true, c(CommandKey::PushToFront)),
-        (OEM_4, true, c(CommandKey::PushToBack)),
-        (b'0', false, c(CommandKey::ZoomPage)),
-        (b'0', true, c(CommandKey::ZoomSelection)),
-        (OEM_PLUS, false, c(CommandKey::ZoomIn)),
-        (OEM_MINUS, false, c(CommandKey::ZoomOut)),
+        (b'N', false, false, c(CommandKey::New)),
+        (b'O', false, false, MenuItem::Open),
+        (b'I', false, true, host(HostItem::Import)),
+        (b'S', false, false, c(CommandKey::Save)),
+        (b'S', false, true, c(CommandKey::SaveAs)),
+        (b'W', false, false, c(CommandKey::Close)),
+        (b'Z', false, false, c(CommandKey::Undo)),
+        (b'Y', false, false, c(CommandKey::Redo)),
+        (b'Z', false, true, c(CommandKey::Redo)),
+        (b'X', false, false, c(CommandKey::Cut)),
+        (b'C', false, false, c(CommandKey::Copy)),
+        (b'V', false, false, c(CommandKey::Paste)),
+        (b'V', false, true, c(CommandKey::PasteInPlace)),
+        (b'D', false, false, c(CommandKey::Duplicate)),
+        (b'A', false, false, c(CommandKey::SelectAll)),
+        // Ctrl+Alt+I as on the Mac (Cmd+Option+I). Ctrl+Alt is AltGr on many layouts: only AltGr+I,
+        // which no common layout maps to a character, shares the chord.
+        (b'I', true, false, c(CommandKey::InvertSelection)),
+        (b'G', false, false, c(CommandKey::Group)),
+        (b'G', false, true, c(CommandKey::Ungroup)),
+        (OEM_6, false, false, c(CommandKey::PushForward)),
+        (OEM_4, false, false, c(CommandKey::PushBackward)),
+        (OEM_6, false, true, c(CommandKey::PushToFront)),
+        (OEM_4, false, true, c(CommandKey::PushToBack)),
+        (b'0', false, false, c(CommandKey::ZoomPage)),
+        (b'0', false, true, c(CommandKey::ZoomSelection)),
+        (OEM_PLUS, false, false, c(CommandKey::ZoomIn)),
+        (OEM_MINUS, false, false, c(CommandKey::ZoomOut)),
+        (b'B', false, false, c(CommandKey::Compile)),
+        (b'E', false, true, c(CommandKey::ExportRd)),
+        (b'L', false, true, host(HostItem::LaserWindow)),
     ]
     .into_iter()
-    .map(|(key, shift, item)| Accelerator { key: u16::from(key), ctrl: true, shift, id: command_id(item) })
+    .map(|(key, alt, shift, item)| Accelerator { key: u16::from(key), ctrl: true, alt, shift, id: command_id(item) })
     .collect()
 }
 
@@ -125,13 +145,20 @@ pub fn accelerator_label(item: MenuItem) -> Option<String> {
         0xDD => "]".to_owned(),
         k => char::from(u8::try_from(k).ok()?).to_string(),
     };
-    Some(format!("Ctrl+{}{key}", if a.shift { "Shift+" } else { "" }))
+    Some(format!("Ctrl+{}{}{key}", if a.alt { "Alt+" } else { "" }, if a.shift { "Shift+" } else { "" }))
 }
 
 /// Menu enablement from the view model (`EnableMenuItem` on `WM_INITMENUPOPUP`).
 pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
         MenuItem::Open => true,
+        MenuItem::Host(item) => item.enabled(&MenuContext {
+            vm,
+            locale: Locale::En,
+            manual_known: true,
+            recent_projects: &[],
+            recent_templates: &[],
+        }),
         // A dialog or panel belongs to a window; its own greying says why in words.
         MenuItem::CamDialog(_) | MenuItem::SchikkenPanel => vm.active.is_some(),
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.enabled),
@@ -142,7 +169,7 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
 pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
     match item {
         MenuItem::Command(key) => vm.commands.get(&key).is_some_and(|c| c.checked),
-        MenuItem::Open | MenuItem::CamDialog(_) | MenuItem::SchikkenPanel => false,
+        MenuItem::Open | MenuItem::CamDialog(_) | MenuItem::SchikkenPanel | MenuItem::Host(_) => false,
     }
 }
 
@@ -150,6 +177,9 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
 pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
     match item {
         MenuItem::Open => host_text(HostText::Open, locale).to_owned(),
+        MenuItem::Host(item) => {
+            item.title(&MenuContext { vm, locale, manual_known: true, recent_projects: &[], recent_templates: &[] })
+        }
         MenuItem::CamDialog(dialog) => crate::panels::cam_menu_title(dialog, locale),
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
         MenuItem::Command(key) => {
