@@ -15,7 +15,10 @@ use burnburn_image::{
 };
 use burnburn_types::ContentHash;
 
-use crate::{CENTERLINE_ENGINE_VERSION, CenterlineResult, CenterlineSettings, ContourSettings, DiagonalPolicy, ENGINE_VERSION, FitSettings, TraceError, TraceRecipe, TraceResult};
+use crate::{
+    CENTERLINE_ENGINE_VERSION, CenterlineResult, CenterlineSettings, ContourSettings, DiagonalPolicy, ENGINE_VERSION,
+    FitSettings, TraceError, TraceRecipe, TraceResult,
+};
 
 use ParamValue as V;
 
@@ -405,8 +408,13 @@ pub fn centerline_command(
     if result.revision > 0 {
         recipe = recipe.with("centerline.edits", V::Integer(i64::try_from(result.revision).unwrap_or(i64::MAX)));
     }
-    let definition =
-        Box::new(TraceDefinition { name: name.to_owned(), source: source_asset, recipe, key: result.inputs, placement });
+    let definition = Box::new(TraceDefinition {
+        name: name.to_owned(),
+        source: source_asset,
+        recipe,
+        key: result.inputs,
+        placement,
+    });
     let mut outputs = Vec::new();
     for (i, stroke) in result.strokes().into_iter().enumerate() {
         let first = stroke.chains.first().ok_or(TraceError::NonFinite)?.0;

@@ -258,7 +258,15 @@ impl TaskKind {
     /// Results that describe one revision and are worthless after an edit: cancelled when the
     /// document changes. A save is not: it must finish writing the revision it started with.
     pub fn is_revision_sensitive(self) -> bool {
-        matches!(self, TaskKind::Measure | TaskKind::Boolean | TaskKind::Compile | TaskKind::Nest | TaskKind::OffsetPreview | TaskKind::RepairPreview)
+        matches!(
+            self,
+            TaskKind::Measure
+                | TaskKind::Boolean
+                | TaskKind::Compile
+                | TaskKind::Nest
+                | TaskKind::OffsetPreview
+                | TaskKind::RepairPreview
+        )
     }
 }
 

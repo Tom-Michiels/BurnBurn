@@ -1689,7 +1689,9 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(UndoLabel::Edit),
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
-    undo.extend([CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound));
+    undo.extend(
+        [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
+    );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend(
         [

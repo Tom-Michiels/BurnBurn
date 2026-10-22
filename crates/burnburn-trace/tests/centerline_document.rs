@@ -135,8 +135,9 @@ fn a_centerline_result_becomes_one_trace_command() {
 #[test]
 fn an_operator_edited_result_is_stored_with_the_edit_count_so_it_is_not_taken_for_a_plain_run() {
     let result = run("stroke-t", CenterlineSettings::default());
-    let plain = centerline_command(&result, &image_recipe(), ContentHash::from_bytes([1; 32]), "x", Affine::IDENTITY, None)
-        .unwrap();
+    let plain =
+        centerline_command(&result, &image_recipe(), ContentHash::from_bytes([1; 32]), "x", Affine::IDENTITY, None)
+            .unwrap();
     let junction = result.nodes.iter().find(|n| n.degree() >= 3).unwrap();
     let burnburn_trace::Connections::Ambiguous { candidates } = &junction.connections else { panic!() };
     let edited = result.resolve_junction(junction.id, candidates[0].pairs.clone()).unwrap();

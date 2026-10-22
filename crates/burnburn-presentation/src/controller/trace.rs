@@ -11,8 +11,8 @@ use burnburn_document::trace::TraceId;
 use burnburn_geometry::Path;
 use burnburn_image::{PixelScale, SourceImage, Threshold};
 use burnburn_trace::{
-    CenterlineEditError, CenterlineRequest, CenterlineResult, CenterlineSettings, ChainId, Connections, NodeId, NodeKind,
-    Primitive, TraceRecipe, TraceRequest, TraceResult,
+    CenterlineEditError, CenterlineRequest, CenterlineResult, CenterlineSettings, ChainId, Connections, NodeId,
+    NodeKind, Primitive, TraceRecipe, TraceRequest, TraceResult,
 };
 use burnburn_types::{CancellationSource, DocumentId, TaskId};
 
@@ -383,7 +383,8 @@ impl CenterlineOutcome {
 /// and preview follow); a decision that does not apply says so and changes nothing. Re-tracing
 /// (a changed form) starts again without the decisions.
 pub(super) fn centerline_edit(s: &mut Session, document: DocumentId, edit: CenterlineEdit) -> AppUpdate {
-    let Some(current) = s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline).and_then(|t| t.centerline.as_ref())
+    let Some(current) =
+        s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline).and_then(|t| t.centerline.as_ref())
     else {
         return AppUpdate::default();
     };

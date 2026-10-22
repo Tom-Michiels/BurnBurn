@@ -400,7 +400,10 @@ impl AppController {
                 let asset = s.assets.add(media, &bitmap.bytes);
                 let item =
                     ImportItem { name: format!("Beeld {}", a + 1), entity: Some(note.entity.clone()), path: frame };
-                steps.push(CompoundStep::Run(CommandPayload::Edit(GeometryCommand::Import { asset, items: vec![item] })));
+                steps.push(CompoundStep::Run(CommandPayload::Edit(GeometryCommand::Import {
+                    asset,
+                    items: vec![item],
+                })));
                 let position = created;
                 created += 1;
                 sources.push(source);

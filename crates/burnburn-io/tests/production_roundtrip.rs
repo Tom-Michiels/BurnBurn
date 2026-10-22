@@ -63,7 +63,10 @@ fn inconsistent_counters_and_a_missing_table_are_refused() {
     assert!(refused(&|s| s.serial.as_mut().unwrap().width = 21), "width above 20");
     assert!(refused(&|s| s.serial.as_mut().unwrap().end = 50), "end before start");
     assert!(refused(&|s| s.serial.as_mut().unwrap().current = 113), "current is not a value of the series");
-    assert!(refused(&|s| s.rows.as_mut().unwrap().asset = burnburn_types::ContentHash::from_bytes([7; 32])), "no such asset");
+    assert!(
+        refused(&|s| s.rows.as_mut().unwrap().asset = burnburn_types::ContentHash::from_bytes([7; 32])),
+        "no such asset"
+    );
     assert!(refused(&|s| s.rows.as_mut().unwrap().name = String::new()), "a table has a name");
     assert!(!refused(&|_| {}), "the good state is accepted");
 }

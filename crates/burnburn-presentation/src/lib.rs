@@ -7,9 +7,9 @@
 mod barcode_panel;
 mod cam_dialogs;
 mod camera;
-mod centerline_panel;
 mod camera_workspace;
 mod catalog;
+mod centerline_panel;
 mod commit;
 mod controller;
 mod cut_options;
@@ -66,6 +66,9 @@ pub use catalog::{
 };
 pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
+pub use centerline_panel::{
+    CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
+};
 pub use controller::{
     AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,
     LanguageChoice, LengthUnit, NudgeDirection, NudgeStep, PartialMove, PlaybackSpeed, PrefError, PrefKey, PrefProblem,
@@ -85,11 +88,6 @@ pub use files::{
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
 };
-pub use centerline_panel::{
-    CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
-};
-pub use notes::NotesViewModel;
-pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,
@@ -104,6 +102,8 @@ pub use laser::{
     AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
 };
+pub use notes::NotesViewModel;
+pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};
 pub use production::{
     ActionId, ActionSubject, DiagnosticOptions, Dispatched, ExecutionRecord, HandledAction, HistoryStore,
     HistoryStoreError, IntentRecord, JobInputs, LaserCall, LaserIntent, LiveIntentRecord, LiveKind, LiveOutcomeRecord,

@@ -90,9 +90,11 @@ impl AppController {
         let s = self.sessions.get(&document)?;
         let snapshot = s.doc.snapshot();
         let preview = s.editor.preview();
-        let result_preview = super::offset_preview::current_result(s).or_else(|| super::repair_preview::current_result(s)).or_else(|| {
-            s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result))
-        });
+        let result_preview = super::offset_preview::current_result(s)
+            .or_else(|| super::repair_preview::current_result(s))
+            .or_else(|| {
+                s.boolean_preview.as_ref().filter(|b| b.revision == snapshot.revision()).map(|b| Arc::clone(&b.result))
+            });
         let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         sketch_overlays.extend(super::nest::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {

@@ -124,7 +124,8 @@ impl VariableState {
             wrap: true,
             current: c.current(),
         });
-        let untouched = serial == initial && self.counters.row() == 0 && policy == AdvanceChoice::Manual && rows.is_none();
+        let untouched =
+            serial == initial && self.counters.row() == 0 && policy == AdvanceChoice::Manual && rows.is_none();
         (!untouched).then(|| ProductionState { serial, row: self.counters.row() as u64, policy, rows })
     }
 

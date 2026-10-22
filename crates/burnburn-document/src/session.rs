@@ -289,7 +289,14 @@ impl DocumentSession {
         if dropped_steps > 0 {
             txn.warnings.push(CommandWarning::HistoryTrimmed { dropped_steps });
         }
-        Ok(CommandOutcome { previous, revision, changes: txn.changes, warnings: txn.warnings, undo_label: label, selection: None })
+        Ok(CommandOutcome {
+            previous,
+            revision,
+            changes: txn.changes,
+            warnings: txn.warnings,
+            undo_label: label,
+            selection: None,
+        })
     }
 
     /// Restores the content and identities before the last command, as a new revision.

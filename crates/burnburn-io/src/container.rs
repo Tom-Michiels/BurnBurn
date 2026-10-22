@@ -204,8 +204,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let dto: v1::Document = serde_json::from_slice(&document_bytes).map_err(|e| json_error(DOCUMENT, &e))?;
     let schema = u32::try_from(schema).unwrap_or(u32::MAX);
     let document = document_from_dto(&dto, schema, &|h| assets.get(h).is_some())?;
-    let mut project =
-        Project {
+    let mut project = Project {
         uuid,
         document,
         assets,
@@ -331,12 +330,19 @@ fn production_to_dto(p: &crate::ProductionState) -> ProductionDto {
             crate::AdvanceChoice::OnJobStarted => "on_job_started",
         }
         .into(),
-        rows: p.rows.as_ref().map(|r| RowsDto { name: r.name.clone(), asset: asset_key(&r.asset), frozen_at: r.frozen_at.clone() }),
+        rows: p.rows.as_ref().map(|r| RowsDto {
+            name: r.name.clone(),
+            asset: asset_key(&r.asset),
+            frozen_at: r.frozen_at.clone(),
+        }),
     }
 }
 
 fn production_from_dto(d: &ProductionDto, assets: &AssetStore) -> Result<crate::ProductionState, LoadError> {
-    let bad = |path: &str, reason: &str| LoadError::InvalidValue { path: format!("production.{path}"), reason: reason.into() };
+    let bad = |path: &str, reason: &str| LoadError::InvalidValue {
+        path: format!("production.{path}"),
+        reason: reason.into(),
+    };
     let policy = match d.policy.as_str() {
         "manual" => crate::AdvanceChoice::Manual,
         "on_upload_confirmed" => crate::AdvanceChoice::OnUploadConfirmed,

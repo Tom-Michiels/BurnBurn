@@ -2,8 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use burnburn_document::process::ProcessLabel;
 use burnburn_document::UndoLabel;
+use burnburn_document::process::ProcessLabel;
 use burnburn_presentation::{CommandKey, DocumentViewModel, HeadlessEditorHarness, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId};
 
@@ -169,7 +169,10 @@ fn the_offset_preview_is_a_task_that_never_changes_the_document() {
     // A changed join recomputes the open preview.
     h.send(UiIntent::SetOffsetOptions {
         document: doc,
-        options: burnburn_presentation::OffsetOptions { join: burnburn_presentation::OffsetJoin::Miter, keep_sources: true },
+        options: burnburn_presentation::OffsetOptions {
+            join: burnburn_presentation::OffsetJoin::Miter,
+            keep_sources: true,
+        },
     });
     h.run_tasks();
     let mitred = vm(&h, doc).offset.preview.expect("recomputed");
@@ -211,7 +214,10 @@ fn applying_an_offset_uses_the_chosen_options() {
     select(&mut h, doc, &[a]);
     h.send(UiIntent::SetOffsetOptions {
         document: doc,
-        options: burnburn_presentation::OffsetOptions { join: burnburn_presentation::OffsetJoin::Miter, keep_sources: false },
+        options: burnburn_presentation::OffsetOptions {
+            join: burnburn_presentation::OffsetJoin::Miter,
+            keep_sources: false,
+        },
     });
     h.send(UiIntent::PreviewOffset { document: doc, distance: "2 mm".into() });
     h.run_tasks();
@@ -221,7 +227,8 @@ fn applying_an_offset_uses_the_chosen_options() {
     assert_eq!(v.objects.len(), 2, "the source was replaced by its offset: two objects remain");
     assert!(v.offset.preview.is_none(), "applied: the preview is gone");
     let new = v.objects.iter().find(|o| o.selected).expect("the result is selected");
-    let area = h.scene(doc).unwrap().items.iter().find(|i| i.source == new.id).map(|i| i.path.signed_area().abs()).unwrap();
+    let area =
+        h.scene(doc).unwrap().items.iter().find(|i| i.source == new.id).map(|i| i.path.signed_area().abs()).unwrap();
     assert!((area - 336.0).abs() < 0.01, "mitred: {area}");
 }
 
@@ -321,7 +328,10 @@ fn a_bad_tolerance_starts_no_repair_preview() {
     let (mut h, doc, _) = opened_with(vec![open_path(0.0, 0.05)]);
     h.send(UiIntent::PreviewRepair { document: doc, issue: 0, tolerance: "abc".into() });
     assert!(h.take_task_requests().is_empty());
-    assert_eq!(vm(&h, doc).problem.map(|p| p.message), Some(burnburn_presentation::MessageKey::InvalidLength(burnburn_presentation::FieldError::NotANumber)));
+    assert_eq!(
+        vm(&h, doc).problem.map(|p| p.message),
+        Some(burnburn_presentation::MessageKey::InvalidLength(burnburn_presentation::FieldError::NotANumber))
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

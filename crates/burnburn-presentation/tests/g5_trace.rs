@@ -130,7 +130,6 @@ fn a_centreline_trace_reopens_in_centreline_mode_and_retraces_in_place() {
     assert_eq!(save_and_load(&mut h, doc).document.engine_layer().traces().count(), 1, "replaced, not added");
 }
 
-
 // ---------------------------------------------------------------------------------------------
 // T04/T08: knooppunten beslissen en technische vormen bevestigen
 // ---------------------------------------------------------------------------------------------
@@ -213,7 +212,10 @@ fn an_ambiguous_junction_stays_open_until_the_operator_picks_a_pairing() {
     // A candidate that does not exist, or a junction that does not exist, changes nothing.
     let edits = vm(&h, doc).centerline.unwrap().edits;
     h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node, candidate: 9 } });
-    h.send(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ResolveJunction { node: 999, candidate: 0 } });
+    h.send(UiIntent::CenterlineEdit {
+        document: doc,
+        edit: CenterlineEdit::ResolveJunction { node: 999, candidate: 0 },
+    });
     assert_eq!(vm(&h, doc).centerline.unwrap().edits, edits);
 
     h.invoke(doc, CommandKey::ApplyTraceLinked);
