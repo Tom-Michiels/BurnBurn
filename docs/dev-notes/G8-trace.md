@@ -98,8 +98,15 @@ herdistribueerbaar, Noto Sans Devanagari staat er niet), dus Devanagari is niet 
 
 ## Verificatie
 
-Zie het eindrapport van de lane voor de uitkomst van `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
-de Windows-clippy en `cargo xtask verify`; de uitkomst staat hieronder ingevuld na de laatste run.
+- `cargo fmt --all --check`: schoon.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: schoon (twee `manual_range_contains` in mijn eigen guardtest eerst gefixt).
+- `cargo clippy -p burnburn-windows -p burnburn-presentation -p burnburn-render --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings`: schoon.
+- `cargo xtask verify`: **exit 0** (derde run). De eerste run faalde op één test buiten mijn werk, `xtask dist::tests::the_dmg_is_a_valid_compressed_image_with_a_checksum_file`
+  (`hdiutil create failed - Resource busy`: een andere lane maakte op hetzelfde moment een image; omgeving, niet code); omdat cargo na een falende
+  testbinary stopt, is de run herhaald. Uitvoer van de geslaagde run: `layers: 26 crates, 2 triples, no violations`,
+  `workspace-deps: 26 crates, every dependency inherits from [workspace.dependencies]`, de algemene testrun met `--skip perf_guard_`, de eigen stap
+  `cargo test -p burnburn-scenarios --locked --test perf_guard_100k` (4 tests ok) en de doctests.
+- Native macOS-runs in de testrun: `trace_batch_panel_native` (nieuw), `g5_panels_native`, `import_layers_native`, `file_panels_native`, `native_file_panels`: ok.
 
 ## Handmatig / onbevestigd
 
