@@ -35,7 +35,10 @@ pub use correct::{
     Anchor, ContourBinding, CorrectionId, CorrectionRecord, CorrectionRequest, NodeTarget, NodeTargetOutcome,
     correction_chain_key, retrace_region,
 };
-pub use document::{recipe_from_engine, recipe_to_engine, trace_command};
+pub use document::{
+    centerline_command, centerline_from_engine, centerline_to_engine, recipe_from_engine, recipe_to_engine,
+    trace_command,
+};
 pub use error::{StaleTrace, TraceError};
 pub use preview::{ComparisonPreview, DeviationMap, SegmentDeviation, comparison_preview, deviation_map};
 pub use recipe::{ContourSettings, ENGINE_VERSION, FitSettings, TraceRecipe};

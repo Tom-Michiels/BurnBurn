@@ -319,6 +319,11 @@ impl CenterlineSettings {
 }
 
 impl CenterlineResult {
+    /// The settings this result was computed with.
+    pub fn settings(&self) -> &CenterlineSettings {
+        &self.settings
+    }
+
     pub fn node(&self, id: NodeId) -> Option<&GraphNode> {
         self.nodes.iter().find(|n| n.id == id)
     }
