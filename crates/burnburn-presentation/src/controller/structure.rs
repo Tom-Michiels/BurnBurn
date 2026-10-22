@@ -19,8 +19,8 @@ use burnburn_types::{DocumentId, GeometryId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length, parse_position};
 use crate::structure_panel::{
-    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
-    ModifierValueKind, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
+    BooleanKind, BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
+    ModifierValueKind, NewModifierStep, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
     ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
@@ -144,7 +144,84 @@ fn value_of(modifier: &Modifier) -> Option<(ModifierValueKind, String)> {
     }
 }
 
-fn modifiers_view(snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
+/// The selected objects a boolean step combines with: everything selected except the chain's
+/// source and the chain's own outputs.
+fn operands_of(
+    s: &Session,
+    snapshot: &DocumentSnapshot,
+    source: GeometryId,
+    own: Option<DerivedOwner>,
+) -> Vec<GeometryId> {
+    s.selection
+        .ids()
+        .iter()
+        .copied()
+        .filter(|id| *id != source)
+        .filter(|id| {
+            snapshot
+                .object(*id)
+                .is_some_and(|o| !matches!((o.source(), own), (GeometrySource::Derived(k), Some(owner)) if k.owner == owner))
+        })
+        .collect()
+}
+
+/// An array the geometry refuses (zero or too many copies) is an invalid count.
+fn array_error(_: burnburn_geometry::array::ArrayError) -> MessageKey {
+    problem(StructureProblem::InvalidCount)
+}
+
+/// The modifier step `step` stands for, with its numbers parsed. `operands` are the objects a
+/// boolean step combines with.
+fn new_step(
+    snapshot: &DocumentSnapshot,
+    source: GeometryId,
+    operands: &[GeometryId],
+    step: NewModifierStep,
+) -> Result<Modifier, MessageKey> {
+    match step {
+        NewModifierStep::Offset { distance } => {
+            let distance = Length::from_mm(typed_position(&distance)?).map_err(|_| MessageKey::CommandRejected)?;
+            Ok(Modifier::Offset { distance, join: burnburn_geometry::OffsetJoin::Round })
+        }
+        NewModifierStep::Boolean { op } => {
+            if operands.is_empty() {
+                return Err(problem(StructureProblem::NeedsOperands));
+            }
+            let op = match op {
+                BooleanKind::Union => burnburn_geometry::BooleanOp::Union,
+                BooleanKind::Difference => burnburn_geometry::BooleanOp::Difference,
+                BooleanKind::Intersection => burnburn_geometry::BooleanOp::Intersection,
+                BooleanKind::Xor => burnburn_geometry::BooleanOp::Xor,
+            };
+            Ok(Modifier::Boolean { op, with: operands.to_vec() })
+        }
+        NewModifierStep::Grid { columns, rows, pitch_x, pitch_y } => {
+            let (columns, rows) = (typed_count(&columns)?, typed_count(&rows)?);
+            let pitch_x = Length::from_mm(typed_position(&pitch_x)?).map_err(|_| MessageKey::CommandRejected)?;
+            let pitch_y = Length::from_mm(typed_position(&pitch_y)?).map_err(|_| MessageKey::CommandRejected)?;
+            let grid = burnburn_geometry::array::GridArray { columns, rows, pitch_x, pitch_y };
+            burnburn_geometry::array::grid_array(&grid).map_err(array_error)?;
+            Ok(Modifier::GridArray(grid))
+        }
+        NewModifierStep::Circle { count, center_x, center_y, sweep } => {
+            let count = typed_count(&count)?;
+            let center = Point::new(typed_position(&center_x)?, typed_position(&center_y)?);
+            let sweep_deg = crate::field::parse_number(&sweep, &["°", "deg"])
+                .ok()
+                .filter(|v| v.is_finite() && *v != 0.0 && v.abs() <= 360.0)
+                .ok_or(problem(StructureProblem::InvalidSweep))?;
+            let reference = snapshot
+                .object(source)
+                .and_then(|o| o.path().bounds())
+                .map_or(Point::new(0.0, 0.0), |b| b.center());
+            let circular = burnburn_geometry::array::CircularArray { count, center, sweep_deg, rotate_items: true, reference };
+            burnburn_geometry::array::circular_array(&circular).map_err(array_error)?;
+            Ok(Modifier::CircularArray(circular))
+        }
+    }
+}
+
+fn modifiers_view(s: &Session, snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
     snapshot
         .structure()
         .modifiers()
@@ -182,6 +259,12 @@ fn modifiers_view(snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
                     .objects()
                     .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
                     .count(),
+                in_selection: s.selection.ids().iter().any(|sel| {
+                    *sel == chain.source
+                        || snapshot
+                            .object(*sel)
+                            .is_some_and(|o| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
+                }),
             }
         })
         .collect()
@@ -320,7 +403,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
         selected: s.selection.ids().iter().filter(|id| snapshot.object(**id).is_some()).count(),
         edges: edges_view(&snapshot, s.selection.single()),
         edge_object: s.selection.single().filter(|id| snapshot.object(*id).is_some()).map(StableId::raw),
-        modifiers: modifiers_view(&snapshot),
+        modifiers: modifiers_view(s, &snapshot),
     }
 }
 
@@ -687,6 +770,35 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
         StructureEdit::BakeModifier { modifier } => {
             let (id, _) = chain_of(layer, modifier)?;
             Ok(StructureCommand::BakeModifier { modifier: id })
+        }
+        StructureEdit::AddModifierStep { modifier, step } => {
+            let (id, mut chain) = chain_of(layer, modifier)?;
+            let own = DerivedOwner::Modifier(id);
+            let operands = operands_of(s, &snapshot, chain.source, Some(own));
+            let made = new_step(&snapshot, chain.source, &operands, step)?;
+            chain.steps.push(ModifierStep { modifier: made, enabled: true });
+            Ok(StructureCommand::SetModifier { modifier: id, chain })
+        }
+        StructureEdit::CreateModifierChain { step } => {
+            let selected: Vec<GeometryId> =
+                s.selection.ids().iter().copied().filter(|id| snapshot.object(*id).is_some()).collect();
+            let source = *selected.first().ok_or(problem(StructureProblem::NeedsSelection))?;
+            let name = match &step {
+                NewModifierStep::Offset { .. } => "Offset",
+                NewModifierStep::Boolean { .. } => "Boolean",
+                NewModifierStep::Grid { .. } => "Raster",
+                NewModifierStep::Circle { .. } => "Cirkel",
+            };
+            let made = new_step(&snapshot, source, &selected[1..], step)?;
+            let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
+            let chain = ModifierChain {
+                name: name.to_owned(),
+                source,
+                steps: vec![ModifierStep { modifier: made, enabled: true }],
+                tolerance,
+                mode: EvalMode::Inline,
+            };
+            Ok(StructureCommand::CreateModifier { chain })
         }
         StructureEdit::CreateOffsetModifier { distance } => {
             let source = s.selection.single().filter(|id| snapshot.object(*id).is_some());

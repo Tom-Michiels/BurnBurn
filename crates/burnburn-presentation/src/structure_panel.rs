@@ -218,6 +218,34 @@ pub struct ModifierRow {
     pub status: ModifierStatus,
     /// Derived objects the chain currently makes.
     pub outputs: usize,
+    /// The selection holds the chain's source or one of its outputs (G8-editor: the stack of the
+    /// selection in the inspector panel shows exactly these chains).
+    pub in_selection: bool,
+}
+
+/// How a boolean step combines the result so far with the other selected objects (G8-editor).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum BooleanKind {
+    Union,
+    /// The result so far minus the operands.
+    Difference,
+    Intersection,
+    Xor,
+}
+
+/// A step to add to a modifier chain, with its numbers as typed (G8-editor, E06). A boolean step
+/// takes the selected objects (other than the chain's source and outputs) as operands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NewModifierStep {
+    /// Positive grows the area.
+    Offset { distance: String },
+    Boolean { op: BooleanKind },
+    /// Columns × rows copies, `pitch_x` / `pitch_y` apart.
+    Grid { columns: String, rows: String, pitch_x: String, pitch_y: String },
+    /// `count` copies around a centre over `sweep` degrees; the copies turn with their position.
+    Circle { count: String, center_x: String, center_y: String, sweep: String },
 }
 
 /// Everything the structure panel shows; empty lists for a document without structure.
@@ -403,6 +431,16 @@ pub enum StructureEdit {
     CreateOffsetModifier {
         distance: String,
     },
+    /// Appends a step to the end of a chain (G8-editor).
+    AddModifierStep {
+        modifier: u64,
+        step: NewModifierStep,
+    },
+    /// A new chain with `step` as its first step. The source is the first selected object; a
+    /// boolean step takes the other selected objects as operands (G8-editor).
+    CreateModifierChain {
+        step: NewModifierStep,
+    },
 }
 
 /// Why a structure edit was refused (G6-werk). Nothing changed.
@@ -449,4 +487,8 @@ pub enum StructureProblem {
     PartOutputSelected,
     /// Fixed geometry has no numbers; a rectangle or circle can be added.
     CannotAddFixed,
+    /// A boolean step needs other selected objects to combine with.
+    NeedsOperands,
+    /// A sweep is a non-zero angle of at most 360 degrees.
+    InvalidSweep,
 }
