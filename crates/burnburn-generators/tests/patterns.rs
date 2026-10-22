@@ -192,14 +192,15 @@ fn text_on_circle_sits_at_radius_minus_offset_and_follows_the_tangent() {
 }
 
 #[test]
-fn text_on_path_reports_overflow_and_multiline() {
+fn text_on_path_reports_overflow_and_places_several_lines() {
     let (src, mut obj) = liberation();
     let short = Path::line(Point::ORIGIN, Point::new(5.0, 0.0)).unwrap();
     let p = PathTextParams { distort: Distort::Rigid, start: 0.0, offset: 0.0, reverse: false, tolerance: tol(0.01) };
     assert!(matches!(text_on_path(&obj, &src, &short, &p).unwrap_err(), GenError::TextLongerThanPath { .. }));
+    // Several lines are placed since golf 8 (`g8_multiline_path`).
     obj.content = "a\nb".into();
     let long = Path::line(Point::ORIGIN, Point::new(500.0, 0.0)).unwrap();
-    assert_eq!(text_on_path(&obj, &src, &long, &p).unwrap_err(), GenError::MultiLineText);
+    assert!(text_on_path(&obj, &src, &long, &p).is_ok());
 }
 
 #[test]

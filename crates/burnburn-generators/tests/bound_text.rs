@@ -191,14 +191,15 @@ fn a_guide_that_is_too_short_fails_the_text_and_keeps_its_last_outline() {
 }
 
 #[test]
-fn several_lines_and_a_missing_font_are_failures_not_panics() {
+fn several_lines_follow_the_guide_and_a_missing_font_is_a_failure_not_a_panic() {
+    // G8-editor E08: a text of several lines is bound like any other (it used to fail).
     let (src, obj) = text("een\ntwee");
     let ev = BoundTextEvaluator::new(src);
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     let g = guide(&mut s, &ev, Path::line(Point::new(0.0, 0.0), Point::new(300.0, 0.0)).unwrap());
     let t = create(&mut s, &ev, obj, Some(bound(g, 0.0, 0.0, false)));
-    assert!(matches!(s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().status, EvalStatus::Failed { .. }));
-    assert!(outputs(&s, t).is_empty(), "nothing was ever valid");
+    assert!(matches!(s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().status, EvalStatus::Valid));
+    assert_eq!(outputs(&s, t).len(), 1, "one outline holding both lines");
 
     let (src, mut obj) = text("x");
     obj.font = burnburn_text::FontRef::new("Bestaat Niet", FontStyle::Regular);

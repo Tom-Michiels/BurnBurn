@@ -1,5 +1,7 @@
 //! Text along a guide path: each glyph is placed with its baseline centre on the path (offset
-//! along the left normal) and rotated to the tangent.
+//! along the left normal) and rotated to the tangent. Several lines keep their spacing: line k
+//! runs along the guide at its baseline distance from the first line, below it (the right-hand
+//! side of the left normal) (G8-editor, E08).
 
 use burnburn_geometry::{Affine, Path, Point, ProductionTolerance, Segment, Subpath, Vector};
 use burnburn_text::{FontSource, TextObject, shape};
@@ -59,47 +61,31 @@ pub fn text_on_path(
     let mut local = text.clone();
     local.placement = Affine::IDENTITY;
     let shaped = shape(&local, fonts)?;
-    if shaped.lines.len() > 1 {
+    if shaped.lines.is_empty() {
         return Err(GenError::MultiLineText);
     }
-    let line = shaped.lines.first().ok_or(GenError::MultiLineText)?;
-    let polys = guide.flatten(&p.tolerance);
-    let first = polys.first().ok_or(GenError::EmptyGuide)?;
-    let mut pts = first.points.clone();
-    if first.closed
-        && let Some(&s0) = pts.first()
-    {
-        pts.push(s0);
-    }
-    pts.dedup();
-    if p.reverse {
-        pts.reverse();
-    }
-    let mut cumulative = Vec::with_capacity(pts.len());
-    let mut total = 0.0;
-    for (i, q) in pts.iter().enumerate() {
-        if i > 0 {
-            total += q.distance(pts[i - 1]);
-        }
-        cumulative.push(total);
-    }
-    if !(total > 0.0) {
-        return Err(GenError::EmptyGuide);
-    }
-    let needed = start + line.width_mm;
+    let (pts, cumulative, total) = flatten_guide(guide, &p.tolerance, p.reverse)?;
+    // The block of lines starts at `start` with its leftmost line; the others keep their
+    // alignment to it. Line k lies `baseline_y(k) - baseline_y(0)` along the left normal (negative: below).
+    let block_x = shaped.lines.iter().map(|l| l.start_x).fold(f64::INFINITY, f64::min);
+    let span = shaped.lines.iter().map(|l| l.start_x + l.width_mm).fold(f64::NEG_INFINITY, f64::max) - block_x;
+    let needed = start + span;
     if needed > total + 1e-9 {
         return Err(GenError::TextLongerThanPath { needed_mm: needed, available_mm: total });
     }
+    let first_baseline = shaped.lines[0].baseline_y;
     let mut frames = Vec::with_capacity(shaped.glyphs.len());
     let mut subpaths = Vec::new();
     let guide_line = GuideLine { pts: &pts, cumulative: &cumulative };
     let step = guide_line.max_step(p.tolerance.mm());
     for (g, outline) in shaped.glyphs.iter().zip(&shaped.glyph_outlines) {
+        let line = shaped.lines.get(g.line).ok_or(GenError::MultiLineText)?;
+        let line_offset = offset + (line.baseline_y - first_baseline);
         let anchor = Point::new(g.origin.x + g.advance_mm / 2.0, line.baseline_y);
-        let at = start + (anchor.x - line.start_x);
+        let at = start + (anchor.x - block_x);
         let (centre, dir) = guide_line.frame_at(at);
         let normal = Vector::new(-dir.y, dir.x);
-        let centre = centre + normal * offset;
+        let centre = centre + normal * line_offset;
         match p.distort {
             Distort::Rigid => {
                 let m = Affine::new([
@@ -122,13 +108,13 @@ pub fn text_on_path(
                         let parts = ((a.distance(b) / step).ceil() as usize).clamp(1, MAX_PARTS);
                         for k in 0..parts {
                             let q = a.lerp(b, k as f64 / parts as f64);
-                            mapped.push(guide_line.warp(q, line.start_x, line.baseline_y, start, offset));
+                            mapped.push(guide_line.warp(q, block_x, line.baseline_y, start, line_offset));
                         }
                     }
                     if !poly.closed
                         && let Some(&last) = poly.points.last()
                     {
-                        mapped.push(guide_line.warp(last, line.start_x, line.baseline_y, start, offset));
+                        mapped.push(guide_line.warp(last, block_x, line.baseline_y, start, line_offset));
                     }
                     if let Some((&first, rest)) = mapped.split_first() {
                         let segments = rest.iter().map(|&to| Segment::Line { to }).collect();
@@ -140,6 +126,76 @@ pub fn text_on_path(
         frames.push(GlyphFrame { centre, direction: dir, at });
     }
     Ok(PathText { path: Path::from_subpaths(subpaths), frames })
+}
+
+/// The flattened first outline of `guide` (closed ones back to their start, travelled backwards
+/// when `reverse`), the arc length at each point and the total length.
+fn flatten_guide(
+    guide: &Path,
+    tolerance: &ProductionTolerance,
+    reverse: bool,
+) -> Result<(Vec<Point>, Vec<f64>, f64), GenError> {
+    let polys = guide.flatten(tolerance);
+    let first = polys.first().ok_or(GenError::EmptyGuide)?;
+    let mut pts = first.points.clone();
+    if first.closed
+        && let Some(&s0) = pts.first()
+    {
+        pts.push(s0);
+    }
+    pts.dedup();
+    if reverse {
+        pts.reverse();
+    }
+    let mut cumulative = Vec::with_capacity(pts.len());
+    let mut total = 0.0;
+    for (i, q) in pts.iter().enumerate() {
+        if i > 0 {
+            total += q.distance(pts[i - 1]);
+        }
+        cumulative.push(total);
+    }
+    if !(total > 0.0) || pts.len() < 2 {
+        return Err(GenError::EmptyGuide);
+    }
+    Ok((pts, cumulative, total))
+}
+
+/// The point and unit direction of the guide at arc length `at` along its first outline
+/// (flattened within `tolerance`, travelled backwards when `reverse`); beyond either end the
+/// last segment continues straight.
+pub fn guide_frame_at(
+    guide: &Path,
+    tolerance: &ProductionTolerance,
+    reverse: bool,
+    at: f64,
+) -> Result<(Point, Vector), GenError> {
+    let (pts, cumulative, _) = flatten_guide(guide, tolerance, reverse)?;
+    Ok(GuideLine { pts: &pts, cumulative: &cumulative }.frame_at(finite("at", at)?))
+}
+
+/// The largest start at which `text` still fits on `guide`: the guide's length less the span of
+/// the text. `TextLongerThanPath` when it does not fit at any start.
+pub fn text_room(
+    text: &TextObject,
+    fonts: &dyn FontSource,
+    guide: &Path,
+    tolerance: &ProductionTolerance,
+    reverse: bool,
+) -> Result<f64, GenError> {
+    let mut local = text.clone();
+    local.placement = Affine::IDENTITY;
+    let shaped = shape(&local, fonts)?;
+    if shaped.lines.is_empty() {
+        return Err(GenError::MultiLineText);
+    }
+    let (_, _, total) = flatten_guide(guide, tolerance, reverse)?;
+    let block_x = shaped.lines.iter().map(|l| l.start_x).fold(f64::INFINITY, f64::min);
+    let span = shaped.lines.iter().map(|l| l.start_x + l.width_mm).fold(f64::NEG_INFINITY, f64::max) - block_x;
+    if span > total + 1e-9 {
+        return Err(GenError::TextLongerThanPath { needed_mm: span, available_mm: total });
+    }
+    Ok((total - span).max(0.0))
 }
 
 /// Upper bound of the pieces one glyph edge is cut into when it is bent.
