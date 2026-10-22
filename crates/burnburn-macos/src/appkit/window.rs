@@ -15,7 +15,7 @@ use objc2_app_kit::{
     NSFont, NSLineBreakMode, NSSavePanel, NSScrollView, NSSegmentedControl, NSSplitView, NSSplitViewDividerStyle,
     NSTableColumn, NSTableView, NSTextField, NSToolbar, NSToolbarDisplayMode, NSView, NSWindow, NSWindowStyleMask,
 };
-use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSSize, NSString};
+use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSPoint, NSSize, NSString};
 
 use super::app::{HostApp, HostOptions};
 use super::canvas::Canvas;
@@ -437,6 +437,10 @@ impl DocWindow {
             window.makeKeyAndOrderFront(None);
         }
 
+        // The window is laid out now (toolbar, content rect): the column starts at its top (the
+        // clip is clamped to the end of the content).
+        inspector.scrollPoint(NSPoint::new(0.0, 1.0e7));
+
         let view: Retained<NSView> = Retained::into_super(canvas_view.clone());
         let canvas_status = match Canvas::attach(mtm, view) {
             Ok(canvas) => {
@@ -550,6 +554,8 @@ impl DocWindow {
         {
             set_text(label, text);
         }
+        // The identity truncates in the middle: the full text is its tooltip.
+        self.plan_labels[1].setToolTip(Some(&NSString::from_str(&panel.plan_id)));
         set_text(&self.plan_calibration, &panel.calibration.join("; "));
         self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);

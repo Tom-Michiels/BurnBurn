@@ -13,7 +13,10 @@ use objc2_app_kit::NSView;
 use crate::l10n::Locale;
 
 /// Height of the production strip under the canvas (palette, layers, bed camera).
-pub(crate) const STRIP_HEIGHT: f64 = 250.0;
+pub(crate) const STRIP_HEIGHT: f64 = 282.0;
+/// What the strip grew by when the add row and the camera buttons got a second line: the rows above
+/// the table and the camera status lift by it.
+pub(crate) const LIFT: f64 = 32.0;
 pub(crate) const CAMERA_WIDTH: f64 = 250.0;
 
 /// The production strip's widgets (targets/actions are set once the controller exists).

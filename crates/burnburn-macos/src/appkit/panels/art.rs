@@ -35,8 +35,8 @@ use crate::panels_files::{
 };
 use crate::panels_image::BitmapImage;
 
-pub(crate) const WIDTH: f64 = 470.0;
-pub(crate) const HEIGHT: f64 = 600.0;
+pub(crate) const WIDTH: f64 = 500.0;
+pub(crate) const HEIGHT: f64 = 614.0;
 
 pub(crate) struct ArtSection {
     pub(crate) panel: Retained<NSPanel>,

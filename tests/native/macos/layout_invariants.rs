@@ -9,9 +9,14 @@
 //! (b) no two visible controls of one container overlap;
 //! (c) no label or button is cut off: wrapped text fits in the height, other text in the width
 //!     (a label that truncates on purpose has a tooltip with the full text);
-//! (d) a scroll view that holds controls starts at the top of its content.
+//! (d) a scroll view that holds controls starts at the top of its content;
+//! (e) the default (Return) button is the rightmost button of its row, and every dialog sheet
+//!     answers Escape, and Return when it has more than one button;
+//! (f) a long text is not shown twice in one window (a reason is said once, not per field);
+//! (g) an editable field says what it is: a caption beside or above it, or a placeholder.
 //!
-//! Baselines of labels and fields are not checked yet.
+//! Dialog sheets that are built but not open (import, image, tracer, export, bundle) are walked
+//! too. Baselines of labels and fields are not checked yet.
 
 use std::process::ExitCode;
 
@@ -38,6 +43,7 @@ mod invariants {
     use burnburn_macos::appkit::HostOptions;
     use burnburn_presentation::{CommandKey, UiIntent};
     use burnburn_types::DocumentId;
+    use objc2::Message;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{
@@ -96,6 +102,15 @@ mod invariants {
             }
             check_new_windows(&s, doc, step, &mut found);
         }
+        // The dialog sheets are built with the window, shown or not.
+        let sheets: Vec<(&str, Retained<NSWindow>)> = s
+            .app
+            .with_window(doc, |w| w.built_sheets.iter().map(|(n, sh)| (*n, (*sh).retain())).collect())
+            .unwrap_or_default();
+        for (name, sheet) in &sheets {
+            walk_window(sheet, &format!("sheet {name}, built"), &mut found);
+            check_sheet_keys(sheet, name, &mut found);
+        }
         if found.is_empty() {
             return Ok(());
         }
@@ -148,13 +163,104 @@ mod invariants {
             window.displayIfNeeded();
             walk_window(window, &format!("{name}, larger"), found);
             window.setContentSize(old);
+            // A non-flipped column keeps its lower-left anchor when the window shrinks again; the
+            // user scrolls back, so the next check starts from the top like a fresh window.
+            scroll_to_top(&content);
             s.pump(0.1);
+        }
+    }
+
+    fn scroll_to_top(view: &NSView) {
+        for child in view.subviews().iter() {
+            if let Some(scroll) = as_any(&child).downcast_ref::<NSScrollView>() {
+                if let Some(doc) = scroll.documentView().filter(|d| !is_leaf(d)) {
+                    doc.scrollPoint(NSPoint::new(0.0, 1.0e7));
+                    scroll_to_top(&doc);
+                }
+            } else if !is_leaf(&child) {
+                scroll_to_top(&child);
+            }
         }
     }
 
     fn walk_window(window: &NSWindow, name: &str, found: &mut Vec<String>) {
         let Some(root) = window.contentView() else { return };
-        walk(&root, name, found);
+        let mut texts = Vec::new();
+        walk(&root, name, found, &mut texts, default_cell(window));
+        // (f) a long text twice in one window.
+        texts.sort();
+        for pair in texts.windows(2) {
+            if pair[0] == pair[1] && pair[0].chars().count() > 20 {
+                let times = texts.iter().filter(|t| **t == pair[0]).count();
+                let shown: String = pair[0].chars().take(60).collect();
+                let message = format!("{name}: the same text {times} times: '{shown}'");
+                if !found.contains(&message) {
+                    found.push(message);
+                }
+            }
+        }
+    }
+
+    /// The Escape key equivalent of a button.
+    fn answers_escape(view: &NSView) -> bool {
+        as_any(view).downcast_ref::<NSButton>().is_some_and(|b| b.keyEquivalent().to_string() == "\u{1b}")
+    }
+
+    /// The window's default button cell (Return): AppKit makes a "\r" key equivalent the window's
+    /// default and reports the key equivalent itself as empty.
+    fn default_cell(window: &NSWindow) -> *const AnyObject {
+        window.defaultButtonCell().map_or(ptr::null(), |c| Retained::as_ptr(&c).cast())
+    }
+
+    fn answers_return(view: &NSView, default: *const AnyObject) -> bool {
+        !default.is_null()
+            && as_any(view)
+                .downcast_ref::<NSButton>()
+                .and_then(|b| b.cell())
+                .is_some_and(|c| ptr::eq(Retained::as_ptr(&c).cast::<AnyObject>(), default))
+    }
+
+    /// Push buttons of the tree (no checkboxes, pop-ups or arrows), with the window-relative frame.
+    fn push_buttons(view: &NSView, out: &mut Vec<Retained<NSView>>) {
+        for child in view.subviews().iter() {
+            if child.isHidden() {
+                continue;
+            }
+            let any = as_any(&child);
+            if let Some(b) = any.downcast_ref::<NSButton>() {
+                if any.downcast_ref::<NSPopUpButton>().is_none()
+                    && child.frame().size.width >= 60.0
+                    && !b.title().to_string().is_empty()
+                    && b.bezelStyle() != objc2_app_kit::NSBezelStyle::SmallSquare
+                    && b.isBordered()
+                {
+                    out.push(child.retain());
+                }
+            } else if !is_leaf(&child) {
+                push_buttons(&child, out);
+            } else if let Some(scroll) = any.downcast_ref::<NSScrollView>() {
+                if let Some(doc) = scroll.documentView() {
+                    push_buttons(&doc, out);
+                }
+            }
+        }
+    }
+
+    /// (e) for a dialog sheet: it answers Escape, and Return when it has a button row.
+    fn check_sheet_keys(sheet: &NSWindow, name: &str, found: &mut Vec<String>) {
+        let Some(root) = sheet.contentView() else { return };
+        let mut buttons = Vec::new();
+        push_buttons(&root, &mut buttons);
+        let default = default_cell(sheet);
+        let escapes = buttons.iter().filter(|b| answers_escape(b)).count();
+        let returns = buttons.iter().filter(|b| answers_return(b, default)).count();
+        let bar = buttons.iter().filter(|b| b.frame().origin.y < 60.0).count();
+        if escapes != 1 {
+            found.push(format!("sheet {name}: {escapes} buttons answer Escape, expected one"));
+        }
+        if bar >= 2 && returns != 1 {
+            found.push(format!("sheet {name}: {returns} buttons answer Return, expected one"));
+        }
     }
 
     fn as_any(view: &NSView) -> &AnyObject {
@@ -235,7 +341,8 @@ mod invariants {
             let cell = t.cell()?;
             let mode = t.lineBreakMode();
             if mode == NSLineBreakMode::ByWordWrapping || mode == NSLineBreakMode::ByCharWrapping {
-                let need = cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
+                let need =
+                    cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
                 (need.height > f.size.height + TOLERANCE)
                     .then(|| format!("wrapped text needs {:.0} pt of height, has {:.0}", need.height, f.size.height))
             } else {
@@ -260,7 +367,78 @@ mod invariants {
         }
     }
 
-    fn walk(view: &NSView, path: &str, found: &mut Vec<String>) {
+    /// (e) among the buttons of one row the Return button is the rightmost.
+    fn check_default_rightmost(
+        items: &[&Retained<NSView>],
+        path: &str,
+        found: &mut Vec<String>,
+        default_cell: *const AnyObject,
+    ) {
+        let buttons: Vec<&&Retained<NSView>> = items
+            .iter()
+            .filter(|v| {
+                as_any(v).downcast_ref::<NSButton>().is_some_and(|b| {
+                    as_any(v).downcast_ref::<NSPopUpButton>().is_none()
+                        && v.frame().size.width >= 60.0
+                        && b.isBordered()
+                        && b.bezelStyle() != objc2_app_kit::NSBezelStyle::SmallSquare
+                })
+            })
+            .collect();
+        for default in buttons.iter().filter(|b| answers_return(b, default_cell)) {
+            let f = default.frame();
+            for other in &buttons {
+                let o = other.frame();
+                let same_row = (o.origin.y - f.origin.y).abs() < 6.0;
+                if same_row && !ptr::eq(&***other, &***default) && o.origin.x > f.origin.x + TOLERANCE {
+                    found.push(format!(
+                        "{path}: the default button is not rightmost of its row: {}  is left of  {}",
+                        describe(default),
+                        describe(other)
+                    ));
+                }
+            }
+        }
+    }
+
+    /// (g) an editable field has a caption beside or above it, or a placeholder.
+    fn check_captioned(items: &[&Retained<NSView>], path: &str, found: &mut Vec<String>) {
+        for item in items {
+            let Some(field) = as_any(item).downcast_ref::<NSTextField>() else { continue };
+            if !field.isEditable() || !field.isBezeled() {
+                continue;
+            }
+            if field.placeholderString().is_some_and(|p| !p.to_string().is_empty()) {
+                continue;
+            }
+            let f = item.frame();
+            let has_caption = items.iter().any(|other| {
+                let Some(label) = as_any(other).downcast_ref::<NSTextField>() else { return false };
+                if label.isEditable() || label.stringValue().to_string().trim().is_empty() {
+                    return false;
+                }
+                let o = other.frame();
+                let beside = (o.origin.y + o.size.height / 2.0 - (f.origin.y + f.size.height / 2.0)).abs() < 14.0
+                    && o.origin.x + o.size.width <= f.origin.x + TOLERANCE + 2.0
+                    && f.origin.x - (o.origin.x + o.size.width) < 60.0;
+                let above = (o.origin.x - f.origin.x).abs() < 30.0
+                    && o.origin.y >= f.origin.y + f.size.height - 4.0
+                    && o.origin.y - (f.origin.y + f.size.height) < 12.0;
+                beside || above
+            });
+            if !has_caption {
+                found.push(format!("{path}: editable field without caption or placeholder: {}", describe(item)));
+            }
+        }
+    }
+
+    fn walk(
+        view: &NSView,
+        path: &str,
+        found: &mut Vec<String>,
+        texts: &mut Vec<String>,
+        default_cell: *const AnyObject,
+    ) {
         if view.isHidden() {
             return;
         }
@@ -269,12 +447,27 @@ mod invariants {
         let items: Vec<&Retained<NSView>> = children.iter().filter(|c| counts(c)).collect();
         for item in &items {
             if !inside(item.frame(), bounds) {
-                found.push(format!("{path}: outside its container ({:.0}x{:.0}): {}", bounds.size.width, bounds.size.height, describe(item)));
+                found.push(format!(
+                    "{path}: outside its container ({:.0}x{:.0}): {}",
+                    bounds.size.width,
+                    bounds.size.height,
+                    describe(item)
+                ));
             }
             if let Some(why) = cut_off(item) {
                 found.push(format!("{path}: cut off ({why}): {}", describe(item)));
             }
         }
+        for item in &items {
+            if let Some(t) = as_any(item).downcast_ref::<NSTextField>()
+                && !t.isEditable()
+                && !t.isBezeled()
+            {
+                texts.push(t.stringValue().to_string());
+            }
+        }
+        check_default_rightmost(&items, path, found, default_cell);
+        check_captioned(&items, path, found);
         for (i, a) in items.iter().enumerate() {
             for b in &items[i + 1..] {
                 if overlap(a.frame(), b.frame()) {
@@ -292,7 +485,7 @@ mod invariants {
                 if is_leaf(&doc) {
                     continue;
                 }
-                walk(&doc, path, found);
+                walk(&doc, path, found, texts, default_cell);
                 // (d) a scroll view starts at the top of its content.
                 let visible = scroll.documentVisibleRect();
                 let top = doc
@@ -303,12 +496,14 @@ mod invariants {
                     .fold(f64::NEG_INFINITY, f64::max);
                 if top.is_finite() && top > visible.origin.y + visible.size.height + TOLERANCE {
                     found.push(format!(
-                        "{path}: scroll content starts below its top: highest control reaches {top:.0}, view shows up to {:.0}",
-                        visible.origin.y + visible.size.height
+                        "{path}: scroll content starts below its top: highest control reaches {top:.0}, view shows {:.0}..{:.0} of a {:.0} high document",
+                        visible.origin.y,
+                        visible.origin.y + visible.size.height,
+                        doc.frame().size.height
                     ));
                 }
             } else if !is_leaf(child) {
-                walk(child, path, found);
+                walk(child, path, found, texts, default_cell);
             }
         }
     }

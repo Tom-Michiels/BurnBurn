@@ -113,6 +113,9 @@ const SHEET_H: f64 = 700.0;
 const OPTIONS_BOTTOM: f64 = 92.0;
 const OPTION_ROW_H: f64 = 26.0;
 const OPTION_NOTE_H: f64 = 28.0;
+/// The caption column and where the control starts (the longest Dutch caption needs about 270 pt).
+const OPTION_CAPTION_W: f64 = 290.0;
+const OPTION_CONTROL_X: f64 = 296.0;
 
 /// The Cut Settings sheet of one layer.
 pub(crate) struct CutSettingsSheet {
@@ -404,7 +407,17 @@ fn layout_options(
     to_top: bool,
 ) {
     let rows: Vec<OptionRow> = option_rows(sheet, kind, &live_options(c, sheet), locale);
-    let height_of = |r: &OptionRow| OPTION_ROW_H + if r.note.is_empty() { 0.0 } else { OPTION_NOTE_H };
+    // Rows that follow each other with the same note (the several fields of one missing capability)
+    // say it once, under the first of them; the tooltips of the others keep it.
+    let mut noted: Vec<CutField> = Vec::new();
+    let mut previous: Option<&str> = None;
+    for r in &rows {
+        if !r.note.is_empty() && previous != Some(r.note.as_str()) {
+            noted.push(r.field);
+        }
+        previous = Some(r.note.as_str());
+    }
+    let height_of = |r: &OptionRow| OPTION_ROW_H + if noted.contains(&r.field) { OPTION_NOTE_H } else { 0.0 };
     let content_h = rows.iter().map(height_of).sum::<f64>() + 8.0;
     let clip_h = c.options_scroll.frame().size.height;
     let total_h = content_h.max(clip_h);
@@ -421,25 +434,26 @@ fn layout_options(
         y -= OPTION_ROW_H;
         let has_caption = matches!(row.control, RowControl::Text(_) | RowControl::Popup { .. });
         w.caption.setHidden(!has_caption);
-        w.caption.setFrame(rect(0.0, y + 2.0, 244.0, 20.0));
+        w.caption.setFrame(rect(0.0, y + 2.0, OPTION_CAPTION_W, 20.0));
         w.control.view().setHidden(false);
         match (&w.control, &row.control) {
-            (OptionControl::Text(f), RowControl::Text(_)) => f.setFrame(rect(250.0, y, 150.0, 24.0)),
+            (OptionControl::Text(f), RowControl::Text(_)) => f.setFrame(rect(OPTION_CONTROL_X, y, 150.0, 24.0)),
             (OptionControl::Flag(b), RowControl::Check(_)) => b.setFrame(rect(0.0, y + 2.0, width, 22.0)),
             (OptionControl::Popup(p), RowControl::Popup { items, .. }) => {
                 set_popup_items(p, items);
-                p.setFrame(rect(250.0, y - 1.0, width - 250.0, 26.0));
+                p.setFrame(rect(OPTION_CONTROL_X, y - 1.0, width - OPTION_CONTROL_X, 26.0));
             }
             _ => {}
         }
         w.control.set_enabled(row.enabled);
-        set_text(&w.note, &row.note);
+        let note = if noted.contains(&row.field) { row.note.as_str() } else { "" };
+        set_text(&w.note, note);
         let tip = NSString::from_str(&row.note);
         w.control.view().setToolTip(if row.note.is_empty() { None } else { Some(&tip) });
-        w.note.setHidden(row.note.is_empty());
-        if !row.note.is_empty() {
+        w.note.setHidden(note.is_empty());
+        if !note.is_empty() {
             y -= OPTION_NOTE_H;
-            w.note.setFrame(rect(20.0, y + 4.0, width - 20.0, OPTION_NOTE_H));
+            w.note.setFrame(rect(20.0, y, width - 20.0, OPTION_NOTE_H - 2.0));
         }
     }
     if to_top {

@@ -87,11 +87,11 @@ pub(crate) fn bundle_sheet(
     }
     let report = note(mtm, &content, rect(16.0, 56.0, inner, 48.0), &NSColor::labelColor());
     let primary = push_button(mtm, t(T::ButtonExport));
-    primary.setFrame(rect(w - 232.0, 12.0, 112.0, 28.0));
+    primary.setFrame(rect(w - 128.0, 12.0, 112.0, 28.0));
     primary.setKeyEquivalent(&NSString::from_str("\r"));
     content.addSubview(&primary);
     let close = push_button(mtm, t(T::ButtonClose));
-    close.setFrame(rect(w - 112.0, 12.0, 96.0, 28.0));
+    close.setFrame(rect(w - 232.0, 12.0, 96.0, 28.0));
     close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
     content.addSubview(&close);
     sheet.setContentView(Some(&content));

@@ -33,9 +33,16 @@ use crate::panels::{
     cam_title, order_key_caption,
 };
 
-const WIDTH: f64 = 700.0;
+const WIDTH: f64 = 780.0;
 const MARGIN: f64 = 14.0;
-const CAPTION_W: f64 = 250.0;
+const CAPTION_W: f64 = 272.0;
+/// Room for the reason why fields are greyed (one sentence, at most two lines) above the fields.
+const REASON_H: f64 = 34.0;
+/// Width of a button of the bar and the gap between two.
+const BUTTON_W: f64 = 146.0;
+const BUTTON_STEP: f64 = 152.0;
+/// The arrows beside an `Order by` level.
+const ARROW_W: f64 = 34.0;
 const CONTROL_W: f64 = 190.0;
 const ROW_H: f64 = 30.0;
 const NOTES_LINE_H: f64 = 14.0;
@@ -189,6 +196,9 @@ pub(crate) struct CamPanelUi {
     pub(crate) notes: Retained<NSTextField>,
     pub(crate) result: Retained<NSTextField>,
     pub(crate) capabilities: Retained<NSTextField>,
+    /// Why fields are greyed: once, above the fields, not once per field.
+    pub(crate) reasons: Retained<NSTextField>,
+    reason_h: f64,
     pub(crate) buttons: Vec<(DialogActionKind, Retained<NSButton>)>,
     capability_lines: usize,
     rows_count: usize,
@@ -225,7 +235,10 @@ impl CamPanelUi {
         let notes_h = NOTES_LINE_H * 6.0;
         let result_h = if dialog.is_test() { NOTES_LINE_H * 7.0 } else { 0.0 };
         let caps_h = capability_lines as f64 * 15.0 + if capability_lines > 0 { 22.0 } else { 0.0 };
-        let content_h = rows_count as f64 * ROW_H + notes_h + result_h + caps_h + 3.0 * MARGIN;
+        let reason_h =
+            if vm.rows.iter().any(|r| matches!(r.state, FieldState::Disabled(Some(_)))) { REASON_H } else { 0.0 };
+        // Margins: above the reasons or rows, and between the four blocks below the rows.
+        let content_h = rows_count as f64 * ROW_H + reason_h + notes_h + result_h + caps_h + 4.0 * MARGIN;
         let scroll_h = content_h.min(MAX_SCROLL_H);
         let panel_h = scroll_h + BUTTON_BAR_H;
 
@@ -276,7 +289,7 @@ impl CamPanelUi {
             let (up, down) = if matches!(row.field, DialogField::OrderEnabled(_)) {
                 let arrow = |glyph: &str| {
                     let b = push_button(mtm, glyph);
-                    b.setFrame(rect(0.0, 0.0, 26.0, 24.0));
+                    b.setFrame(rect(0.0, 0.0, ARROW_W, 24.0));
                     b
                 };
                 (Some(arrow("\u{2191}")), Some(arrow("\u{2193}")))
@@ -302,7 +315,12 @@ impl CamPanelUi {
         let capabilities = label(mtm, "", rect(MARGIN, 0.0, WIDTH - 3.0 * MARGIN, caps_h));
         capabilities.setFont(Some(&NSFont::systemFontOfSize(11.0)));
         capabilities.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-        for v in [&*notes as &NSView, &*result, &*capabilities] {
+        let reasons = label(mtm, "", rect(MARGIN, 0.0, WIDTH - 3.0 * MARGIN, reason_h));
+        reasons.setFont(Some(&NSFont::systemFontOfSize(11.0)));
+        reasons.setTextColor(Some(&NSColor::secondaryLabelColor()));
+        reasons.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
+        reasons.setHidden(reason_h == 0.0);
+        for v in [&*notes as &NSView, &*result, &*capabilities, &*reasons] {
             doc_view.addSubview(v);
         }
         result.setHidden(!dialog.is_test());
@@ -321,7 +339,7 @@ impl CamPanelUi {
         let mut buttons = Vec::new();
         for (slot, kind) in ACTION_KINDS.iter().enumerate() {
             let b = push_button(mtm, cam_action_title(*kind, dialog, locale));
-            b.setFrame(rect(0.0, 10.0, 130.0, 28.0));
+            b.setFrame(rect(0.0, 10.0, BUTTON_W, 28.0));
             b.setTag(slot as isize);
             content.addSubview(&b);
             buttons.push((*kind, b));
@@ -364,6 +382,8 @@ impl CamPanelUi {
             notes,
             result,
             capabilities,
+            reasons,
+            reason_h,
             buttons,
             capability_lines,
             rows_count,
@@ -375,6 +395,20 @@ impl CamPanelUi {
         let content_h = self.scroll_doc.frame().size.height;
         let width = self.scroll_doc.frame().size.width;
         let mut y = content_h - MARGIN;
+        // The reasons why fields are greyed: each distinct one once, above the fields.
+        let mut reasons: Vec<String> = Vec::new();
+        for r in &vm.rows {
+            if let FieldState::Disabled(Some(reason)) = r.state {
+                let text = message_or_key(reason, locale);
+                if !reasons.contains(&text) {
+                    reasons.push(text);
+                }
+            }
+        }
+        y -= self.reason_h;
+        self.reasons.setFrame(rect(MARGIN, y, width - 2.0 * MARGIN, self.reason_h));
+        set_text(&self.reasons, &reasons.join("\n"));
+        self.reasons.setHidden(reasons.is_empty());
         for (slot, row_vm) in vm.rows.iter().enumerate() {
             let Some(ui) = self.rows.iter().find(|r| r.field == row_vm.field) else { continue };
             let _ = slot;
@@ -416,12 +450,8 @@ impl CamPanelUi {
                 }
             }
             ui.caption.setHidden(hidden || matches!(ui.control, Control::Flag(_)));
-            // The error beats the reason a field is greyed; neither: empty.
-            let note = match (row_vm.error, row_vm.state) {
-                (Some(why), _) => cam_error(why, locale),
-                (None, FieldState::Disabled(Some(reason))) => message_or_key(reason, locale),
-                _ => String::new(),
-            };
+            // Only an error belongs to its row; why a field is greyed is said once above the fields.
+            let note = row_vm.error.map(|why| cam_error(why, locale)).unwrap_or_default();
             set_text(&ui.note, &note);
             let colour =
                 if row_vm.error.is_some() { NSColor::systemRedColor() } else { NSColor::secondaryLabelColor() };
@@ -473,12 +503,14 @@ impl CamPanelUi {
             Control::Text(f) => f.setFrame(rect(control_x, y + 2.0, CONTROL_W, 24.0)),
             Control::Popup(p) => p.setFrame(rect(control_x, y + 1.0, CONTROL_W, 26.0)),
             // A checkbox carries its own caption and spans caption and control.
-            Control::Flag(b) => b.setFrame(rect(MARGIN, y + 3.0, CAPTION_W + CONTROL_W + 8.0 - 66.0, 22.0)),
+            Control::Flag(b) => {
+                b.setFrame(rect(MARGIN, y + 3.0, CAPTION_W + CONTROL_W + 8.0 - 2.0 * ARROW_W - 12.0, 22.0))
+            }
         }
         if let (Some(up), Some(down)) = (&ui.up, &ui.down) {
-            let x = MARGIN + CAPTION_W + CONTROL_W + 8.0 - 58.0;
-            up.setFrame(rect(x, y + 3.0, 26.0, 24.0));
-            down.setFrame(rect(x + 30.0, y + 3.0, 26.0, 24.0));
+            let x = MARGIN + CAPTION_W + CONTROL_W + 8.0 - 2.0 * ARROW_W - 4.0;
+            up.setFrame(rect(x, y + 3.0, ARROW_W, 24.0));
+            down.setFrame(rect(x + ARROW_W + 2.0, y + 3.0, ARROW_W, 24.0));
         }
         let note_x = MARGIN + CAPTION_W + CONTROL_W + 16.0;
         ui.note.setFrame(rect(note_x, y, (width - note_x - MARGIN).max(80.0), 28.0));
@@ -521,8 +553,8 @@ impl CamPanelUi {
             let state = vm.action(*kind);
             b.setHidden(state.is_none());
             let Some(state) = state else { continue };
-            x -= 136.0;
-            b.setFrame(rect(x, 10.0, 130.0, 28.0));
+            x -= BUTTON_STEP;
+            b.setFrame(rect(x, 10.0, BUTTON_W, 28.0));
             b.setEnabled(state.enabled);
             set_button_title(b, cam_action_title(*kind, vm.dialog, locale));
             let tip = state.reason.map(|n| cam_note(n, locale));

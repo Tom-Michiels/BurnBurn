@@ -46,7 +46,7 @@ pub(crate) const BITMAP_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", 
 pub(crate) const TRACE_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
 
 const IMPORT_SIZE: (f64, f64) = (460.0, 290.0);
-const ADJUST_SIZE: (f64, f64) = (700.0, 490.0);
+const ADJUST_SIZE: (f64, f64) = (740.0, 490.0);
 
 /// A titled sheet window of `size` with an empty content view.
 pub(crate) fn sheet_window(
@@ -541,7 +541,7 @@ fn import_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandB
 fn adjust_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandButton<'_>) -> ImageAdjustSheet {
     let t = |text: HostText| host_text(text, locale);
     let (w, h) = ADJUST_SIZE;
-    let left = 330.0;
+    let left = 366.0;
     let (sheet, content) = sheet_window(mtm, ADJUST_SIZE, t(HostText::ImageAdjustTitle));
     let mut y = h - 16.0;
     let title = heading(mtm, &content, rect(16.0, y - 20.0, left, 20.0));
@@ -552,11 +552,11 @@ fn adjust_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandB
     let y_values = y;
     let y_crop = y_values - 5.0 * 30.0 - 36.0 - 38.0;
     let rows: [(HostText, f64, f64, f64, f64, f64); 9] = [
-        (HostText::ImageAdjustBrightness, 16.0, 196.0, 216.0, 114.0, y_values),
-        (HostText::ImageAdjustContrast, 16.0, 196.0, 216.0, 114.0, y_values - 30.0),
-        (HostText::ImageAdjustGamma, 16.0, 196.0, 216.0, 114.0, y_values - 60.0),
-        (HostText::ImageAdjustSharpenAmount, 16.0, 196.0, 216.0, 114.0, y_values - 90.0),
-        (HostText::ImageAdjustSharpenRadius, 16.0, 196.0, 216.0, 114.0, y_values - 120.0),
+        (HostText::ImageAdjustBrightness, 16.0, 232.0, 252.0, 114.0, y_values),
+        (HostText::ImageAdjustContrast, 16.0, 232.0, 252.0, 114.0, y_values - 30.0),
+        (HostText::ImageAdjustGamma, 16.0, 232.0, 252.0, 114.0, y_values - 60.0),
+        (HostText::ImageAdjustSharpenAmount, 16.0, 232.0, 252.0, 114.0, y_values - 90.0),
+        (HostText::ImageAdjustSharpenRadius, 16.0, 232.0, 252.0, 114.0, y_values - 120.0),
         (HostText::ImageAdjustCropX, 16.0, 60.0, 80.0, 80.0, y_crop),
         (HostText::ImageAdjustCropY, 176.0, 60.0, 240.0, 90.0, y_crop),
         (HostText::ImageAdjustCropWidth, 16.0, 60.0, 80.0, 80.0, y_crop - 30.0),
@@ -567,15 +567,15 @@ fn adjust_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandB
         input(mtm, &content, t(name), rect(fx, ry - 24.0, fw, 24.0))
     });
     y = y_values - 150.0;
-    caption(mtm, &content, t(HostText::ImageAdjustGray), rect(16.0, y - 22.0, 196.0, 22.0));
+    caption(mtm, &content, t(HostText::ImageAdjustGray), rect(16.0, y - 22.0, 232.0, 22.0));
     let gray_titles: Vec<String> = GRAY_METHODS.iter().map(|g| gray_method_name(*g, locale).to_owned()).collect();
-    let gray = popup(mtm, &content, t(HostText::ImageAdjustGray), &gray_titles, rect(212.0, y - 26.0, 150.0, 26.0));
+    let gray = popup(mtm, &content, t(HostText::ImageAdjustGray), &gray_titles, rect(252.0, y - 26.0, 150.0, 26.0));
     y -= 36.0;
     let crop = caption(mtm, &content, t(HostText::ImageAdjustCrop), rect(16.0, y - 34.0, left, 34.0));
     crop.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
     crop.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
     let issue = note(mtm, &content, rect(16.0, 56.0, left, 40.0), &NSColor::systemRedColor());
-    let x = 364.0;
+    let x = 404.0;
     let preview_caption = caption(mtm, &content, t(HostText::ImageAdjustPreview), rect(x, h - 36.0, 320.0, 18.0));
     preview_caption.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
     let preview = image_view(mtm, &content, t(HostText::ImageAdjustPreview), rect(x, h - 366.0, 320.0, 322.0));
@@ -593,6 +593,7 @@ fn adjust_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandB
         CommandKey::ApplyImageAdjust,
         rect(w - 116.0, 12.0, 104.0, 28.0),
     );
+    apply.setKeyEquivalent(&NSString::from_str("\r"));
     sheet.setContentView(Some(&content));
     ImageAdjustSheet {
         sheet,

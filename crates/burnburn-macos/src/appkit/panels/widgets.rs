@@ -110,7 +110,8 @@ pub(crate) fn button(
     let b =
         unsafe { NSButton::buttonWithTitle_target_action(&NSString::from_str(title), Some(target), Some(action), mtm) };
     b.setFrame(frame);
-    b.setAutoresizingMask(TOP_PINNED);
+    // Top-pinned with the width it was given: a row of buttons must not stretch into each other.
+    b.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
     b
 }
 

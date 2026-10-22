@@ -19,11 +19,12 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObjectProtocol, ProtocolObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent,
-    NSEventType, NSFont, NSPanel, NSScrollView, NSSegmentSwitchTracking, NSSegmentedControl, NSTableColumn,
-    NSTableView, NSTableViewDataSource, NSText, NSTextField, NSView, NSWindowStyleMask,
+    NSAccessibility, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff,
+    NSControlStateValueOn, NSEvent, NSEventType, NSFont, NSPanel, NSScrollView, NSSegmentSwitchTracking,
+    NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource, NSText, NSTextField, NSView,
+    NSWindowStyleMask,
 };
-use objc2_foundation::{NSInteger, NSPoint, NSRect, NSString};
+use objc2_foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
@@ -36,8 +37,11 @@ use crate::panels::{
     simple_controls, simple_intent, start_from_for_segment,
 };
 
-pub(crate) const WIDTH: f64 = 520.0;
-pub(crate) const HEIGHT: f64 = 744.0;
+pub(crate) const WIDTH: f64 = 590.0;
+/// Height of the laser window's content. The panel shows at most [`VISIBLE_HEIGHT`] of it and scrolls.
+pub(crate) const HEIGHT: f64 = 928.0;
+/// How much of the content the panel shows at most (a laptop screen is about 800 pt high).
+pub(crate) const VISIBLE_HEIGHT: f64 = 700.0;
 const MARGIN: f64 = 12.0;
 
 /// Tags of the three check boxes.
@@ -154,13 +158,16 @@ define_class!(
 
 impl LaserPanelWindow {
     fn new(mtm: MainThreadMarker, app: Weak<HostApp>, document: DocumentId) -> Retained<Self> {
-        let style = NSWindowStyleMask::Titled | NSWindowStyleMask::UtilityWindow | NSWindowStyleMask::Closable;
+        let style = NSWindowStyleMask::Titled
+            | NSWindowStyleMask::UtilityWindow
+            | NSWindowStyleMask::Closable
+            | NSWindowStyleMask::Resizable;
         let this = Self::alloc(mtm).set_ivars(PanelIvars { app, document });
         // SAFETY: NSPanel's designated initialiser on a freshly allocated instance with ivars set.
         let panel: Retained<Self> = unsafe {
             msg_send![
                 super(this),
-                initWithContentRect: rect(0.0, 0.0, WIDTH, HEIGHT),
+                initWithContentRect: rect(0.0, 0.0, WIDTH, VISIBLE_HEIGHT),
                 styleMask: style,
                 backing: NSBackingStoreType::Buffered,
                 defer: false
@@ -491,7 +498,7 @@ pub(crate) fn laser_section(
     panel.setTitle(&NSString::from_str(t(LaserText::PanelTitle)));
     let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, WIDTH, HEIGHT));
     let inner = WIDTH - 2.0 * MARGIN;
-    let y = std::cell::Cell::new(HEIGHT);
+    let y = std::cell::Cell::new(HEIGHT - 6.0);
     let row = |height: f64, gap: f64| {
         y.set(y.get() - height);
         let at = y.get();
@@ -563,7 +570,7 @@ pub(crate) fn laser_section(
     let at = row(18.0, 2.0);
     heading(t(LaserText::Step), at);
     let at = row(28.0, 6.0);
-    let small = (inner - 4.0 * 6.0 - 70.0) / 4.0;
+    let small = 50.0;
     let arrows = [
         (StepDirectionTag::Left, "◀"),
         (StepDirectionTag::Right, "▶"),
@@ -578,6 +585,11 @@ pub(crate) fn laser_section(
             *slot = Some(b);
         }
     }
+    // The caption names the field and its unit (it says "(mm)").
+    let step_caption =
+        label(mtm, t(LaserText::StepSize), rect(WIDTH - MARGIN - 66.0 - 6.0 - 140.0, at + 4.0, 140.0, 20.0));
+    step_caption.setAlignment(objc2_app_kit::NSTextAlignment::Right);
+    content.addSubview(&step_caption);
     let step_field = field(mtm, rect(WIDTH - MARGIN - 66.0, at + 2.0, 66.0, 24.0));
     step_field.setAccessibilityLabel(Some(&NSString::from_str(t(LaserText::StepSize))));
     content.addSubview(&step_field);
@@ -714,7 +726,10 @@ pub(crate) fn laser_section(
         LaserText::FrameRubberBand,
         rect(MARGIN + 156.0, at, 150.0, 28.0),
     );
-    let frame_speed = field(mtm, rect(WIDTH - MARGIN - 66.0, at + 2.0, 66.0, 24.0));
+    let at = row(28.0, 2.0);
+    let speed_caption = label(mtm, t(LaserText::FrameSpeed), rect(MARGIN, at + 4.0, 170.0, 20.0));
+    content.addSubview(&speed_caption);
+    let frame_speed = field(mtm, rect(MARGIN + 176.0, at + 2.0, 66.0, 24.0));
     frame_speed.setAccessibilityLabel(Some(&NSString::from_str(t(LaserText::FrameSpeed))));
     content.addSubview(&frame_speed);
     let at = row(30.0, 6.0);
@@ -734,7 +749,7 @@ pub(crate) fn laser_section(
     content.addSubview(&save_rd);
     let at = row(18.0, 2.0);
     heading(t(LaserText::Files), at);
-    let table_height = (y.get() - 40.0).max(60.0);
+    let table_height = 100.0;
     let at = row(table_height, 6.0);
     let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(MARGIN, at, inner, table_height));
     scroll.setHasVerticalScroller(true);
@@ -758,7 +773,20 @@ pub(crate) fn laser_section(
         b.setFrame(rect(MARGIN + (i as f64 + 1.0) * (q + 6.0), at, q, 28.0));
         content.addSubview(b);
     }
-    panel.setContentView(Some(&content));
+    // The content is taller than a laptop screen: it scrolls in a window of at most VISIBLE_HEIGHT.
+    content.setAutoresizesSubviews(false);
+    let page = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(0.0, 0.0, WIDTH, VISIBLE_HEIGHT));
+    page.setHasVerticalScroller(true);
+    page.setAutohidesScrollers(true);
+    page.setDrawsBackground(false);
+    page.setAutoresizingMask(NSAutoresizingMaskOptions(
+        NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewHeightSizable.0,
+    ));
+    page.setDocumentView(Some(&content));
+    panel.setContentView(Some(&page));
+    panel.setContentMaxSize(NSSize::new(WIDTH, HEIGHT));
+    panel.setContentMinSize(NSSize::new(WIDTH, 240.0));
+    content.scrollPoint(NSPoint::new(0.0, 1.0e7));
 
     let target = LaserTarget::alloc(mtm).set_ivars(TargetIvars {
         app,
@@ -937,6 +965,12 @@ impl DocWindow {
                     frame.origin.x + 24.0,
                     frame.origin.y + frame.size.height - 60.0,
                 ));
+                // Show the top of the content (the window is shorter than the content).
+                if let Some(doc) =
+                    panel.contentView().and_then(|v| v.downcast::<NSScrollView>().ok()).and_then(|s| s.documentView())
+                {
+                    doc.scrollPoint(NSPoint::new(0.0, 1.0e7));
+                }
                 panel.orderFront(None);
                 // The window itself takes the keyboard, not the first text field: the arrow keys
                 // jog until the user clicks into a field.

@@ -21,7 +21,7 @@ use crate::l10n::{HostText, Locale, host_text, message_or_key};
 use crate::panels::{SKETCH_BUTTONS, SKETCH_COLUMNS, SKETCH_TOOLBAR, sketch_panel, sketch_toolbar_enabled};
 use burnburn_presentation::MessageKey;
 
-const WIDTH: f64 = 480.0;
+const WIDTH: f64 = 540.0;
 const HEIGHT: f64 = 560.0;
 
 pub(crate) struct SketchSection {
@@ -155,11 +155,11 @@ pub(crate) fn sketch_section(mtm: MainThreadMarker, locale: Locale) -> SketchSec
     let name = field(mtm, rect(12.0, 30.0, 110.0, 24.0));
     name.setPlaceholderString(Some(&NSString::from_str(t(HostText::SketchParameterName))));
     name.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::SketchParameterName))));
-    let expr = field(mtm, rect(128.0, 30.0, inner - 128.0 - 112.0, 24.0));
+    let expr = field(mtm, rect(128.0, 30.0, inner - 128.0 - 124.0, 24.0));
     expr.setPlaceholderString(Some(&NSString::from_str(t(HostText::SketchParameterValue))));
     expr.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::SketchParameterValue))));
     let param_set = push_button(mtm, t(HostText::SketchParameterSet));
-    param_set.setFrame(rect(12.0 + inner - 106.0, 28.0, 106.0, 28.0));
+    param_set.setFrame(rect(12.0 + inner - 116.0, 28.0, 116.0, 28.0));
     for v in [&name, &expr] {
         content.addSubview(v);
     }

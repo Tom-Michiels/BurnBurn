@@ -23,7 +23,7 @@ use crate::appkit::classes::ffi_guard;
 use crate::panels::{Slot, SlotKind, SlotValue};
 
 pub(crate) const MARGIN: f64 = 12.0;
-pub(crate) const LABEL_WIDTH: f64 = 150.0;
+pub(crate) const LABEL_WIDTH: f64 = 180.0;
 const GAP: f64 = 4.0;
 
 pub(crate) struct TargetIvars {
@@ -255,6 +255,7 @@ pub(crate) struct Form {
 impl Form {
     pub(crate) fn new(mtm: MainThreadMarker, width: f64, rows: Vec<FormRow>) -> Form {
         let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 100.0));
+        content.setAutoresizesSubviews(false);
         for row in &rows {
             for v in row.views() {
                 content.addSubview(v);
