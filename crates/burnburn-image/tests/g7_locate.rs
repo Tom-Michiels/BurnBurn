@@ -30,7 +30,8 @@ fn speckle(x: i64, y: i64) -> f32 {
 fn product(dx: f64, dy: f64, defect: bool) -> f64 {
     let blob = 90.0 * (-(dx * dx + dy * dy) / (2.0 * 5.0 * 5.0)).exp();
     let tail = -40.0 * (-((dx + 7.0).powi(2) + (dy - 4.0).powi(2)) / (2.0 * 3.0 * 3.0)).exp();
-    let satellite = if defect { 0.0 } else { 55.0 * (-((dx - 8.0).powi(2) + (dy + 6.0).powi(2)) / (2.0 * 2.0 * 2.0)).exp() };
+    let satellite =
+        if defect { 0.0 } else { 55.0 * (-((dx - 8.0).powi(2) + (dy + 6.0).powi(2)) / (2.0 * 2.0 * 2.0)).exp() };
     blob + tail + satellite
 }
 

@@ -143,7 +143,10 @@ impl AppController {
         let cameras = self
             .running_cameras()
             .into_keys()
-            .map(|device| RunningCamera { name: names.get(&device).cloned().unwrap_or_else(|| device.0.clone()), device })
+            .map(|device| RunningCamera {
+                name: names.get(&device).cloned().unwrap_or_else(|| device.0.clone()),
+                device,
+            })
             .collect();
         RecognitionViewModel {
             cameras,
@@ -250,7 +253,8 @@ impl AppController {
         if self.config_of(&device, &frame.mode) != config {
             return Err(RecognitionProblem::FrameConfigChanged);
         }
-        let document = self.active.or_else(|| self.sessions.keys().next().copied()).ok_or(RecognitionProblem::NoFrame)?;
+        let document =
+            self.active.or_else(|| self.sessions.keys().next().copied()).ok_or(RecognitionProblem::NoFrame)?;
         let task = self.next_id::<TaskId>().ok_or(RecognitionProblem::SearchFailed)?;
         let cancel = CancellationSource::new();
         let job = LocateJob {

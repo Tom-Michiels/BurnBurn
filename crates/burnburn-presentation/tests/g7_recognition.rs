@@ -36,8 +36,7 @@ fn speckle(x: i64, y: i64) -> f64 {
 
 /// The product around its centre: a bright blob, a dark tail, a small satellite (one orientation).
 fn product(dx: f64, dy: f64) -> f64 {
-    90.0 * (-(dx * dx + dy * dy) / 50.0).exp()
-        - 40.0 * (-((dx + 7.0).powi(2) + (dy - 4.0).powi(2)) / 18.0).exp()
+    90.0 * (-(dx * dx + dy * dy) / 50.0).exp() - 40.0 * (-((dx + 7.0).powi(2) + (dy - 4.0).powi(2)) / 18.0).exp()
         + 55.0 * (-((dx - 8.0).powi(2) + (dy + 6.0).powi(2)) / 8.0).exp()
 }
 
@@ -129,7 +128,10 @@ fn the_view_lists_the_cameras_that_run_so_a_template_can_be_learned_from_one() {
     assert!(view(&r).cameras.is_empty());
     show(&mut r, &[]);
     let cameras = view(&r).cameras;
-    assert_eq!(cameras.iter().map(|c| (c.device.clone(), c.name.as_str())).collect::<Vec<_>>(), vec![(dev(A), "Camera cam-A")]);
+    assert_eq!(
+        cameras.iter().map(|c| (c.device.clone(), c.name.as_str())).collect::<Vec<_>>(),
+        vec![(dev(A), "Camera cam-A")]
+    );
 }
 
 // --- learning ----------------------------------------------------------------------------------------------

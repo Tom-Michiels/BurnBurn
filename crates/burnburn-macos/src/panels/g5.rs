@@ -38,10 +38,12 @@ pub enum G5Panel {
     StartConfirm,
     /// Venster ▸ Restplaten: the remnant library and the remnant of an order (G7-werk, W07).
     Remnants,
+    /// Venster ▸ Herkenning: learn a product from the camera picture, find it, decide, place (G7-werk, W06).
+    Recognition,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 10] = [
+    pub const ALL: [G5Panel; 11] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -52,6 +54,7 @@ impl G5Panel {
         G5Panel::Operator,
         G5Panel::StartConfirm,
         G5Panel::Remnants,
+        G5Panel::Recognition,
     ];
 }
 
@@ -220,6 +223,26 @@ pub enum G5Control {
     RemnantOrder {
         index: usize,
     },
+    // --- Product recognition (G7-werk, W06).
+    /// The camera the template is learned from (a choice among the running cameras).
+    RecogCamera,
+    RecogX,
+    RecogY,
+    RecogWidth,
+    RecogHeight,
+    RecogName,
+    RecogLearn,
+    RecogForget,
+    RecogMinPercent,
+    RecogFind,
+    RecogCancel,
+    RecogAccept {
+        index: usize,
+    },
+    RecogReject {
+        index: usize,
+    },
+    RecogPlace,
 }
 
 /// One line of a panel.
@@ -360,6 +383,11 @@ pub fn g5_panel(
         G5Panel::Operator => {
             let lines = super::g6_werk::operator_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::Recognition => {
+            let lines = super::g7_werk::recognition_lines(doc, locale, draft)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RecognitionTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
         G5Panel::Remnants => {
@@ -702,6 +730,20 @@ pub fn g5_intent(
         | G5Control::RemnantPlace { .. }
         | G5Control::RemnantRemove { .. }
         | G5Control::RemnantOrder { .. } => super::g7_werk::remnants_intent(doc, document, control, values),
+        G5Control::RecogCamera
+        | G5Control::RecogX
+        | G5Control::RecogY
+        | G5Control::RecogWidth
+        | G5Control::RecogHeight
+        | G5Control::RecogName
+        | G5Control::RecogLearn
+        | G5Control::RecogForget
+        | G5Control::RecogMinPercent
+        | G5Control::RecogFind
+        | G5Control::RecogCancel
+        | G5Control::RecogAccept { .. }
+        | G5Control::RecogReject { .. }
+        | G5Control::RecogPlace => super::g7_werk::recognition_intent(doc, document, control, values),
         G5Control::StructDefineName
         | G5Control::StructDefine
         | G5Control::PartPlaceX { .. }

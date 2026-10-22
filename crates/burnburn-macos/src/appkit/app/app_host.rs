@@ -207,6 +207,7 @@ fn shortcut_id_of(item: &NSMenuItem) -> Option<String> {
             MenuItem::TracePrepPanel => Some("host.trace_prep_panel".into()),
             MenuItem::OperatorPanel => Some("host.operator_panel".into()),
             MenuItem::RemnantsPanel => Some("host.remnants_panel".into()),
+            MenuItem::RecognitionPanel => Some("host.recognition_panel".into()),
             MenuItem::Recent(_)
             | MenuItem::ClearRecent
             | MenuItem::RecentTemplate(_)

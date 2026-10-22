@@ -50,6 +50,8 @@ pub enum MenuItem {
     OperatorPanel,
     /// Venster ▸ Restplaten: shows or hides the remnant library panel (G7-werk).
     RemnantsPanel,
+    /// Venster ▸ Herkenning: shows or hides the product recognition panel (G7-werk).
+    RecognitionPanel,
     /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
     RecentTemplate(usize),
     /// Archief ▸ Recente templates ▸ Wis menu.
@@ -74,6 +76,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::TracePrepPanel,
         MenuItem::OperatorPanel,
         MenuItem::RemnantsPanel,
+        MenuItem::RecognitionPanel,
         MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
@@ -109,6 +112,7 @@ const TRACE_PREP_PANEL_TAG: isize = 1032;
 const OPERATOR_PANEL_TAG: isize = 1033;
 /// The golf-7 workshop panels (G7-werk); a block of their own so parallel lanes keep their tags.
 const REMNANTS_PANEL_TAG: isize = 1070;
+const RECOGNITION_PANEL_TAG: isize = 1071;
 /// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
 const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
 
@@ -128,6 +132,7 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::TracePrepPanel => TRACE_PREP_PANEL_TAG,
         MenuItem::OperatorPanel => OPERATOR_PANEL_TAG,
         MenuItem::RemnantsPanel => REMNANTS_PANEL_TAG,
+        MenuItem::RecognitionPanel => RECOGNITION_PANEL_TAG,
         MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
         MenuItem::RecentTemplate(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
@@ -191,6 +196,9 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == REMNANTS_PANEL_TAG {
         return Some(MenuItem::RemnantsPanel);
+    }
+    if tag == RECOGNITION_PANEL_TAG {
+        return Some(MenuItem::RecognitionPanel);
     }
     if tag == CLEAR_RECENT_TEMPLATES_TAG {
         return Some(MenuItem::ClearRecentTemplates);
@@ -653,6 +661,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::TracePrepPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::TracePrep),
         E::Menu(MenuItem::OperatorPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Operator),
         E::Menu(MenuItem::RemnantsPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Remnants),
+        E::Menu(MenuItem::RecognitionPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Recognition),
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::Menu(MenuItem::App(action)) => return Reaction::App(action),
         E::App(event) => return crate::app_menu::translate_app(event, vm),
@@ -1038,7 +1047,8 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::SchikkenPanel
         | MenuItem::OffsetPanel
         | MenuItem::StructurePanel
-        | MenuItem::RemnantsPanel => vm.active.is_some(),
+        | MenuItem::RemnantsPanel
+        | MenuItem::RecognitionPanel => vm.active.is_some(),
         // The preparation panel has something to show while a tracer is open in the window in front.
         MenuItem::TracePrepPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.trace_prep.is_some()),
         MenuItem::OperatorPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.operator.is_some()),
@@ -1088,6 +1098,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::TracePrepPanel
         | MenuItem::OperatorPanel
         | MenuItem::RemnantsPanel
+        | MenuItem::RecognitionPanel
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
@@ -1122,6 +1133,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         }
         MenuItem::RemnantsPanel => {
             crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RemnantsMenu, locale).to_owned()
+        }
+        MenuItem::RecognitionPanel => {
+            crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::RecognitionMenu, locale).to_owned()
         }
         MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::App(action) => action.title(locale).to_owned(),

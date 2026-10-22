@@ -111,6 +111,79 @@ texts! {
         "Let op bij order {0}: het materiaal van de restplaat ({1}) is niet het materiaal van de job.",
         "Take care with order {0}: the material of the remnant ({1}) is not the material of the job."
     ),
+    // --- Product recognition (W06).
+    RecognitionMenu => ("Herkenning…", "Recognition…"),
+    RecognitionTitle => ("Producten herkennen", "Recognise products"),
+    RecogHeading => ("Sjabloon uit het camerabeeld", "Template from the camera picture"),
+    RecogHint => (
+        "Leer een sjabloon van het nieuwste beeld: geef het vak om één product aan (in pixels van het beeld). Zoek het daarna in het nieuwste beeld en kies zelf welke treffers kloppen; er wordt niets vanzelf geaccepteerd.",
+        "Learn a template from the newest picture: give the box around one product (in pixels of the picture). Then look for it in the newest picture and choose yourself which matches are right; nothing is accepted by itself."
+    ),
+    RecogNoCamera => ("Start eerst een camera (Camerabeheer).", "Start a camera first (camera management)."),
+    RecogCameraCaption => ("Camera", "Camera"),
+    RecogX => ("Links (px)", "Left (px)"),
+    RecogY => ("Boven (px)", "Top (px)"),
+    RecogWidth => ("Breedte (px)", "Width (px)"),
+    RecogHeight => ("Hoogte (px)", "Height (px)"),
+    RecogName => ("Naam van het sjabloon", "Name of the template"),
+    RecogLearn => ("Leer sjabloon", "Learn template"),
+    RecogForget => ("Vergeet sjabloon", "Forget template"),
+    RecogNoTemplate => ("Nog geen sjabloon geleerd.", "No template learned yet."),
+    RecogTemplateLine => (
+        "Sjabloon {0}: {1} × {2} px, geleerd van camera {3}",
+        "Template {0}: {1} × {2} px, learned from camera {3}"
+    ),
+    RecogMinPercent => ("Minimale gelijkenis (%, leeg is 70)", "Least similarity (%, empty is 70)"),
+    RecogFind => ("Zoek in het nieuwste beeld", "Look in the newest picture"),
+    RecogCancel => ("Stop zoeken", "Stop searching"),
+    RecogSearching => ("Bezig met zoeken…", "Searching…"),
+    RecogCandidatesHeading => ("Treffers", "Matches"),
+    RecogReviewNeeded => (
+        "Meerdere treffers: beslis over elke treffer voordat je iets plaatst.",
+        "Several matches: decide about each match before you place anything."
+    ),
+    RecogCandidateLine => (
+        "Treffer {0}: gelijkenis {1} % — in het beeld ({2}; {3}) px — {4} — {5}",
+        "Match {0}: similarity {1} % — in the picture ({2}; {3}) px — {4} — {5}"
+    ),
+    RecogOnBed => ("op het bed ({0}; {1}) mm", "on the bed ({0}; {1}) mm"),
+    RecogNotCalibrated => ("niet gekalibreerd: geen plaats in mm", "not calibrated: no place in mm"),
+    RecogPending => ("wacht op jouw keuze", "waiting for your choice"),
+    RecogAccepted => ("geaccepteerd", "accepted"),
+    RecogRejected => ("afgewezen", "rejected"),
+    RecogAccept => ("Accepteer treffer {0}", "Accept match {0}"),
+    RecogReject => ("Wijs treffer {0} af", "Reject match {0}"),
+    RecogNote => (
+        "De gelijkenis zegt hoe sterk het beeld op het sjabloon lijkt; het is geen nauwkeurigheid in millimeters. De plaats in millimeters komt alleen uit de kalibratie van de camera. De snijgeometrie is de selectie in het venster.",
+        "The similarity says how much the picture looks like the template; it is not an accuracy in millimetres. The place in millimetres comes only from the calibration of the camera. The cut geometry is the selection in the window."
+    ),
+    RecogPlace => ("Plaats kopieën van de selectie op de geaccepteerde treffers", "Place copies of the selection at the accepted matches"),
+    RecogProblemNoCameraPort => ("Er is geen camera beschikbaar.", "No camera is available."),
+    RecogProblemNoFrame => ("De camera draait niet of heeft nog geen beeld.", "The camera is not running or has no picture yet."),
+    RecogProblemInvalidNumber => ("Een getal is niet te lezen.", "A number cannot be read."),
+    RecogProblemOutside => ("Het vak is leeg of ligt buiten het beeld.", "The box is empty or lies outside the picture."),
+    RecogProblemFlat => ("In het vak is geen patroon te zien (vlak oppervlak).", "There is no pattern in the box (a plain surface)."),
+    RecogProblemTooSmall => ("Het vak is te klein (minstens 4 × 4 px).", "The box is too small (at least 4 × 4 px)."),
+    RecogProblemTooLarge => ("Het sjabloon is groter dan het beeld.", "The template is larger than the picture."),
+    RecogProblemNoTemplate => ("Leer eerst een sjabloon.", "Learn a template first."),
+    RecogProblemConfig => (
+        "De camera staat anders dan toen het sjabloon werd geleerd (camera, resolutie, formaat of lens): leer het sjabloon opnieuw.",
+        "The camera is set differently than when the template was learned (camera, resolution, format or lens): learn the template again."
+    ),
+    RecogProblemBusy => ("Er loopt nog een zoekopdracht.", "A search is still running."),
+    RecogProblemNothingFound => ("Niets gevonden boven de gekozen gelijkenis.", "Nothing found above the chosen similarity."),
+    RecogProblemUnknownCandidate => ("Deze treffer bestaat niet.", "This match does not exist."),
+    RecogProblemUndecided => ("Beslis eerst over elke treffer.", "Decide about each match first."),
+    RecogProblemNothingAccepted => ("Geen enkele treffer is geaccepteerd.", "No match is accepted."),
+    RecogProblemNothingSelected => (
+        "Selecteer in het venster de snijgeometrie van één product.",
+        "Select the cut geometry of one product in the window."
+    ),
+    RecogProblemNotCalibrated => (
+        "De camera is niet gekalibreerd voor deze instelling en hoogte: beeldpunten worden niet vanzelf millimeters.",
+        "The camera is not calibrated for this setting and height: picture points do not become millimetres by themselves."
+    ),
+    RecogProblemSearchFailed => ("Het zoeken is mislukt.", "The search failed."),
     OrderLinkNote => (
         "Een koppeling verandert geen aantallen: alleen geregistreerde uitvoeringen tellen.",
         "A link changes no counts: only recorded executions count."

@@ -3,8 +3,8 @@
 //! their own. It shows what presentation says is about to be started and sends exactly that.
 
 use burnburn_presentation::{
-    DocumentViewModel, RemnantIntent, RemnantLinkStatus, RemnantProblem, START_NEEDS, StartConfirmViewModel,
-    StartEvidence, UiIntent,
+    CandidateDecision, DocumentViewModel, RecognitionIntent, RecognitionPhase, RecognitionProblem, RemnantIntent,
+    RemnantLinkStatus, RemnantProblem, START_NEEDS, StartConfirmViewModel, StartEvidence, UiIntent,
 };
 use burnburn_types::DocumentId;
 
@@ -244,6 +244,176 @@ pub(super) fn remnants_intent(
             };
             Some(UiIntent::SetOrderRemnant { order: order.id, remnant })
         }
+        _ => None,
+    }
+}
+
+// --- Product recognition (W06) ----------------------------------------------------------------------
+
+fn recog_problem_text(problem: RecognitionProblem, locale: Locale) -> String {
+    let text = match problem {
+        RecognitionProblem::NoCameraPort => G7Text::RecogProblemNoCameraPort,
+        RecognitionProblem::NoFrame => G7Text::RecogProblemNoFrame,
+        RecognitionProblem::InvalidNumber => G7Text::RecogProblemInvalidNumber,
+        RecognitionProblem::OutsideFrame => G7Text::RecogProblemOutside,
+        RecognitionProblem::FlatTemplate => G7Text::RecogProblemFlat,
+        RecognitionProblem::TemplateTooSmall => G7Text::RecogProblemTooSmall,
+        RecognitionProblem::TemplateLargerThanFrame => G7Text::RecogProblemTooLarge,
+        RecognitionProblem::NoTemplate => G7Text::RecogProblemNoTemplate,
+        RecognitionProblem::FrameConfigChanged => G7Text::RecogProblemConfig,
+        RecognitionProblem::Busy => G7Text::RecogProblemBusy,
+        RecognitionProblem::NothingFound => G7Text::RecogProblemNothingFound,
+        RecognitionProblem::UnknownCandidate => G7Text::RecogProblemUnknownCandidate,
+        RecognitionProblem::Undecided => G7Text::RecogProblemUndecided,
+        RecognitionProblem::NothingAccepted => G7Text::RecogProblemNothingAccepted,
+        RecognitionProblem::NothingSelected => G7Text::RecogProblemNothingSelected,
+        RecognitionProblem::NotCalibrated => G7Text::RecogProblemNotCalibrated,
+        // A problem this build has no words for is still a problem, not a success.
+        _ => G7Text::RecogProblemSearchFailed,
+    };
+    t(text, locale)
+}
+
+fn recog_field(control: G5Control, caption: G7Text, locale: Locale) -> G5Line {
+    G5Line::Field { control, caption: t(caption, locale), text: String::new() }
+}
+
+fn recog_button(control: G5Control, title: String, enabled: bool) -> G5Line {
+    G5Line::Button { control, title, enabled }
+}
+
+/// The recognition panel: the template, the search, the matches with the operator's decision per
+/// match, and the placement. The similarity is said as a similarity; the place in millimetres only
+/// when the camera is calibrated.
+pub(super) fn recognition_lines(
+    doc: &DocumentViewModel,
+    locale: Locale,
+    draft: &[(G5Control, String)],
+) -> Option<Vec<G5Line>> {
+    let _ = draft;
+    let r = &doc.recognition;
+    let mut lines = vec![G5Line::Heading(t(G7Text::RecogHeading, locale)), G5Line::Text(t(G7Text::RecogHint, locale))];
+    match &r.template {
+        None => lines.push(G5Line::Text(t(G7Text::RecogNoTemplate, locale))),
+        Some(template) => lines.push(G5Line::Text(g7_fmt(
+            G7Text::RecogTemplateLine,
+            locale,
+            &[&template.name, &template.width_px.to_string(), &template.height_px.to_string(), &template.device.0],
+        ))),
+    }
+    if r.cameras.is_empty() {
+        lines.push(G5Line::Problem(t(G7Text::RecogNoCamera, locale)));
+    } else {
+        lines.push(G5Line::Choice {
+            control: G5Control::RecogCamera,
+            caption: t(G7Text::RecogCameraCaption, locale),
+            options: r.cameras.iter().map(|c| c.name.clone()).collect(),
+            selected: r
+                .template
+                .as_ref()
+                .and_then(|tpl| r.cameras.iter().position(|c| c.device == tpl.device))
+                .unwrap_or(0),
+        });
+    }
+    lines.push(recog_field(G5Control::RecogX, G7Text::RecogX, locale));
+    lines.push(recog_field(G5Control::RecogY, G7Text::RecogY, locale));
+    lines.push(recog_field(G5Control::RecogWidth, G7Text::RecogWidth, locale));
+    lines.push(recog_field(G5Control::RecogHeight, G7Text::RecogHeight, locale));
+    lines.push(recog_field(G5Control::RecogName, G7Text::RecogName, locale));
+    lines.push(recog_button(G5Control::RecogLearn, t(G7Text::RecogLearn, locale), !r.cameras.is_empty()));
+    if r.template.is_some() {
+        lines.push(recog_button(G5Control::RecogForget, t(G7Text::RecogForget, locale), true));
+        lines.push(recog_field(G5Control::RecogMinPercent, G7Text::RecogMinPercent, locale));
+        let searching = r.phase == RecognitionPhase::Searching;
+        lines.push(recog_button(G5Control::RecogFind, t(G7Text::RecogFind, locale), !searching));
+        if searching {
+            lines.push(G5Line::Text(t(G7Text::RecogSearching, locale)));
+            lines.push(recog_button(G5Control::RecogCancel, t(G7Text::RecogCancel, locale), true));
+        }
+    }
+    if !r.candidates.is_empty() {
+        lines.push(G5Line::Heading(t(G7Text::RecogCandidatesHeading, locale)));
+        if r.needs_review {
+            lines.push(G5Line::Problem(t(G7Text::RecogReviewNeeded, locale)));
+        }
+        for c in &r.candidates {
+            let place = match c.bed_mm {
+                Some([x, y]) => g7_fmt(G7Text::RecogOnBed, locale, &[&num(x, 2, locale), &num(y, 2, locale)]),
+                None => t(G7Text::RecogNotCalibrated, locale),
+            };
+            let decision = match c.decision {
+                CandidateDecision::Pending => G7Text::RecogPending,
+                CandidateDecision::Accepted => G7Text::RecogAccepted,
+                CandidateDecision::Rejected => G7Text::RecogRejected,
+            };
+            let n = (c.index + 1).to_string();
+            lines.push(G5Line::Text(g7_fmt(
+                G7Text::RecogCandidateLine,
+                locale,
+                &[
+                    &n,
+                    &num(c.similarity_percent, 1, locale),
+                    &num(c.x_px, 1, locale),
+                    &num(c.y_px, 1, locale),
+                    &place,
+                    g7_text(decision, locale),
+                ],
+            )));
+            lines.push(recog_button(
+                G5Control::RecogAccept { index: c.index },
+                g7_fmt(G7Text::RecogAccept, locale, &[&n]),
+                c.decision != CandidateDecision::Accepted,
+            ));
+            lines.push(recog_button(
+                G5Control::RecogReject { index: c.index },
+                g7_fmt(G7Text::RecogReject, locale, &[&n]),
+                c.decision != CandidateDecision::Rejected,
+            ));
+        }
+        lines.push(G5Line::Text(t(G7Text::RecogNote, locale)));
+        lines.push(recog_button(G5Control::RecogPlace, t(G7Text::RecogPlace, locale), r.can_place));
+    }
+    if let Some(problem) = r.problem {
+        lines.push(G5Line::Problem(recog_problem_text(problem, locale)));
+    }
+    Some(lines)
+}
+
+/// What a control of the recognition panel asks for. Typed text goes on unparsed; presentation says
+/// what is wrong with it.
+pub(super) fn recognition_intent(
+    doc: &DocumentViewModel,
+    document: DocumentId,
+    control: G5Control,
+    values: &[(G5Control, String)],
+) -> Option<UiIntent> {
+    let typed = |c: G5Control| value_of(values, c).unwrap_or_default().to_owned();
+    let r = &doc.recognition;
+    match control {
+        G5Control::RecogLearn => {
+            let chosen = index_of(values, G5Control::RecogCamera).unwrap_or(0);
+            let device = r.cameras.get(chosen).or_else(|| r.cameras.first())?.device.clone();
+            Some(UiIntent::Recognition(RecognitionIntent::Learn {
+                device,
+                x: typed(G5Control::RecogX),
+                y: typed(G5Control::RecogY),
+                width: typed(G5Control::RecogWidth),
+                height: typed(G5Control::RecogHeight),
+                name: typed(G5Control::RecogName),
+            }))
+        }
+        G5Control::RecogForget => Some(UiIntent::Recognition(RecognitionIntent::Forget)),
+        G5Control::RecogFind => {
+            Some(UiIntent::Recognition(RecognitionIntent::Find { min_percent: typed(G5Control::RecogMinPercent) }))
+        }
+        G5Control::RecogCancel => Some(UiIntent::Recognition(RecognitionIntent::CancelFind)),
+        G5Control::RecogAccept { index } => {
+            Some(UiIntent::Recognition(RecognitionIntent::Decide { index, decision: CandidateDecision::Accepted }))
+        }
+        G5Control::RecogReject { index } => {
+            Some(UiIntent::Recognition(RecognitionIntent::Decide { index, decision: CandidateDecision::Rejected }))
+        }
+        G5Control::RecogPlace => Some(UiIntent::Recognition(RecognitionIntent::Place { document })),
         _ => None,
     }
 }

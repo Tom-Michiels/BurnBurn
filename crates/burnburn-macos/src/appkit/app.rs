@@ -1884,6 +1884,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(MenuItem::StructurePanel, "", false),
             item(MenuItem::OperatorPanel, "", false),
             item(MenuItem::RemnantsPanel, "", false),
+            item(MenuItem::RecognitionPanel, "", false),
         ],
     ));
     main.addItem(&app_host::help_menu(mtm, target, locale));
