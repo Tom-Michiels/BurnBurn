@@ -12,6 +12,7 @@ mod decode;
 mod engrave;
 mod error;
 mod gray;
+pub mod locate;
 mod mask;
 mod perspective;
 mod prepare;
