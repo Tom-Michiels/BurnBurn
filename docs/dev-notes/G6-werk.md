@@ -16,6 +16,7 @@ geschreven of vanaf de eerste run groen was, staat dat expliciet in de tabel ("g
 | T06 | Rapport: fit-tolerantie, grootste afwijking + 95 %-waarde, de slechtste segmenten met plaats (mm), weggelaten onderdelen/gaten met plaats en oppervlak (ook een gat in een ring) | `burnburn-trace::deviation_summary`, `controller/trace_prep.rs::report_of` |
 | S07 | Structuurpaneel: onderdeel maken uit de selectie (rechthoek/cirkel parametrisch, rest vast), exemplaar plaatsen op getypte positie, standaardwaarde per parameter, varianten toevoegen en waarden geven, exemplaar/onderdeel verwijderen (onderdeel pas zonder exemplaren) | `burnburn-document::structure::part_from_objects`, `controller/structure.rs` |
 | S06 | Rand van het enige geselecteerde object kiezen en benoemen als referentie, referentie verwijderen, dubbelzinnige referentie opnieuw koppelen door een kandidaat te kiezen (nooit automatisch); gebroken koppeling blijft zichtbaar | idem |
+| W08 | Paneel Venster ▸ Operatorweergave: machine (status uit bewijs), goedgekeurde jobs met revisie, afmeting op het bed en materiaal, orders met voltooide aantallen, de knoppen van de machineservice ongewijzigd doorgestuurd. `DocumentViewModel.operator` op elk venster | `view_model.rs`, `controller/{machine,view}.rs`, `macos/panels/g6_werk.rs` |
 | W07 | Nesten op een restplaat: een gesloten object als plaat, de rest van het blijvende werk is uitsluitingsgebied | `nest_task.rs` (`take_sheet`), `controller/nest.rs` |
 
 Beide hosts: één headless paneelmodel (`G5Panel::TracePrep`, uitgebreid `G5Panel::Structure`, uitgebreid Schikken-paneel), door de
@@ -44,6 +45,8 @@ hosts. Teksten: `l10n_g6_werk.rs` (NL/EN, nieuw bestand, ook door Windows meegec
 | S06/S07 hosts: `macos g6_werk_structure` (4), `windows g6_forms::the_structure_form_…`, native `g5_panels_native::structure_panel_defines_places_and_references` | geen rode run: tegelijk met het model geschreven | zie boven | ok |
 | W07 `presentation g6_nest_remnant` (5) | stub negeerde `sheet_object`: 4 FAILED, 1 ok (`another_object_that_stays_is_an_exclusion_zone…` was vacuous op een groot bed; daarna aangescherpt met "op de restplaat", niet opnieuw rood gezien) | `cargo test -p burnburn-presentation --locked --test g6_nest_remnant` | 5 ok |
 | W07 hosts: `macos g6_werk_nest` (2) | geen rode run | `cargo test -p burnburn-macos --locked --test g6_werk_nest` | ok |
+| W08 `presentation g6_operator` (4) + `controller::machine::tests::the_material_is_named_only_when_the_plates_agree` | stub gaf `bounds: None`/`material: None`: 1 FAILED (`the plan has bounds`) en de eenheidstest FAILED (`left: None right: Some("Berken")`); de andere 3 waren vacuous groen (bevroren job: eerst `before.bounds.is_some()` toegevoegd, dat was nog niet rood gezien) | `cargo test -p burnburn-presentation --locked --test g6_operator` en `--lib the_material_is_named` | 4 ok + 1 ok |
+| W08 hosts: `macos g6_werk_operator` (4), `windows g6_operator_form` (2) | geen rode run: tegelijk met het model geschreven | `cargo test -p burnburn-macos --locked --test g6_werk_operator`; `cargo test -p burnburn-windows --locked --test g6_operator_form` | ok |
 
 ## Ontwerpkeuzes en aannames
 
@@ -78,5 +81,6 @@ hosts. Teksten: `l10n_g6_werk.rs` (NL/EN, nieuw bestand, ook door Windows meegec
 - T03: geen kwast/wijzen op het beeld; geen lensvervorming; T05: beschermde contouren en knooppuntdoel niet in de UI; T06: beschermde
   gaten/hoeken niet te kiezen (alleen het "negeer kleiner dan"-filter), verwijderde delen worden gemeld maar niet teruggezet per stuk.
 - S06/S07: platen aanmaken/toewijzen, vormen van een onderdeel bewerken, variant hernoemen/verwijderen, exemplaar draaien: niet in de UI.
-- W04 (kalibratie-persistentie, io-DTO), W06 (herkenning), W08 (operatorweergave met materiaal/bounds): niet gebouwd in dit pakket.
+- W04 (kalibraties bewaren: vraagt een DTO voor `LensCalibration`/`WorkspaceAlignment`, de acceptatie van W04 zelf was al gedekt) en W06 (herkenning: template-localisatie met beoordeling van meerdere treffers; vraagt een eigen algoritme, aanleerflow en kaartkoppeling) zijn niet gebouwd. W05 blijft wat het was (hardwarebewijs handmatig).
+- W08: tweede scherm/proces (IPC) niet gebouwd; het paneel is lokaal. Materiaal komt uit de platen van het bevroren project en is leeg bij een mix of zonder platen. Native AppKit-run van dit paneel apart is niet gedaan (alleen de algemene G5-paneelroute is native getest, via de andere panelen).
 - W07: duurzame restenbibliotheek (materiaal, dikte), open aantallen/exemplaren in de nest, orderkoppeling met een restplaat.
