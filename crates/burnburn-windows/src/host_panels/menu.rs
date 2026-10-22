@@ -36,6 +36,7 @@ pub enum Item {
     BundleExport,
     BundleImport,
     ClearRecentTemplates,
+    ClearRecentProjects,
     RecentProject(usize),
     RecentTemplate(usize),
     CameraWindow,
@@ -70,6 +71,7 @@ pub fn items() -> Vec<Item> {
         Item::BundleExport,
         Item::BundleImport,
         Item::ClearRecentTemplates,
+        Item::ClearRecentProjects,
         Item::CameraWindow,
     ];
     v.extend(AppAction::ALL.iter().map(|a| Item::App(*a)));
@@ -81,7 +83,7 @@ const RECENT_PROJECT_AT: u16 = 20;
 const RECENT_TEMPLATE_AT: u16 = 40;
 
 /// The fixed entries of the Files block, in id order.
-const FILES_FIXED: [Item; 11] = [
+const FILES_FIXED: [Item; 12] = [
     Item::FilesPanel,
     Item::Import,
     Item::Material,
@@ -93,6 +95,7 @@ const FILES_FIXED: [Item; 11] = [
     Item::BundleExport,
     Item::BundleImport,
     Item::ClearRecentTemplates,
+    Item::ClearRecentProjects,
 ];
 
 const SLOTS: u16 = RECENT_SLOTS as u16;
@@ -142,7 +145,7 @@ impl Item {
     }
 
     /// The command a command entry invokes.
-    fn command(self) -> Option<CommandKey> {
+    pub fn command(self) -> Option<CommandKey> {
         Some(match self {
             Item::Material => CommandKey::ShowMaterialLibrary,
             Item::Art => CommandKey::ShowArtLibrary,
@@ -172,7 +175,9 @@ impl Item {
             Item::ImagePanel => host_text(HostText::ImageMenu, locale).to_owned(),
             Item::FilesPanel => host_text(HostText::MenuFile, locale).to_owned(),
             Item::Import => host_text(HostText::Import, locale).to_owned(),
-            Item::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
+            Item::ClearRecentTemplates | Item::ClearRecentProjects => {
+                host_text(HostText::ClearRecent, locale).to_owned()
+            }
             Item::CameraWindow => camera_text(CameraText::WindowTitle, locale).to_owned(),
             Item::RecentProject(n) => file(ctx.recent_projects, n),
             Item::RecentTemplate(n) => file(ctx.recent_templates, n),
@@ -196,6 +201,7 @@ impl Item {
             Item::RecentProject(n) => n < ctx.recent_projects.len(),
             Item::RecentTemplate(n) => n < ctx.recent_templates.len(),
             Item::ClearRecentTemplates => !ctx.recent_templates.is_empty(),
+            Item::ClearRecentProjects => !ctx.recent_projects.is_empty(),
             Item::LaserWindow
             | Item::ImportImage
             | Item::TraceImage
@@ -244,6 +250,7 @@ pub fn reaction(item: Item, ctx: &MenuContext<'_>) -> PanelReaction {
             recent(ctx.recent_templates, n, |path| UiIntent::Files(FilesIntent::NewFromTemplate { path }))
         }
         (Item::ClearRecentTemplates, _) => PanelReaction::Intent(UiIntent::Files(FilesIntent::ClearRecentTemplates)),
+        (Item::ClearRecentProjects, _) => PanelReaction::Intent(UiIntent::ClearRecentProjects),
         (Item::LaserWindow, Some(_)) => show(Family::Laser),
         (Item::CameraWindow, Some(_)) => show(Family::Camera),
         (Item::ImagePanel, Some(_)) => show(Family::Image),

@@ -12,10 +12,12 @@
 pub mod app;
 pub mod camera;
 pub mod camera_port;
+pub mod camera_source;
 pub mod files;
 pub mod filters;
 pub mod ids;
 pub mod image;
+pub mod keys;
 pub mod laser;
 pub mod menu;
 pub mod spec;
@@ -24,7 +26,7 @@ use std::path::PathBuf;
 
 pub use spec::{
     ControlKind, ControlPatch, ControlSpec, KeyStroke, Metrics, PanelEvent, PanelSpec, PanelValues, Placement, Row,
-    SpecDiff, diff_specs, layout, notify,
+    SpecDiff, diff_specs, disabled_reason_at, layout, notify,
 };
 
 use burnburn_presentation::UiIntent;

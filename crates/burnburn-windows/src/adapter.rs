@@ -245,7 +245,8 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
                 Some(MenuItem::CamDialog(dialog)) => UiIntent::OpenCamDialog { document, dialog },
                 Some(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
                 Some(MenuItem::Command(command)) => UiIntent::Invoke { document: Some(document), command },
-                None => return Reaction::PassOn,
+                // The panel families' ids are answered by `host_panels::menu` before this point.
+                Some(MenuItem::Host(_)) | None => return Reaction::PassOn,
             }
         }
         (Control::Frame, msg::WM_CLOSE) => UiIntent::Close { document },

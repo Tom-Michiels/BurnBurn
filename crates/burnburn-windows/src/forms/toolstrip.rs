@@ -158,3 +158,12 @@ pub fn strip_layout(panels: &[StripPanel], width: i32, scale: f64) -> StripLayou
     }
     StripLayout { controls, height: y + row_h + margin }
 }
+
+/// The tooltip (label and the reason) of the disabled strip button under `point`. Enabled buttons
+/// show their own tooltip; a disabled window gets no mouse input, so the frame asks this.
+pub fn disabled_tip_at(layout: &StripLayout, point: (i32, i32)) -> Option<String> {
+    let (x, y) = point;
+    let under =
+        layout.controls.iter().find(|c| x >= c.rect.x && x < c.rect.right() && y >= c.rect.y && y < c.rect.bottom())?;
+    (!under.enabled && !under.tooltip.is_empty()).then(|| under.tooltip.clone())
+}

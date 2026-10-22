@@ -13,19 +13,21 @@ use windows::Win32::UI::Controls::SetScrollInfo;
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, GetKeyState, IsWindowEnabled, VK_RETURN, VK_SHIFT};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BM_GETCHECK, BM_SETCHECK, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CW_USEDEFAULT, CreateWindowExW, DestroyWindow,
-    GetClientRect, GetDlgCtrlID, GetParent, GetScrollInfo, HMENU, LB_ADDSTRING, LB_GETCURSEL, LB_GETSELCOUNT,
-    LB_GETSELITEMS, LB_RESETCONTENT, LB_SETCURSEL, LB_SETSEL, MoveWindow, PostMessageW, SB_VERT, SCROLLINFO, SIF_ALL,
-    SIF_PAGE, SIF_POS, SIF_RANGE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, ScrollWindow, SetWindowPos,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_KEYDOWN, WM_SETFONT, WS_BORDER, WS_CAPTION, WS_CHILD,
-    WS_CLIPCHILDREN, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE, WS_VSCROLL,
+    BM_GETCHECK, BM_SETCHECK, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CW_USEDEFAULT,
+    CreateWindowExW, DLGC_WANTMESSAGE, DestroyWindow, GetClientRect, GetDlgCtrlID, GetParent, GetScrollInfo, HMENU,
+    LB_ADDSTRING, LB_GETCURSEL, LB_GETSELCOUNT, LB_GETSELITEMS, LB_RESETCONTENT, LB_SETCURSEL, LB_SETSEL, MSG,
+    MoveWindow, PostMessageW, SB_VERT, SCROLLINFO, SIF_ALL, SIF_PAGE, SIF_POS, SIF_RANGE, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOZORDER, ScrollWindow, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_GETDLGCODE, WM_KEYDOWN,
+    WM_SETFONT, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
+    WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{PCWSTR, w};
 
 use burnburn_types::{DocumentId, StableId};
 
 use super::util::{send, set_text, wide, window_text};
-use crate::forms::layout::{Item, Layout, Rect, layout};
+use crate::forms::choice::ChoiceList;
+use crate::forms::layout::{Item, Layout, Rect, disabled_tip_at, layout};
 use crate::forms::{ControlId, ControlValue, Form, FormKind, Placement};
 
 /// The window class of every form container.
@@ -81,6 +83,9 @@ pub(super) struct FormWin {
     scale: f64,
     /// The form as last synced (re-laid out when the container is resized).
     last: Form,
+    /// The container's tooltip control: hints of the fields, the blocked items of the pop-ups, and
+    /// (area tool) the hint of a disabled field.
+    tip: Option<HWND>,
 }
 
 /// The shape of an item: kind and identity, not its values.
@@ -132,6 +137,23 @@ pub(super) fn child(
     Some(hwnd)
 }
 
+/// The form's selected item of a pop-up (0 for anything else).
+fn selected_of(item: &Item) -> usize {
+    match item {
+        Item::Choice { selected, .. } => *selected,
+        _ => 0,
+    }
+}
+
+/// The tooltip a control carries: the hint of a field, the blocked items of a pop-up.
+fn tip_text(item: &Item) -> String {
+    match item {
+        Item::Field { hint, .. } => hint.clone(),
+        Item::Choice { items, selected, .. } => ChoiceList::new(items, *selected).blocked_note,
+        _ => String::new(),
+    }
+}
+
 fn is_pushlike(id: &ControlId) -> bool {
     matches!(id, ControlId::RefPoint(_) | ControlId::Palette(_))
 }
@@ -166,8 +188,9 @@ fn make(instance: HINSTANCE, parent: HWND, placed: &crate::forms::layout::Placed
             // The height of a combo box includes its drop-down list.
             let tall = Rect { h: r.h * 8, ..r };
             let hwnd = child(instance, parent, w!("COMBOBOX"), "", tab | WS_VSCROLL.0 | CBS_DROPDOWNLIST, tall, cid)?;
-            for item in items {
-                let text = wide(&item.title);
+            // Blocked items are not offered at all (a system drop-down cannot grey one).
+            for title in &ChoiceList::new(items, selected_of(&placed.item)).titles {
+                let text = wide(title);
                 send(hwnd, CB_ADDSTRING, 0, text.as_ptr() as isize);
             }
             (hwnd, Some(id.clone()), String::new())
@@ -229,9 +252,20 @@ fn push_values(ctl: &mut Ctl, placed: &crate::forms::layout::Placed) {
             }
             enable(ctl.hwnd, *enabled);
         }
-        Item::Choice { selected, enabled, .. } => {
-            if send(ctl.hwnd, CB_GETCURSEL, 0, 0).0 != *selected as isize {
-                send(ctl.hwnd, CB_SETCURSEL, *selected, 0);
+        Item::Choice { items, selected, enabled, .. } => {
+            let list = ChoiceList::new(items, *selected);
+            let same = matches!(&ctl.item, Item::Choice { items: old, selected: old_selected, .. }
+                if ChoiceList::new(old, *old_selected).titles == list.titles);
+            if !same {
+                send(ctl.hwnd, CB_RESETCONTENT, 0, 0);
+                for title in &list.titles {
+                    let text = wide(title);
+                    send(ctl.hwnd, CB_ADDSTRING, 0, text.as_ptr() as isize);
+                }
+            }
+            let want = list.selected.map_or(-1, |p| p as isize);
+            if !same || send(ctl.hwnd, CB_GETCURSEL, 0, 0).0 != want {
+                send(ctl.hwnd, CB_SETCURSEL, list.selected.unwrap_or(usize::MAX), 0);
             }
             enable(ctl.hwnd, *enabled);
         }
@@ -314,7 +348,8 @@ impl FormWin {
         // top-level window with the frame as parent argument would be a child); strings outlive the call.
         let hwnd = unsafe {
             CreateWindowExW(
-                WINDOW_EX_STYLE(0),
+                // A docked panel sits in the frame's tab order: Tab goes on into its controls.
+                if floating { WINDOW_EX_STYLE(0) } else { WS_EX_CONTROLPARENT },
                 FORM_CLASS,
                 PCWSTR(title.as_ptr()),
                 style(bits),
@@ -348,7 +383,11 @@ impl FormWin {
             scroll: 0,
             scale,
             last: form.clone(),
+            tip: super::tips::create(hwnd, instance),
         };
+        if let Some(tip) = win.tip {
+            super::tips::set_area_tip(tip, hwnd, true);
+        }
         win.sync(form);
         Some(win)
     }
@@ -376,6 +415,9 @@ impl FormWin {
         let signature: Vec<String> = lay.items.iter().map(|p| signature_of(&p.item)).collect();
         if signature != self.signature {
             for ctl in self.ctls.drain(..) {
+                if let Some(tip) = self.tip {
+                    super::tips::set_control_tip(tip, self.hwnd, ctl.hwnd, "");
+                }
                 if let Some(cap) = ctl.caption {
                     // SAFETY: destroying our own child window; no message is in flight for it.
                     let _ = unsafe { DestroyWindow(cap) };
@@ -392,6 +434,11 @@ impl FormWin {
         } else {
             for (ctl, placed) in self.ctls.iter_mut().zip(&lay.items) {
                 push_values(ctl, placed);
+            }
+        }
+        if let Some(tip) = self.tip {
+            for ctl in &self.ctls {
+                super::tips::set_control_tip(tip, self.hwnd, ctl.hwnd, &tip_text(&ctl.item));
             }
         }
         self.content_h = lay.height;
@@ -466,6 +513,19 @@ impl FormWin {
     pub(super) fn relayout(&mut self) {
         let form = self.last.clone();
         self.sync(&form);
+        if let Some(tip) = self.tip {
+            super::tips::set_area_tip(tip, self.hwnd, false);
+        }
+    }
+
+    pub(super) fn tip(&self) -> Option<HWND> {
+        self.tip
+    }
+
+    /// Why the disabled field under `point` is off (its hint), for the area tool.
+    pub(super) fn reason_at(&self, point: (i32, i32)) -> Option<String> {
+        let lay = layout(&self.last, self.client_width().max((100.0 * self.scale) as i32), self.scale);
+        disabled_tip_at(&lay, self.scroll, point)
     }
 
     /// Size a floating panel to its content (at most 640 logical pixels high).
@@ -528,7 +588,10 @@ fn read(ctl: &Ctl) -> Option<ControlValue> {
     Some(match &ctl.item {
         Item::Field { .. } => ControlValue::Text(window_text(ctl.hwnd)),
         Item::Check { .. } => ControlValue::Toggle(send(ctl.hwnd, BM_GETCHECK, 0, 0).0 as usize == BST_CHECKED),
-        Item::Choice { .. } => ControlValue::Choice(usize::try_from(send(ctl.hwnd, CB_GETCURSEL, 0, 0).0).ok()?),
+        Item::Choice { items, selected, .. } => {
+            let position = usize::try_from(send(ctl.hwnd, CB_GETCURSEL, 0, 0).0).ok()?;
+            ControlValue::Choice(ChoiceList::new(items, *selected).item_at(position)?)
+        }
         Item::List { multi, .. } => ControlValue::Rows(if *multi {
             list_selection(ctl.hwnd)
         } else {
@@ -547,6 +610,20 @@ extern "system" fn edit_proc(
     _id: usize,
     _data: usize,
 ) -> LRESULT {
+    if message == WM_GETDLGCODE {
+        // SAFETY: for WM_GETDLGCODE `lparam` is null or points to the MSG being processed.
+        let pressed = unsafe { (lparam.0 as *const MSG).as_ref() }
+            .filter(|m| m.message == WM_KEYDOWN)
+            .map(|m| (m.wParam.0 & 0xFFFF) as u16);
+        // SAFETY: the subclass chain's default handling.
+        let base = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+        // Return commits the typed text (below); the dialog manager must not take it.
+        return if pressed == Some(crate::host_panels::keys::VK_RETURN) {
+            LRESULT(base.0 | DLGC_WANTMESSAGE as isize)
+        } else {
+            base
+        };
+    }
     if message == WM_KEYDOWN && wparam.0 == usize::from(VK_RETURN.0) {
         // SAFETY: reading the parent of our own edit field.
         let parent = unsafe { GetParent(hwnd) };

@@ -1,9 +1,9 @@
-//! The camera source of the Windows host.
+//! The camera port for hosts without a camera source.
 //!
-//! **Not built yet**: the real source (Media Foundation: device enumeration, `IMFSourceReader`
-//! frames, the privacy switch of Windows) does not exist. Until it does, the host attaches
-//! [`UnavailableCameraPort`], which says so honestly: no devices, access restricted, nothing can
-//! be started. Tests use a fake port (`tests/w4b_camera.rs`).
+//! The Windows host attaches `win32::camera::WindowsCameraPort` (Media Foundation; G5-windows).
+//! [`UnavailableCameraPort`] is what remains for a host build without it, and it says so honestly:
+//! no devices, access restricted, nothing can be started. Tests use a fake port
+//! (`tests/w4b_camera.rs`); the Media Foundation decisions are tested in `camera_source`.
 
 use std::sync::Arc;
 

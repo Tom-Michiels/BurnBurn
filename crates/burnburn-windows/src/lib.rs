@@ -12,6 +12,8 @@ pub mod forms;
 #[path = "../../burnburn-macos/src/l10n.rs"]
 pub mod l10n;
 pub mod menus;
+pub mod persist;
+pub mod startup;
 pub mod tasks;
 
 // --- Headless view-model modules of the macOS host, compiled from its source files ----------------
@@ -28,6 +30,8 @@ pub mod panels;
 pub mod panels_files;
 #[path = "../../burnburn-macos/src/panels_image.rs"]
 pub mod panels_image;
+#[path = "../../burnburn-macos/src/recent.rs"]
+pub mod recent;
 #[path = "../../burnburn-macos/src/toolbar.rs"]
 pub mod toolbar;
 

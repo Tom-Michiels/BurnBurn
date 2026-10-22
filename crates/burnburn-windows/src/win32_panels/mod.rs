@@ -32,8 +32,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{
     ICC_BAR_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx, SetScrollInfo, TBM_SETPOS, TBM_SETRANGE,
-    TOOLTIPS_CLASSW, TRACKBAR_CLASSW, TTF_IDISHWND, TTF_SUBCLASS, TTM_ADDTOOLW, TTM_DELTOOLW, TTM_UPDATETIPTEXTW,
-    TTS_ALWAYSTIP, TTTOOLINFOW as TOOLINFOW,
+    TRACKBAR_CLASSW,
 };
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -42,22 +41,22 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRectEx, BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
-    CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW,
-    DestroyWindow, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, GetClientRect, GetDlgCtrlID,
-    GetScrollInfo, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HMENU, IDC_ARROW, LB_ADDSTRING,
-    LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOTIFY, LoadCursorW, MoveWindow, RegisterClassExW, SB_VERT,
-    SCROLLINFO, SIF_ALL, SIF_PAGE, SIF_POS, SIF_RANGE, SM_CYSCREEN, SW_HIDE, SW_SHOW, SW_SHOWNORMAL, SendMessageW,
-    SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_ACTIVATE, WM_CAPTURECHANGED,
-    WM_CHAR, WM_CLOSE, WM_COMMAND, WM_HSCROLL, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEWHEEL, WM_PAINT, WM_SETFONT, WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_VSCROLL, WNDCLASSEXW, WS_BORDER,
-    WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_EX_TOPMOST, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_POPUP,
-    WS_SYSMENU, WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE, WS_VSCROLL,
+    CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DLGC_WANTMESSAGE,
+    DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, GetClientRect,
+    GetDlgCtrlID, GetParent, GetScrollInfo, GetSystemMetrics, GetWindowTextLengthW, GetWindowTextW, HMENU, IDC_ARROW,
+    LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOTIFY, LoadCursorW, MSG, MoveWindow,
+    RegisterClassExW, SB_VERT, SCROLLINFO, SIF_ALL, SIF_PAGE, SIF_POS, SIF_RANGE, SM_CYSCREEN, SW_HIDE, SW_SHOW,
+    SW_SHOWNORMAL, SendMessageW, SetForegroundWindow, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_ACTIVATE, WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_GETDLGCODE, WM_HSCROLL, WM_KEYDOWN, WM_KEYUP,
+    WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NOTIFY, WM_PAINT, WM_SETFONT, WM_SIZE,
+    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
+    WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE, WS_VSCROLL,
 };
-use windows::core::{HSTRING, PCWSTR, PWSTR, w};
+use windows::core::{HSTRING, PCWSTR, w};
 
 use crate::host_panels::{
     ControlKind, ControlPatch, ControlSpec, Family, Metrics, PanelEvent, PanelSpec, PanelValues, SpecDiff, diff_specs,
-    layout, notify,
+    disabled_reason_at, layout, notify,
 };
 use crate::panels_image::BitmapImage;
 
@@ -262,23 +261,21 @@ fn create_control(parent: HWND, instance: HINSTANCE, c: &ControlSpec, tooltip: O
             c.text.replace('\n', "\r\n"),
         ),
         ControlKind::Button | ControlKind::HoldButton => {
-            (w!("BUTTON"), base | WS_TABSTOP | wide_style(BS_PUSHBUTTON as u32), c.text.clone())
+            (w!("BUTTON"), base | wide_style(BS_PUSHBUTTON as u32), c.text.clone())
         }
-        ControlKind::Check { .. } => {
-            (w!("BUTTON"), base | WS_TABSTOP | wide_style(BS_AUTOCHECKBOX as u32), c.text.clone())
-        }
-        ControlKind::Edit => {
-            (w!("EDIT"), base | WS_BORDER | WS_TABSTOP | wide_style(ES_AUTOHSCROLL as u32), c.text.clone())
-        }
+        ControlKind::Check { .. } => (w!("BUTTON"), base | wide_style(BS_AUTOCHECKBOX as u32), c.text.clone()),
+        ControlKind::Edit => (w!("EDIT"), base | WS_BORDER | wide_style(ES_AUTOHSCROLL as u32), c.text.clone()),
         ControlKind::Combo { .. } => {
-            (w!("COMBOBOX"), base | WS_TABSTOP | WS_VSCROLL | wide_style(CBS_DROPDOWNLIST as u32), String::new())
+            (w!("COMBOBOX"), base | WS_VSCROLL | wide_style(CBS_DROPDOWNLIST as u32), String::new())
         }
         ControlKind::List { .. } => {
-            (w!("LISTBOX"), base | WS_TABSTOP | WS_BORDER | WS_VSCROLL | wide_style(LBS_NOTIFY as u32), String::new())
+            (w!("LISTBOX"), base | WS_BORDER | WS_VSCROLL | wide_style(LBS_NOTIFY as u32), String::new())
         }
-        ControlKind::Slider { .. } => (TRACKBAR_CLASSW, base | WS_TABSTOP, String::new()),
+        ControlKind::Slider { .. } => (TRACKBAR_CLASSW, base, String::new()),
         ControlKind::Bitmap { .. } => (w!("BurnBurnBitmap"), base | WS_BORDER, String::new()),
     };
+    // Tab visits the controls that take the focus, in creation (= reading) order.
+    let style = if c.kind.is_tab_stop() { style | WS_TABSTOP } else { style };
     let title = HSTRING::from(text);
     // SAFETY: creating a child control of our panel window; class names are system or ours.
     let hwnd = unsafe {
@@ -348,27 +345,10 @@ fn set_bitmap(hwnd: HWND, image: Option<BitmapImage>) {
     let _ = unsafe { InvalidateRect(Some(hwnd), None, true) };
 }
 
-fn tool_info(panel_tip: HWND, control: HWND, text: &mut Vec<u16>) -> TOOLINFOW {
-    let _ = panel_tip;
-    TOOLINFOW {
-        cbSize: std::mem::size_of::<TOOLINFOW>() as u32,
-        uFlags: TTF_IDISHWND | TTF_SUBCLASS,
-        hwnd: HWND(std::ptr::null_mut()),
-        uId: control.0 as usize,
-        lpszText: PWSTR(text.as_mut_ptr()),
-        ..Default::default()
-    }
-}
-
 fn set_tooltip(tip: HWND, control: HWND, text: &str) {
-    let mut wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut info = tool_info(tip, control, &mut wide);
-    // The tool may or may not exist yet: remove (ignored when absent), then add when there is text.
-    send(tip, TTM_DELTOOLW, 0, &mut info as *mut TOOLINFOW as isize);
-    if !text.is_empty() {
-        send(tip, TTM_ADDTOOLW, 0, &mut info as *mut TOOLINFOW as isize);
-        send(tip, TTM_UPDATETIPTEXTW, 0, &mut info as *mut TOOLINFOW as isize);
-    }
+    // SAFETY: reading the parent of our own control.
+    let parent = unsafe { GetParent(control) }.unwrap_or_default();
+    crate::win32::tips::set_control_tip(tip, parent, control, text);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -499,24 +479,11 @@ fn create(key: PanelKey, spec: &PanelSpec) -> bool {
     }) else {
         return false;
     };
-    // SAFETY: the tooltip control for this panel; a failure only loses tooltips.
-    let tooltip = unsafe {
-        CreateWindowExW(
-            WS_EX_TOPMOST,
-            TOOLTIPS_CLASSW,
-            PCWSTR::null(),
-            WS_POPUP | wide_style(TTS_ALWAYSTIP),
-            0,
-            0,
-            0,
-            0,
-            Some(hwnd),
-            None,
-            Some(instance),
-            None,
-        )
+    let tooltip = crate::win32::tips::create(hwnd, instance);
+    if let Some(tip) = tooltip {
+        // Disabled controls get no mouse input: this tool asks the window what to say (WM_NOTIFY).
+        crate::win32::tips::set_area_tip(tip, hwnd, true);
     }
-    .ok();
     let mut controls = BTreeMap::new();
     for c in spec.controls() {
         if let Some(child) = create_control(hwnd, instance, c, tooltip) {
@@ -639,6 +606,7 @@ pub fn close(key: PanelKey) {
     .flatten() else {
         return;
     };
+    crate::win32::tips::forget(panel.hwnd);
     // SAFETY: destroying our own window (its children go with it).
     let _ = unsafe { DestroyWindow(panel.hwnd) };
 }
@@ -717,6 +685,27 @@ extern "system" fn panel_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
     guard("panel_proc", LRESULT(0), || {
         let Some(key) = key_of(hwnd) else { return default() };
         match message {
+            WM_COMMAND if lparam.0 == 0 && (wparam.0 & 0xFFFF) == 2 => {
+                // Escape through the dialog manager (IDCANCEL): the same as the close box.
+                emit(key, 0, notify::CLOSED, |_| {});
+                close(key);
+                LRESULT(0)
+            }
+            WM_MOUSEMOVE => {
+                let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
+                let hovered = with_state(|s| {
+                    let panel = s.panels.get(&key)?;
+                    let (places, _) = layout(&panel.spec, &metrics_for(client_width(panel.hwnd)));
+                    let reason = disabled_reason_at(&panel.spec, &places, panel.scroll, (x, y));
+                    Some((panel.tooltip, reason))
+                })
+                .flatten();
+                if let Some((tip, reason)) = hovered {
+                    crate::win32::tips::hover(tip, hwnd, reason.as_deref());
+                }
+                default()
+            }
+            WM_NOTIFY if crate::win32::tips::answer(hwnd, lparam) => LRESULT(0),
             WM_COMMAND => {
                 let id = (wparam.0 & 0xFFFF) as u16;
                 let code = ((wparam.0 >> 16) & 0xFFFF) as u16;
@@ -764,6 +753,9 @@ extern "system" fn panel_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 with_state(|s| {
                     if let Some(panel) = s.panels.get_mut(&key) {
                         relayout(panel);
+                        if let Some(tip) = panel.tooltip {
+                            crate::win32::tips::set_area_tip(tip, hwnd, false);
+                        }
                     }
                 });
                 LRESULT(0)
@@ -806,6 +798,27 @@ extern "system" fn control_proc(
             with_state(|s| s.panels.get(&key).and_then(|p| p.spec.control(id).map(|c| c.kind.clone()))).flatten();
         let repeat = (lparam.0 >> 30) & 1 == 1;
         match message {
+            // The dialog manager (Tab, Return, Escape) asks which keys the control keeps itself.
+            WM_GETDLGCODE => {
+                let base = default();
+                // SAFETY: for WM_GETDLGCODE `lparam` is null or points to the MSG being processed.
+                let pressed = unsafe { (lparam.0 as *const MSG).as_ref() }
+                    .filter(|m| m.message == WM_KEYDOWN || m.message == WM_SYSKEYDOWN)
+                    .map(|m| (m.wParam.0 & 0xFFFF) as u16);
+                match (pressed, &kind) {
+                    (Some(vk), Some(kind))
+                        if crate::host_panels::keys::control_wants_key(
+                            key.family,
+                            kind,
+                            CAPTURE_KEYS.with(Cell::get),
+                            vk,
+                        ) =>
+                    {
+                        LRESULT(base.0 | DLGC_WANTMESSAGE as isize)
+                    }
+                    _ => base,
+                }
+            }
             WM_KEYDOWN | WM_SYSKEYDOWN => {
                 let vk = (wparam.0 & 0xFFFF) as u16;
                 if CAPTURE_KEYS.with(Cell::get) {

@@ -4,7 +4,8 @@ use std::process::ExitCode;
 
 #[cfg(windows)]
 fn main() -> ExitCode {
-    burnburn_windows::win32::run_app()
+    // `burnburn-win.exe "<pad>"` (the MSIX file association) opens that project.
+    burnburn_windows::win32::run_app(std::env::args_os().skip(1).collect())
 }
 
 #[cfg(not(windows))]
