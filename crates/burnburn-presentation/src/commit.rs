@@ -219,7 +219,8 @@ mod tests {
                 target: id(1),
                 end: EndpointRef::End(0),
                 boundaries: vec![id(2)],
-                path: line()
+                path: line(),
+                note: burnburn_geometry::ExtendNote::Plain
             }),
             Some(CommandPayload::Edit(GeometryCommand::ExtendEnd {
                 target: id(1),

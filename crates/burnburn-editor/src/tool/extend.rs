@@ -42,8 +42,8 @@ impl Action for ExtendAction {
         let paths: Vec<_> =
             boundaries.iter().filter_map(|id| ctx.document.object(*id)).map(|o| o.path().clone()).collect();
         let refs: Vec<_> = paths.iter().map(|p| p.as_ref()).collect();
-        match obj.path().extend_end(end, &refs) {
-            Ok(path) => ToolStep::Commit(EditCommit::Extend { target, end, boundaries, path }),
+        match obj.path().extend_end_noted(end, &refs) {
+            Ok((path, note)) => ToolStep::Commit(EditCommit::Extend { target, end, boundaries, path, note }),
             Err(e) => rejected(e),
         }
     }
@@ -55,7 +55,7 @@ impl Action for ExtendAction {
 
 #[cfg(test)]
 mod tests {
-    use burnburn_geometry::{EndpointRef, ExtendError, Path, Point};
+    use burnburn_geometry::{EndpointRef, ExtendError, ExtendNote, Path, Point};
     use burnburn_types::{GeometryId, StableId};
 
     use super::super::fixture::*;
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn a_click_near_the_end_moves_it_to_the_boundary() {
         let (f, mut ed) = (scene(), editor(ToolKind::Extend));
-        let EditCommit::Extend { target, end, boundaries, path } = only(&click(&mut ed, &f, 3.8, 0.1)) else {
+        let EditCommit::Extend { target, end, boundaries, path, .. } = only(&click(&mut ed, &f, 3.8, 0.1)) else {
             panic!("extend")
         };
         assert_eq!((target, end, boundaries), (GeometryId::from_raw(1), EndpointRef::End(0), ids(&[2])));
@@ -117,6 +117,33 @@ mod tests {
         };
         assert_eq!((target, end), (GeometryId::from_raw(1), EndpointRef::End(0)));
         assert!(near(path.subpaths()[0].end(), Point::new(15.0, 22.5)), "{:?}", path.subpaths()[0].end());
+    }
+
+    #[test]
+    fn a_bezier_that_cannot_be_followed_to_the_boundary_extends_straight_and_says_why() {
+        // The cubic from (0,0) to (10,10) curls round to the left beyond its end; the wall x = -400
+        // is met only after it has turned back, so the end goes straight up to the ceiling y = 50.
+        let swing = burnburn_geometry::PathBuilder::new()
+            .move_to(Point::new(0.0, 0.0))
+            .cubic_to(Point::new(5.0, 0.0), Point::new(10.0, 5.0), Point::new(10.0, 10.0))
+            .build()
+            .unwrap();
+        let f = with_objects(vec![
+            path_obj(1, swing),
+            polyline(2, &[(-400.0, -1000.0), (-400.0, 1000.0)], false),
+            polyline(3, &[(-600.0, 50.0), (600.0, 50.0)], false),
+        ]);
+        let mut ed = editor(ToolKind::Extend);
+        let EditCommit::Extend { path, note, .. } = only(&click(&mut ed, &f, 9.9, 9.9)) else { panic!("extend") };
+        assert!(near(path.subpaths()[0].end(), Point::new(10.0, 50.0)), "{:?}", path.subpaths()[0].end());
+        assert_eq!(note, ExtendNote::StraightTurns);
+    }
+
+    #[test]
+    fn a_line_says_nothing_and_a_followed_bezier_says_it_followed_its_own_curve() {
+        let (f, mut ed) = (scene(), editor(ToolKind::Extend));
+        let EditCommit::Extend { note, .. } = only(&click(&mut ed, &f, 3.8, 0.1)) else { panic!("extend") };
+        assert_eq!(note, ExtendNote::Plain);
     }
 
     #[test]

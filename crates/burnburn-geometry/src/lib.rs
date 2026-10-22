@@ -74,7 +74,7 @@ pub use query::{HitKind, Nearest, SegmentRef};
 pub use registration::{
     CircleFit, CircleFitError, Registration, RegistrationError, RegistrationOptions, ScaleMode, fit_circle, register,
 };
-pub use repair::{ExtendError, GeometryIssue, IssueKind, TrimError, close_gaps, diagnose};
+pub use repair::{ExtendError, ExtendNote, GeometryIssue, IssueKind, TrimError, close_gaps, diagnose};
 pub use segment::{EllipticalArc, Segment};
 pub use shape_relations::{coincident, encloses};
 pub use shapes::Shape;

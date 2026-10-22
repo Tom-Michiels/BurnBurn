@@ -43,7 +43,7 @@ use burnburn_document::sketch::{SketchCommand, SketchId};
 use burnburn_document::structure::Modifier;
 use burnburn_document::{DocumentSnapshot, OpsCommand, ReshapeCommand};
 use burnburn_geometry::{
-    Affine, Bounds, CornerCut, EndpointRef, NodeEdit, NodeRef, ParametricShape, Path, Point, Rect, Shape,
+    Affine, Bounds, CornerCut, EndpointRef, ExtendNote, NodeEdit, NodeRef, ParametricShape, Path, Point, Rect, Shape,
     ShapeParamError,
 };
 use burnburn_types::{GeometryId, Length};
@@ -174,6 +174,8 @@ pub enum EditCommit {
         end: EndpointRef,
         boundaries: Vec<GeometryId>,
         path: Path,
+        /// What the extension did that is worth telling (a Bézier that goes straight, G9-editor).
+        note: ExtendNote,
     },
     /// Split at `pick` (`GeometryCommand::BreakAt`).
     Break {

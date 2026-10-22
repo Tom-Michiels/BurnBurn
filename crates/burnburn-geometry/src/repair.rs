@@ -48,6 +48,25 @@ pub enum ExtendError {
     NotExtendable,
 }
 
+/// What an extension did that the person using it may want to know (G9-editor).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ExtendNote {
+    /// A line or an arc: the end moved along its own line or circle.
+    Plain,
+    /// A Bézier: the end followed the cubic's own polynomial to the boundary.
+    OwnCurve,
+    /// A Bézier: the cubic turns back (more than about 75 degrees from its end tangent) before it
+    /// reaches the boundary, so the end continues straight along the end tangent.
+    StraightTurns,
+    /// A Bézier: the boundary is more than thirty parameter lengths away, too far for the cubic to
+    /// say anything about the drawn shape, so the end continues straight along the end tangent.
+    StraightTooFar,
+    /// A Bézier: the cubic never meets a boundary, so the end continues straight along the end
+    /// tangent to the first one it meets.
+    StraightMisses,
+}
+
 impl fmt::Display for ExtendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "cannot extend: {self:?}")
