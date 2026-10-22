@@ -96,9 +96,7 @@ impl ChannelHost {
         }
         let (reply, answer) = channel();
         let abandoned = Arc::new(AtomicBool::new(false));
-        self.requests
-            .send(Request { job, reply, abandoned: Arc::clone(&abandoned) })
-            .map_err(|_| HostError::Failed)?;
+        self.requests.send(Request { job, reply, abandoned: Arc::clone(&abandoned) }).map_err(|_| HostError::Failed)?;
         (self.wake)();
         Ok(Pending { answer, abandoned })
     }
@@ -181,7 +179,12 @@ impl AutomationPump {
     /// job runs, an opened window or an error tells how it went.
     pub fn observe(&mut self, effects: &[HostEffect]) {
         if self.active.is_some() {
-            self.seen.extend(effects.iter().filter(|e| matches!(e, HostEffect::OpenWindow { .. } | HostEffect::ShowError { .. })).cloned());
+            self.seen.extend(
+                effects
+                    .iter()
+                    .filter(|e| matches!(e, HostEffect::OpenWindow { .. } | HostEffect::ShowError { .. }))
+                    .cloned(),
+            );
         }
     }
 
@@ -254,8 +257,10 @@ impl AutomationPump {
             Stage::Opening => Stage::Opening,
             Stage::Previewing { document } => Stage::Previewing { document: *document },
         };
-        let (abandoned, expired) =
-            (active.request.abandoned.load(Ordering::SeqCst), now_ms.saturating_sub(active.started_ms) > self.timeout_ms);
+        let (abandoned, expired) = (
+            active.request.abandoned.load(Ordering::SeqCst),
+            now_ms.saturating_sub(active.started_ms) > self.timeout_ms,
+        );
         let errored = self.seen.iter().any(|e| matches!(e, HostEffect::ShowError { .. }));
         match stage {
             Stage::Opening => {

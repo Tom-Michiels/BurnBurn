@@ -207,10 +207,11 @@ fn import_adds_the_drawing_in_one_undo_step() {
     r.h.invoke(doc, CommandKey::Undo);
     assert_eq!(vm(&r.h, doc).objects.len(), objects, "one undo step takes the whole import back");
     assert!(undo.is_some());
-    assert!(r.sent.iter().all(|i| matches!(
-        i,
-        UiIntent::Import { .. } | UiIntent::Invoke { command: CommandKey::CommitImport, .. }
-    )));
+    assert!(
+        r.sent
+            .iter()
+            .all(|i| matches!(i, UiIntent::Import { .. } | UiIntent::Invoke { command: CommandKey::CommitImport, .. }))
+    );
 }
 
 /// A drawing without a unit needs a decision only the user can take: automation cancels the
@@ -315,11 +316,7 @@ fn a_job_that_never_ends_times_out_on_the_ui_side_too() {
 fn the_listener_runs_only_while_the_preference_is_on_and_only_on_loopback() {
     let h = HeadlessEditorHarness::new();
     let fs = h.shared_fs();
-    let mut automation = Automation::with(
-        Arc::new(move |p: &Path| fs.exists(p).unwrap_or(false)),
-        Arc::new(|| {}),
-        0,
-    );
+    let mut automation = Automation::with(Arc::new(move |p: &Path| fs.exists(p).unwrap_or(false)), Arc::new(|| {}), 0);
     assert!(!automation.running(), "off by default: no thread, no socket");
     automation.sync_preference(false).unwrap();
     assert!(!automation.running());

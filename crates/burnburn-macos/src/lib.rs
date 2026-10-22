@@ -10,9 +10,9 @@ pub mod adapter;
 pub mod app_menu;
 pub mod app_text;
 pub mod app_view;
-pub mod automation_host;
 #[cfg(target_os = "macos")]
 pub mod appkit;
+pub mod automation_host;
 pub mod calib;
 pub mod camera;
 pub mod l10n;

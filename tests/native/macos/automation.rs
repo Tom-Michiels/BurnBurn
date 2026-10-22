@@ -117,9 +117,9 @@ fn scenario() -> Result<(), String> {
     // Nothing that reaches a machine: no machine or laser intent in the whole session.
     expect(
         || format!("no machine intent, got {intents:?}"),
-        !intents.iter().any(|i| {
-            matches!(i, UiIntent::Machine { .. } | UiIntent::Laser { .. } | UiIntent::LaserSetup { .. })
-        }),
+        !intents
+            .iter()
+            .any(|i| matches!(i, UiIntent::Machine { .. } | UiIntent::Laser { .. } | UiIntent::LaserSetup { .. })),
     )?;
 
     // Off again: the thread ends and nothing answers.

@@ -47,7 +47,9 @@ impl HostApp {
         self.windows
             .try_borrow()
             .ok()
-            .and_then(|w| w.get(&document).and_then(|w| w.g5.iter().find(|s| s.panel_kind() == panel).map(|s| s.labels())))
+            .and_then(|w| {
+                w.get(&document).and_then(|w| w.g5.iter().find(|s| s.panel_kind() == panel).map(|s| s.labels()))
+            })
             .unwrap_or_default()
     }
 }

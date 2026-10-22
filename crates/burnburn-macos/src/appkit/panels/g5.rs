@@ -16,8 +16,9 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSApplication, NSBackingStoreType, NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn,
-    NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField, NSTextView, NSView, NSWindowStyleMask,
+    NSAccessibility, NSApplication, NSBackingStoreType, NSButton, NSColor, NSControl, NSControlStateValueOff,
+    NSControlStateValueOn, NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField, NSTextView,
+    NSView, NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 
@@ -311,10 +312,10 @@ impl G5Section {
                     let scroll = NSTextView::scrollableTextView(mtm);
                     scroll.setFrame(rect(MARGIN, 0.0, full, MEMO_HEIGHT));
                     scroll.setHasVerticalScroller(true);
-                    let text = scroll
-                        .documentView()
-                        .and_then(|v| v.downcast::<NSTextView>().ok())
-                        .unwrap_or_else(|| NSTextView::initWithFrame(NSTextView::alloc(mtm), rect(0.0, 0.0, full, MEMO_HEIGHT)));
+                    let text =
+                        scroll.documentView().and_then(|v| v.downcast::<NSTextView>().ok()).unwrap_or_else(|| {
+                            NSTextView::initWithFrame(NSTextView::alloc(mtm), rect(0.0, 0.0, full, MEMO_HEIGHT))
+                        });
                     text.setEditable(true);
                     text.setRichText(false);
                     text.setFont(Some(&NSFont::systemFontOfSize(13.0)));
@@ -448,7 +449,12 @@ impl G5Section {
                 }
                 (G5Line::Field { caption, text, .. }, Widget::Field { caption: c, field, pushed }) => {
                     c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, *height - 4.0));
-                    field.setFrame(rect(MARGIN + CAPTION_WIDTH + 6.0, y + (*height - 24.0) / 2.0, full - CAPTION_WIDTH - 6.0, 24.0));
+                    field.setFrame(rect(
+                        MARGIN + CAPTION_WIDTH + 6.0,
+                        y + (*height - 24.0) / 2.0,
+                        full - CAPTION_WIDTH - 6.0,
+                        24.0,
+                    ));
                     set_text(c, caption);
                     // What the user typed stays until the model changes; a field being edited is left alone.
                     if *pushed != *text && field.currentEditor().is_none() {
@@ -457,12 +463,14 @@ impl G5Section {
                     }
                     field.setAccessibilityLabel(Some(&NSString::from_str(caption)));
                 }
-                (
-                    G5Line::Choice { caption, options, selected, .. },
-                    Widget::Choice { caption: c, popup, pushed },
-                ) => {
+                (G5Line::Choice { caption, options, selected, .. }, Widget::Choice { caption: c, popup, pushed }) => {
                     c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, *height - 4.0));
-                    popup.setFrame(rect(MARGIN + CAPTION_WIDTH + 6.0, y + (*height - 26.0) / 2.0, full - CAPTION_WIDTH - 6.0, 26.0));
+                    popup.setFrame(rect(
+                        MARGIN + CAPTION_WIDTH + 6.0,
+                        y + (*height - 26.0) / 2.0,
+                        full - CAPTION_WIDTH - 6.0,
+                        26.0,
+                    ));
                     set_text(c, caption);
                     for (i, o) in options.iter().enumerate() {
                         if let Some(item) = popup.itemAtIndex(i as isize)

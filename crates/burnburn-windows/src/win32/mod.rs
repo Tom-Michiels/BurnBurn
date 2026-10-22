@@ -126,6 +126,10 @@ struct Host {
     message_window: HWND,
     /// `WM_CHAR` UTF-16 units of the canvas (typed or IME text) to final text.
     chars: CharDecoder,
+    /// Desktop automation (API01); taken out while its pump runs (it dispatches through this host).
+    automation: Option<crate::automation_host::Automation>,
+    /// The clock the automation pump measures its time limit with.
+    started: std::time::Instant,
 }
 
 thread_local! {
@@ -167,6 +171,45 @@ fn view() -> Arc<AppViewModel> {
 fn dispatch(intent: UiIntent) {
     let Some(update) = with_host(|h| h.controller.handle(intent)) else { return };
     apply(update);
+}
+
+/// The host as the automation pump sees it: the same dispatcher the UI uses.
+struct AutomationAdapter;
+
+impl crate::automation_host::AutomationApp for AutomationAdapter {
+    fn view(&self) -> Arc<AppViewModel> {
+        view()
+    }
+
+    fn dispatch(&mut self, intent: UiIntent) -> Vec<HostEffect> {
+        let Some(update) = with_host(|h| h.controller.handle(intent)) else { return Vec::new() };
+        let effects = update.effects.clone();
+        apply(update);
+        effects
+    }
+}
+
+/// Moves the current automation job on, or starts the next one (finished tasks and the listener's
+/// wake-up land here). The automation is out of the host while its pump runs, so a call from inside
+/// (an intent the pump sent triggered an update) does nothing; the outer call sees the result.
+fn automation_step() {
+    let Some(Some(mut automation)) = with_host(|h| h.automation.take()) else { return };
+    let now_ms = with_host(|h| u64::try_from(h.started.elapsed().as_millis()).unwrap_or(u64::MAX)).unwrap_or(0);
+    automation.step(&mut AutomationAdapter, now_ms);
+    with_host(|h| h.automation = Some(automation));
+}
+
+/// The listener runs exactly while the preference is on; the status it answers with follows `vm`.
+fn automation_follow(vm: &AppViewModel) {
+    with_host(|h| {
+        let enabled = h.controller.preferences().desktop_automation;
+        if let Some(automation) = h.automation.as_mut() {
+            if let Err(e) = automation.sync_preference(enabled) {
+                eprintln!("burnburn-win: desktop automation stays off: {e}");
+            }
+            automation.publish_status(vm);
+        }
+    });
 }
 
 fn react(reaction: Reaction) -> bool {
@@ -218,6 +261,11 @@ fn react_for(document: Option<DocumentId>, reaction: Reaction) -> bool {
 }
 
 fn apply(update: AppUpdate) {
+    with_host(|h| {
+        if let Some(automation) = h.automation.as_mut() {
+            automation.observe(&update.effects);
+        }
+    });
     for effect in &update.effects {
         // W4-L8b: RD export, template and bundle dialogs, recent lists.
         crate::win32_panels::manager::effect(effect);
@@ -357,6 +405,7 @@ fn refresh() {
         layout(frame);
     }
     crate::win32_panels::manager::refresh();
+    automation_follow(&vm);
 }
 
 /// Create, update and remove the panels of `document` so that they are `wanted`.
@@ -624,6 +673,12 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                     h.windows.len()
                 });
                 if remaining == Some(0) {
+                    // The application quits: the automation listener ends before the process does.
+                    with_host(|h| {
+                        if let Some(automation) = h.automation.as_mut() {
+                            automation.shutdown();
+                        }
+                    });
                     // SAFETY: ends our message loop.
                     unsafe { PostQuitMessage(0) };
                 }
@@ -922,6 +977,8 @@ extern "system" fn message_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam
                     apply(update);
                 }
             }
+            // The automation listener's wake-up lands here too: requests start, finished tasks end them.
+            automation_step();
             return LRESULT(0);
         }
         if message == WM_CAMERA_FRAME {
@@ -1029,6 +1086,9 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
         // SAFETY: PostMessageW is thread-safe; the handle is our message window (a plain value).
         let _ = unsafe { PostMessageW(Some(HWND(target as *mut _)), WM_TASKS_DONE, WPARAM(0), LPARAM(0)) };
     });
+    // The automation listener wakes the UI thread the way a finished task does.
+    let automation =
+        crate::automation_host::Automation::new(Arc::new(burnburn_io::std_fs::StdFileSystem), Arc::clone(&wake));
     let (port, inbox) = task_channel(wake);
     let uuid = Arc::new(random_uuid);
     let ports =
@@ -1079,6 +1139,8 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
                 instance,
                 message_window,
                 chars: CharDecoder::default(),
+                automation: Some(automation),
+                started: std::time::Instant::now(),
             });
         }
     });

@@ -33,13 +33,37 @@ pub enum Item {
     Heading(String),
     Text(String),
     Problem(String),
-    Field { id: ControlId, text: String, enabled: bool, invalid: bool, hint: String },
-    Check { id: ControlId, caption: String, on: bool, enabled: bool },
-    Choice { id: ControlId, items: Vec<ChoiceItem>, selected: usize, enabled: bool },
+    Field {
+        id: ControlId,
+        text: String,
+        enabled: bool,
+        invalid: bool,
+        hint: String,
+    },
+    Check {
+        id: ControlId,
+        caption: String,
+        on: bool,
+        enabled: bool,
+    },
+    Choice {
+        id: ControlId,
+        items: Vec<ChoiceItem>,
+        selected: usize,
+        enabled: bool,
+    },
     Button(FormButton),
-    List { id: ControlId, items: Vec<String>, selected: Vec<usize>, multi: bool },
+    List {
+        id: ControlId,
+        items: Vec<String>,
+        selected: Vec<usize>,
+        multi: bool,
+    },
     /// A multi-line edit.
-    Memo { id: ControlId, text: String },
+    Memo {
+        id: ControlId,
+        text: String,
+    },
 }
 
 /// An item at its place; `caption` is the label of a field or pop-up, drawn beside or above it.

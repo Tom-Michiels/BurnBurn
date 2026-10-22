@@ -26,13 +26,13 @@ use super::panels::arrange::arrange_toolbar;
 use super::panels::barcode::{BarcodeSection, barcode_section};
 use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
+use super::panels::g5::{G5Section, g5_section};
 use super::panels::image::{ImageSheets, image_sheets};
 use super::panels::import::{ImportSheet, import_sheet};
 use super::panels::inspector::{InspectorControlsWidgets, transform_block};
 use super::panels::laser::{LaserSection, laser_section};
 use super::panels::operations::OperationsSection;
 use super::panels::production::{STRIP_HEIGHT, production_strip};
-use super::panels::g5::{G5Section, g5_section};
 use super::panels::schikken::{SchikkenSection, schikken_section};
 use super::panels::shapes::{ShapesSection, shapes_section};
 use super::panels::sketch::{SketchSection, sketch_section};
@@ -165,7 +165,8 @@ impl DocWindow {
         let sketch = sketch_section(mtm, locale);
         let shapes = shapes_section(mtm, app.clone(), document, locale);
         let schikken = schikken_section(mtm, app.clone(), document, locale);
-        let g5: Vec<G5Section> = crate::panels::G5Panel::ALL.iter().map(|p| g5_section(mtm, app.clone(), document, *p)).collect();
+        let g5: Vec<G5Section> =
+            crate::panels::G5Panel::ALL.iter().map(|p| g5_section(mtm, app.clone(), document, *p)).collect();
         let text = text_section(mtm, app.clone(), document, locale);
         let variable = variable_section(mtm, app.clone(), document, locale);
         let barcode = barcode_section(mtm, app.clone(), document, locale);

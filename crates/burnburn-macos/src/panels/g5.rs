@@ -48,15 +48,25 @@ pub enum G5Control {
     RepairPreview,
     RepairApply,
     /// Pairing `candidate` at junction `node`.
-    Junction { node: u32, candidate: usize },
+    Junction {
+        node: u32,
+        candidate: usize,
+    },
     /// Accept the best exact shape of `chain`.
-    Primitive { chain: u32 },
+    Primitive {
+        chain: u32,
+    },
     /// The plate Compile uses.
     Plate,
     /// The variant of an instance.
-    Variant { instance: u64 },
+    Variant {
+        instance: u64,
+    },
     /// A local override of parameter number `parameter` (position in the part's list).
-    Override { instance: u64, parameter: usize },
+    Override {
+        instance: u64,
+        parameter: usize,
+    },
 }
 
 /// One line of a panel.
@@ -67,11 +77,32 @@ pub enum G5Line {
     /// Why something did not work; drawn apart from the normal text.
     Problem(String),
     /// A multi-line text.
-    Memo { control: G5Control, text: String, max_chars: usize },
-    Field { control: G5Control, caption: String, text: String },
-    Choice { control: G5Control, caption: String, options: Vec<String>, selected: usize },
-    Check { control: G5Control, caption: String, on: bool },
-    Button { control: G5Control, title: String, enabled: bool },
+    Memo {
+        control: G5Control,
+        text: String,
+        max_chars: usize,
+    },
+    Field {
+        control: G5Control,
+        caption: String,
+        text: String,
+    },
+    Choice {
+        control: G5Control,
+        caption: String,
+        options: Vec<String>,
+        selected: usize,
+    },
+    Check {
+        control: G5Control,
+        caption: String,
+        on: bool,
+    },
+    Button {
+        control: G5Control,
+        title: String,
+        enabled: bool,
+    },
 }
 
 impl G5Line {
@@ -160,8 +191,7 @@ pub fn g5_panel(
 
 fn notes_lines(doc: &DocumentViewModel, locale: Locale, draft: &[(G5Control, String)]) -> Option<Vec<G5Line>> {
     let notes = doc.notes.as_ref()?;
-    let typed =
-        value_of(draft, G5Control::NotesText).map_or_else(|| notes.text.chars().count(), |t| t.chars().count());
+    let typed = value_of(draft, G5Control::NotesText).map_or_else(|| notes.text.chars().count(), |t| t.chars().count());
     let too_long = typed > notes.max_chars;
     let (count, max) = (typed.to_string(), notes.max_chars.to_string());
     let mut lines = vec![
@@ -378,11 +408,8 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
             lines.push(if failed { G5Line::Problem(line) } else { G5Line::Text(line) });
             let mut variants = vec![t(G5Text::VariantNone)];
             variants.extend(part.variants.iter().cloned());
-            let selected = instance
-                .variant
-                .as_ref()
-                .and_then(|v| part.variants.iter().position(|x| x == v))
-                .map_or(0, |i| i + 1);
+            let selected =
+                instance.variant.as_ref().and_then(|v| part.variants.iter().position(|x| x == v)).map_or(0, |i| i + 1);
             lines.push(G5Line::Choice {
                 control: G5Control::Variant { instance: instance.id },
                 caption: g5_fmt(G5Text::VariantCaption, locale, &[&id]),
@@ -426,10 +453,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
 
 // --- Controls to intents ----------------------------------------------------------------------------
 
-fn find_instance(
-    doc: &DocumentViewModel,
-    id: u64,
-) -> Option<(&PartRow, &burnburn_presentation::InstanceRow)> {
+fn find_instance(doc: &DocumentViewModel, id: u64) -> Option<(&PartRow, &burnburn_presentation::InstanceRow)> {
     doc.structure.parts.iter().find_map(|p| p.instances.iter().find(|i| i.id == id).map(|i| (p, i)))
 }
 
@@ -457,10 +481,8 @@ pub fn g5_intent(
             document,
             distance: typed(G5Control::OffsetDistance).unwrap_or_default(),
         }),
-        G5Control::OffsetApply => (!doc.selection.is_empty()).then(|| UiIntent::Offset {
-            document,
-            distance: typed(G5Control::OffsetDistance).unwrap_or_default(),
-        }),
+        G5Control::OffsetApply => (!doc.selection.is_empty())
+            .then(|| UiIntent::Offset { document, distance: typed(G5Control::OffsetDistance).unwrap_or_default() }),
         G5Control::OffsetDistance => None,
         G5Control::OffsetJoin | G5Control::OffsetKeepSources => {
             let current = doc.offset.options;
@@ -481,10 +503,9 @@ pub fn g5_intent(
             })
         }
         G5Control::RepairIssue | G5Control::RepairTolerance => None,
-        G5Control::Junction { node, candidate } => Some(UiIntent::CenterlineEdit {
-            document,
-            edit: CenterlineEdit::ResolveJunction { node, candidate },
-        }),
+        G5Control::Junction { node, candidate } => {
+            Some(UiIntent::CenterlineEdit { document, edit: CenterlineEdit::ResolveJunction { node, candidate } })
+        }
         G5Control::Primitive { chain } => {
             Some(UiIntent::CenterlineEdit { document, edit: CenterlineEdit::ConfirmPrimitive { chain } })
         }

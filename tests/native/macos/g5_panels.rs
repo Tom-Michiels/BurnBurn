@@ -118,11 +118,7 @@ fn choose(
 }
 
 #[cfg(target_os = "macos")]
-fn labels(
-    s: &common::Session,
-    doc: burnburn_types::DocumentId,
-    panel: burnburn_macos::panels::G5Panel,
-) -> Vec<String> {
+fn labels(s: &common::Session, doc: burnburn_types::DocumentId, panel: burnburn_macos::panels::G5Panel) -> Vec<String> {
     s.app.g5_labels(doc, panel)
 }
 
@@ -144,7 +140,10 @@ fn notes() -> Result<(), String> {
     s.menu(MenuItem::Command(CommandKey::ShowNotes))?;
     s.pump(0.2);
     expect(|| "the note panel is shown".into(), s.app.g5_panel_shown(doc, P::Notes))?;
-    expect(|| "the menu item shows a check mark".into(), s.menu_item_checked(MenuItem::Command(CommandKey::ShowNotes)) == Some(true))?;
+    expect(
+        || "the menu item shows a check mark".into(),
+        s.menu_item_checked(MenuItem::Command(CommandKey::ShowNotes)) == Some(true),
+    )?;
 
     let view = control(&s, doc, P::Notes, C::NotesText)?;
     let any: &objc2::runtime::AnyObject = view.as_ref();
@@ -156,7 +155,10 @@ fn notes() -> Result<(), String> {
         || format!("the note is stored, got {:?}", vm.notes),
         vm.notes.as_ref().is_some_and(|n| n.text == "Klant Jansen"),
     )?;
-    expect(|| format!("one undo step, got {:?}", vm.undo), vm.undo == Some(UndoLabel::Process(ProcessLabel::SetNotes)))?;
+    expect(
+        || format!("one undo step, got {:?}", vm.undo),
+        vm.undo == Some(UndoLabel::Process(ProcessLabel::SetNotes)),
+    )?;
     expect(|| "the window is marked changed".into(), vm.dirty)?;
 
     press(&s, doc, P::Notes, C::NotesClose)?;
@@ -203,10 +205,7 @@ fn offset() -> Result<(), String> {
     let check = any.downcast_ref::<objc2_app_kit::NSButton>().ok_or("not a check box")?.retain();
     click(&check)?;
     s.pump(0.1);
-    expect(
-        || "keep sources is off".into(),
-        s.doc(doc).is_some_and(|d| !d.offset.options.keep_sources),
-    )?;
+    expect(|| "keep sources is off".into(), s.doc(doc).is_some_and(|d| !d.offset.options.keep_sources))?;
     press(&s, doc, P::Offset, C::OffsetApply)?;
     let vm = s.doc(doc).ok_or("no document")?;
     expect(|| format!("the source was replaced: {} objects", vm.objects.len()), vm.objects.len() == 1)?;
@@ -248,7 +247,10 @@ fn structure() -> Result<(), String> {
     let all = labels(&s, doc, P::Structure);
     expect(|| format!("the plate is listed, got {all:?}"), all.iter().any(|l| l.starts_with("Plaat A:")))?;
     expect(|| format!("the broken reference shows, got {all:?}"), all.iter().any(|l| l.contains("Rand: gebroken")))?;
-    expect(|| format!("the invalid variant fails alone, got {all:?}"), all.iter().filter(|l| l.contains("mislukt")).count() == 1)?;
+    expect(
+        || format!("the invalid variant fails alone, got {all:?}"),
+        all.iter().filter(|l| l.contains("mislukt")).count() == 1,
+    )?;
 
     // The instance without a variant gets "klein" (items: none, kapot, klein).
     choose(&s, doc, P::Structure, C::Variant { instance: plain }, 2)?;
@@ -261,16 +263,16 @@ fn structure() -> Result<(), String> {
     type_into(&s, doc, P::Structure, C::Override { instance: plain, parameter: 0 }, "80 mm")?;
     let vm = s.doc(doc).ok_or("no document")?;
     let row = vm.structure.parts[0].instances.iter().find(|i| i.id == plain).ok_or("no instance")?;
-    expect(|| format!("override stored, got {:?}", row.overrides), row.overrides.iter().any(|o| o.name == "breedte" && o.value == "80"))?;
+    expect(
+        || format!("override stored, got {:?}", row.overrides),
+        row.overrides.iter().any(|o| o.name == "breedte" && o.value == "80"),
+    )?;
     expect(|| "the part itself is unchanged".into(), vm.structure.parts[0].parameters[0].value == "40")?;
 
     // The plate for Compile.
     let plate = vm.structure.plates[0].id;
     choose(&s, doc, P::Structure, C::Plate, 1)?;
-    expect(
-        || "the plate is chosen".into(),
-        s.doc(doc).is_some_and(|d| d.structure.compile_plate == Some(plate)),
-    )?;
+    expect(|| "the plate is chosen".into(), s.doc(doc).is_some_and(|d| d.structure.compile_plate == Some(plate)))?;
     Ok(())
 }
 

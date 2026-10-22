@@ -53,13 +53,7 @@ fn problems(h: &HeadlessEditorHarness, doc: DocumentId, p: G5Panel) -> Vec<Strin
 }
 
 /// Uses a control like the host does: the intent goes to the controller.
-fn press(
-    h: &mut HeadlessEditorHarness,
-    doc: DocumentId,
-    p: G5Panel,
-    c: C,
-    values: &[(C, &str)],
-) -> Option<UiIntent> {
+fn press(h: &mut HeadlessEditorHarness, doc: DocumentId, p: G5Panel, c: C, values: &[(C, &str)]) -> Option<UiIntent> {
     let values: Vec<(C, String)> = values.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
     let intent = g5_intent(&h.view(), doc, p, c, &values)?;
     h.send(intent.clone());
@@ -126,11 +120,7 @@ fn a_note_beyond_the_limit_is_not_sent_and_the_panel_says_why() {
     let model = g5_panel(&h.view(), doc, G5Panel::Notes, Locale::En, &draft).unwrap();
     let save = model.lines.iter().find(|l| l.control() == Some(C::NotesSave)).unwrap();
     assert!(!enabled(save), "Save is off");
-    assert!(
-        model.lines.iter().any(|l| matches!(l, G5Line::Problem(t) if t.contains("20000"))),
-        "{:?}",
-        model.lines
-    );
+    assert!(model.lines.iter().any(|l| matches!(l, G5Line::Problem(t) if t.contains("20000"))), "{:?}", model.lines);
     assert_eq!(g5_intent(&h.view(), doc, G5Panel::Notes, C::NotesSave, &draft), None);
     // Inside the limit it is fine, also in the other language.
     let ok = [(C::NotesText, "kort".to_owned())];
@@ -174,7 +164,8 @@ fn the_offset_preview_and_the_options_go_through_presentation() {
     assert!(shown.iter().any(|t| t.contains("24 × 14 mm") && t.contains("area 332.")), "{shown:?}");
     assert_eq!((vm(&h, doc).revision, vm(&h, doc).undo), (revision, undo), "the document is untouched");
 
-    let intent = press(&mut h, doc, G5Panel::Offset, C::OffsetJoin, &[(C::OffsetJoin, "1"), (C::OffsetKeepSources, "0")]);
+    let intent =
+        press(&mut h, doc, G5Panel::Offset, C::OffsetJoin, &[(C::OffsetJoin, "1"), (C::OffsetKeepSources, "0")]);
     assert_eq!(
         intent,
         Some(UiIntent::SetOffsetOptions {
@@ -454,11 +445,8 @@ fn a_document_without_structure_says_so() {
 #[test]
 fn every_text_has_both_languages_with_the_same_placeholders() {
     fn placeholders(s: &str) -> Vec<String> {
-        let mut out: Vec<String> = s
-            .split('{')
-            .skip(1)
-            .filter_map(|p| p.split_once('}').map(|(n, _)| n.to_owned()))
-            .collect();
+        let mut out: Vec<String> =
+            s.split('{').skip(1).filter_map(|p| p.split_once('}').map(|(n, _)| n.to_owned())).collect();
         out.sort();
         out
     }

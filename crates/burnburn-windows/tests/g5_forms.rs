@@ -81,8 +81,7 @@ fn press(
         }
     }
     let vm = h.view();
-    let outcome =
-        g5::react(p, &ControlId::G5(c), &values, &FormContext { vm: &vm, document: doc, locale: Locale::En });
+    let outcome = g5::react(p, &ControlId::G5(c), &values, &FormContext { vm: &vm, document: doc, locale: Locale::En });
     match outcome {
         FormOutcome::Intent(i) => {
             h.send(i.clone());
@@ -122,7 +121,10 @@ fn notes_and_centreline_open_by_themselves_and_offset_and_structure_wait_for_the
     assert!(none.is_empty(), "nothing is asked for yet: {:?}", none.iter().map(|f| f.kind).collect::<Vec<_>>());
     h.invoke(doc, CommandKey::ShowNotes);
     let now = forms(&h, doc, &PanelState::default(), &Vec::new());
-    assert_eq!(now.iter().map(|f| (f.kind, f.placement)).collect::<Vec<_>>(), [(FormKind::G5(P::Notes), Placement::Floating)]);
+    assert_eq!(
+        now.iter().map(|f| (f.kind, f.placement)).collect::<Vec<_>>(),
+        [(FormKind::G5(P::Notes), Placement::Floating)]
+    );
     let both = forms(&h, doc, &asked(&[P::Offset, P::Structure]), &Vec::new());
     let kinds: Vec<FormKind> = both.iter().map(|f| f.kind).collect();
     assert_eq!(kinds, [FormKind::G5(P::Notes), FormKind::G5(P::Offset), FormKind::G5(P::Structure)]);
@@ -197,11 +199,15 @@ fn a_memo_is_laid_out_as_one_multi_line_edit_inside_the_width() {
 fn the_offset_section_previews_applies_and_sends_the_options() {
     let (mut h, doc, [a, _]) = two_rects();
     select(&mut h, doc, &[]);
-    assert_eq!(choice(&line(&h, doc, P::Offset, C::OffsetJoin)), (vec!["Round".into(), "Mitred".into(), "Bevelled".into()], 0));
+    assert_eq!(
+        choice(&line(&h, doc, P::Offset, C::OffsetJoin)),
+        (vec!["Round".into(), "Mitred".into(), "Bevelled".into()], 0)
+    );
     assert!(!button_enabled(&line(&h, doc, P::Offset, C::OffsetPreview), C::OffsetPreview), "needs a selection");
     select(&mut h, doc, &[a]);
 
-    let sent = press(&mut h, doc, P::Offset, C::OffsetPreview, ControlValue::Press, &[(C::OffsetDistance, text("2 mm"))]);
+    let sent =
+        press(&mut h, doc, P::Offset, C::OffsetPreview, ControlValue::Press, &[(C::OffsetDistance, text("2 mm"))]);
     assert_eq!(sent, Some(UiIntent::PreviewOffset { document: doc, distance: "2 mm".into() }));
     h.run_tasks();
     assert!(texts(&h, doc, P::Offset).iter().any(|t| t.contains("24 × 14 mm")), "{:?}", texts(&h, doc, P::Offset));
@@ -284,7 +290,10 @@ fn a_ring_offers_a_circle_that_only_the_operator_confirms() {
     let chain = vm(&h, doc).centerline.unwrap().chains[0].chain;
     assert!(texts(&h, doc, P::Centerline).iter().any(|t| t.contains("circle") && t.contains("within tolerance")));
     let sent = press(&mut h, doc, P::Centerline, C::Primitive { chain }, ControlValue::Press, &[]);
-    assert_eq!(sent, Some(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ConfirmPrimitive { chain } }));
+    assert_eq!(
+        sent,
+        Some(UiIntent::CenterlineEdit { document: doc, edit: CenterlineEdit::ConfirmPrimitive { chain } })
+    );
     assert!(texts(&h, doc, P::Centerline).iter().any(|t| t.contains("confirmed as circle")));
 }
 
@@ -305,7 +314,9 @@ fn the_structure_form_lists_plates_instances_and_the_broken_reference() {
             _ => None,
         })
         .collect();
-    assert!(failed.iter().any(|t| t.contains(&format!("Instance {kapot}")) && t.contains("failed at parameter breedte")));
+    assert!(
+        failed.iter().any(|t| t.contains(&format!("Instance {kapot}")) && t.contains("failed at parameter breedte"))
+    );
 }
 
 #[test]
@@ -315,8 +326,18 @@ fn a_variant_an_override_and_the_plate_go_through_presentation_and_unchanged_val
     let (options, selected) = choice(&line(&h, doc, P::Structure, variant));
     assert_eq!(selected, 0);
     let klein = options.iter().position(|o| o == "klein").unwrap();
-    assert_eq!(press(&mut h, doc, P::Structure, variant, ControlValue::Choice(0), &[(variant, ControlValue::Choice(0))]), None);
-    let sent = press(&mut h, doc, P::Structure, variant, ControlValue::Choice(klein), &[(variant, ControlValue::Choice(klein))]);
+    assert_eq!(
+        press(&mut h, doc, P::Structure, variant, ControlValue::Choice(0), &[(variant, ControlValue::Choice(0))]),
+        None
+    );
+    let sent = press(
+        &mut h,
+        doc,
+        P::Structure,
+        variant,
+        ControlValue::Choice(klein),
+        &[(variant, ControlValue::Choice(klein))],
+    );
     assert_eq!(
         sent,
         Some(UiIntent::Structure {
@@ -341,7 +362,8 @@ fn a_variant_an_override_and_the_plate_go_through_presentation_and_unchanged_val
     assert!(matches!(line(&h, doc, P::Structure, over), FormLine::Field { text, .. } if text == "80"), "refused");
 
     let plate = vm(&h, doc).structure.plates[0].id;
-    let sent = press(&mut h, doc, P::Structure, C::Plate, ControlValue::Choice(1), &[(C::Plate, ControlValue::Choice(1))]);
+    let sent =
+        press(&mut h, doc, P::Structure, C::Plate, ControlValue::Choice(1), &[(C::Plate, ControlValue::Choice(1))]);
     assert_eq!(sent, Some(UiIntent::ChoosePlate { document: doc, plate: Some(plate) }));
     assert_eq!(choice(&line(&h, doc, P::Structure, C::Plate)).1, 1);
 }

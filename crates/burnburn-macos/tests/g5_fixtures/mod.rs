@@ -12,8 +12,8 @@ use burnburn_document::structure::{
     StructureCommand,
 };
 use burnburn_document::{
-    CommandOutcome, CommandPayload, DocumentCommand, DocumentSession, DocumentSnapshot, GeometryObject,
-    GeometrySource, ObjectKind,
+    CommandOutcome, CommandPayload, DocumentCommand, DocumentSession, DocumentSnapshot, GeometryObject, GeometrySource,
+    ObjectKind,
 };
 use burnburn_geometry::{Affine, Path, PathBuilder, Point, Rect, Vector};
 use burnburn_image::encode_png_gray8;
