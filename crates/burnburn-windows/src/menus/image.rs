@@ -1,6 +1,7 @@
 //! Beeld (Image), in the order of the macOS menu. The image window is Windows-only and sits last.
 
 use super::{MenuNode, cmd, host, sep};
+use crate::adapter::MenuItem;
 use crate::host_panels::menu::Item;
 use burnburn_presentation::CommandKey;
 
@@ -16,6 +17,7 @@ pub(super) fn items() -> Vec<MenuNode> {
         sep(),
         host(Item::TraceImage),
         cmd(CommandKey::TraceEdit),
+        MenuNode::Item(MenuItem::TracePrepPanel),
         sep(),
         host(Item::ImagePanel),
     ]

@@ -25,10 +25,14 @@ pub enum G5Panel {
     Centerline,
     /// Venster ▸ Structuur.
     Structure,
+    /// Beeld ▸ Beeld voorbereiden: local threshold, plane correction, masks, local corrections and
+    /// the trace report of the open tracer (G6-werk, T03, T05, T06).
+    TracePrep,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 4] = [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure];
+    pub const ALL: [G5Panel; 5] =
+        [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure, G5Panel::TracePrep];
 }
 
 /// A control of a panel. Fields, choices, checks and the note report their value; buttons only the
@@ -66,6 +70,36 @@ pub enum G5Control {
     Override {
         instance: u64,
         parameter: usize,
+    },
+    // --- Prepare image (G6-werk, T03, T05, T06).
+    PrepRadius,
+    PrepOffset,
+    PrepUseLocal,
+    PrepUseGlobal,
+    /// Corner `index` (0…3), `axis` 0 = x, 1 = y.
+    PrepCorner {
+        index: usize,
+        axis: usize,
+    },
+    PrepWidth,
+    PrepHeight,
+    PrepApplyCorners,
+    PrepClearCorners,
+    PrepMaskKind,
+    /// The area shared by "add mask" and "trace this area again".
+    PrepAreaX,
+    PrepAreaY,
+    PrepAreaWidth,
+    PrepAreaHeight,
+    PrepAddMask,
+    PrepRemoveMask {
+        index: usize,
+    },
+    PrepRegionThreshold,
+    PrepAnchors,
+    PrepRetrace,
+    PrepRemoveCorrection {
+        index: usize,
     },
 }
 
@@ -183,6 +217,11 @@ pub fn g5_panel(
         G5Panel::Offset => (G5Text::OffsetTitle, offset_lines(doc, locale)),
         G5Panel::Centerline => (G5Text::CenterlineTitle, centerline_lines(doc, locale)?),
         G5Panel::Structure => (G5Text::StructureTitle, structure_lines(doc, locale)),
+        G5Panel::TracePrep => {
+            let lines = super::g6_werk::trace_prep_lines(doc, locale)?;
+            let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
     };
     Some(G5PanelModel { panel, title: g5_text(title, locale).to_owned(), lines })
 }
@@ -473,6 +512,26 @@ pub fn g5_intent(
     let doc = vm.document(document)?;
     let typed = |c: G5Control| value_of(values, c).map(str::to_owned);
     match control {
+        G5Control::PrepRadius
+        | G5Control::PrepOffset
+        | G5Control::PrepUseLocal
+        | G5Control::PrepUseGlobal
+        | G5Control::PrepCorner { .. }
+        | G5Control::PrepWidth
+        | G5Control::PrepHeight
+        | G5Control::PrepApplyCorners
+        | G5Control::PrepClearCorners
+        | G5Control::PrepMaskKind
+        | G5Control::PrepAreaX
+        | G5Control::PrepAreaY
+        | G5Control::PrepAreaWidth
+        | G5Control::PrepAreaHeight
+        | G5Control::PrepAddMask
+        | G5Control::PrepRemoveMask { .. }
+        | G5Control::PrepRegionThreshold
+        | G5Control::PrepAnchors
+        | G5Control::PrepRetrace
+        | G5Control::PrepRemoveCorrection { .. } => super::g6_werk::trace_prep_intent(doc, document, control, values),
         G5Control::NotesSave => {
             let text = typed(G5Control::NotesText)?;
             let max = doc.notes.as_ref()?.max_chars;

@@ -44,6 +44,8 @@ pub enum MenuItem {
     OffsetPanel,
     /// Venster ▸ Structuur: shows or hides the structure panel of the active window (G5-native).
     StructurePanel,
+    /// Beeld ▸ Beeld voorbereiden: shows or hides the image preparation panel (G6-werk).
+    TracePrepPanel,
     /// Archief ▸ Recente templates ▸ the `n`-th entry (0 = most recent). Dynamic: not in [`menu_items`].
     RecentTemplate(usize),
     /// Archief ▸ Recente templates ▸ Wis menu.
@@ -65,6 +67,7 @@ pub fn menu_items() -> Vec<MenuItem> {
         MenuItem::SchikkenPanel,
         MenuItem::OffsetPanel,
         MenuItem::StructurePanel,
+        MenuItem::TracePrepPanel,
         MenuItem::ClearRecentTemplates,
     ]
     .into_iter()
@@ -95,6 +98,8 @@ const CLEAR_RECENT_TEMPLATES_TAG: isize = 1008;
 /// The golf-5 panels (G5-native); far from 1009+ so parallel lanes keep their own tags.
 const OFFSET_PANEL_TAG: isize = 1030;
 const STRUCTURE_PANEL_TAG: isize = 1031;
+/// The golf-6 workshop panels (G6-werk).
+const TRACE_PREP_PANEL_TAG: isize = 1032;
 /// Recent template `n` has tag `RECENT_TEMPLATE_TAG_BASE + n`.
 const RECENT_TEMPLATE_TAG_BASE: isize = 2100;
 
@@ -111,6 +116,7 @@ pub fn menu_tag(item: MenuItem) -> isize {
         MenuItem::SchikkenPanel => SCHIKKEN_PANEL_TAG,
         MenuItem::OffsetPanel => OFFSET_PANEL_TAG,
         MenuItem::StructurePanel => STRUCTURE_PANEL_TAG,
+        MenuItem::TracePrepPanel => TRACE_PREP_PANEL_TAG,
         MenuItem::ClearRecentTemplates => CLEAR_RECENT_TEMPLATES_TAG,
         MenuItem::RecentTemplate(n) => {
             isize::try_from(n).ok().filter(|n| *n < RECENT_TAG_SLOTS).map_or(-1, |n| RECENT_TEMPLATE_TAG_BASE + n)
@@ -165,6 +171,9 @@ pub fn menu_item(tag: isize) -> Option<MenuItem> {
     }
     if tag == STRUCTURE_PANEL_TAG {
         return Some(MenuItem::StructurePanel);
+    }
+    if tag == TRACE_PREP_PANEL_TAG {
+        return Some(MenuItem::TracePrepPanel);
     }
     if tag == CLEAR_RECENT_TEMPLATES_TAG {
         return Some(MenuItem::ClearRecentTemplates);
@@ -615,6 +624,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
         E::Menu(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
         E::Menu(MenuItem::OffsetPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Offset),
         E::Menu(MenuItem::StructurePanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Structure),
+        E::Menu(MenuItem::TracePrepPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::TracePrep),
         E::Menu(MenuItem::ExportDiagnostics) => return Reaction::ShowDiagnosticsPanel,
         E::Menu(MenuItem::App(action)) => return Reaction::App(action),
         E::App(event) => return crate::app_menu::translate_app(event, vm),
@@ -999,6 +1009,8 @@ pub fn menu_enabled(item: MenuItem, vm: &AppViewModel) -> bool {
         MenuItem::LaserWindow | MenuItem::SchikkenPanel | MenuItem::OffsetPanel | MenuItem::StructurePanel => {
             vm.active.is_some()
         }
+        // The preparation panel has something to show while a tracer is open in the window in front.
+        MenuItem::TracePrepPanel => vm.active.and_then(|d| vm.document(d)).is_some_and(|d| d.trace_prep.is_some()),
         MenuItem::ExportDiagnostics => true,
         // A dialog opens for a window; its own greying (no machine, no Z axis) says why in words.
         MenuItem::CamDialog(_) => vm.active.is_some(),
@@ -1042,6 +1054,7 @@ pub fn menu_checked(item: MenuItem, vm: &AppViewModel) -> bool {
         | MenuItem::SchikkenPanel
         | MenuItem::OffsetPanel
         | MenuItem::StructurePanel
+        | MenuItem::TracePrepPanel
         | MenuItem::ExportDiagnostics
         | MenuItem::CamDialog(_)
         | MenuItem::Recent(_)
@@ -1068,6 +1081,9 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
         MenuItem::SchikkenPanel => crate::panels::schikken_text(crate::panels::SchikkenText::MenuPanel, locale),
         MenuItem::OffsetPanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::OffsetMenu, locale).to_owned(),
         MenuItem::StructurePanel => crate::l10n_g5::g5_text(crate::l10n_g5::G5Text::StructureMenu, locale).to_owned(),
+        MenuItem::TracePrepPanel => {
+            crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepMenu, locale).to_owned()
+        }
         MenuItem::ClearRecent | MenuItem::ClearRecentTemplates => host_text(HostText::ClearRecent, locale).to_owned(),
         MenuItem::App(action) => action.title(locale).to_owned(),
         // The entries are titled with their file name when the menu is built (`recent::recent_title`).

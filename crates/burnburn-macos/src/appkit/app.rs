@@ -1840,6 +1840,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             sep(),
             item(MenuItem::TraceImage, "", false),
             item(c(CommandKey::TraceEdit), "", false),
+            item(MenuItem::TracePrepPanel, "", false),
         ],
     ));
     main.addItem(&submenu(

@@ -248,6 +248,7 @@ pub fn on_message(ctx: &MessageContext<'_>, msg: u32, wparam: usize, lparam: isi
                 Some(MenuItem::SchikkenPanel) => return Reaction::ToggleSchikkenPanel,
                 Some(MenuItem::OffsetPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Offset),
                 Some(MenuItem::StructurePanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::Structure),
+                Some(MenuItem::TracePrepPanel) => return Reaction::ToggleG5Panel(crate::panels::G5Panel::TracePrep),
                 Some(MenuItem::Command(command)) => UiIntent::Invoke { document: Some(document), command },
                 // The panel families' ids are answered by `host_panels::menu` before this point.
                 Some(MenuItem::Host(_)) | None => return Reaction::PassOn,

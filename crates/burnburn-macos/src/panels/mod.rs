@@ -17,6 +17,7 @@ mod camera;
 mod camera_workspace;
 mod cut_settings;
 mod g5;
+mod g6_werk;
 mod grbl;
 mod import;
 mod inspector;

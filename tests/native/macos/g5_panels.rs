@@ -24,11 +24,12 @@ fn main() -> ExitCode {
 
 #[cfg(target_os = "macos")]
 fn main() -> ExitCode {
-    let scenarios: [(&str, fn() -> Result<(), String>); 4] = [
+    let scenarios: [(&str, fn() -> Result<(), String>); 5] = [
         ("notes_panel_saves_one_undo_step", notes),
         ("offset_panel_previews_and_applies_with_the_options", offset),
         ("structure_panel_chooses_variant_override_and_plate", structure),
         ("centerline_panel_decides_a_junction", centerline),
+        ("trace_prep_panel_adds_a_mask_and_a_local_threshold", trace_prep),
     ];
     for (name, scenario) in scenarios {
         let code = common::report(name, scenario());
@@ -303,6 +304,48 @@ fn centerline() -> Result<(), String> {
     expect(
         || "the pairing buttons are gone".into(),
         s.app.g5_control(doc, P::Centerline, C::Junction { node, candidate: 0 }).is_none(),
+    )?;
+    Ok(())
+}
+
+/// Beeld ▸ Beeld voorbereiden (G6-werk): the item is greyed without a tracer; with one the panel shows,
+/// a mask typed into the area fields is added with the chosen kind, and the local threshold button
+/// puts the local threshold in force.
+#[cfg(target_os = "macos")]
+fn trace_prep() -> Result<(), String> {
+    use burnburn_macos::adapter::MenuItem;
+    use burnburn_macos::panels::{G5Control as C, G5Panel as P};
+    use burnburn_presentation::UiIntent;
+    use common::expect;
+
+    let s = common::start()?;
+    let doc = s.new_document()?;
+    let path = s.dir.join("t.png");
+    std::fs::write(&path, g5_fixtures::t_png()).map_err(|e| e.to_string())?;
+    s.app.dispatch(UiIntent::OpenTraceSource { document: doc, path });
+    s.wait(5.0, "the tracer", || s.doc(doc).is_some_and(|d| d.tracer.is_some()))?;
+    s.pump(0.3);
+    s.menu(MenuItem::TracePrepPanel)?;
+    s.pump(0.2);
+    expect(|| "the preparation panel is shown".into(), s.app.g5_panel_shown(doc, P::TracePrep))?;
+
+    type_into(&s, doc, P::TracePrep, C::PrepAreaY, "40")?;
+    type_into(&s, doc, P::TracePrep, C::PrepAreaHeight, "24")?;
+    choose(&s, doc, P::TracePrep, C::PrepMaskKind, 1)?;
+    press(&s, doc, P::TracePrep, C::PrepAddMask)?;
+    let masks = s.doc(doc).and_then(|d| d.trace_prep).ok_or("no preparation view")?.masks;
+    expect(
+        || format!("one remove mask 0,40 64 x 24, got {masks:?}"),
+        masks.len() == 1
+            && masks[0].mode == burnburn_presentation::MaskMode::Remove
+            && (masks[0].x, masks[0].y, masks[0].width, masks[0].height) == (0, 40, 64, 24),
+    )?;
+
+    type_into(&s, doc, P::TracePrep, C::PrepRadius, "9")?;
+    press(&s, doc, P::TracePrep, C::PrepUseLocal)?;
+    expect(
+        || "the local threshold is in force".into(),
+        s.doc(doc).and_then(|d| d.trace_prep).is_some_and(|p| p.threshold.local && p.threshold.radius == "9"),
     )?;
     Ok(())
 }
