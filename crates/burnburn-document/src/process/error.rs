@@ -40,6 +40,8 @@ pub enum ProcessError {
     OrderCycle {
         operations: Vec<OperationId>,
     },
+    /// A tool layer (T1/T2) never produces output.
+    ToolLayerNoOutput(OperationId),
     /// Stored layer: an id appears twice, clashes with another entity or is not below `next_id`.
     InvalidId {
         raw: u64,
@@ -70,6 +72,7 @@ impl fmt::Display for ProcessError {
                 }
                 Ok(())
             }
+            ProcessError::ToolLayerNoOutput(id) => write!(f, "{id} is a tool layer and never produces output"),
             ProcessError::InvalidId { raw } => write!(f, "id {raw} is duplicated, clashes or is not below next_id"),
         }
     }

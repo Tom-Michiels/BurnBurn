@@ -205,6 +205,11 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
             // burn, so the plan is refused.
             PlanEvent::RampRun { .. } => return Err(LowerError::Unsupported { event, what: "ramp length" }),
             PlanEvent::Dot { .. } => return Err(LowerError::Unsupported { event, what: "dot mode" }),
+            // Feeder (FE01): no proven RD form for the feed or the pause; a job without them
+            // would be a different job.
+            PlanEvent::Feed { .. } | PlanEvent::Pause { .. } => {
+                return Err(LowerError::Unsupported { event, what: "feeder" });
+            }
             PlanEvent::PowerRun { .. } => return Err(LowerError::Unsupported { event, what: "grayscale modulation" }),
             _ => return Err(LowerError::Unsupported { event, what: "event" }),
         }

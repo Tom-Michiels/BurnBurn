@@ -1,11 +1,11 @@
-//! The Layers panel of the Windows window, headless (W4-L8a): the 30-colour palette, the layer list
+//! The Layers panel of the Windows window, headless (W4-L8a): the palette (30 colours and the tool layers T1/T2), the layer list
 //! with the editors of the selected layer, the add row and the way into Cut Settings. Same rows,
 //! words and intents as the macOS layer table (`layer_panels.rs` there).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use burnburn_presentation::{
-    CommandKey, HeadlessEditorHarness, LAYER_SLOTS, OperationField, OperationKind, SelectMode, UiIntent,
+    CommandKey, HeadlessEditorHarness, OperationField, OperationKind, PALETTE_SLOTS, SelectMode, UiIntent,
 };
 use burnburn_types::DocumentId;
 use burnburn_windows::forms::{
@@ -77,11 +77,11 @@ fn the_panel_docks_left_and_offers_one_button_per_palette_colour_that_marks_used
     let f = form(&h, doc, &PanelState::default(), Locale::En);
     assert_eq!((f.kind, f.placement), (FormKind::Layers, Placement::DockLeft));
     let ids = f.ids();
-    for slot in 0..LAYER_SLOTS {
+    for slot in 0..PALETTE_SLOTS {
         assert!(ids.contains(&ControlId::Palette(slot)), "colour {slot}");
     }
     let Some(FormLine::Grid { buttons, columns }) = f.find(&ControlId::Palette(0)) else { panic!("a palette grid") };
-    assert_eq!(buttons.len(), usize::from(LAYER_SLOTS));
+    assert_eq!(buttons.len(), usize::from(PALETTE_SLOTS));
     assert!(*columns >= 5);
     assert_eq!(buttons[1].title, "C01");
     assert!(buttons[1].pressed, "C01 has a layer");
@@ -101,7 +101,7 @@ fn a_palette_click_assigns_the_layer_and_shift_adds_a_second_treatment() {
         FormOutcome::Intent(UiIntent::AssignLayer { document: doc, slot: 3, add: true })
     );
     assert_eq!(
-        react(&h, doc, &st, ControlId::Palette(LAYER_SLOTS), ControlValue::Press, &[]),
+        react(&h, doc, &st, ControlId::Palette(PALETTE_SLOTS), ControlValue::Press, &[]),
         FormOutcome::Nothing,
         "no button beyond the palette"
     );

@@ -84,6 +84,12 @@ pub enum ModifierKind {
         rotate_items: bool,
         reference: Xy,
     },
+    /// `count` copies along the outline of object `along` (AR02, copy along path).
+    PathArray {
+        count: u32,
+        along: u64,
+        orient: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

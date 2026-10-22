@@ -25,15 +25,31 @@ pub enum CamDialog {
     IntervalTest,
     FocusTest,
     Device,
+    /// Arrange ▸ Array: grid, circular and along-a-path arrays with a live preview (AR02).
+    Array,
+    /// Laser ▸ Feeder: repeat, feed before and after, pause (FE01).
+    Feeder,
+    /// Laser ▸ Preflight: the findings of the plan on screen, with "show source" (C09).
+    Preflight,
+    /// Edit ▸ Cutting order: hard "this layer completely before that one" constraints (C06).
+    Order,
+    /// Edit ▸ Sub-layers: the sub-layers of a layer and the order they run in (C11).
+    Sublayers,
 }
 
 impl CamDialog {
-    pub const ALL: [CamDialog; 5] = [
+    /// The order is the order of the command ids of the hosts: new dialogs are appended.
+    pub const ALL: [CamDialog; 10] = [
         CamDialog::Optimization,
         CamDialog::MaterialTest,
         CamDialog::IntervalTest,
         CamDialog::FocusTest,
         CamDialog::Device,
+        CamDialog::Array,
+        CamDialog::Feeder,
+        CamDialog::Preflight,
+        CamDialog::Order,
+        CamDialog::Sublayers,
     ];
 
     /// The three generators; their result is a private test job.
@@ -120,6 +136,52 @@ pub enum DialogField {
     GrblWorkCoordinate,
     /// Decimals of the coordinates (1 to 4).
     GrblDecimals,
+    // Array
+    /// Grid, circular or along a path ([`DialogChoice::ArrayGrid`] …).
+    ArrayKind,
+    GridColumns,
+    GridRows,
+    GridPitchX,
+    GridPitchY,
+    CircularCount,
+    CircularCentreX,
+    CircularCentreY,
+    /// Degrees; 360 spaces the copies over the full circle.
+    CircularSweep,
+    CircularRotate,
+    PathCount,
+    /// The object to follow: a pop-up whose entries are the row's `labels`.
+    PathAlong,
+    PathOrient,
+    // Feeder
+    FeederRepeat,
+    /// Material advance before each run, mm.
+    FeederFeedBefore,
+    FeederFeedAfter,
+    /// Seconds between two runs.
+    FeederPause,
+    /// Feed speed, mm/s.
+    FeederSpeed,
+    // Preflight
+    /// The finding the "show source" button works on: a pop-up whose entries are the row's labels.
+    PreflightPick,
+    // Cutting order
+    OrderBefore,
+    OrderAfter,
+    /// The stored constraints, to pick one to remove.
+    OrderExisting,
+    // Sub-layers
+    /// The layer whose sub-layers are edited.
+    SubLayer,
+    /// The sub-layer the fields below show.
+    SubIndex,
+    SubMode,
+    SubSpeed,
+    /// Power in percent (a sub-layer has one power, minimum = maximum).
+    SubPower,
+    SubPasses,
+    /// Fill line interval in mm (Fill sub-layers only).
+    SubInterval,
 }
 
 /// An entry of a pop-up field.
@@ -151,6 +213,11 @@ pub enum DialogChoice {
     WorkCoordG57,
     WorkCoordG58,
     WorkCoordG59,
+    ArrayGrid,
+    ArrayCircular,
+    ArrayPath,
+    SubLine,
+    SubFill,
 }
 
 const CELL_MODES: [DialogChoice; 2] = [DialogChoice::CellLine, DialogChoice::CellFill];
@@ -179,6 +246,8 @@ const WORK_COORDINATES: [DialogChoice; 7] = [
     DialogChoice::WorkCoordG58,
     DialogChoice::WorkCoordG59,
 ];
+const SUB_MODES: [DialogChoice; 2] = [DialogChoice::SubLine, DialogChoice::SubFill];
+const ARRAY_KINDS: [DialogChoice; 3] = [DialogChoice::ArrayGrid, DialogChoice::ArrayCircular, DialogChoice::ArrayPath];
 
 impl DialogField {
     /// The entries of a pop-up field (empty for the others).
@@ -191,6 +260,8 @@ impl DialogField {
             DialogField::Backend => &BACKENDS,
             DialogField::GrblPowerMode => &POWER_MODES,
             DialogField::GrblWorkCoordinate => &WORK_COORDINATES,
+            DialogField::ArrayKind => &ARRAY_KINDS,
+            DialogField::SubMode => &SUB_MODES,
             _ => &[],
         }
     }
@@ -211,7 +282,9 @@ impl DialogField {
             | DialogField::RotaryEnabled
             | DialogField::GrblLaserMode
             | DialogField::GrblAirAssist
-            | DialogField::RotaryMirror => DialogControl::Flag,
+            | DialogField::RotaryMirror
+            | DialogField::CircularRotate
+            | DialogField::PathOrient => DialogControl::Flag,
             DialogField::CellMode
             | DialogField::ColumnParameter
             | DialogField::RowParameter
@@ -219,7 +292,16 @@ impl DialogField {
             | DialogField::Backend
             | DialogField::GrblPowerMode
             | DialogField::GrblWorkCoordinate
-            | DialogField::RotaryKind => DialogControl::Choice,
+            | DialogField::RotaryKind
+            | DialogField::ArrayKind
+            | DialogField::PathAlong
+            | DialogField::PreflightPick
+            | DialogField::OrderBefore
+            | DialogField::OrderAfter
+            | DialogField::OrderExisting
+            | DialogField::SubLayer
+            | DialogField::SubIndex
+            | DialogField::SubMode => DialogControl::Choice,
             _ => DialogControl::Text,
         }
     }
@@ -285,6 +367,10 @@ pub enum DialogError {
     TooManyCells,
     /// The machine profile does not support the feature the field needs.
     Unsupported(Feature),
+    /// An array of zero copies, or of more than the document allows.
+    TooManyCopies,
+    /// Array along a path: there is no object to follow.
+    NoPath,
 }
 
 /// What a dialog says in words besides its fields.
@@ -320,6 +406,68 @@ pub enum DialogNote {
     RdRefused(RdRefusal),
     /// Writing the file failed.
     ExportFailed,
+    /// Array: the dialog works on exactly one selected object.
+    ArrayNeedsOneObject,
+    /// Array: what the draft makes, in whole micrometres (copies include the original).
+    ArrayExtent {
+        copies: u32,
+        width_um: u64,
+        height_um: u64,
+    },
+    /// Feeder: the plan has feeds or pauses, which have no proven RD form: preview only.
+    FeederHasNoRdForm,
+    /// Preflight: there is no plan yet; compile first.
+    PreflightNoPlan,
+    /// Preflight: the plan is out of date; the list describes the plan, not the document.
+    PreflightStale,
+    PreflightCounts {
+        errors: u32,
+        warnings: u32,
+    },
+    PreflightClean,
+    /// What one finding says (the label of an entry of the list).
+    Finding(FindingKind),
+    /// Order: the new constraint would close a cycle through the layers listed under the form.
+    OrderCycle,
+    /// Order: a layer cannot come before itself.
+    OrderSameLayer,
+    /// Order: this constraint exists already.
+    OrderDuplicate,
+    /// Sub-layers: the layer has none yet.
+    SublayersNone,
+    /// Sub-layers: the most a layer can have are there.
+    SublayersFull,
+}
+
+/// The kind of a preflight finding, without the identities (the entry's text names the object).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FindingKind {
+    OutsideBed,
+    TravelOutsideBed,
+    OpenFillContour,
+    SpeedAboveMachineMax,
+    PowerOutsideMachineRange,
+    DuplicateCut,
+    EmptyOperation,
+    UnassignedGeometry,
+    StalePlan,
+    UnsupportedFeature,
+    InvalidTabs,
+    SharedBoundaryCutOnce,
+}
+
+/// One entry of a document-dependent pop-up: an optional localised phrase and the data (names).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogLabel {
+    pub note: Option<DialogNote>,
+    pub text: String,
+}
+
+impl DialogLabel {
+    pub fn plain(text: impl Into<String>) -> Self {
+        DialogLabel { note: None, text: text.into() }
+    }
 }
 
 /// Why a plan cannot be written as RD (the Ruida backend has no proven form for it). Said in
@@ -341,6 +489,8 @@ pub enum RdRefusal {
     TooManyParts,
     /// A negative machine coordinate (not confirmed for RD).
     NegativeCoordinate,
+    /// Feeder feeds and pauses.
+    Feeder,
 }
 
 impl RdRefusal {
@@ -353,6 +503,7 @@ impl RdRefusal {
             "focus offset" => RdRefusal::FocusOffset,
             "scan angle" => RdRefusal::ScanAngle,
             "grayscale modulation" => RdRefusal::GrayscaleModulation,
+            "feeder" => RdRefusal::Feeder,
             _ => RdRefusal::Other,
         }
     }
@@ -370,6 +521,9 @@ pub struct DialogRow {
     pub blocked_choices: Vec<(DialogChoice, MessageKey)>,
     /// Optimization order rows: whether the level can move up / down.
     pub reorder: Option<(bool, bool)>,
+    /// A pop-up whose entries depend on the document (the objects an array can follow): their
+    /// titles. Empty: the entries are [`DialogField::choices`].
+    pub labels: Vec<DialogLabel>,
 }
 
 /// What an action button does.
@@ -389,6 +543,15 @@ pub enum DialogAction {
     ExportRd(PathBuf),
     /// Device: back to the flat bed (the profile as before the rotary).
     ReturnToFlatbed,
+    /// Preflight: select the cause of the chosen finding and centre the view on it.
+    ShowSource,
+    /// Order: add the chosen constraint.
+    AddRow,
+    /// Order: remove the chosen constraint.
+    RemoveRow,
+    /// Sub-layers: move the chosen sub-layer earlier / later in the list.
+    MoveRowUp,
+    MoveRowDown,
 }
 
 /// A button of the dialog.
@@ -408,6 +571,11 @@ pub enum DialogActionKind {
     Generate,
     ExportRd,
     ReturnToFlatbed,
+    ShowSource,
+    AddRow,
+    RemoveRow,
+    MoveRowUp,
+    MoveRowDown,
 }
 
 /// How a machine profile supports one feature, for the capability list of Device Settings.
@@ -452,6 +620,8 @@ pub struct DialogViewModel {
     pub result: Option<TestResultView>,
     /// A generate is running.
     pub busy: bool,
+    /// Lines of the user's own data under the form (names of the layers on a cycle).
+    pub lines: Vec<String>,
 }
 
 impl DialogViewModel {

@@ -142,6 +142,10 @@ fn encode_advanced(a: &AdvancedOptions, out: &mut CanonicalWriter) {
         out.tag("advanced-z");
         out.f64(z.mm());
     }
+    if let Some(tool) = a.tool {
+        out.tag("advanced-tool");
+        out.tag(tool.name());
+    }
 }
 
 /// `tag("advanced-ext")` + tab spacing (optional `f64` spacing, then width) + lead in and lead

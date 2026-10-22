@@ -4,7 +4,7 @@ use burnburn_types::{GeometryId, IdAllocator, OperationId};
 
 use super::{
     AdvancedOptions, CutPriority, MaterialRecipe, Operation, OperationDraft, OptimizationSettings, OrderConstraint,
-    ProcessError, ProcessLayer, RecipeDraft, RecipeId, RecipeRef,
+    ProcessError, ProcessLayer, RecipeDraft, RecipeId, RecipeRef, ToolLayer,
 };
 use crate::command::CommandError;
 
@@ -80,6 +80,11 @@ pub enum ProcessCommand {
     SetNotes {
         text: String,
     },
+    /// Appends a tool layer (T1/T2: guides, registration; never output) that references `targets`.
+    AddToolLayer {
+        tool: ToolLayer,
+        targets: Vec<GeometryId>,
+    },
 }
 
 impl ProcessCommand {
@@ -105,6 +110,7 @@ pub enum ProcessLabel {
     SetOptimization,
     SetPriority,
     SetNotes,
+    AddToolLayer,
 }
 
 impl ProcessCommand {
@@ -124,6 +130,7 @@ impl ProcessCommand {
             ProcessCommand::SetOptimization { .. } => ProcessLabel::SetOptimization,
             ProcessCommand::SetPriority { .. } => ProcessLabel::SetPriority,
             ProcessCommand::SetNotes { .. } => ProcessLabel::SetNotes,
+            ProcessCommand::AddToolLayer { .. } => ProcessLabel::AddToolLayer,
         }
     }
 }
@@ -149,6 +156,9 @@ pub(crate) fn apply(cmd: ProcessCommand, t: ProcessTxn<'_>) -> Result<(), Comman
         }
         ProcessCommand::UpdateOperation { operation, draft } => {
             let (i, op) = find(t.layer, operation)?;
+            if op.tool().is_some() && draft.output_enabled {
+                return Err(err(ProcessError::ToolLayerNoOutput(operation)));
+            }
             t.layer.operations[i] = Arc::new(op.with_draft(draft));
             t.operations.push(operation);
         }
@@ -219,6 +229,15 @@ pub(crate) fn apply(cmd: ProcessCommand, t: ProcessTxn<'_>) -> Result<(), Comman
             t.layer.optimization = settings;
             t.operations.extend(t.layer.operations().map(|o| o.id()));
         }
+        ProcessCommand::AddToolLayer { tool, targets } => {
+            check_geometry(&t, &targets)?;
+            let id: OperationId = t.ids.allocate().map_err(|_| CommandError::IdsExhausted)?;
+            let op = Operation::new(id, tool_draft(tool).map_err(err)?, targets, None)
+                .and_then(|op| op.with_advanced(AdvancedOptions { tool: Some(tool), ..AdvancedOptions::default() }))
+                .map_err(err)?;
+            t.layer.operations.push(Arc::new(op));
+            t.operations.push(id);
+        }
         ProcessCommand::SetPriority { geometry, priority } => {
             check_geometry(&t, &[geometry])?;
             if priority == CutPriority::default() {
@@ -249,4 +268,21 @@ fn find(layer: &ProcessLayer, id: OperationId) -> Result<(usize, Arc<Operation>)
     let i = layer.operations.iter().position(|o| o.id() == id);
     let i = i.ok_or(CommandError::Process(ProcessError::UnknownOperation(id)))?;
     Ok((i, Arc::clone(&layer.operations[i])))
+}
+
+/// The draft of a tool layer: named after it, a plain line layer without power, never output.
+fn tool_draft(tool: ToolLayer) -> Result<OperationDraft, ProcessError> {
+    use super::{Kerf, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, Speed};
+    let off = PowerPercent::new(0.0)?;
+    Ok(OperationDraft {
+        name: tool.name().to_owned(),
+        mode: OperationMode::Line { kerf: Kerf::NONE },
+        settings: ProcessSettings {
+            speed: Speed::mm_per_s(100.0)?,
+            power: PowerRange::new(off, off)?,
+            passes: Passes::new(1)?,
+            air_assist: false,
+        },
+        output_enabled: false,
+    })
 }

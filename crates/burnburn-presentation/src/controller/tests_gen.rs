@@ -537,6 +537,7 @@ pub(super) fn view(s: &Session, dialog: CamDialog, machine: Option<&Machine>) ->
                 error: draft.errors.get(&field).copied(),
                 blocked_choices,
                 reorder: None,
+                labels: Vec::new(),
             }
         })
         .collect();
@@ -586,6 +587,7 @@ pub(super) fn view(s: &Session, dialog: CamDialog, machine: Option<&Machine>) ->
         capabilities: Vec::new(),
         result,
         busy,
+        lines: Vec::new(),
     })
 }
 

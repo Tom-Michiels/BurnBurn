@@ -49,6 +49,10 @@ pub struct PlanPreview {
     /// Constant-velocity **estimate** in seconds: every move at its nominal speed, no
     /// acceleration, no firmware overscan behaviour. Not a measured duration.
     pub estimated_seconds: f64,
+    /// Feeder (FE01): total material advance of the plan in mm; its time is in the estimate.
+    pub feed_length_mm: f64,
+    /// Feeder (FE01): total of the pauses in seconds; part of the estimate.
+    pub pause_seconds: f64,
 }
 
 /// Derives preview data from `plan`. Travel time uses the profile's travel speed; burning and
@@ -62,6 +66,8 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
         overscan_length_mm: 0.0,
         travel_length_mm: 0.0,
         estimated_seconds: 0.0,
+        feed_length_mm: 0.0,
+        pause_seconds: 0.0,
     };
     let travel_speed = profile.travel_speed_mm_s();
     let mut at = plan.start();
@@ -102,6 +108,15 @@ pub fn preview(plan: &JobPlan, profile: &MachineProfile) -> PlanPreview {
                 at = to;
             }
             PlanEvent::FocusOffset { .. } => {}
+            // The material moves, not the head: no drawn move, but the time and the totals count.
+            PlanEvent::Feed { mm, speed_mm_s } => {
+                pv.feed_length_mm += mm;
+                pv.estimated_seconds += mm / speed_mm_s;
+            }
+            PlanEvent::Pause { seconds } => {
+                pv.pause_seconds += seconds;
+                pv.estimated_seconds += seconds;
+            }
             PlanEvent::Dot { origin } => {
                 // Zero length, so only the pulse time counts.
                 push(MoveKind::Dot, at, at, origin, 1.0);

@@ -475,6 +475,7 @@ impl AppController {
                 error: draft.errors.get(&field).copied(),
                 blocked_choices: Vec::new(),
                 reorder: None,
+                labels: Vec::new(),
             });
         }
         let dialect = if grbl_on { DialogNote::GrblUnverified } else { DialogNote::DialectUnverified };
@@ -515,6 +516,7 @@ impl AppController {
             capabilities,
             result: None,
             busy: false,
+            lines: Vec::new(),
         })
     }
 

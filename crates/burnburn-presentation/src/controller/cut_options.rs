@@ -7,7 +7,7 @@
 
 use burnburn_document::process::{
     AdvancedOptions, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead, LeadStyle,
-    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec, ZOffset,
+    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec, ZOffset, ZStep,
 };
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::Length;
@@ -152,6 +152,7 @@ pub(super) fn extras_of(op: &Operation) -> CutExtras {
     use burnburn_document::process::OperationMode as M;
     let mut e = CutExtras::new();
     e.set_text(CutField::ZOffset, format_mm(op.advanced().z_offset.map_or(0.0, |z| z.mm())));
+    e.set_text(CutField::ZStep, format_mm(op.advanced().z_step.map_or(0.0, |z| z.mm())));
     if let M::Image(i) = op.mode() {
         image_extras(&i, &mut e);
         return e;
@@ -179,7 +180,7 @@ pub(super) fn gates_of(kind: OperationKind, caps: &MachineCapabilities) -> CutGa
             }
         }
     };
-    block(&[CutField::ZOffset], Feature::ZStep);
+    block(&[CutField::ZOffset, CutField::ZStep], Feature::ZStep);
     match kind {
         OperationKind::Image => {
             for choice in CutField::ImageMode.choices() {
@@ -526,7 +527,22 @@ pub(super) fn apply(
     if changed(&[CutField::ZOffset]) {
         advanced.z_offset = z_offset(merged.text(CutField::ZOffset))?;
     }
+    if changed(&[CutField::ZStep]) {
+        advanced.z_step = z_step(merged.text(CutField::ZStep))?;
+    }
     Ok((mode, advanced))
+}
+
+/// `0` or an empty field is no step; otherwise a signed length of at most 50 mm.
+fn z_step(text: &str) -> Result<Option<ZStep>, MessageKey> {
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let length = parse_position(text).map_err(|_| invalid(CutField::ZStep))?;
+    if length.mm() == 0.0 {
+        return Ok(None);
+    }
+    ZStep::new(length).map(Some).map_err(|_| invalid(CutField::ZStep))
 }
 
 /// `0` or an empty field is no offset; otherwise a signed length of at most 50 mm.

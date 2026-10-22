@@ -97,6 +97,8 @@ impl AppController {
             });
         let mut sketch_overlays = sketch::scene_overlays(s, preview.as_ref());
         sketch_overlays.extend(super::nest::scene_overlays(s));
+        sketch_overlays.extend(super::array_dialog::scene_overlays(s));
+        sketch_overlays.extend(super::kerf_view::scene_overlays(s));
         let mut scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
@@ -125,9 +127,17 @@ pub(super) fn document_view(
     display: super::prefs::LengthUnit,
 ) -> DocumentViewModel {
     let snapshot = s.doc.snapshot();
+    // One pass over the layers: how many of them use each object.
+    let mut linked: std::collections::BTreeMap<burnburn_types::GeometryId, usize> = std::collections::BTreeMap::new();
+    for op in snapshot.process().operations() {
+        for g in op.targets() {
+            *linked.entry(*g).or_default() += 1;
+        }
+    }
     let objects = snapshot
         .objects()
         .map(|(gid, obj)| ObjectRow {
+            linked: linked.get(&gid).copied().unwrap_or(0),
             id: gid,
             label: obj.name().to_owned(),
             depth: 0,

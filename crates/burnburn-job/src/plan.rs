@@ -129,7 +129,10 @@ impl JobPlan {
                 }
                 // A pulse burns where the head is: that position is part of the bounds.
                 PlanEvent::Dot { .. } => add(at),
-                PlanEvent::OperationBoundary { .. } | PlanEvent::FocusOffset { .. } => {}
+                PlanEvent::OperationBoundary { .. }
+                | PlanEvent::FocusOffset { .. }
+                | PlanEvent::Feed { .. }
+                | PlanEvent::Pause { .. } => {}
             }
         }
         b
@@ -233,6 +236,19 @@ impl JobPlanBuilder {
             PlanEvent::Dot { .. } => {
                 if !matches!(mode(self)?, PlanMode::Dots { .. }) {
                     return Err(PlanError::EventDoesNotMatchMode);
+                }
+            }
+            PlanEvent::Feed { mm, speed_mm_s } => {
+                if !(mm.is_finite() && mm >= 0.0) {
+                    return Err(PlanError::OutOfRange("feed"));
+                }
+                if !(speed_mm_s.is_finite() && speed_mm_s > 0.0) {
+                    return Err(PlanError::OutOfRange("feed speed"));
+                }
+            }
+            PlanEvent::Pause { seconds } => {
+                if !(seconds.is_finite() && seconds >= 0.0) {
+                    return Err(PlanError::OutOfRange("pause"));
                 }
             }
         }
@@ -366,6 +382,15 @@ fn canonical_bytes(b: &JobPlanBuilder) -> Result<Vec<u8>, PlanError> {
                 w.f64(line.overscan_mm);
                 w.f64(ramp_mm);
                 origin(&mut w, o);
+            }
+            PlanEvent::Feed { mm, speed_mm_s } => {
+                w.tag("feed");
+                w.f64(mm);
+                w.f64(speed_mm_s);
+            }
+            PlanEvent::Pause { seconds } => {
+                w.tag("pause");
+                w.f64(seconds);
             }
         }
     }

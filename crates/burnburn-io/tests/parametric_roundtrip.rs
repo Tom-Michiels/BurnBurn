@@ -29,6 +29,7 @@ fn project_with(session: &DocumentSession) -> Project {
         revisions: Vec::new(),
         library_links: Vec::new(),
         production: None,
+        layer_slots: Vec::new(),
     }
 }
 
@@ -204,6 +205,7 @@ fn a_plain_object_with_a_shape_kind_still_loads_without_definition() {
         revisions: Vec::new(),
         library_links: Vec::new(),
         production: None,
+        layer_slots: Vec::new(),
     };
     let back = decode_container(&encode_container(&project).unwrap()).unwrap();
     assert!(back.document.object(GeometryId::from_raw(1)).unwrap().parametric().is_none());

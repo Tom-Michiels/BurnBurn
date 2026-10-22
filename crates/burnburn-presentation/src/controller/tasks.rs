@@ -174,16 +174,18 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
+                let feeder = s.cam.feeder.take_task(outcome.id);
                 s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 let grbl = Compiled::grbl_for(&plan, machine.as_ref());
-                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, outdated: false, record, grbl });
+                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, outdated: false, record, grbl, feeder });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
+                let feeder = s.cam.feeder.take_task(outcome.id);
                 s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
                 let grbl = Compiled::grbl_for(&plan, machine.as_ref());
-                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, outdated: false, record, grbl });
+                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, outdated: false, record, grbl, feeder });
                 update.scenes_changed.push(document);
             }
             Err(TaskError::Placement(why)) => {
@@ -192,7 +194,10 @@ impl AppController {
                     .effects
                     .push(HostEffect::ShowError { document: Some(document), message: MessageKey::LaserRefused(why) });
             }
-            Err(TaskError::Compile(_)) => s.messages.push(StatusMessage { key: MessageKey::CompileFailed }),
+            Err(TaskError::Compile(_) | TaskError::Feeder(_)) => {
+                s.cam.feeder.take_task(outcome.id);
+                s.messages.push(StatusMessage { key: MessageKey::CompileFailed });
+            }
             Ok(TaskOutput::ExportedRd { plan, path, rd_hash, bytes }) => {
                 let plan_revision = s
                     .compiled

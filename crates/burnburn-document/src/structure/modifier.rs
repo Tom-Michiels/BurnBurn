@@ -1,7 +1,7 @@
 //! Non-destructive modifier chains (E06): a source object stays editable; the chain's output
 //! is derived geometry (`DerivedOwner::Modifier`) re-evaluated whenever its inputs change.
 
-use burnburn_geometry::array::{CircularArray, GridArray};
+use burnburn_geometry::array::{CircularArray, GridArray, PathArray, path_array};
 use burnburn_geometry::{
     Affine, BooleanError, BooleanOp, BooleanOptions, FillRule, OffsetError, OffsetJoin, Path, Point,
     ProductionTolerance, Segment, Subpath, Vector, boolean, offset,
@@ -33,6 +33,10 @@ pub enum Modifier {
     GridArray(GridArray),
     /// `count` copies around a centre (IM26 array as a modifier; `geometry::array`).
     CircularArray(CircularArray),
+    /// `count` copies along another object's first outline (AR02, copy along path): the source
+    /// is carried rigidly from the start of `along` to evenly spaced points on it, turning with
+    /// the path when `orient` is set. See [`burnburn_geometry::array::path_array`].
+    PathArray { count: u32, along: GeometryId, orient: bool },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,8 +71,10 @@ impl ModifierChain {
     pub fn inputs(&self) -> Vec<GeometryId> {
         let mut out = vec![self.source];
         for s in &self.steps {
-            if let Modifier::Boolean { with, .. } = &s.modifier {
-                out.extend(with.iter().copied());
+            match &s.modifier {
+                Modifier::Boolean { with, .. } => out.extend(with.iter().copied()),
+                Modifier::PathArray { along, .. } => out.push(*along),
+                _ => {}
             }
         }
         out
@@ -182,8 +188,20 @@ pub(crate) fn evaluate_chain<'a>(
                     path = out;
                 }
             }
-            Modifier::LinearArray { .. } | Modifier::GridArray(_) | Modifier::CircularArray(_) => {
-                let Some(transforms) = array_transforms(&step.modifier) else {
+            Modifier::LinearArray { .. }
+            | Modifier::GridArray(_)
+            | Modifier::CircularArray(_)
+            | Modifier::PathArray { .. } => {
+                let transforms = match &step.modifier {
+                    Modifier::PathArray { count, along, orient } => {
+                        let Some(carrier) = lookup(*along) else {
+                            return failed(EvalDiagnosis::MissingSources { objects: vec![*along] });
+                        };
+                        path_array(carrier.path(), &PathArray { count: *count, orient: *orient }, &tol).ok()
+                    }
+                    other => array_transforms(other),
+                };
+                let Some(transforms) = transforms else {
                     return failed(fail(ModifierFailure::InvalidValue));
                 };
                 let copies = u32::try_from(transforms.len()).unwrap_or(u32::MAX);
@@ -292,6 +310,12 @@ impl CanonicalEncode for ModifierChain {
                     out.u64(u64::from(g.rows));
                     out.f64(g.pitch_x.mm());
                     out.f64(g.pitch_y.mm());
+                }
+                Modifier::PathArray { count, along, orient } => {
+                    out.tag("path-array");
+                    out.u64(u64::from(*count));
+                    out.u64(along.raw());
+                    out.bool(*orient);
                 }
                 Modifier::CircularArray(c) => {
                     out.tag("circular-array");

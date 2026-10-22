@@ -38,6 +38,7 @@ impl AppController {
                 let mut project = Project::new(s.uuid, (*snapshot).clone());
                 project.assets = s.assets.clone();
                 project.library_links = s.library_links.clone();
+                project.layer_slots = super::layers::export(s);
                 let path = dir.join(format!(
                     "{}.burnburn",
                     s.uuid.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>()

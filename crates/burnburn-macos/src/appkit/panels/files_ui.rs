@@ -107,13 +107,18 @@ impl Link {
 pub(crate) fn set_popup(popup: &NSPopUpButton, model: &Popup, select: bool) {
     let current: Vec<String> = popup.itemTitles().iter().map(|t| t.to_string()).collect();
     let changed = current != model.items;
+    // Rebuilding the items drops the selection; a pop-up the user drives keeps their pick when a
+    // title merely changed (a layer whose origin text changes after Bijwerken).
+    let picked = popup.indexOfSelectedItem();
     if changed {
         popup.removeAllItems();
         for title in &model.items {
             popup.addItemWithTitle(&NSString::from_str(title));
         }
     }
-    let wanted = model.selected.and_then(|i| isize::try_from(i).ok()).unwrap_or(-1);
+    let kept = (!select && changed && picked >= 0 && usize::try_from(picked).is_ok_and(|i| i < model.items.len()))
+        .then_some(picked);
+    let wanted = kept.unwrap_or_else(|| model.selected.and_then(|i| isize::try_from(i).ok()).unwrap_or(-1));
     if (select || changed) && popup.indexOfSelectedItem() != wanted {
         // An index beyond the items raises NSRangeException: the model never holds one, but a
         // stale value must not abort the app.

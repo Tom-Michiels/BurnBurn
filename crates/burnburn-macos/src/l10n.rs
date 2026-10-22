@@ -1118,6 +1118,7 @@ pub fn option_caption(field: burnburn_presentation::CutField, locale: Locale) ->
         F::ScreenCell => ("Rastercel (mm)", "Screen cell (mm)"),
         F::ScreenAngle => ("Rasterhoek (°)", "Screen angle (°)"),
         F::ZOffset => ("Z-offset (mm, 0 = geen)", "Z offset (mm, 0 = none)"),
+        F::ZStep => ("Z per doorgang (mm, 0 = geen)", "Z per pass (mm, 0 = none)"),
         _ => ("", ""),
     };
     match locale {
@@ -1500,6 +1501,14 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             ),
             _ => return None,
         },
+        M::TabsDoNotFit => (
+            "De tabs passen niet meer op een vorm van deze laag: verklein ze of maak ze minder.",
+            "The tabs no longer fit a shape on this layer: make them smaller or fewer.",
+        ),
+        M::ToolLayerNoOutput => (
+            "Een toollaag (T1/T2) wordt nooit uitgevoerd: de uitvoer kan niet aan.",
+            "A tool layer (T1/T2) is never output: its output cannot be switched on.",
+        ),
         M::SelectObjectsFirst => {
             ("Selecteer eerst objecten en klik dan een kleur.", "Select objects first, then click a colour.")
         }
@@ -1633,6 +1642,10 @@ pub fn rd_refusal_text(reason: burnburn_presentation::RdRefusal, locale: Locale)
         RdRefusal::TooManyParts => (
             "Meer instellingenblokken dan het RD-formaat toelaat (128): RD-uitvoer wordt geweigerd.",
             "More settings blocks than the RD format allows (128): RD output is refused.",
+        ),
+        RdRefusal::Feeder => (
+            "Voeden en pauzeren van de feeder hebben nog geen bewezen RD-vorm: RD-uitvoer wordt geweigerd.",
+            "Feeder feeds and pauses have no proven RD form yet: RD output is refused.",
         ),
         RdRefusal::NegativeCoordinate => (
             "Een coördinaat onder nul is niet bevestigd voor RD: RD-uitvoer wordt geweigerd.",
@@ -1801,6 +1814,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             burnburn_presentation::RdRefusal::Other,
             burnburn_presentation::RdRefusal::TooManyParts,
             burnburn_presentation::RdRefusal::NegativeCoordinate,
+            burnburn_presentation::RdRefusal::Feeder,
         ]
         .map(MessageKey::RdRefused),
     );
@@ -1818,6 +1832,8 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::InvalidNumber),
     );
     keys.push(MessageKey::SelectObjectsFirst);
+    keys.push(MessageKey::ToolLayerNoOutput);
+    keys.push(MessageKey::TabsDoNotFit);
     keys.extend(burnburn_presentation::CutField::ALL.map(MessageKey::InvalidCutField));
     keys.extend([
         MessageKey::CutOptionsConflict,

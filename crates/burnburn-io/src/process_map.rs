@@ -14,7 +14,7 @@ use burnburn_document::process::{
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
     Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId,
     RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement, TabSpec,
-    ToneSettings, ZOffset, ZStep,
+    ToneSettings, ToolLayer, ZOffset, ZStep,
 };
 use burnburn_types::{ContentHash, GeometryId, Length, OperationId, StableId};
 
@@ -168,6 +168,10 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
             SharedEdgePolicy::CutOnce => None,
             SharedEdgePolicy::CutPerRegion => Some(v1::SharedEdges::CutPerRegion),
         },
+        tool: a.tool.map(|t| match t {
+            ToolLayer::T1 => v1::ToolDto::T1,
+            ToolLayer::T2 => v1::ToolDto::T2,
+        }),
     }))
 }
 
@@ -534,6 +538,10 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
             None | Some(v1::SharedEdges::CutOnce) => SharedEdgePolicy::CutOnce,
             Some(v1::SharedEdges::CutPerRegion) => SharedEdgePolicy::CutPerRegion,
         },
+        tool: a.tool.map(|t| match t {
+            v1::ToolDto::T1 => ToolLayer::T1,
+            v1::ToolDto::T2 => ToolLayer::T2,
+        }),
     })
 }
 

@@ -65,6 +65,11 @@ impl Operation {
         &self.advanced
     }
 
+    /// The tool layer (T1/T2) this operation is, if any.
+    pub fn tool(&self) -> Option<super::ToolLayer> {
+        self.advanced.tool
+    }
+
     pub fn id(&self) -> OperationId {
         self.id
     }
@@ -82,7 +87,7 @@ impl Operation {
     }
     /// Disabled operations stay in the document but produce no output.
     pub fn output_enabled(&self) -> bool {
-        self.output_enabled
+        self.output_enabled && self.advanced.tool.is_none()
     }
     pub fn recipe(&self) -> Option<RecipeRef> {
         self.recipe
@@ -93,7 +98,7 @@ impl Operation {
             name: self.name.clone(),
             mode: self.mode,
             settings: self.settings,
-            output_enabled: self.output_enabled,
+            output_enabled: self.output_enabled(),
         }
     }
 

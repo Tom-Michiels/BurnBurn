@@ -165,7 +165,9 @@ pub fn preflight(snapshot: &DocumentSnapshot, plan: &JobPlan, profile: &MachineP
     let process = snapshot.process();
     let (min_power, max_power) = profile.power_range();
     let mut line_users: BTreeMap<GeometryId, Vec<OperationId>> = BTreeMap::new();
-    let mut used: BTreeSet<GeometryId> = BTreeSet::new();
+    // Guides and registration marks on a tool layer are on purpose in the document and off the job.
+    let mut used: BTreeSet<GeometryId> =
+        process.operations().filter(|o| o.tool().is_some()).flat_map(|o| o.targets().iter().copied()).collect();
     for op in process.operations().filter(|o| o.output_enabled()) {
         let id = op.id();
         let settings = op.settings();
@@ -289,11 +291,24 @@ fn add_invalid_tabs(
     op: &burnburn_document::process::Operation,
     add: &mut impl FnMut(Finding),
 ) {
-    let (OperationMode::Line { .. }, Some(tabs)) = (op.mode(), op.advanced().line.tabs) else { return };
+    for geometry in invalid_tab_geometries(snapshot, op) {
+        add(Finding::InvalidTabs { operation: op.id(), geometry });
+    }
+}
+
+/// The targets of Line operation `op` on which its tabs cannot be placed (they cover a whole
+/// contour, or the spacing asks for too many), without compiling: the Cut Settings sheet says so
+/// at the tab field as soon as the source changed.
+pub fn invalid_tab_geometries(
+    snapshot: &DocumentSnapshot,
+    op: &burnburn_document::process::Operation,
+) -> Vec<GeometryId> {
+    let mut found = Vec::new();
+    let (OperationMode::Line { .. }, Some(tabs)) = (op.mode(), op.advanced().line.tabs) else { return found };
     let Ok(tolerance) = burnburn_types::Length::from_mm(0.01).map(burnburn_geometry::ProductionTolerance::new) else {
-        return;
+        return found;
     };
-    let Ok(tolerance) = tolerance else { return };
+    let Ok(tolerance) = tolerance else { return found };
     for &g in op.targets() {
         let Some(object) = snapshot.object(g) else { continue };
         let invalid =
@@ -303,7 +318,8 @@ fn add_invalid_tabs(
                 crate::line::tab_count(&tabs, perimeter).is_none()
             });
         if invalid {
-            add(Finding::InvalidTabs { operation: op.id(), geometry: g });
+            found.push(g);
         }
     }
+    found
 }

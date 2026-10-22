@@ -1,6 +1,6 @@
 //! The operations panel: layer table, colour palette and the add row.
 
-use burnburn_presentation::{AppViewModel, LAYER_SLOTS, OperationField, OperationKind};
+use burnburn_presentation::{AppViewModel, OperationField, OperationKind, PALETTE_SLOTS, TOOL_SLOT_T1, TOOL_SLOT_T2};
 use burnburn_types::DocumentId;
 
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
@@ -147,12 +147,16 @@ impl OperationLine {
 
 /// Palette label of a colour slot (`C00` … `C29`, as LightBurn names its layers).
 pub fn layer_label(slot: u8) -> String {
-    format!("C{slot:02}")
+    match slot {
+        TOOL_SLOT_T1 => "T1".to_owned(),
+        TOOL_SLOT_T2 => "T2".to_owned(),
+        _ => format!("C{slot:02}"),
+    }
 }
 
 /// The colour slot of palette button `tag` (tag = slot).
 pub fn palette_slot(tag: isize) -> Option<u8> {
-    u8::try_from(tag).ok().filter(|s| *s < LAYER_SLOTS)
+    u8::try_from(tag).ok().filter(|s| *s < PALETTE_SLOTS)
 }
 
 fn objects_text(n: usize, locale: Locale) -> String {
@@ -176,7 +180,7 @@ pub struct PaletteButton {
 
 pub fn palette_buttons(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Vec<PaletteButton> {
     let ops = vm.document(document).map(|d| d.operations.as_slice()).unwrap_or_default();
-    (0..LAYER_SLOTS)
+    (0..PALETTE_SLOTS)
         .map(|slot| {
             let label = layer_label(slot);
             let layer = ops.iter().find(|o| o.slot == slot);

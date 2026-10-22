@@ -137,6 +137,9 @@ pub(crate) fn structure_to_dto(doc: &DocumentSnapshot) -> Result<Option<d::Struc
                                 rotate_items: c.rotate_items,
                                 reference: xy(c.reference),
                             },
+                            Modifier::PathArray { count, along, orient } => {
+                                d::ModifierKind::PathArray { count: *count, along: along.raw(), orient: *orient }
+                            }
                             // A step without a file form is an error, never silently dropped (a
                             // reopened file would compute something else).
                             other => return Err(SaveError::Encode(format!("no file form for modifier {other:?}"))),
@@ -373,6 +376,12 @@ pub(crate) fn structure_from_dto(
                     pitch_x: length(&|| format!("{}.pitch_mm[0]", sp()), pitch_mm[0])?,
                     pitch_y: length(&|| format!("{}.pitch_mm[1]", sp()), pitch_mm[1])?,
                 }),
+                d::ModifierKind::PathArray { count, along, orient } => {
+                    if *count == 0 {
+                        return Err(invalid(sp(), "array count 0"));
+                    }
+                    Modifier::PathArray { count: *count, along: GeometryId::from_raw(*along), orient: *orient }
+                }
                 d::ModifierKind::CircularArray { count, center, sweep_deg, rotate_items, reference } => {
                     Modifier::CircularArray(CircularArray {
                         count: *count,

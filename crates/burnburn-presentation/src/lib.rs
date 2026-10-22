@@ -52,8 +52,8 @@ pub use burnburn_machine::{
 };
 pub use cam_dialogs::{
     CamDialog, CapabilityRow, DialogAction, DialogActionKind, DialogActionState, DialogChoice, DialogControl,
-    DialogError, DialogField, DialogNote, DialogRow, DialogValue, DialogViewModel, RdRefusal, SupportView,
-    TestResultView,
+    DialogError, DialogField, DialogLabel, DialogNote, DialogRow, DialogValue, DialogViewModel, FindingKind, RdRefusal,
+    SupportView, TestResultView,
 };
 pub use camera::{
     BedCameraIntent, CameraAuthorization, CameraDevice, CameraDeviceId, CameraError, CameraFrame, CameraFrameInfo,
@@ -156,7 +156,7 @@ pub use view_model::{
     DocumentViewModel, ExportViewModel, FieldViewModel, GeometryDialogKind, GeometryDialogViewModel, ImportViewModel,
     InspectorViewModel, JobCardViewModel, LAYER_SLOTS, MachineButton, MachineStatusKey, MachineViewModel,
     MeasureViewModel, MessageKey, ModeChoice, ObjectRow, OperationRow, OperatorJobRow, OperatorViewModel,
-    OrderViewModel, ParamRow, PlanViewModel, ProblemViewModel, SelectionCycle, ShapePanelViewModel,
-    SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TaskBadge,
-    ToolMeasurement, ToolRejection, TraceSummary, TracerViewModel,
+    OrderViewModel, PALETTE_SLOTS, ParamRow, PlanViewModel, ProblemViewModel, SelectionCycle, ShapePanelViewModel,
+    SketchConstraintKind, SketchModeViewModel, SketchStatus, SketchViewModel, StatusMessage, TOOL_SLOT_T1,
+    TOOL_SLOT_T2, TaskBadge, ToolMeasurement, ToolRejection, TraceSummary, TracerViewModel,
 };

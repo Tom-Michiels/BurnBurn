@@ -253,6 +253,26 @@ pub struct SubOperation {
     pub settings: ProcessSettings,
 }
 
+/// A tool layer (LightBurn T1/T2): geometry kept in the document for guides and registration.
+/// It is drawn and linked like any layer but is never part of a job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ToolLayer {
+    T1,
+    T2,
+}
+
+impl ToolLayer {
+    pub const ALL: [ToolLayer; 2] = [ToolLayer::T1, ToolLayer::T2];
+
+    /// The name LightBurn gives the layer.
+    pub fn name(self) -> &'static str {
+        match self {
+            ToolLayer::T1 => "T1",
+            ToolLayer::T2 => "T2",
+        }
+    }
+}
+
 /// Everything beyond mode and basic settings. `Default` is "nothing extra".
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AdvancedOptions {
@@ -262,6 +282,8 @@ pub struct AdvancedOptions {
     pub z_offset: Option<ZOffset>,
     pub sub_operations: Vec<SubOperation>,
     pub shared_edges: SharedEdgePolicy,
+    /// Set on a tool layer (T1/T2): no output, no cut options.
+    pub tool: Option<ToolLayer>,
 }
 
 impl AdvancedOptions {
@@ -277,6 +299,23 @@ impl AdvancedOptions {
             return Err(ProcessError::OutOfRange { field: "sub-operations" });
         }
         let l = &self.line;
+        if self.tool.is_some() {
+            // A tool layer is never cut: nothing that shapes a cut can be set on it.
+            let cut_options = [
+                (l.tabs.is_some(), "tabs"),
+                (l.lead_in.is_some(), "lead-in"),
+                (l.lead_out.is_some(), "lead-out"),
+                (l.overcut.is_some(), "overcut"),
+                (l.perforation.is_some(), "perforation"),
+                (l.dot.is_some(), "dot mode"),
+                (self.z_step.is_some(), "z step"),
+                (self.z_offset.is_some(), "z offset"),
+                (!self.sub_operations.is_empty(), "sub-operations"),
+            ];
+            if let Some((_, second)) = cut_options.into_iter().find(|(on, _)| *on) {
+                return Err(ProcessError::ConflictingOptions { first: "tool layer", second });
+            }
+        }
         if l.dot.is_some() {
             let others = [
                 (l.tabs.is_some(), "tabs"),

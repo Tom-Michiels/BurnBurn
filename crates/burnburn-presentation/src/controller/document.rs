@@ -25,7 +25,7 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Opened { project, path }) => {
-                let Project { uuid, document: snapshot, assets, library_links, production, .. } = *project;
+                let Project { uuid, document: snapshot, assets, library_links, production, layer_slots, .. } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let session = match &restored {
                     // A recovered document is unsaved and untitled: Save asks for a location and
@@ -53,6 +53,7 @@ impl AppController {
                     let Session { variable, assets, .. } = &mut session;
                     variable.restore(production, assets);
                 }
+                session.layers.restore(&layer_slots);
                 session.snap = self.app.prefs.snap_settings();
                 self.sessions.insert(document, session);
                 self.active = Some(document);
@@ -147,6 +148,7 @@ impl AppController {
             project.assets = s.assets.clone();
             project.library_links = s.library_links.clone();
             project.production = s.variable.production(&mut project.assets);
+            project.layer_slots = super::layers::export(s);
             let cancel = CancellationSource::new();
             let request = TaskRequest {
                 id,
@@ -226,6 +228,7 @@ impl AppController {
         let mut project = Project::new(s.uuid, (*snapshot).clone());
         project.assets = s.assets.clone();
         project.library_links = s.library_links.clone();
+        project.layer_slots = super::layers::export(s);
         let content = match scope {
             TemplateScope::Everything => TemplateContent::Everything,
             TemplateScope::SettingsOnly => TemplateContent::SettingsOnly,
@@ -308,7 +311,7 @@ impl AppController {
     pub(super) fn template_opened(&mut self, document: DocumentId, path: PathBuf, outcome: TaskOutcome) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Files(crate::files_task::FilesOutput::TemplateOpened { project, .. })) => {
-                let Project { uuid, document: snapshot, assets, library_links, .. } = *project;
+                let Project { uuid, document: snapshot, assets, library_links, layer_slots, .. } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let unsaved = RevisionId::from_raw(doc.revision().raw().wrapping_add(1));
                 doc.mark_saved(unsaved);
@@ -320,6 +323,7 @@ impl AppController {
                 };
                 session.fonts = self.fonts.as_ref().map(|(f, _)| f.clone());
                 session.library_links = library_links;
+                session.layers.restore(&layer_slots);
                 self.sessions.insert(document, session);
                 self.active = Some(document);
                 self.warm_images(document);

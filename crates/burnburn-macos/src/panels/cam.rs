@@ -5,8 +5,8 @@
 
 use burnburn_document::process::OrderKey;
 use burnburn_presentation::{
-    CamDialog, CapabilityRow, DialogAction, DialogActionKind, DialogChoice, DialogError, DialogField, DialogNote,
-    DialogValue, DialogViewModel, Feature, SupportView, TestResultView, UiIntent,
+    CamDialog, CapabilityRow, DialogAction, DialogActionKind, DialogChoice, DialogError, DialogField, DialogLabel,
+    DialogNote, DialogValue, DialogViewModel, Feature, FindingKind, SupportView, TestResultView, UiIntent,
 };
 use burnburn_types::DocumentId;
 
@@ -29,6 +29,11 @@ pub fn cam_title(dialog: CamDialog, locale: Locale) -> &'static str {
             CamDialog::IntervalTest => ("Intervaltest", "Interval Test"),
             CamDialog::FocusTest => ("Focustest", "Focus Test"),
             CamDialog::Device => ("Apparaatinstellingen", "Device Settings"),
+            CamDialog::Array => ("Reeks", "Array"),
+            CamDialog::Feeder => ("Feeder", "Feeder"),
+            CamDialog::Preflight => ("Preflight", "Preflight"),
+            CamDialog::Order => ("Snijvolgorde", "Cutting order"),
+            CamDialog::Sublayers => ("Sublagen", "Sub-layers"),
         },
         locale,
     )
@@ -127,11 +132,76 @@ pub fn cam_caption(field: DialogField, vm: &DialogViewModel, locale: Locale) -> 
             F::GrblAirAssist => ("GRBL: luchtondersteuning op M8/M9", "GRBL: air assist on M8/M9"),
             F::GrblWorkCoordinate => ("GRBL: werkcoördinatensysteem", "GRBL: work coordinate system"),
             F::GrblDecimals => ("GRBL: decimalen in coördinaten (1–4)", "GRBL: decimals in coordinates (1–4)"),
+            F::ArrayKind => ("Soort reeks", "Kind of array"),
+            F::GridColumns => ("Kolommen", "Columns"),
+            F::GridRows => ("Rijen", "Rows"),
+            F::GridPitchX => ("Afstand tussen kolommen (mm)", "Column pitch (mm)"),
+            F::GridPitchY => ("Afstand tussen rijen (mm)", "Row pitch (mm)"),
+            F::CircularCount => ("Aantal kopieën", "Number of copies"),
+            F::CircularCentreX => ("Middelpunt X (mm)", "Centre X (mm)"),
+            F::CircularCentreY => ("Middelpunt Y (mm)", "Centre Y (mm)"),
+            F::CircularSweep => ("Hoek (graden, 360 = rond)", "Sweep (degrees, 360 = full circle)"),
+            F::CircularRotate => ("Kopieën meedraaien", "Turn the copies with the circle"),
+            F::PathCount => ("Aantal kopieën", "Number of copies"),
+            F::PathAlong => ("Langs dit pad", "Along this path"),
+            F::PreflightPick => ("Melding", "Finding"),
+            F::OrderBefore => ("Eerst deze laag", "This layer first"),
+            F::OrderAfter => ("Dan pas deze laag", "Only then this layer"),
+            F::OrderExisting => ("Bestaande volgorde", "Existing order"),
+            F::SubLayer => ("Laag", "Layer"),
+            F::SubIndex => ("Sublaag (in volgorde van uitvoeren)", "Sub-layer (in the order they run)"),
+            F::SubMode => ("Modus", "Mode"),
+            F::SubSpeed => ("Snelheid (mm/s)", "Speed (mm/s)"),
+            F::SubPower => ("Vermogen (%)", "Power (%)"),
+            F::SubPasses => ("Doorgangen", "Passes"),
+            F::SubInterval => ("Lijnafstand vulling (mm)", "Fill line interval (mm)"),
+            F::FeederRepeat => ("Herhalingen", "Repeats"),
+            F::FeederFeedBefore => ("Voeden voor elke run (mm)", "Feed before each run (mm)"),
+            F::FeederFeedAfter => ("Voeden na elke run (mm)", "Feed after each run (mm)"),
+            F::FeederPause => ("Pauze tussen de runs (s)", "Pause between runs (s)"),
+            F::FeederSpeed => ("Voedsnelheid (mm/s)", "Feed speed (mm/s)"),
+            F::PathOrient => ("Kopieën volgen de richting van het pad", "Copies follow the direction of the path"),
             _ => ("", ""),
         },
         locale,
     )
     .to_owned()
+}
+
+/// What one finding says, without the object it is about.
+pub fn finding_text(kind: FindingKind, locale: Locale) -> &'static str {
+    use FindingKind as K;
+    pick(
+        match kind {
+            K::OutsideBed => ("Snijdt buiten het bed:", "Cuts outside the bed:"),
+            K::TravelOutsideBed => ("Verplaatsing buiten het bed:", "Travel outside the bed:"),
+            K::OpenFillContour => ("Open contour in een vulling:", "Open contour in a fill:"),
+            K::SpeedAboveMachineMax => {
+                ("Snelheid boven het maximum van de machine:", "Speed above the machine maximum:")
+            }
+            K::PowerOutsideMachineRange => {
+                ("Vermogen buiten het bereik van de machine:", "Power outside the machine range:")
+            }
+            K::DuplicateCut => ("Dubbel gesneden:", "Cut more than once:"),
+            K::EmptyOperation => ("Laag zonder objecten:", "Layer without objects:"),
+            K::UnassignedGeometry => ("Op geen laag, wordt niet gemaakt:", "On no layer, will not be produced:"),
+            K::StalePlan => ("Het plan is verouderd.", "The plan is out of date."),
+            K::UnsupportedFeature => ("Niet ondersteund door dit profiel:", "Not supported by this profile:"),
+            K::InvalidTabs => ("Tabs passen niet op:", "Tabs do not fit:"),
+            K::SharedBoundaryCutOnce => ("Gedeelde rand wordt één keer gesneden:", "Shared edge is cut once:"),
+            _ => ("Melding:", "Finding:"),
+        },
+        locale,
+    )
+}
+
+/// An entry of a document-dependent pop-up: its phrase (if any) and the data.
+pub fn cam_label(label: &DialogLabel, locale: Locale) -> String {
+    match (&label.note, label.text.is_empty()) {
+        (Some(note), true) => cam_note(*note, locale),
+        (Some(note), false) => format!("{} {}", cam_note(*note, locale), label.text),
+        (None, _) => label.text.clone(),
+    }
 }
 
 /// Label of a pop-up entry.
@@ -163,6 +233,11 @@ pub fn cam_choice_label(choice: DialogChoice, locale: Locale) -> &'static str {
             C::WorkCoordG57 => ("G57", "G57"),
             C::WorkCoordG58 => ("G58", "G58"),
             C::WorkCoordG59 => ("G59", "G59"),
+            C::ArrayGrid => ("Raster (kolommen en rijen)", "Grid (columns and rows)"),
+            C::ArrayCircular => ("Cirkel", "Circular"),
+            C::ArrayPath => ("Langs een pad", "Along a path"),
+            C::SubLine => ("Lijn", "Line"),
+            C::SubFill => ("Vulling", "Fill"),
             _ => ("", ""),
         },
         locale,
@@ -197,6 +272,14 @@ pub fn cam_error(error: DialogError, locale: Locale) -> String {
                 Locale::Nl => format!("Ontbrekende capability: {name} (zie Apparaatinstellingen)."),
                 Locale::En => format!("Missing capability: {name} (see Device Settings)."),
             }
+        }
+        DialogError::TooManyCopies => pick(
+            ("Aantal moet minstens 1 zijn en hoogstens 100 000.", "The count must be at least 1 and at most 100,000."),
+            locale,
+        )
+        .to_owned(),
+        DialogError::NoPath => {
+            pick(("Er is geen ander object om te volgen.", "There is no other object to follow."), locale).to_owned()
         }
         _ => pick(("Ongeldig.", "Invalid."), locale).to_owned(),
     }
@@ -249,6 +332,58 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
         DialogNote::TestSaved => ("De test is als RD-bestand opgeslagen.", "The test was saved as an RD file."),
         DialogNote::ExportFailed => ("Het RD-bestand kon niet worden geschreven.", "The RD file could not be written."),
         DialogNote::RdRefused(reason) => return rd_refusal_text(reason, locale).to_owned(),
+        DialogNote::PreflightNoPlan => (
+            "Er is nog geen plan: compileer eerst (Productie ▸ Compileren).",
+            "There is no plan yet: compile first (Production ▸ Compile).",
+        ),
+        DialogNote::PreflightStale => (
+            "Het plan is verouderd: de lijst beschrijft het plan, niet het huidige ontwerp. Compileer opnieuw.",
+            "The plan is out of date: the list describes the plan, not the current design. Compile again.",
+        ),
+        DialogNote::PreflightCounts { errors, warnings } => {
+            return match locale {
+                Locale::Nl => format!(
+                    "{errors} {}, {warnings} {}.",
+                    if errors == 1 { "fout" } else { "fouten" },
+                    if warnings == 1 { "waarschuwing" } else { "waarschuwingen" }
+                ),
+                Locale::En => format!(
+                    "{errors} {}, {warnings} {}.",
+                    if errors == 1 { "error" } else { "errors" },
+                    if warnings == 1 { "warning" } else { "warnings" }
+                ),
+            };
+        }
+        DialogNote::PreflightClean => ("Geen meldingen.", "No findings."),
+        DialogNote::Finding(kind) => return finding_text(kind, locale).to_owned(),
+        DialogNote::OrderCycle => (
+            "Dat zou een kring maken: de lagen hieronder moeten al na elkaar. Er is niets veranderd.",
+            "That would make a cycle: the layers below already have to follow each other. Nothing changed.",
+        ),
+        DialogNote::OrderSameLayer => ("Een laag kan niet vóór zichzelf komen.", "A layer cannot come before itself."),
+        DialogNote::SublayersNone => (
+            "Deze laag heeft geen sublagen. Voeg toe maakt een kopie van de laag die direct erna wordt uitgevoerd.",
+            "This layer has no sub-layers. Add makes a copy of the layer that runs right after it.",
+        ),
+        DialogNote::SublayersFull => {
+            ("Een laag kan hoogstens 16 sublagen hebben.", "A layer can have at most 16 sub-layers.")
+        }
+        DialogNote::OrderDuplicate => ("Deze volgorde bestaat al.", "This order exists already."),
+        DialogNote::FeederHasNoRdForm => (
+            "Voeden en pauzeren hebben nog geen bewezen RD-vorm: het plan is alleen een voorbeeld, opslaan als RD en verzenden worden geweigerd.",
+            "Feeds and pauses have no proven RD form yet: the plan is a preview only, saving as RD and sending are refused.",
+        ),
+        DialogNote::ArrayNeedsOneObject => (
+            "Selecteer precies één object om een reeks van te maken.",
+            "Select exactly one object to make an array of.",
+        ),
+        DialogNote::ArrayExtent { copies, width_um, height_um } => {
+            let (w, h) = (width_um as f64 / 1000.0, height_um as f64 / 1000.0);
+            return match locale {
+                Locale::Nl => format!("{copies} kopieën (met het origineel), samen {w:.3} × {h:.3} mm."),
+                Locale::En => format!("{copies} copies (with the original), together {w:.3} × {h:.3} mm."),
+            };
+        }
         _ => ("", ""),
     };
     pick(pair, locale).to_owned()
@@ -258,6 +393,12 @@ pub fn cam_note(note: DialogNote, locale: Locale) -> String {
 pub fn cam_action_title(kind: DialogActionKind, dialog: CamDialog, locale: Locale) -> &'static str {
     pick(
         match (kind, dialog) {
+            (DialogActionKind::ShowSource, _) => ("Toon bron", "Show source"),
+            (DialogActionKind::AddRow, _) => ("Voeg toe", "Add"),
+            (DialogActionKind::RemoveRow, _) => ("Verwijder", "Remove"),
+            (DialogActionKind::MoveRowUp, _) => ("Eerder", "Earlier"),
+            (DialogActionKind::MoveRowDown, _) => ("Later", "Later"),
+            (DialogActionKind::Apply, CamDialog::Array) => ("Reeks maken", "Make array"),
             (DialogActionKind::Apply, _) => ("Toepassen", "Apply"),
             (DialogActionKind::Close, _) => ("Sluiten", "Close"),
             (DialogActionKind::Generate, _) => ("Maak test", "Generate test"),
@@ -405,6 +546,11 @@ pub fn cam_action_intent(
         DialogActionKind::Close => DialogAction::Close,
         DialogActionKind::Generate => DialogAction::Generate,
         DialogActionKind::ReturnToFlatbed => DialogAction::ReturnToFlatbed,
+        DialogActionKind::ShowSource => DialogAction::ShowSource,
+        DialogActionKind::AddRow => DialogAction::AddRow,
+        DialogActionKind::RemoveRow => DialogAction::RemoveRow,
+        DialogActionKind::MoveRowUp => DialogAction::MoveRowUp,
+        DialogActionKind::MoveRowDown => DialogAction::MoveRowDown,
         DialogActionKind::ExportRd => DialogAction::ExportRd(path?),
     };
     Some(UiIntent::CamDialogAction { document, dialog, action })

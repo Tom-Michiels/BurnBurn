@@ -271,12 +271,13 @@ fn roles_map_to_theme_styles() {
 /// One colour per layer-palette slot (presentation's `LAYER_SLOTS`, 30 like LightBurn's palette),
 /// all different and opaque, so every layer is recognisable on the canvas.
 #[test]
-fn layer_palette_has_thirty_distinct_opaque_colours() {
+fn layer_palette_has_thirty_two_distinct_opaque_colours() {
+    // 30 layer colours and the two tool layers T1/T2 (G5-cam).
     let t = Theme::light();
-    assert_eq!(t.process_layers.len(), 30);
+    assert_eq!(t.process_layers.len(), 32);
     let key = |c: &burnburn_render::Rgba| [c.r, c.g, c.b].map(|v| (v * 255.0).round() as u8);
     let distinct: std::collections::BTreeSet<_> = t.process_layers.iter().map(key).collect();
-    assert_eq!(distinct.len(), 30, "colours repeat");
+    assert_eq!(distinct.len(), 32, "colours repeat");
     assert!(t.process_layers.iter().all(|c| c.a == 1.0));
     assert_ne!(key(&t.process_layers[0]), key(&t.background), "a layer colour equal to the background");
 }

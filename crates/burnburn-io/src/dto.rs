@@ -471,6 +471,16 @@ pub mod v1 {
         /// Omitted for the default (`cut_once`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub shared_edges: Option<SharedEdges>,
+        /// Tool layer T1/T2 (G5-cam); omitted for an ordinary layer.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub tool: Option<ToolDto>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ToolDto {
+        T1,
+        T2,
     }
 
     /// Tabs: exactly one of `count` and `spacing_mm` (W1-L3) is present.

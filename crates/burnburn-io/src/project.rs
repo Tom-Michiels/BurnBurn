@@ -111,6 +111,9 @@ pub struct Project {
     /// Serial counter, chosen data row and advance policy of variable text (E11). Production
     /// bookkeeping, not design: no undo step and not part of the canonical project hash.
     pub production: Option<ProductionState>,
+    /// The palette button of each layer, `(operation id, slot)` (C01). Window convenience: not
+    /// part of the project hash, and a layer without an entry gets the first free colour.
+    pub layer_slots: Vec<(u64, u8)>,
 }
 
 /// A project recipe that came from a material-library entry: the library, the entry and the
@@ -189,6 +192,7 @@ impl Project {
             revisions: Vec::new(),
             library_links: Vec::new(),
             production: None,
+            layer_slots: Vec::new(),
         }
     }
 
@@ -216,6 +220,7 @@ impl Project {
             revisions: Vec::new(),
             library_links: Vec::new(),
             production: None,
+            layer_slots: Vec::new(),
         }
     }
 

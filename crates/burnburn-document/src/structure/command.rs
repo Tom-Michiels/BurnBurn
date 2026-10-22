@@ -316,6 +316,17 @@ fn check_chain(
         if is_array && super::modifier::array_transforms(&s.modifier).is_none() {
             return Err(StructureError::InvalidValue { field: "array" });
         }
+        if let Modifier::PathArray { count, along, orient } = &s.modifier {
+            let carrier = objects.get(along).ok_or(StructureError::UnknownGeometry(*along))?;
+            let usable = burnburn_geometry::array::path_array(
+                carrier.path(),
+                &burnburn_geometry::array::PathArray { count: *count, orient: *orient },
+                &chain.tolerance,
+            );
+            if usable.is_err() {
+                return Err(StructureError::InvalidValue { field: "array" });
+            }
+        }
     }
     Ok(())
 }
