@@ -1,0 +1,42 @@
+== plain
+part 3 copy 0 sheet 0 rot 0.0 mirrored false at 4.999 4.999
+part 3 copy 1 sheet 0 rot 0.0 mirrored false at 97.999 4.999
+part 3 copy 2 sheet 0 rot 0.0 mirrored false at 190.998 4.999
+part 0 copy 0 sheet 0 rot 0.0 mirrored false at 283.997 4.999
+part 0 copy 1 sheet 0 rot 180.0 mirrored false at 381.996 57.999
+part 0 copy 2 sheet 0 rot 0.0 mirrored false at 5.000 42.998
+part 0 copy 3 sheet 0 rot 0.0 mirrored false at 77.999 42.998
+part 4 copy 0 sheet 0 rot 0.0 mirrored false at 148.808 42.998
+part 4 copy 1 sheet 0 rot 0.0 mirrored false at 207.798 42.998
+part 4 copy 2 sheet 0 rot 0.0 mirrored false at 262.865 57.998
+part 1 copy 0 sheet 0 rot 0.0 mirrored false at 321.273 60.998
+part 1 copy 1 sheet 0 rot 0.0 mirrored false at 32.999 70.997
+part 1 copy 2 sheet 0 rot 0.0 mirrored false at 105.998 70.997
+part 1 copy 3 sheet 0 rot 0.0 mirrored false at 354.000 88.766
+part 1 copy 4 sheet 0 rot 0.0 mirrored false at 186.000 92.453
+part 2 copy 0 sheet 0 rot 180.0 mirrored false at 170.667 135.304
+part 2 copy 1 sheet 0 rot 180.0 mirrored false at 272.750 134.906
+part 2 copy 2 sheet 0 rot 180.0 mirrored false at 337.829 139.953
+part 2 copy 3 sheet 0 rot 270.0 mirrored false at 5.000 145.996
+== keep-out and mirror
+part 0 copy 0 sheet 0 rot 0.0 mirrored false at 4.999 4.999
+part 0 copy 1 sheet 0 rot 90.0 mirrored true at 101.999 74.999
+part 0 copy 2 sheet 0 rot 0.0 mirrored false at 103.998 4.999
+part 1 copy 0 sheet 0 rot 180.0 mirrored true at 169.433 49.998
+part 1 copy 1 sheet 0 rot 90.0 mirrored false at 243.633 4.999
+part 1 copy 2 sheet 0 rot 180.0 mirrored false at 241.165 89.594
+part 2 copy 0 sheet 0 rot 0.0 mirrored false at 130.997 31.999
+part 2 copy 1 sheet 0 rot 0.0 mirrored false at 162.654 51.997
+part 2 copy 2 sheet 0 rot 0.0 mirrored false at 5.000 56.999
+== holes, two sheets
+part 0 copy 0 sheet 0 rot 0.0 mirrored false at 4.999 4.999
+part 0 copy 1 sheet 0 rot 0.0 mirrored false at 65.999 4.999
+part 0 copy 2 sheet 0 rot 0.0 mirrored false at 4.999 45.999
+part 0 copy 3 sheet 0 rot 0.0 mirrored false at 65.999 45.999
+part 0 copy 4 sheet 1 rot 0.0 mirrored false at 204.999 4.999
+part 1 copy 0 sheet 1 rot 0.0 mirrored false at 265.999 4.999
+part 1 copy 1 sheet 1 rot 0.0 mirrored false at 291.996 4.999
+part 1 copy 2 sheet 1 rot 0.0 mirrored false at 317.993 4.999
+part 1 copy 3 sheet 1 rot 0.0 mirrored false at 278.124 27.949
+part 1 copy 4 sheet 1 rot 0.0 mirrored false at 304.989 27.516
+part 1 copy 5 sheet 1 rot 0.0 mirrored false at 204.999 45.999
