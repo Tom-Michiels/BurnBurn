@@ -353,8 +353,6 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation",
  "raw-window-handle",
- "serde_json",
- "toml",
  "wgpu",
 ]
 
@@ -530,8 +528,6 @@ dependencies = [
  "burnburn-text",
  "burnburn-types",
  "raw-window-handle",
- "serde_json",
- "toml",
  "wgpu",
  "windows",
 ]

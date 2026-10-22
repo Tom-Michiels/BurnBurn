@@ -43,10 +43,6 @@ burnburn-presentation = { workspace = true }
 # System font source for canvas text input (`fonts::first_readable_font`).
 burnburn-runtime = { workspace = true }
 burnburn-types = { workspace = true }
-# The stored recent lists use the macOS host's reader/writer (burnburn-macos/src/recent.rs).
-serde_json = { workspace = true }
-# assets/l10n/tools.toml (tool labels) for the shared tool-strip texts.
-toml = { workspace = true }
 
 [dev-dependencies]
 # Machine profiles with blocked features for the Cut Settings tests; the laser/camera/file panel

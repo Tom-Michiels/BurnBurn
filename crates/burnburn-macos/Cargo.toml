@@ -274,10 +274,6 @@ burnburn-presentation = { workspace = true }
 # System font source for canvas text input (`fonts::first_readable_font`).
 burnburn-runtime = { workspace = true }
 burnburn-types = { workspace = true }
-# assets/l10n/tools.toml (tool labels, tooltips, panel titles).
-toml = { workspace = true }
-# The recent-projects file (a JSON array of path strings).
-serde_json = { workspace = true }
 
 [dev-dependencies]
 # Compiling a plan in the preview-panel test needs a machine profile and a controller dialect.
