@@ -123,9 +123,17 @@ pub(super) fn document_view(
     display: super::prefs::LengthUnit,
 ) -> DocumentViewModel {
     let snapshot = s.doc.snapshot();
+    // One pass over the layers: how many of them use each object.
+    let mut linked: std::collections::BTreeMap<burnburn_types::GeometryId, usize> = std::collections::BTreeMap::new();
+    for op in snapshot.process().operations() {
+        for g in op.targets() {
+            *linked.entry(*g).or_default() += 1;
+        }
+    }
     let objects = snapshot
         .objects()
         .map(|(gid, obj)| ObjectRow {
+            linked: linked.get(&gid).copied().unwrap_or(0),
             id: gid,
             label: obj.name().to_owned(),
             depth: 0,

@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use burnburn_document::process::{
     AdvancedOptions, FillSettings, Kerf, OffsetFillOrder, OffsetFillSettings, Operation, OperationDraft, OperationMode,
     Passes, PowerPercent, PowerRange, ProcessCommand, ProcessError, ProcessSettings, ScanAxis, ScanDirection, Speed,
+    ToolLayer,
 };
 use burnburn_document::{CommandPayload, DocumentSnapshot};
 use burnburn_editor::{SceneSnapshot, StyleRole};
@@ -22,7 +23,10 @@ use super::process::{parse_speed, refused};
 use super::{AppUpdate, DEFAULT_FILL_INTERVAL_MM, Session, apply_edit};
 use crate::field::{format_mm, parse_number, parse_position};
 use crate::intent::{CutSettingsInput, OperationField, OperationKind};
-use crate::view_model::{CutSettingsViewModel, LAYER_SLOTS, MessageKey, ModeChoice, OperationRow};
+use crate::view_model::{
+    CutSettingsViewModel, LAYER_SLOTS, MessageKey, ModeChoice, OperationRow, PALETTE_SLOTS, StatusMessage,
+    TOOL_SLOT_T1, TOOL_SLOT_T2,
+};
 
 /// Settings of a layer created by a palette click (LightBurn-like defaults).
 const NEW_LAYER_SPEED_MM_S: f64 = 100.0;
@@ -48,9 +52,15 @@ pub(super) struct LayerState {
 /// operation has, in list order.
 pub(in crate::controller) fn slots(state: &LayerState, snapshot: &DocumentSnapshot) -> BTreeMap<OperationId, u8> {
     let ops: Vec<OperationId> = snapshot.process().operations().map(|o| o.id()).collect();
-    let mut used: BTreeSet<u8> = ops.iter().filter_map(|id| state.slots.get(id).copied()).collect();
+    let mut used: BTreeSet<u8> =
+        ops.iter().filter_map(|id| state.slots.get(id).copied()).filter(|s| *s < LAYER_SLOTS).collect();
     let mut out = BTreeMap::new();
     for id in ops {
+        // A tool layer sits on its own button at the end of the palette.
+        if let Some(tool) = snapshot.process().operation(id).and_then(|o| o.tool()) {
+            out.insert(id, tool_slot(tool));
+            continue;
+        }
         let slot = match state.slots.get(&id) {
             Some(slot) => *slot,
             None => {
@@ -73,6 +83,23 @@ pub(super) fn sync(s: &mut Session) {
         && s.doc.snapshot().process().operation(op).is_none()
     {
         s.layers.sheet = None;
+    }
+}
+
+/// The palette button of a tool layer.
+fn tool_slot(tool: ToolLayer) -> u8 {
+    match tool {
+        ToolLayer::T1 => TOOL_SLOT_T1,
+        ToolLayer::T2 => TOOL_SLOT_T2,
+    }
+}
+
+/// The tool layer behind a palette button, if it is one.
+fn tool_of_slot(slot: u8) -> Option<ToolLayer> {
+    match slot {
+        TOOL_SLOT_T1 => Some(ToolLayer::T1),
+        TOOL_SLOT_T2 => Some(ToolLayer::T2),
+        _ => None,
     }
 }
 
@@ -101,6 +128,7 @@ pub(super) fn operation_row(s: &Session, op: &Operation) -> OperationRow {
         name: op.name().to_owned(),
         kind: kind_of(op.mode()),
         slot,
+        tool: op.tool().is_some(),
         speed: format_mm(settings.speed.get_mm_per_s()),
         power: format_mm(settings.power.max().get()),
         power_min: format_mm(settings.power.min().get()),
@@ -187,7 +215,7 @@ pub(super) fn assign_layer(
     add: bool,
     next_request: NextRequest<'_>,
 ) -> AppUpdate {
-    if slot >= LAYER_SLOTS {
+    if slot >= PALETTE_SLOTS {
         return AppUpdate::default();
     }
     let selection: Vec<GeometryId> = s.selection.ids().to_vec();
@@ -215,9 +243,12 @@ pub(super) fn assign_layer(
                 edits.push(ProcessCommand::AssignGeometry { operation: op.id(), targets: joining });
             }
         }
-        None => match new_layer_draft(slot) {
-            Some(draft) => edits.push(ProcessCommand::AddOperation { draft, targets: selection.clone() }),
-            None => return refused(s, MessageKey::CommandRejected),
+        None => match tool_of_slot(slot) {
+            Some(tool) => edits.push(ProcessCommand::AddToolLayer { tool, targets: selection.clone() }),
+            None => match new_layer_draft(slot) {
+                Some(draft) => edits.push(ProcessCommand::AddOperation { draft, targets: selection.clone() }),
+                None => return refused(s, MessageKey::CommandRejected),
+            },
         },
     }
     let mut update = AppUpdate { view_changed: true, ..AppUpdate::default() };
@@ -257,6 +288,11 @@ pub(super) fn set_output(
     let Some(op) = snapshot.process().operation(operation) else { return AppUpdate::default() };
     if op.output_enabled() == enabled {
         return AppUpdate::default();
+    }
+    // A tool layer is never output; saying so beats a refused command.
+    if op.tool().is_some() {
+        s.messages.push(StatusMessage { key: MessageKey::ToolLayerNoOutput });
+        return AppUpdate { view_changed: true, ..AppUpdate::default() };
     }
     let draft = OperationDraft { output_enabled: enabled, ..op.draft() };
     apply_edit(s, document, CommandPayload::Process(ProcessCommand::UpdateOperation { operation, draft }), request)

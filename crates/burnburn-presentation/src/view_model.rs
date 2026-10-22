@@ -170,6 +170,12 @@ pub struct ShapePanelViewModel {
 /// Number of colours in the layer palette (slots `0..LAYER_SLOTS`). Hosts draw slot `n` in the
 /// theme's process-layer colour `n`, on the palette and on the canvas.
 pub const LAYER_SLOTS: u8 = 30;
+/// The tool layers T1 and T2 (LY01) follow the colours in the palette: guides and registration,
+/// never output.
+pub const TOOL_SLOT_T1: u8 = LAYER_SLOTS;
+pub const TOOL_SLOT_T2: u8 = LAYER_SLOTS + 1;
+/// Buttons in the palette: the colours and the two tool layers.
+pub const PALETTE_SLOTS: u8 = LAYER_SLOTS + 2;
 
 /// The Cut Settings sheet of one operation: current values as editable text, the modes the
 /// machine profile allows, the two toggles and why the last OK was refused.
@@ -225,8 +231,10 @@ pub struct OperationRow {
     pub id: OperationId,
     pub name: String,
     pub kind: OperationKind,
-    /// Palette colour of this layer (`0..LAYER_SLOTS`).
+    /// Palette colour of this layer (`0..PALETTE_SLOTS`; the last two are the tool layers).
     pub slot: u8,
+    /// A tool layer (T1/T2): never output.
+    pub tool: bool,
     pub speed: String,
     /// Maximum power.
     pub power: String,
@@ -571,6 +579,8 @@ pub struct ObjectRow {
     pub locked: bool,
     /// Group chain, outermost first (empty: ungrouped).
     pub groups: Vec<burnburn_types::GroupId>,
+    /// How many layers use this object (C02): more than one is "linked", the lists say how many.
+    pub linked: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -772,6 +782,8 @@ pub enum MessageKey {
     NotAllowedForRole,
     /// A palette colour was clicked without a selection.
     SelectObjectsFirst,
+    /// A tool layer (T1/T2) is never output; its output cannot be switched on.
+    ToolLayerNoOutput,
     /// The machine profile does not support (or has not validated) this feature (C05, M02).
     MissingCapability(burnburn_job::Feature),
     /// The kind of a constraint in the constraint list.

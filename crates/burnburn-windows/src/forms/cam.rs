@@ -16,12 +16,15 @@ use super::{
 };
 use crate::l10n::{Locale, message_or_key};
 use crate::panels::{
-    cam_action_intent, cam_action_title, cam_caption, cam_choice_label, cam_error, cam_field_intent, cam_move_intent,
-    cam_note, cam_result_text, cam_support_line, cam_title,
+    cam_action_intent, cam_action_title, cam_caption, cam_choice_label, cam_error, cam_field_intent, cam_label,
+    cam_move_intent, cam_note, cam_result_text, cam_support_line, cam_title,
 };
 
 /// Buttons in the order of the bar, left to right.
-const ACTION_KINDS: [DialogActionKind; 5] = [
+const ACTION_KINDS: [DialogActionKind; 8] = [
+    DialogActionKind::ShowSource,
+    DialogActionKind::AddRow,
+    DialogActionKind::RemoveRow,
     DialogActionKind::ReturnToFlatbed,
     DialogActionKind::Generate,
     DialogActionKind::ExportRd,
@@ -32,7 +35,7 @@ const ACTION_KINDS: [DialogActionKind; 5] = [
 fn choice_items(row: &DialogRow, locale: Locale) -> Vec<ChoiceItem> {
     // A pop-up whose entries depend on the document brings its own titles.
     if !row.labels.is_empty() {
-        return row.labels.iter().map(|l| ChoiceItem::plain(l.clone())).collect();
+        return row.labels.iter().map(|l| ChoiceItem::plain(cam_label(l, locale))).collect();
     }
     row.field
         .choices()
@@ -102,6 +105,9 @@ pub fn form(ctx: &FormContext<'_>, dialog: CamDialog, model: &DialogViewModel) -
         if !text.is_empty() {
             lines.push(FormLine::Text(text));
         }
+    }
+    for line in &model.lines {
+        lines.push(FormLine::Text(line.clone()));
     }
     for capability in &model.capabilities {
         lines.push(FormLine::Text(cam_support_line(capability, locale)));

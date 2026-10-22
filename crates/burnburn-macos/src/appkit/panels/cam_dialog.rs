@@ -29,8 +29,8 @@ use crate::appkit::classes::ffi_guard;
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_text};
 use crate::l10n::{Locale, message_or_key};
 use crate::panels::{
-    cam_action_title, cam_caption, cam_choice_label, cam_error, cam_note, cam_result_text, cam_support_line, cam_title,
-    order_key_caption,
+    cam_action_title, cam_caption, cam_choice_label, cam_error, cam_label, cam_note, cam_result_text, cam_support_line,
+    cam_title, order_key_caption,
 };
 
 const WIDTH: f64 = 700.0;
@@ -43,7 +43,10 @@ const BUTTON_BAR_H: f64 = 46.0;
 const MAX_SCROLL_H: f64 = 560.0;
 const ORDER_KEYS: [OrderKey; 3] = [OrderKey::Layer, OrderKey::Group, OrderKey::Priority];
 /// Buttons in the order of the bar, left to right.
-const ACTION_KINDS: [DialogActionKind; 5] = [
+const ACTION_KINDS: [DialogActionKind; 8] = [
+    DialogActionKind::ShowSource,
+    DialogActionKind::AddRow,
+    DialogActionKind::RemoveRow,
     DialogActionKind::ReturnToFlatbed,
     DialogActionKind::Generate,
     DialogActionKind::ExportRd,
@@ -444,7 +447,8 @@ impl CamPanelUi {
         place(&self.capabilities, caps_h);
         place(&self.result, result_h);
         place(&self.notes, notes_h);
-        let notes: Vec<String> = vm.notes.iter().map(|n| cam_note(*n, locale)).filter(|t| !t.is_empty()).collect();
+        let mut notes: Vec<String> = vm.notes.iter().map(|n| cam_note(*n, locale)).filter(|t| !t.is_empty()).collect();
+        notes.extend(vm.lines.iter().cloned());
         set_text(&self.notes, &notes.join("\n"));
         let capabilities: Vec<String> = vm.capabilities.iter().map(|c| cam_support_line(c, locale)).collect();
         set_text(&self.capabilities, &capabilities.join("\n"));
@@ -482,12 +486,12 @@ impl CamPanelUi {
         let choices = row.field.choices();
         let titles: Vec<String> = p.itemTitles().iter().map(|t| t.to_string()).collect();
         // A pop-up whose entries depend on the document brings its own titles.
-        let wanted: Vec<&str> = if row.labels.is_empty() {
-            choices.iter().map(|c| cam_choice_label(*c, locale)).collect()
+        let wanted: Vec<String> = if row.labels.is_empty() {
+            choices.iter().map(|c| cam_choice_label(*c, locale).to_owned()).collect()
         } else {
-            row.labels.iter().map(String::as_str).collect()
+            row.labels.iter().map(|l| cam_label(l, locale)).collect()
         };
-        if titles.iter().map(String::as_str).collect::<Vec<_>>() != wanted {
+        if titles != wanted {
             p.removeAllItems();
             for title in &wanted {
                 p.addItemWithTitle(&NSString::from_str(title));

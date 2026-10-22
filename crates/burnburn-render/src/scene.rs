@@ -20,7 +20,7 @@ pub const DISPLAY_TOLERANCE_PX: f64 = 0.25;
 pub const MAX_GRID_LINES: usize = 1000;
 
 /// Colours in the layer palette.
-pub const LAYER_COLOURS: usize = 30;
+pub const LAYER_COLOURS: usize = 32;
 
 /// The light theme's layer palette (sRGB 0–255): dark first, then saturated hues, then softer
 /// tints, so neighbouring slots are easy to tell apart.
@@ -55,6 +55,9 @@ const LAYER_PALETTE: [[u8; 3]; LAYER_COLOURS] = [
     [180, 160, 110],
     [240, 200, 120],
     [120, 190, 200],
+    // The tool layers T1 and T2: muted, so they read as guides and not as cuts.
+    [110, 110, 110],
+    [90, 140, 170],
 ];
 
 /// Look of one style role: optional fill, stroke colour and stroke width in logical points.

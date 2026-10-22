@@ -44,10 +44,10 @@ fn scenario() -> Result<(), String> {
     let (a, b) = (ids[0], ids[1]);
     let select = |id| s.app.dispatch(UiIntent::Select { document: doc, ids: vec![id], mode: SelectMode::Replace });
 
-    // Palette: 30 colours, each named in its tooltip; a click with a selection makes layer C01.
+    // Palette: 30 colours and the tool layers T1/T2, each named in its tooltip; a click with a selection makes layer C01.
     let palette =
         s.app.with_window(doc, |w| w.palette.iter().map(|b| b.retain()).collect::<Vec<_>>()).unwrap_or_default();
-    expect(|| format!("30 palette buttons, got {}", palette.len()), palette.len() == 30)?;
+    expect(|| format!("32 palette buttons, got {}", palette.len()), palette.len() == 32)?;
     let tip = |i: usize| palette[i].toolTip().map(|t| t.to_string()).unwrap_or_default();
     expect(|| format!("tooltip of colour 1: {:?}", tip(1)), tip(1).starts_with("C01") && tip(1).contains("nog leeg"))?;
     select(b);

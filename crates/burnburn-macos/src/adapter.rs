@@ -1031,7 +1031,12 @@ pub fn menu_title(item: MenuItem, vm: &AppViewModel, locale: Locale) -> String {
 
 /// Object table rows for `document`: the user-visible names, top to bottom.
 pub fn object_labels(vm: &AppViewModel, document: DocumentId) -> Vec<String> {
-    vm.document(document).map(|d| d.objects.iter().map(|o| o.label.clone()).collect()).unwrap_or_default()
+    vm.document(document).map(|d| d.objects.iter().map(linked_label).collect()).unwrap_or_default()
+}
+
+/// The name of an object, with how many layers use it when more than one (C02).
+fn linked_label(o: &burnburn_presentation::ObjectRow) -> String {
+    if o.linked > 1 { format!("{} (\u{d7}{})", o.label, o.linked) } else { o.label.clone() }
 }
 
 /// Table rows that the view model marks selected.

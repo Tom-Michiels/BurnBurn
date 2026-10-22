@@ -382,6 +382,7 @@ impl AppController {
             capabilities,
             result: None,
             busy: false,
+            lines: Vec::new(),
         })
     }
 

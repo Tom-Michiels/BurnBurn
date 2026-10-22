@@ -3,7 +3,7 @@
 use crate::appkit::panels::widgets::{push_button, rect, set_text, strip_label};
 use crate::appkit::window::DocWindow;
 
-use burnburn_presentation::{AppViewModel, LAYER_SLOTS};
+use burnburn_presentation::{AppViewModel, PALETTE_SLOTS};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
@@ -57,7 +57,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     let t = |text: HostText| host_text(text, locale);
     // Colour palette across the strip (LightBurn-like): a click puts the selection on that layer.
     let mut palette = Vec::new();
-    for slot in 0..LAYER_SLOTS {
+    for slot in 0..PALETTE_SLOTS {
         let b = push_button(mtm, "\u{25A0}");
         b.setBordered(false);
         b.setFont(Some(&NSFont::systemFontOfSize(20.0)));

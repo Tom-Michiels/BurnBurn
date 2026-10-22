@@ -13,8 +13,8 @@ use burnburn_macos::panels::{
     palette_buttons, palette_slot, sheet_mode,
 };
 use burnburn_presentation::{
-    CommandKey, CutSettingsInput, Feature, HeadlessEditorHarness, LAYER_SLOTS, MessageKey, OperationField,
-    OperationKind, SelectMode, UiIntent,
+    CommandKey, CutSettingsInput, Feature, HeadlessEditorHarness, MessageKey, OperationField, OperationKind,
+    PALETTE_SLOTS, SelectMode, UiIntent,
 };
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
 use burnburn_types::{DocumentId, StableId};
@@ -51,9 +51,10 @@ fn palette_click_becomes_assign_layer_and_shift_adds() {
     let click = |tag, flags| intent(&h, NativeEvent::PaletteClicked { document: doc, tag, flags });
     assert_eq!(click(3, 0), Some(UiIntent::AssignLayer { document: doc, slot: 3, add: false }));
     assert_eq!(click(3, flags::SHIFT), Some(UiIntent::AssignLayer { document: doc, slot: 3, add: true }));
-    assert_eq!(click(isize::from(LAYER_SLOTS), 0), None, "no button beyond the palette");
+    assert_eq!(click(isize::from(PALETTE_SLOTS), 0), None, "no button beyond the palette");
     assert_eq!(click(-1, 0), None);
-    assert_eq!((palette_slot(0), palette_slot(29), palette_slot(30)), (Some(0), Some(29), None));
+    assert_eq!((palette_slot(0), palette_slot(29), palette_slot(30)), (Some(0), Some(29), Some(30)));
+    assert_eq!((palette_slot(31), palette_slot(32)), (Some(31), None), "T1 and T2 end the palette");
     let other = <DocumentId as StableId>::from_raw(999);
     assert_eq!(intent(&h, NativeEvent::PaletteClicked { document: other, tag: 1, flags: 0 }), None);
 }
@@ -63,9 +64,10 @@ fn palette_buttons_name_each_colour_and_its_layer() {
     let (mut h, doc) = rectangle();
     act(&mut h, NativeEvent::PaletteClicked { document: doc, tag: 1, flags: 0 }).unwrap();
     let buttons = palette_buttons(&h.view(), doc, Locale::Nl);
-    assert_eq!(buttons.len(), usize::from(LAYER_SLOTS));
-    assert_eq!(buttons.iter().map(|b| b.slot).collect::<Vec<_>>(), (0..LAYER_SLOTS).collect::<Vec<_>>());
+    assert_eq!(buttons.len(), usize::from(PALETTE_SLOTS));
+    assert_eq!(buttons.iter().map(|b| b.slot).collect::<Vec<_>>(), (0..PALETTE_SLOTS).collect::<Vec<_>>());
     assert_eq!((layer_label(1), layer_label(29)), ("C01".to_owned(), "C29".to_owned()));
+    assert_eq!((layer_label(30), layer_label(31)), ("T1".to_owned(), "T2".to_owned()));
     let used = &buttons[1];
     assert_eq!((used.label.as_str(), used.used), ("C01", true));
     assert!(used.help.contains("C01") && used.help.contains("1 object"), "help {:?}", used.help);

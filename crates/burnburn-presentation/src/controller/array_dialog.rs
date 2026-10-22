@@ -16,8 +16,8 @@ use burnburn_geometry::{Affine, Bounds, Point};
 use burnburn_types::{DocumentId, GeometryId, Length, RequestId};
 
 use crate::cam_dialogs::{
-    CamDialog, DialogAction, DialogActionKind, DialogActionState, DialogChoice, DialogError, DialogField, DialogNote,
-    DialogRow, DialogValue, DialogViewModel,
+    CamDialog, DialogAction, DialogActionKind, DialogActionState, DialogChoice, DialogError, DialogField, DialogLabel,
+    DialogNote, DialogRow, DialogValue, DialogViewModel,
 };
 use crate::cut_options::FieldState;
 use crate::field::{format_mm, parse_number, parse_position};
@@ -316,7 +316,7 @@ pub(super) fn view(s: &Session) -> Option<DialogViewModel> {
         text(DialogField::PathCount),
     ];
     let mut path_row = row(DialogField::PathAlong, DialogValue::Choice(along_index));
-    path_row.labels = list.iter().map(|(_, name)| name.clone()).collect();
+    path_row.labels = list.iter().map(|(_, name)| DialogLabel::plain(name.clone())).collect();
     if visible(DialogField::PathAlong) && list.is_empty() {
         path_row.error = Some(DialogError::NoPath);
         path_row.state = FieldState::Disabled(None);
@@ -347,6 +347,7 @@ pub(super) fn view(s: &Session) -> Option<DialogViewModel> {
         capabilities: Vec::new(),
         result: None,
         busy: false,
+        lines: Vec::new(),
     })
 }
 

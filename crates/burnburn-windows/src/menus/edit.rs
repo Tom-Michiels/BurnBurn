@@ -31,6 +31,7 @@ pub(super) fn items() -> Vec<MenuNode> {
     items.push(cmd(CommandKey::DeleteDuplicates));
     items.push(sep());
     items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Optimization)));
+    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Order)));
     items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Device)));
     items
 }

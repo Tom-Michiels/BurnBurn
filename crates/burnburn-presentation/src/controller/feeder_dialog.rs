@@ -158,6 +158,7 @@ pub(super) fn view(s: &Session) -> Option<DialogViewModel> {
         capabilities: Vec::new(),
         result: None,
         busy: false,
+        lines: Vec::new(),
     })
 }
 

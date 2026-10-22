@@ -134,7 +134,8 @@ fn a_path_array_lists_the_other_paths_and_follows_the_chosen_one() {
     kind(&mut h, doc, DialogChoice::ArrayPath);
     let shown = vm(&mut h, doc);
     let along = shown.row(DialogField::PathAlong).unwrap();
-    assert_eq!(along.labels, vec!["Pad 2".to_owned()], "the source itself is not a path to follow");
+    let names: Vec<&str> = along.labels.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(names, vec!["Pad 2"], "the source itself is not a path to follow");
     assert_eq!(along.state, FieldState::Editable);
     text(&mut h, doc, DialogField::PathCount, "4");
     flag(&mut h, doc, DialogField::PathOrient, false);

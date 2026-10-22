@@ -29,11 +29,15 @@ pub enum CamDialog {
     Array,
     /// Laser ▸ Feeder: repeat, feed before and after, pause (FE01).
     Feeder,
+    /// Laser ▸ Preflight: the findings of the plan on screen, with "show source" (C09).
+    Preflight,
+    /// Edit ▸ Cutting order: hard "this layer completely before that one" constraints (C06).
+    Order,
 }
 
 impl CamDialog {
     /// The order is the order of the command ids of the hosts: new dialogs are appended.
-    pub const ALL: [CamDialog; 7] = [
+    pub const ALL: [CamDialog; 9] = [
         CamDialog::Optimization,
         CamDialog::MaterialTest,
         CamDialog::IntervalTest,
@@ -41,6 +45,8 @@ impl CamDialog {
         CamDialog::Device,
         CamDialog::Array,
         CamDialog::Feeder,
+        CamDialog::Preflight,
+        CamDialog::Order,
     ];
 
     /// The three generators; their result is a private test job.
@@ -138,6 +144,14 @@ pub enum DialogField {
     FeederPause,
     /// Feed speed, mm/s.
     FeederSpeed,
+    // Preflight
+    /// The finding the "show source" button works on: a pop-up whose entries are the row's labels.
+    PreflightPick,
+    // Cutting order
+    OrderBefore,
+    OrderAfter,
+    /// The stored constraints, to pick one to remove.
+    OrderExisting,
 }
 
 /// An entry of a pop-up field.
@@ -215,7 +229,11 @@ impl DialogField {
             | DialogField::BedOrigin
             | DialogField::RotaryKind
             | DialogField::ArrayKind
-            | DialogField::PathAlong => DialogControl::Choice,
+            | DialogField::PathAlong
+            | DialogField::PreflightPick
+            | DialogField::OrderBefore
+            | DialogField::OrderAfter
+            | DialogField::OrderExisting => DialogControl::Choice,
             _ => DialogControl::Text,
         }
     }
@@ -320,9 +338,61 @@ pub enum DialogNote {
     /// Array: the dialog works on exactly one selected object.
     ArrayNeedsOneObject,
     /// Array: what the draft makes, in whole micrometres (copies include the original).
-    ArrayExtent { copies: u32, width_um: u64, height_um: u64 },
+    ArrayExtent {
+        copies: u32,
+        width_um: u64,
+        height_um: u64,
+    },
     /// Feeder: the plan has feeds or pauses, which have no proven RD form: preview only.
     FeederHasNoRdForm,
+    /// Preflight: there is no plan yet; compile first.
+    PreflightNoPlan,
+    /// Preflight: the plan is out of date; the list describes the plan, not the document.
+    PreflightStale,
+    PreflightCounts {
+        errors: u32,
+        warnings: u32,
+    },
+    PreflightClean,
+    /// What one finding says (the label of an entry of the list).
+    Finding(FindingKind),
+    /// Order: the new constraint would close a cycle through the layers listed under the form.
+    OrderCycle,
+    /// Order: a layer cannot come before itself.
+    OrderSameLayer,
+    /// Order: this constraint exists already.
+    OrderDuplicate,
+}
+
+/// The kind of a preflight finding, without the identities (the entry's text names the object).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FindingKind {
+    OutsideBed,
+    TravelOutsideBed,
+    OpenFillContour,
+    SpeedAboveMachineMax,
+    PowerOutsideMachineRange,
+    DuplicateCut,
+    EmptyOperation,
+    UnassignedGeometry,
+    StalePlan,
+    UnsupportedFeature,
+    InvalidTabs,
+    SharedBoundaryCutOnce,
+}
+
+/// One entry of a document-dependent pop-up: an optional localised phrase and the data (names).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogLabel {
+    pub note: Option<DialogNote>,
+    pub text: String,
+}
+
+impl DialogLabel {
+    pub fn plain(text: impl Into<String>) -> Self {
+        DialogLabel { note: None, text: text.into() }
+    }
 }
 
 /// Why a plan cannot be written as RD (the Ruida backend has no proven form for it). Said in
@@ -378,7 +448,7 @@ pub struct DialogRow {
     pub reorder: Option<(bool, bool)>,
     /// A pop-up whose entries depend on the document (the objects an array can follow): their
     /// titles. Empty: the entries are [`DialogField::choices`].
-    pub labels: Vec<String>,
+    pub labels: Vec<DialogLabel>,
 }
 
 /// What an action button does.
@@ -398,6 +468,12 @@ pub enum DialogAction {
     ExportRd(PathBuf),
     /// Device: back to the flat bed (the profile as before the rotary).
     ReturnToFlatbed,
+    /// Preflight: select the cause of the chosen finding and centre the view on it.
+    ShowSource,
+    /// Order: add the chosen constraint.
+    AddRow,
+    /// Order: remove the chosen constraint.
+    RemoveRow,
 }
 
 /// A button of the dialog.
@@ -417,6 +493,9 @@ pub enum DialogActionKind {
     Generate,
     ExportRd,
     ReturnToFlatbed,
+    ShowSource,
+    AddRow,
+    RemoveRow,
 }
 
 /// How a machine profile supports one feature, for the capability list of Device Settings.
@@ -461,6 +540,8 @@ pub struct DialogViewModel {
     pub result: Option<TestResultView>,
     /// A generate is running.
     pub busy: bool,
+    /// Lines of the user's own data under the form (names of the layers on a cycle).
+    pub lines: Vec<String>,
 }
 
 impl DialogViewModel {

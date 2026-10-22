@@ -409,7 +409,14 @@ pub fn window_title(vm: &AppViewModel, document: DocumentId) -> String {
 }
 
 pub fn object_labels(vm: &AppViewModel, document: DocumentId) -> Vec<String> {
-    vm.document(document).map(|d| d.objects.iter().map(|o| o.label.clone()).collect()).unwrap_or_default()
+    vm.document(document)
+        .map(|d| {
+            d.objects
+                .iter()
+                .map(|o| if o.linked > 1 { format!("{} (\u{d7}{})", o.label, o.linked) } else { o.label.clone() })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn selected_rows(vm: &AppViewModel, document: DocumentId) -> Vec<usize> {

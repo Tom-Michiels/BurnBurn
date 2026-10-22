@@ -1596,6 +1596,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::DeleteDuplicates),
             sep(),
             item(MenuItem::CamDialog(CamDialog::Optimization), "", false),
+            item(MenuItem::CamDialog(CamDialog::Order), "", false),
             item(MenuItem::CamDialog(CamDialog::Device), "", false),
         ],
     ));
@@ -1780,6 +1781,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(MenuItem::CamDialog(CamDialog::IntervalTest), "", false),
             item(MenuItem::CamDialog(CamDialog::FocusTest), "", false),
             item(MenuItem::CamDialog(CamDialog::Feeder), "", false),
+            item(MenuItem::CamDialog(CamDialog::Preflight), "", false),
             plain(CommandKey::PrintAndCut),
             plain(CommandKey::CenterFinder),
         ],

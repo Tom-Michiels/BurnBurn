@@ -1468,6 +1468,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             ),
             _ => return None,
         },
+        M::ToolLayerNoOutput => (
+            "Een toollaag (T1/T2) wordt nooit uitgevoerd: de uitvoer kan niet aan.",
+            "A tool layer (T1/T2) is never output: its output cannot be switched on.",
+        ),
         M::SelectObjectsFirst => {
             ("Selecteer eerst objecten en klik dan een kleur.", "Select objects first, then click a colour.")
         }
@@ -1787,6 +1791,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         .map(MessageKey::InvalidNumber),
     );
     keys.push(MessageKey::SelectObjectsFirst);
+    keys.push(MessageKey::ToolLayerNoOutput);
     keys.extend(burnburn_presentation::CutField::ALL.map(MessageKey::InvalidCutField));
     keys.extend([
         MessageKey::CutOptionsConflict,

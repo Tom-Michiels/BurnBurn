@@ -587,6 +587,7 @@ pub(super) fn view(s: &Session, dialog: CamDialog, machine: Option<&Machine>) ->
         capabilities: Vec::new(),
         result,
         busy,
+        lines: Vec::new(),
     })
 }
 
