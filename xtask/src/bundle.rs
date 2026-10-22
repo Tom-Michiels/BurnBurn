@@ -49,6 +49,8 @@ pub fn info_plist(spec: &BundleSpec) -> String {
 	<string>{executable}</string>
 	<key>CFBundleIconFile</key>
 	<string>{icon}</string>
+	<key>CFBundleIconName</key>
+	<string>{icon}</string>
 	<key>CFBundleIdentifier</key>
 	<string>{identifier}</string>
 	<key>CFBundleLocalizations</key>
@@ -80,7 +82,7 @@ pub fn info_plist(spec: &BundleSpec) -> String {
 	<array>
 		<dict>
 			<key>CFBundleTypeIconFile</key>
-			<string>{icon}</string>
+			<string>{document_icon}</string>
 			<key>CFBundleTypeName</key>
 			<string>BurnBurn-project</string>
 			<key>CFBundleTypeRole</key>
@@ -135,6 +137,7 @@ pub fn info_plist(spec: &BundleSpec) -> String {
         uti = PROJECT_UTI,
         clipboard_uti = CLIPBOARD_UTI,
         icon = ICON_NAME,
+        document_icon = DOCUMENT_ICON_NAME,
         camera = e(camera_usage("en")),
     )
 }
@@ -146,138 +149,11 @@ pub(crate) fn escape(v: &str) -> String {
 /// Icon file name inside `Contents/Resources` (without extension, as `CFBundleIconFile` wants).
 pub const ICON_NAME: &str = "BurnBurn";
 
+/// Icon of the `.burnburn` document type (`CFBundleTypeIconFile`, without extension).
+pub const DOCUMENT_ICON_NAME: &str = "BurnBurnDocument";
+
 /// Localisations the bundle declares (AppKit panels and alerts follow these, IM20).
 pub const LOCALISATIONS: [&str; 2] = ["nl", "en"];
-
-/// The app and document icon: an original placeholder drawn here (a laser beam cutting a circle
-/// out of a sheet), as an `.icns` with 128, 256 and 512 px PNG entries. No third-party artwork.
-pub fn app_icon_icns() -> Vec<u8> {
-    let mut entries = Vec::new();
-    for (kind, size) in [(b"ic07", 128u32), (b"ic08", 256), (b"ic09", 512)] {
-        let png = png_rgba(size, size, &draw_icon(size));
-        entries.extend_from_slice(kind);
-        entries.extend_from_slice(&((png.len() + 8) as u32).to_be_bytes());
-        entries.extend_from_slice(&png);
-    }
-    let mut icns = Vec::with_capacity(entries.len() + 8);
-    icns.extend_from_slice(b"icns");
-    icns.extend_from_slice(&((entries.len() + 8) as u32).to_be_bytes());
-    icns.extend_from_slice(&entries);
-    icns
-}
-
-/// Colour of the icon at normalised position `(u, v)` (v down), or transparent.
-fn icon_sample(u: f64, v: f64) -> [f64; 4] {
-    let rounded = |x0: f64, y0: f64, x1: f64, y1: f64, r: f64| {
-        let dx = (x0 + r - u).max(u - (x1 - r)).max(0.0);
-        let dy = (y0 + r - v).max(v - (y1 - r)).max(0.0);
-        u >= x0 && u <= x1 && v >= y0 && v <= y1 && dx * dx + dy * dy <= r * r
-    };
-    let (cx, cy, radius) = (0.5, 0.62, 0.14);
-    let d = ((u - cx).powi(2) + (v - cy).powi(2)).sqrt();
-    // Angle from the top of the circle, clockwise: the cut runs 270° from where the beam is.
-    let angle = (u - cx).atan2(cy - v).rem_euclid(std::f64::consts::TAU);
-    let hot = ((u - 0.5).powi(2) + (v - 0.48).powi(2)).sqrt();
-    if hot <= 0.032 {
-        [1.0, 0.86, 0.48, 1.0]
-    } else if (0.49..=0.51).contains(&u) && (0.1..=0.48).contains(&v) {
-        [1.0, 0.36, 0.12, 1.0]
-    } else if (d - radius).abs() <= 0.014 && angle <= 1.5 * std::f64::consts::PI {
-        [0.42, 0.24, 0.12, 1.0]
-    } else if rounded(0.2, 0.42, 0.8, 0.84, 0.04) {
-        [0.89, 0.75, 0.53, 1.0]
-    } else if rounded(0.06, 0.06, 0.94, 0.94, 0.18) {
-        [0.13, 0.19 + 0.06 * (1.0 - v), 0.24 + 0.06 * (1.0 - v), 1.0]
-    } else {
-        [0.0; 4]
-    }
-}
-
-/// RGBA8 pixels with 4 × 4 supersampling (premultiplied while averaging).
-pub(crate) fn draw_icon(size: u32) -> Vec<u8> {
-    const SS: u32 = 4;
-    let mut out = Vec::with_capacity((size * size * 4) as usize);
-    for y in 0..size {
-        for x in 0..size {
-            let mut acc = [0.0f64; 4];
-            for sy in 0..SS {
-                for sx in 0..SS {
-                    let u = (f64::from(x) + (f64::from(sx) + 0.5) / f64::from(SS)) / f64::from(size);
-                    let v = (f64::from(y) + (f64::from(sy) + 0.5) / f64::from(SS)) / f64::from(size);
-                    let c = icon_sample(u, v);
-                    for (a, v) in acc.iter_mut().zip(c).take(3) {
-                        *a += v * c[3];
-                    }
-                    acc[3] += c[3];
-                }
-            }
-            let n = f64::from(SS * SS);
-            let alpha = acc[3] / n;
-            for premultiplied in &acc[..3] {
-                let straight = if alpha > 0.0 { premultiplied / n / alpha } else { 0.0 };
-                out.push((straight.clamp(0.0, 1.0) * 255.0).round() as u8);
-            }
-            out.push((alpha.clamp(0.0, 1.0) * 255.0).round() as u8);
-        }
-    }
-    out
-}
-
-fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = 0xFFFF_FFFFu32;
-    for &b in bytes {
-        crc ^= u32::from(b);
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
-        }
-    }
-    !crc
-}
-
-fn adler32(bytes: &[u8]) -> u32 {
-    let (mut a, mut b) = (1u32, 0u32);
-    for &x in bytes {
-        a = (a + u32::from(x)) % 65_521;
-        b = (b + a) % 65_521;
-    }
-    (b << 16) | a
-}
-
-/// A minimal valid PNG (RGBA8, no filtering, zlib "stored" blocks): no compression library needed.
-pub(crate) fn png_rgba(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
-    let mut raw = Vec::with_capacity(rgba.len() + height as usize);
-    for row in rgba.chunks(width as usize * 4) {
-        raw.push(0); // filter type None
-        raw.extend_from_slice(row);
-    }
-    let mut zlib = vec![0x78, 0x01];
-    let blocks: Vec<&[u8]> = raw.chunks(65_535).collect();
-    for (i, block) in blocks.iter().enumerate() {
-        zlib.push(u8::from(i + 1 == blocks.len()));
-        let len = block.len() as u16;
-        zlib.extend_from_slice(&len.to_le_bytes());
-        zlib.extend_from_slice(&(!len).to_le_bytes());
-        zlib.extend_from_slice(block);
-    }
-    zlib.extend_from_slice(&adler32(&raw).to_be_bytes());
-
-    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-    let mut chunk = |kind: &[u8; 4], data: &[u8]| {
-        png.extend_from_slice(&(data.len() as u32).to_be_bytes());
-        let mut body = kind.to_vec();
-        body.extend_from_slice(data);
-        png.extend_from_slice(&body);
-        png.extend_from_slice(&crc32(&body).to_be_bytes());
-    };
-    let mut ihdr = Vec::new();
-    ihdr.extend_from_slice(&width.to_be_bytes());
-    ihdr.extend_from_slice(&height.to_be_bytes());
-    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8 bit, RGBA, deflate, adaptive filtering, no interlace
-    chunk(b"IHDR", &ihdr);
-    chunk(b"IDAT", &zlib);
-    chunk(b"IEND", &[]);
-    png
-}
 
 /// Purpose string shown in the camera privacy prompt (IM27), per language.
 fn camera_usage(language: &str) -> &'static str {
@@ -317,8 +193,10 @@ pub fn write_bundle(spec: &BundleSpec, binary: &Path, out_dir: &Path) -> Result<
     }
     let plist = app.join("Contents/Info.plist");
     std::fs::write(&plist, info_plist(spec)).map_err(|e| io("writing", &plist, e))?;
-    let icon = resources.join(format!("{ICON_NAME}.icns"));
-    std::fs::write(&icon, app_icon_icns()).map_err(|e| io("writing", &icon, e))?;
+    for (name, svg) in [(ICON_NAME, crate::icon::APP_SVG), (DOCUMENT_ICON_NAME, crate::icon::DOCUMENT_SVG)] {
+        let icon = resources.join(format!("{name}.icns"));
+        std::fs::write(&icon, crate::icon::icns(svg)?).map_err(|e| io("writing", &icon, e))?;
+    }
     for lang in LOCALISATIONS {
         let dir = resources.join(format!("{lang}.lproj"));
         std::fs::create_dir_all(&dir).map_err(|e| io("creating", &dir, e))?;
@@ -496,66 +374,39 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// Big-endian u32 at `at`.
-    fn be32(b: &[u8], at: usize) -> u32 {
-        u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
-    }
-
-    /// The icns container is self-consistent and holds PNGs of the sizes its type codes promise.
+    /// Independent oracle: macOS's own image tool reads the bundle icons (skipped elsewhere, not a pass).
     #[test]
-    fn app_icon_is_an_icns_with_png_entries_of_the_declared_sizes() {
-        let icns = app_icon_icns();
-        assert!(icns.len() > 8, "empty icon");
-        assert_eq!(&icns[..4], b"icns");
-        assert_eq!(be32(&icns, 4) as usize, icns.len(), "total length");
-        let mut at = 8;
-        let mut sizes = Vec::new();
-        while at < icns.len() {
-            let kind = &icns[at..at + 4];
-            let len = be32(&icns, at + 4) as usize;
-            let png = &icns[at + 8..at + len];
-            assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "entry {kind:?} is a PNG");
-            assert_eq!(&png[12..16], b"IHDR");
-            let (w, h) = (be32(png, 16), be32(png, 20));
-            let expected = match kind {
-                b"ic07" => 128,
-                b"ic08" => 256,
-                b"ic09" => 512,
-                other => panic!("unexpected icns entry {other:?}"),
-            };
-            assert_eq!((w, h), (expected, expected));
-            sizes.push(expected);
-            at += len;
-        }
-        assert_eq!(sizes, vec![128, 256, 512]);
-    }
-
-    /// Independent oracle: macOS's own image tool reads the icon (skipped elsewhere, not a pass).
-    #[test]
-    fn app_icon_is_readable_by_sips() {
+    fn app_and_document_icons_are_readable_by_sips() {
         if !cfg!(target_os = "macos") {
             println!("SKIPPED (not macOS; not a pass)");
             return;
         }
         let dir = std::env::temp_dir().join(format!("burnburn-xtask-icon-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("BurnBurn.icns");
-        std::fs::write(&path, app_icon_icns()).unwrap();
-        let out =
-            std::process::Command::new("sips").args(["-g", "pixelWidth", "-g", "pixelHeight"]).arg(&path).output();
+        let mut report = String::new();
+        for (name, svg) in [("app.icns", crate::icon::APP_SVG), ("doc.icns", crate::icon::DOCUMENT_SVG)] {
+            let path = dir.join(name);
+            std::fs::write(&path, crate::icon::icns(svg).unwrap()).unwrap();
+            let out = std::process::Command::new("sips")
+                .args(["-g", "pixelWidth", "-g", "pixelHeight"])
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+            report.push_str(&String::from_utf8_lossy(&out.stdout));
+        }
         std::fs::remove_dir_all(&dir).unwrap();
-        let out = out.unwrap();
-        let text = String::from_utf8_lossy(&out.stdout);
-        assert!(out.status.success(), "{text}");
-        assert!(text.contains("pixelWidth: 512") && text.contains("pixelHeight: 512"), "{text}");
+        assert!(report.contains("pixelWidth: 1024") && report.contains("pixelHeight: 1024"), "{report}");
     }
 
     #[test]
     fn plist_names_icon_localisations_and_camera_purpose() {
         let plist = info_plist(&BundleSpec::burnburn("0.1.0"));
         assert_eq!(value_after(&plist, "CFBundleIconFile"), Some(ICON_NAME));
+        assert_eq!(value_after(&plist, "CFBundleIconName"), Some(ICON_NAME));
         let docs = plist.split("<key>CFBundleDocumentTypes</key>").nth(1).unwrap_or_default();
-        assert_eq!(value_after(docs, "CFBundleTypeIconFile"), Some(ICON_NAME));
+        assert_eq!(value_after(docs, "CFBundleTypeIconFile"), Some(DOCUMENT_ICON_NAME));
+        assert_ne!(DOCUMENT_ICON_NAME, ICON_NAME, "documents get their own icon, not the app icon");
         assert!(
             plist.contains(
                 "<key>CFBundleLocalizations</key>\n\t<array>\n\t\t<string>nl</string>\n\t\t<string>en</string>"
@@ -580,7 +431,14 @@ mod tests {
         std::fs::write(&binary, b"#!/bin/sh\n").unwrap();
         let app = write_bundle(&BundleSpec::burnburn("0.1.0"), &binary, &dir).unwrap();
         let resources = app.join("Contents/Resources");
-        assert_eq!(std::fs::read(resources.join("BurnBurn.icns")).unwrap(), app_icon_icns());
+        assert_eq!(
+            std::fs::read(resources.join("BurnBurn.icns")).unwrap(),
+            crate::icon::icns(crate::icon::APP_SVG).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(resources.join("BurnBurnDocument.icns")).unwrap(),
+            crate::icon::icns(crate::icon::DOCUMENT_SVG).unwrap()
+        );
         for lang in LOCALISATIONS {
             let strings = std::fs::read_to_string(resources.join(format!("{lang}.lproj/InfoPlist.strings"))).unwrap();
             assert_eq!(strings, info_plist_strings(lang));
