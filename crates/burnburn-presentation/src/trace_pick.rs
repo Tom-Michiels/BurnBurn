@@ -19,6 +19,8 @@ pub enum TracePick {
     BeginCorners,
     /// Paint masks with a round brush of this radius (pixels); every finished stroke is one mask.
     BeginBrush { mode: MaskMode, radius_px: f64 },
+    /// The same with the radius as typed in the panel (pixels); presentation parses it.
+    BeginBrushTyped { mode: MaskMode, radius: String },
     /// A click in the image.
     Point { x: f64, y: f64 },
     /// One finished brush stroke: the positions the brush went through.

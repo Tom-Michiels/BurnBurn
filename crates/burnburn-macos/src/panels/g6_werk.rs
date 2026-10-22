@@ -44,7 +44,7 @@ fn field_name(field: PrepField, locale: Locale) -> String {
         PrepField::RegionThreshold => t(G6Text::FieldThreshold, locale),
         PrepField::Anchors => t(G6Text::FieldAnchors, locale),
         // Fields of the golf-7 lines (panels/g7_trace.rs) name themselves there.
-        _ => crate::panels::g7_trace::field_name(field, locale),
+        _ => super::g7_trace::field_name(field, locale),
     }
 }
 
@@ -57,8 +57,8 @@ fn issue_text(issue: PrepIssue, locale: Locale) -> String {
         PrepIssue::UnknownMask => t(G6Text::IssueUnknown, locale),
         PrepIssue::NothingToCorrect => t(G6Text::IssueNothing, locale),
         PrepIssue::StoredCorrectionsUnreadable => t(G6Text::IssueStored, locale),
-        // A newer issue this host has no words for yet.
-        _ => t(G6Text::IssueUnknown, locale),
+        // The refusals of the golf-7 actions; a newer issue this host has no words for yet.
+        other => super::g7_trace::issue_text(other, locale).unwrap_or_else(|| t(G6Text::IssueUnknown, locale)),
     }
 }
 
@@ -131,11 +131,25 @@ pub(super) fn trace_prep_lines(doc: &DocumentViewModel, locale: Locale) -> Optio
     for (index, m) in p.masks.iter().enumerate() {
         let kind = t(if m.mode == MaskMode::Keep { G6Text::MaskKeepShort } else { G6Text::MaskRemoveShort }, locale);
         let n = (index + 1).to_string();
-        lines.push(G5Line::Text(g6_fmt(
-            G6Text::MaskLine,
-            locale,
-            &[&n, &kind, &m.x.to_string(), &m.y.to_string(), &m.width.to_string(), &m.height.to_string()],
-        )));
+        lines.push(G5Line::Text(match m.brush_px {
+            // A brush stroke is told by its radius and the middle of its box.
+            Some(radius) => crate::l10n_g7_trace::g7_fmt(
+                crate::l10n_g7_trace::G7Text::BrushMask,
+                locale,
+                &[
+                    &n,
+                    &kind,
+                    &num(radius, 1, locale),
+                    &(m.x + m.width / 2).to_string(),
+                    &(m.y + m.height / 2).to_string(),
+                ],
+            ),
+            None => g6_fmt(
+                G6Text::MaskLine,
+                locale,
+                &[&n, &kind, &m.x.to_string(), &m.y.to_string(), &m.width.to_string(), &m.height.to_string()],
+            ),
+        }));
         lines.push(button(G5Control::PrepRemoveMask { index }, g6_fmt(G6Text::RemoveMask, locale, &[&n]), true));
     }
 
@@ -208,6 +222,7 @@ pub(super) fn trace_prep_lines(doc: &DocumentViewModel, locale: Locale) -> Optio
             )));
         }
     }
+    lines.extend(super::g7_trace::lines(doc, p, locale));
     if let Some(issue) = p.issue {
         lines.push(G5Line::Problem(issue_text(issue, locale)));
     }

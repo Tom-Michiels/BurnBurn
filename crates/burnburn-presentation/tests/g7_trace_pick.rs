@@ -288,3 +288,23 @@ fn a_stroke_without_points_or_outside_the_image_is_refused_and_changes_nothing()
     pick(&mut h, doc, TracePick::Stroke { points: vec![[13.0, 16.0]] });
     assert_eq!(prep(&h, doc).issue, Some(PrepIssue::PickNotStarted));
 }
+
+#[test]
+fn the_brush_radius_can_be_typed_as_text_and_a_bad_text_is_refused_where_it_was_typed() {
+    let (mut h, doc) = opened_with(&object_and_shadow());
+    pick(&mut h, doc, TracePick::BeginBrushTyped { mode: MaskMode::Remove, radius: s("12,5") });
+    assert_eq!(prep(&h, doc).issue, None);
+    assert_eq!(prep(&h, doc).pick.unwrap().kind, PickKind::Brush { mode: MaskMode::Remove, radius_px: 12.5 });
+    for (text, want) in [
+        ("abc", PrepIssue::InvalidNumber(PrepField::BrushRadius)),
+        ("", PrepIssue::InvalidNumber(PrepField::BrushRadius)),
+        ("0", PrepIssue::OutOfRange(PrepField::BrushRadius)),
+        ("-3", PrepIssue::OutOfRange(PrepField::BrushRadius)),
+        ("99999", PrepIssue::OutOfRange(PrepField::BrushRadius)),
+    ] {
+        pick(&mut h, doc, TracePick::End);
+        pick(&mut h, doc, TracePick::BeginBrushTyped { mode: MaskMode::Keep, radius: s(text) });
+        assert_eq!(prep(&h, doc).issue, Some(want), "{text:?}");
+        assert!(prep(&h, doc).pick.is_none());
+    }
+}

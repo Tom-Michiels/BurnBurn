@@ -102,6 +102,47 @@ pub enum G5Control {
     SearchOpenProject,
     SearchOpenRevision,
     SearchClose,
+    // --- Trace, golf 7 (G7-trace): lens, pointing, protect/keep, node goal, recipes, A/B, batch.
+    LensK1,
+    LensK2,
+    LensApply,
+    LensClear,
+    PickCorners,
+    PickBrushKeep,
+    PickBrushRemove,
+    PickEnd,
+    BrushRadius,
+    ContourProtect {
+        id: u64,
+    },
+    ContourKeep {
+        id: u64,
+    },
+    NodeLimit,
+    NodeTolerance,
+    NodeApply,
+    RestoreRemoved {
+        index: usize,
+    },
+    RecipeName,
+    RecipeSave,
+    RecipeApply {
+        index: usize,
+    },
+    RecipeCompare {
+        index: usize,
+    },
+    RecipeDelete {
+        index: usize,
+    },
+    RecipePreset,
+    RecipeComparePreset,
+    CompareAdopt,
+    CompareClear,
+    BatchFiles,
+    BatchRun,
+    BatchCancel,
+    BatchClear,
     // --- Prepare image (G6-werk, T03, T05, T06).
     PrepRadius,
     PrepOffset,
@@ -649,6 +690,34 @@ pub fn g5_intent(
         | G5Control::PrepAnchors
         | G5Control::PrepRetrace
         | G5Control::PrepRemoveCorrection { .. } => super::g6_werk::trace_prep_intent(doc, document, control, values),
+        G5Control::LensApply
+        | G5Control::LensClear
+        | G5Control::PickCorners
+        | G5Control::PickBrushKeep
+        | G5Control::PickBrushRemove
+        | G5Control::PickEnd
+        | G5Control::ContourProtect { .. }
+        | G5Control::ContourKeep { .. }
+        | G5Control::NodeApply
+        | G5Control::RestoreRemoved { .. }
+        | G5Control::RecipeSave
+        | G5Control::RecipeApply { .. }
+        | G5Control::RecipeCompare { .. }
+        | G5Control::RecipeDelete { .. }
+        | G5Control::RecipeComparePreset
+        | G5Control::CompareAdopt
+        | G5Control::CompareClear
+        | G5Control::BatchRun
+        | G5Control::BatchCancel
+        | G5Control::BatchClear => super::g7_trace::intent(doc, document, control, values),
+        G5Control::LensK1
+        | G5Control::LensK2
+        | G5Control::BrushRadius
+        | G5Control::NodeLimit
+        | G5Control::NodeTolerance
+        | G5Control::RecipeName
+        | G5Control::RecipePreset
+        | G5Control::BatchFiles => None,
         G5Control::OperatorMachine { .. }
         | G5Control::OperatorUpload { .. }
         | G5Control::OperatorOrderUpload { .. } => super::g6_werk::operator_intent(doc, document, control),

@@ -303,6 +303,13 @@ fn pointed(t: &mut Tracer, pick: TracePick) -> bool {
             t.prep_issue = None;
             false
         }
+        TracePick::BeginBrushTyped { mode, radius } => match parse_number(&radius, &["px"]) {
+            Ok(radius_px) => pointed(t, TracePick::BeginBrush { mode, radius_px }),
+            Err(_) => {
+                t.prep_issue = Some(PrepIssue::InvalidNumber(PrepField::BrushRadius));
+                false
+            }
+        },
         TracePick::Point { x, y } => {
             let brush = matches!(t.pick.as_ref().map(|p| &p.mode), Some(PickMode::Brush { .. }));
             if brush { stroke(t, vec![[x, y]]) } else { click(t, [x, y]) }
