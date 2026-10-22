@@ -4,10 +4,13 @@
 
 use std::sync::Arc;
 
+use burnburn_editor::{PointerButton, PointerPhase};
+use burnburn_geometry::Point;
 use burnburn_image::{ImageRecipe, QuarterTurn, RegionMask, RegionMode, RegionShape, Threshold, prepare};
 use burnburn_trace::{ContourId, NodeTarget};
 use burnburn_types::{CancellationToken, DocumentId};
 
+use crate::ViewPointerEvent;
 use crate::field::parse_number;
 use crate::image_panel::TraceMode;
 use crate::trace_pick::{PickKind, PickPicture, PrepPick, TracePick};
@@ -15,7 +18,7 @@ use crate::trace_prep::{MaskMode, PrepField, PrepIssue};
 
 use super::trace::Tracer;
 use super::trace_prep::{perspective_of, working_size};
-use super::{AppController, AppUpdate};
+use super::{AppController, AppUpdate, Session};
 
 /// How near (pixels) two kept anchors have to be to name the same outline.
 const SAME_ANCHOR_PX: f64 = 0.25;
@@ -38,6 +41,22 @@ pub(super) struct PickState {
     mode: PickMode,
     surface_px: (u32, u32),
     picture: Option<PickPicture>,
+    /// Millimetres per pixel of the picture on the sheet: the declared scale.
+    mm_per_px: (f64, f64),
+    /// The stroke the brush is drawing now, in pixels of the picture.
+    stroke: Option<Vec<[f64; 2]>>,
+}
+
+impl PickState {
+    /// Pixels of the picture for a point of the sheet (y up, origin at the bottom left).
+    fn to_px(&self, mm: Point) -> [f64; 2] {
+        [mm.x / self.mm_per_px.0, f64::from(self.surface_px.1) - mm.y / self.mm_per_px.1]
+    }
+
+    /// The sheet position of a pixel of the picture (the other way round).
+    fn to_mm(&self, px: [f64; 2]) -> Point {
+        Point::new(px[0] * self.mm_per_px.0, (f64::from(self.surface_px.1) - px[1]) * self.mm_per_px.1)
+    }
 }
 
 /// Whether `anchor` is one of `keep` (the same outline).
@@ -60,7 +79,7 @@ pub(super) fn pick_view(t: &Tracer) -> Option<PrepPick> {
 /// The gray picture of the image as the tracer gets it, before the plane correction (`corrected`
 /// false) or after it, plus its size. Without a declared scale nothing is prepared: the size is the
 /// source's and there is no picture.
-fn surface(t: &Tracer, corrected: bool) -> ((u32, u32), Option<PickPicture>) {
+fn surface(t: &Tracer, corrected: bool) -> ((u32, u32), Option<PickPicture>, (f64, f64)) {
     let recipe = t.recipe.clone().unwrap_or_default();
     let image = ImageRecipe {
         regions: Vec::new(),
@@ -77,9 +96,9 @@ fn surface(t: &Tracer, corrected: bool) -> ((u32, u32), Option<PickPicture>) {
         Ok(p) => {
             let (w, h) = (p.width(), p.height());
             let gray: Vec<u8> = p.field.iter().map(|f| (127.5 - f).round().clamp(0.0, 255.0) as u8).collect();
-            ((w, h), Some(downscale(&gray, w, h)))
+            ((w, h), Some(downscale(&gray, w, h)), (p.scale.mm_per_pixel_x(), p.scale.mm_per_pixel_y()))
         }
-        Err(_) => (size, None),
+        Err(_) => (size, None, (1.0, 1.0)),
     }
 }
 
@@ -262,8 +281,9 @@ fn pointed(t: &mut Tracer, pick: TracePick) -> bool {
             false
         }
         TracePick::BeginCorners => {
-            let (surface_px, picture) = surface(t, false);
-            t.pick = Some(PickState { mode: PickMode::Corners(Vec::new()), surface_px, picture });
+            let (surface_px, picture, mm_per_px) = surface(t, false);
+            t.pick =
+                Some(PickState { mode: PickMode::Corners(Vec::new()), surface_px, picture, mm_per_px, stroke: None });
             t.prep_issue = None;
             false
         }
@@ -272,8 +292,14 @@ fn pointed(t: &mut Tracer, pick: TracePick) -> bool {
                 t.prep_issue = Some(PrepIssue::OutOfRange(PrepField::BrushRadius));
                 return false;
             }
-            let (surface_px, picture) = surface(t, true);
-            t.pick = Some(PickState { mode: PickMode::Brush { mode, radius_px }, surface_px, picture });
+            let (surface_px, picture, mm_per_px) = surface(t, true);
+            t.pick = Some(PickState {
+                mode: PickMode::Brush { mode, radius_px },
+                surface_px,
+                picture,
+                mm_per_px,
+                stroke: None,
+            });
             t.prep_issue = None;
             false
         }
@@ -349,4 +375,100 @@ fn stroke(t: &mut Tracer, points: Vec<[f64; 2]>) -> bool {
     t.recipe = Some(recipe);
     t.prep_issue = None;
     true
+}
+
+// ---- pointing with the pointer of the canvas -------------------------------------------------
+
+/// Where the picture and the marks of an open pick are on the sheet, for the scene.
+pub(super) struct PickScene {
+    /// Corners of the picture on the sheet: top left, top right, bottom right, bottom left.
+    pub(super) quad: [Point; 4],
+    pub(super) picture: PickPicture,
+    /// The corners clicked so far.
+    pub(super) corners: Vec<Point>,
+    /// The stroke in progress.
+    pub(super) stroke: Vec<Point>,
+}
+
+pub(super) fn pick_scene(t: &Tracer) -> Option<PickScene> {
+    let p = t.pick.as_ref()?;
+    let picture = p.picture.clone()?;
+    let (w, h) = (f64::from(p.surface_px.0), f64::from(p.surface_px.1));
+    let quad = [p.to_mm([0.0, 0.0]), p.to_mm([w, 0.0]), p.to_mm([w, h]), p.to_mm([0.0, h])];
+    let corners = match &p.mode {
+        PickMode::Corners(picked) => picked.iter().map(|c| p.to_mm(*c)).collect(),
+        PickMode::Brush { .. } => Vec::new(),
+    };
+    let stroke = p.stroke.iter().flatten().map(|c| p.to_mm(*c)).collect();
+    Some(PickScene { quad, picture, corners, stroke })
+}
+
+/// Escape puts the pointing down. Whether there was any.
+pub(super) fn end_pick(s: &mut Session) -> bool {
+    s.tracer.as_mut().is_some_and(|t| t.pick.take().is_some())
+}
+
+/// A point per half pixel is plenty: the stroke stays short and the recipe small.
+const STROKE_STEP_PX: f64 = 0.5;
+
+fn far_enough(last: Option<&[f64; 2]>, px: [f64; 2]) -> bool {
+    last.is_none_or(|l| (l[0] - px[0]).hypot(l[1] - px[1]) >= STROKE_STEP_PX)
+}
+
+impl AppController {
+    /// A pointer event of the canvas while the tracer asks for corners or a brush: it is the pointer
+    /// in the picture. `None` when nothing is being pointed at (the event is an ordinary one).
+    pub(super) fn trace_pointer(&mut self, document: DocumentId, event: &ViewPointerEvent) -> Option<AppUpdate> {
+        let (px, brush) = {
+            let s = self.sessions.get(&document)?;
+            let pick = s.tracer.as_ref()?.pick.as_ref()?;
+            let mm = s.camera.points_to_world(&s.viewport, event.position_pt);
+            (pick.to_px(mm), matches!(pick.mode, PickMode::Brush { .. }))
+        };
+        let primary = event.button.is_none_or(|b| b == PointerButton::Primary);
+        match (event.phase, brush) {
+            (PointerPhase::Down, false) if primary => {
+                Some(self.trace_pick(document, TracePick::Point { x: px[0], y: px[1] }))
+            }
+            (PointerPhase::Down, true) if primary => Some(self.with_session(document, |s| {
+                if let Some(p) = s.tracer.as_mut().and_then(|t| t.pick.as_mut()) {
+                    p.stroke = Some(vec![px]);
+                }
+                AppUpdate::redraw(document)
+            })),
+            (PointerPhase::Move, true) => Some(self.with_session(document, |s| {
+                if let Some(stroke) = s.tracer.as_mut().and_then(|t| t.pick.as_mut()).and_then(|p| p.stroke.as_mut())
+                    && far_enough(stroke.last(), px)
+                {
+                    stroke.push(px);
+                }
+                AppUpdate::redraw(document)
+            })),
+            (PointerPhase::Up, true) => {
+                let points = self
+                    .sessions
+                    .get_mut(&document)
+                    .and_then(|s| s.tracer.as_mut())
+                    .and_then(|t| t.pick.as_mut())
+                    .and_then(|p| p.stroke.take());
+                match points {
+                    Some(mut points) => {
+                        if far_enough(points.last(), px) {
+                            points.push(px);
+                        }
+                        Some(self.trace_pick(document, TracePick::Stroke { points }))
+                    }
+                    None => Some(AppUpdate::default()),
+                }
+            }
+            (PointerPhase::Cancel, _) => Some(self.with_session(document, |s| {
+                if let Some(p) = s.tracer.as_mut().and_then(|t| t.pick.as_mut()) {
+                    p.stroke = None;
+                }
+                AppUpdate::redraw(document)
+            })),
+            // Everything else (hover, a press with another button) is eaten while pointing.
+            _ => Some(AppUpdate::default()),
+        }
+    }
 }

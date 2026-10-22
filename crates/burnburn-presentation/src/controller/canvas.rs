@@ -25,6 +25,9 @@ impl AppController {
         if let Some(update) = self.laser_pointer(document, &event) {
             return update;
         }
+        if let Some(update) = self.trace_pointer(document, &event) {
+            return update;
+        }
         let request = self.next_id::<RequestId>();
         self.with_session(document, |s| {
             // DR-04: the one place where canvas points become world millimetres.
@@ -113,6 +116,13 @@ impl AppController {
         {
             s.sketch.entities.clear();
             s.sketch.constraints.clear();
+            return AppUpdate::redraw(document);
+        }
+        // Escape puts the brush or the corner pointing of the tracer down.
+        if key == CanvasKey::Escape
+            && let Some(s) = self.sessions.get_mut(&document)
+            && super::trace_g7::end_pick(s)
+        {
             return AppUpdate::redraw(document);
         }
         // Escape first ends a Print and Cut / Center Finder pick.
