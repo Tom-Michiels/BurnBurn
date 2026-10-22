@@ -19,6 +19,8 @@ pub enum CompoundLabel {
     ImportLayers,
     /// Replace to Fit: the frame takes the shape of the new picture, and the pixels change (G7-trace, T09).
     ReplaceToFit,
+    /// One text edit applied to several text objects at once (G7-editor, E07).
+    EditTexts,
 }
 
 /// One step of a compound command.

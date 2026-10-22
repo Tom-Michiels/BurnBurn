@@ -159,16 +159,17 @@ pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
 pub use start_confirm::{START_NEEDS, StartConfirmViewModel, StartEvidence};
 pub use structure_panel::{
-    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
-    ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
+    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
+    ModifierValueKind, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
+    ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 pub use task::{
     DocumentMeasure, ParsedImport, TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskPort, TaskPortError,
     TaskRequest, run_task,
 };
 pub use text_panel::{
-    Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
-    TextToolbarViewModel, VAlign,
+    Align, Distort, MissingFontChoice, PathBindingStatus, TextEdit, TextField, TextIssue, TextMixed,
+    TextOnPathViewModel, TextPathEdit, TextPathView, TextToggle, TextToolbarViewModel, VAlign,
 };
 pub use trace_pick::*;
 pub use trace_prep::*;

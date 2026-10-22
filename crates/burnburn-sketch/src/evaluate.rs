@@ -19,6 +19,8 @@ use crate::solver::{self, Along, Constraint, ConstraintState, Coordinate, Entity
 #[derive(Debug, Clone, PartialEq)]
 pub struct SolvedSketch {
     pub(crate) entities: BTreeMap<EntityId, SketchEntity>,
+    /// Ellipses whose semi-minor radius the solver moved away from the drawn one.
+    pub(crate) minors: BTreeMap<EntityId, f64>,
 }
 
 impl SolvedSketch {
@@ -63,6 +65,7 @@ impl SolvedSketch {
                 _ => {}
             }
         }
+        s.minors.clone_from(&self.minors);
         s
     }
 }
@@ -207,6 +210,7 @@ fn dim_value(kind: DimensionKind, text: &str, params: &Values) -> Result<f64, Di
             along: burnburn_document::sketch::Along::X | burnburn_document::sketch::Along::Y,
             ..
         } => Ok(q.value),
+        DimensionKind::MinorDiameter { .. } if q.value <= 0.0 => Err(DimensionError::Negative { value: q.value }),
         _ if q.value < 0.0 => Err(DimensionError::Negative { value: q.value }),
         _ => Ok(q.value),
     }
@@ -259,6 +263,179 @@ fn lower(sketch: &Sketch) -> Option<(Problem, Index)> {
     Some((problem, index))
 }
 
+/// What the solver is given to see an ellipse beyond its major axis (G7-editor, S01). The solver
+/// knows points, lines, arcs and circles only, so the ellipse is described by them: a point at the
+/// end of the semi-minor axis (perpendicular to the major axis through the centre), the two foci
+/// (on the major axis, as far from the centre as the minor-axis end is from a focus is long), and
+/// the mirror image of the major end (so that `2a` is a length the solver can equate to).
+/// A point lies on the ellipse when its distances to the foci add up to `2a`, and a line is
+/// tangent when the mirror image of one focus in it is `2a` from the other focus.
+#[derive(Debug, Clone, Copy)]
+struct EllipseAux {
+    f1: solver::EntityId,
+    f2: solver::EntityId,
+    /// Line centre to the end of the semi-minor axis: its length is the semi-minor radius.
+    minor_line: solver::EntityId,
+    minor_end: solver::EntityId,
+    /// Line from the major end to its mirror image about the centre: `2a` long.
+    director: solver::EntityId,
+}
+
+/// The solver problem under construction, with the auxiliary geometry of the ellipses that need it.
+struct Builder<'a> {
+    sketch: &'a Sketch,
+    params: &'a Values,
+    problem: Problem,
+    index: Index,
+    ellipses: BTreeMap<EntityId, EllipseAux>,
+}
+
+impl Builder<'_> {
+    fn e(&self, id: EntityId) -> Option<solver::EntityId> {
+        self.index.of.get(&id).copied()
+    }
+
+    /// Where the solver is asked to start for a point entity.
+    fn at(&self, id: solver::EntityId) -> Option<Point> {
+        match self.problem.entities.get(id.index())? {
+            Entity::Point { at } => Some(*at),
+            _ => None,
+        }
+    }
+
+    fn point(&mut self, at: Point) -> solver::EntityId {
+        self.problem.add(Entity::Point { at })
+    }
+
+    fn line(&mut self, a: solver::EntityId, b: solver::EntityId) -> solver::EntityId {
+        self.problem.add(Entity::Line { start: a, end: b })
+    }
+
+    /// The driving minor-axis dimension of `ellipse`, as a semi-minor radius, when it has one.
+    fn minor_dimension(&self, ellipse: EntityId) -> Option<f64> {
+        self.sketch.constraints().find_map(|(_, c)| match c {
+            SketchConstraint::Dimension(d)
+                if d.role == DimensionRole::Driving
+                    && matches!(d.kind, DimensionKind::MinorDiameter { ellipse: e } if e == ellipse) =>
+            {
+                dim_value(d.kind, &d.text, self.params).ok().map(|v| v / 2.0)
+            }
+            _ => None,
+        })
+    }
+
+    fn has_minor_dimension(&self, ellipse: EntityId) -> bool {
+        self.sketch.constraints().any(|(_, c)| {
+            matches!(c, SketchConstraint::Dimension(d)
+                if d.role == DimensionRole::Driving
+                    && matches!(d.kind, DimensionKind::MinorDiameter { ellipse: e } if e == ellipse))
+        })
+    }
+
+    /// The auxiliary geometry of `ellipse`, made on first use. The constraints that tie it to the
+    /// ellipse go to `hidden` (the caller attributes them to the constraint that needed it).
+    fn ellipse_aux(&mut self, ellipse: EntityId, hidden: &mut Vec<Constraint>) -> Option<EllipseAux> {
+        if let Some(aux) = self.ellipses.get(&ellipse) {
+            return Some(*aux);
+        }
+        let DocEntity::Ellipse { center, major, minor } = self.sketch.entity(ellipse)?.entity else { return None };
+        // Where the ellipse was last solved, else as drawn.
+        let minor = self.sketch.solution().and_then(|s| s.minors.get(&ellipse).copied()).unwrap_or(minor);
+        let (c, m, line) = (self.e(center)?, self.e(major)?, self.e(ellipse)?);
+        let (pc, pm) = (self.at(c)?, self.at(m)?);
+        let a = pc.distance(pm);
+        if !(a > 0.0) {
+            return None;
+        }
+        let u = ((pm.x - pc.x) / a, (pm.y - pc.y) / a);
+        let v = (-u.1, u.0);
+        let b = self.minor_dimension(ellipse).filter(|b| *b > 0.0).unwrap_or(minor);
+        // The foci lie on the longer axis. Normally that is the major axis; an ellipse whose
+        // "minor" radius is the larger one has them on the other axis, and the roles swap.
+        let swapped = b > a;
+        let (long, short) = if swapped { (b, a) } else { (a, b) };
+        let focal = (long * long - short * short).max(0.0).sqrt().max(1e-3 * long);
+        let direction = if swapped { v } else { u };
+        let minor_end = self.point(Point::new(pc.x + b * v.0, pc.y + b * v.1));
+        let minor_line = self.line(c, minor_end);
+        let (long_end, long_line, short_end) = if swapped { (minor_end, minor_line, m) } else { (m, line, minor_end) };
+        let (pl, pe) = (self.at(long_end)?, self.at(c)?);
+        let long_mirror = self.point(Point::new(2.0 * pe.x - pl.x, 2.0 * pe.y - pl.y));
+        let f1 = self.point(Point::new(pc.x + focal * direction.0, pc.y + focal * direction.1));
+        let f2 = self.point(Point::new(pc.x - focal * direction.0, pc.y - focal * direction.1));
+        let director = self.line(long_end, long_mirror);
+        let focal_line = self.line(c, f1);
+        let focal_to_short = self.line(f1, short_end);
+        hidden.extend([
+            // The mirror image of the end of the long axis: |end mirror| = 2 * long.
+            Constraint::Symmetric { a: long_end, b: long_mirror, about: c },
+            // The end of the semi-minor axis is perpendicular to the major axis through the centre ...
+            Constraint::Perpendicular(minor_line, line),
+            // ... the foci lie on the long axis, as far from the centre as c = sqrt(long^2 - short^2):
+            // the end of the short axis is exactly `long` from a focus ...
+            Constraint::Parallel(focal_line, long_line),
+            Constraint::Equal(focal_to_short, long_line),
+            // ... and the foci are each other's mirror image.
+            Constraint::Symmetric { a: f1, b: f2, about: c },
+        ]);
+        if !self.has_minor_dimension(ellipse) {
+            // Without a dimension the drawn semi-minor stays what it is: it was never a freedom.
+            hidden.push(Constraint::Length { line: minor_line, value: minor });
+        }
+        let aux = EllipseAux { f1, f2, minor_line, minor_end, director };
+        self.ellipses.insert(ellipse, aux);
+        Some(aux)
+    }
+
+    /// A point on an ellipse: its distances to the foci add up to `2a`. The auxiliary point `q`
+    /// lies on the ray from the first focus through the point, `2a` from that focus, so the point
+    /// is as far from `q` as from the second focus exactly when the sum is `2a`.
+    fn point_on_ellipse(&mut self, point: EntityId, ellipse: EntityId, out: &mut Vec<Constraint>) -> Option<()> {
+        let aux = self.ellipse_aux(ellipse, out)?;
+        let p = self.e(point)?;
+        let (pp, pf1) = (self.at(p)?, self.at(aux.f1)?);
+        let two_a = match *self.problem.entities.get(aux.director.index())? {
+            Entity::Line { start, end } => self.at(start)?.distance(self.at(end)?),
+            _ => return None,
+        };
+        let d = pf1.distance(pp);
+        let (dx, dy) = if d > 0.0 { ((pp.x - pf1.x) / d, (pp.y - pf1.y) / d) } else { (1.0, 0.0) };
+        let q = self.point(Point::new(pf1.x + dx * two_a, pf1.y + dy * two_a));
+        let (f1_p, f1_q, p_f2, p_q) =
+            (self.line(aux.f1, p), self.line(aux.f1, q), self.line(p, aux.f2), self.line(p, q));
+        out.extend([
+            // q is on the ray from the first focus through the point ...
+            Constraint::Parallel(f1_p, f1_q),
+            // ... 2a away from it ...
+            Constraint::Equal(f1_q, aux.director),
+            // ... and the point is as far from q as from the second focus.
+            Constraint::Equal(p_f2, p_q),
+        ]);
+        Some(())
+    }
+
+    /// A line tangent to an ellipse: the mirror image of the first focus in the line is `2a` from
+    /// the second focus.
+    fn tangent_to_ellipse(&mut self, line: EntityId, ellipse: EntityId, out: &mut Vec<Constraint>) -> Option<()> {
+        let aux = self.ellipse_aux(ellipse, out)?;
+        let l = self.e(line)?;
+        let Entity::Line { start, end } = *self.problem.entities.get(l.index())? else { return None };
+        let (ps, pe, pf1) = (self.at(start)?, self.at(end)?, self.at(aux.f1)?);
+        let (dx, dy) = (pe.x - ps.x, pe.y - ps.y);
+        let len2 = dx * dx + dy * dy;
+        if !(len2 > 0.0) {
+            return None;
+        }
+        // Reflection of the first focus in the (infinite) line.
+        let t = ((pf1.x - ps.x) * dx + (pf1.y - ps.y) * dy) / len2;
+        let foot = Point::new(ps.x + t * dx, ps.y + t * dy);
+        let mirror = self.point(Point::new(2.0 * foot.x - pf1.x, 2.0 * foot.y - pf1.y));
+        let to_f2 = self.line(mirror, aux.f2);
+        out.extend([Constraint::Symmetric { a: aux.f1, b: mirror, about: l }, Constraint::Equal(to_f2, aux.director)]);
+        Some(())
+    }
+}
+
 /// The solver entity of the centre of a circle, arc or ellipse.
 fn centre_of(
     sketch: &Sketch,
@@ -273,39 +450,49 @@ fn centre_of(
     }
 }
 
-fn relation(sketch: &Sketch, r: Relation, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<Constraint> {
+fn relation(b: &mut Builder<'_>, r: Relation, out: &mut Vec<Constraint>) -> Option<()> {
+    let sketch = b.sketch;
+    let e = |id: EntityId| b.index.of.get(&id).copied();
     let is_ellipse =
         |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
-    Some(match r {
+    let one = match r {
         // The solver's concentricity wants round curves; an ellipse shares its centre point.
-        Relation::Concentric(a, b) if is_ellipse(a) || is_ellipse(b) => {
-            Constraint::Coincident(centre_of(sketch, a, e)?, centre_of(sketch, b, e)?)
+        Relation::Concentric(a, c) if is_ellipse(a) || is_ellipse(c) => {
+            Constraint::Coincident(centre_of(sketch, a, &e)?, centre_of(sketch, c, &e)?)
         }
-        Relation::Coincident(a, b) => Constraint::Coincident(e(a)?, e(b)?),
+        Relation::PointOn { point, curve } if is_ellipse(curve) => return b.point_on_ellipse(point, curve, out),
+        Relation::Tangent(a, c) if is_ellipse(a) => return b.tangent_to_ellipse(c, a, out),
+        Relation::Tangent(a, c) if is_ellipse(c) => return b.tangent_to_ellipse(a, c, out),
+        Relation::Coincident(a, c) => Constraint::Coincident(e(a)?, e(c)?),
         Relation::PointOn { point, curve } => Constraint::PointOn { point: e(point)?, curve: e(curve)? },
         Relation::Horizontal(l) => Constraint::Horizontal(e(l)?),
         Relation::Vertical(l) => Constraint::Vertical(e(l)?),
-        Relation::Parallel(a, b) => Constraint::Parallel(e(a)?, e(b)?),
-        Relation::Perpendicular(a, b) => Constraint::Perpendicular(e(a)?, e(b)?),
-        Relation::Tangent(a, b) => Constraint::Tangent(e(a)?, e(b)?),
-        Relation::Equal(a, b) => Constraint::Equal(e(a)?, e(b)?),
+        Relation::Parallel(a, c) => Constraint::Parallel(e(a)?, e(c)?),
+        Relation::Perpendicular(a, c) => Constraint::Perpendicular(e(a)?, e(c)?),
+        Relation::Tangent(a, c) => Constraint::Tangent(e(a)?, e(c)?),
+        Relation::Equal(a, c) => Constraint::Equal(e(a)?, e(c)?),
         Relation::Midpoint { point, line } => Constraint::Midpoint { point: e(point)?, line: e(line)? },
-        Relation::Symmetric { a, b, about } => Constraint::Symmetric { a: e(a)?, b: e(b)?, about: e(about)? },
-        Relation::Concentric(a, b) => Constraint::Concentric(e(a)?, e(b)?),
+        Relation::Symmetric { a, b: c, about } => Constraint::Symmetric { a: e(a)?, b: e(c)?, about: e(about)? },
+        Relation::Concentric(a, c) => Constraint::Concentric(e(a)?, e(c)?),
         Relation::Fix { point, at } => Constraint::Fix { point: e(point)?, at },
         _ => return None,
-    })
+    };
+    out.push(one);
+    Some(())
 }
 
-fn dimension(
-    sketch: &Sketch,
-    kind: DimensionKind,
-    value: f64,
-    e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
-) -> Option<Constraint> {
+fn dimension(b: &mut Builder<'_>, kind: DimensionKind, value: f64, out: &mut Vec<Constraint>) -> Option<()> {
+    if let DimensionKind::MinorDiameter { ellipse } = kind {
+        // The semi-minor radius is the length of the auxiliary line to the end of the minor axis.
+        let aux = b.ellipse_aux(ellipse, out)?;
+        out.push(Constraint::Length { line: aux.minor_line, value: value / 2.0 });
+        return Some(());
+    }
+    let sketch = b.sketch;
+    let e = |id: EntityId| b.index.of.get(&id).copied();
     let is_ellipse =
         |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
-    Some(match kind {
+    out.push(match kind {
         // An ellipse is its major axis for the solver: radius = semi-major, diameter = full axis.
         DimensionKind::Radius { curve } if is_ellipse(curve) => Constraint::Length { line: e(curve)?, value },
         DimensionKind::Diameter { curve } if is_ellipse(curve) => {
@@ -319,7 +506,8 @@ fn dimension(
         DimensionKind::Diameter { curve } => Constraint::Diameter { curve: e(curve)?, value },
         DimensionKind::Angle { from, to } => Constraint::Angle { from: e(from)?, to: e(to)?, degrees: value },
         _ => return None,
-    })
+    });
+    Some(())
 }
 
 /// Evaluates a sketch definition. Cancellation is checked before and during the solve.
@@ -356,19 +544,21 @@ pub fn evaluate_sketch(
             return Ok(failed(diagnostics, Some(e), None));
         }
     };
-    let Some((mut problem, index)) = lower(sketch) else {
+    let Some((problem, index)) = lower(sketch) else {
         return Ok(failed(diagnostics, None, None));
     };
-    let e = |id: EntityId| index.of.get(&id).copied();
+    let mut builder = Builder { sketch, params: &params, problem, index, ellipses: BTreeMap::new() };
+    // The document constraint each solver constraint belongs to. One constraint of the document can
+    // be several in the solver (an ellipse needs its auxiliary geometry tied down as well).
     let mut to_sketch: Vec<ConstraintId> = Vec::new();
-    let mut to_problem: BTreeMap<ConstraintId, usize> = BTreeMap::new();
     let mut any_invalid = false;
     for (id, c) in sketch.constraints() {
-        let lowered = match c {
-            SketchConstraint::Relation(r) => relation(sketch, *r, &e),
+        let mut lowered: Vec<Constraint> = Vec::new();
+        let ok = match c {
+            SketchConstraint::Relation(r) => relation(&mut builder, *r, &mut lowered),
             SketchConstraint::Dimension(d) if d.role == DimensionRole::Driven => continue,
             SketchConstraint::Dimension(d) => match dim_value(d.kind, &d.text, &params) {
-                Ok(v) => dimension(sketch, d.kind, v, &e),
+                Ok(v) => dimension(&mut builder, d.kind, v, &mut lowered),
                 Err(err) => {
                     diagnostics.insert(id, Diagnosis::Invalid(err));
                     any_invalid = true;
@@ -376,33 +566,57 @@ pub fn evaluate_sketch(
                 }
             },
         };
-        let Some(lowered) = lowered else {
+        if ok.is_none() {
             return Ok(failed(diagnostics, None, None));
-        };
-        to_problem.insert(id, problem.constraints.len());
-        problem.constraints.push(lowered);
-        to_sketch.push(id);
+        }
+        to_sketch.extend(std::iter::repeat_n(id, lowered.len()));
+        builder.problem.constraints.extend(lowered);
     }
     if any_invalid {
         return Ok(failed(diagnostics, None, None));
     }
+    let Builder { problem, index, ellipses, .. } = builder;
     let report = match solver.solve(&problem, cancel) {
         Ok(r) => r,
         Err(SolveError::Cancelled) => return Err(Cancelled),
         Err(err) => return Ok(failed(diagnostics, None, Some(err))),
     };
-    let map = |v: &[solver::ConstraintIndex]| -> Vec<ConstraintId> {
-        v.iter().filter_map(|c| to_sketch.get(c.0).copied()).collect()
+    let map = |own: ConstraintId, v: &[solver::ConstraintIndex]| -> Vec<ConstraintId> {
+        let mut out: Vec<ConstraintId> =
+            v.iter().filter_map(|c| to_sketch.get(c.0).copied()).filter(|c| *c != own).collect();
+        out.sort();
+        out.dedup();
+        out
     };
-    for (id, p) in &to_problem {
-        let d = match report.constraints.get(*p) {
-            Some(ConstraintState::Satisfied) => Diagnosis::Satisfied,
-            Some(ConstraintState::Redundant { with }) => Diagnosis::Redundant { with: map(with) },
-            Some(ConstraintState::Conflicting { with }) => Diagnosis::Conflicting { with: map(with) },
-            Some(ConstraintState::Unmet { residual }) => Diagnosis::Unmet { residual: *residual },
-            None => Diagnosis::NotEvaluated,
+    let mut ids: Vec<ConstraintId> = to_sketch.clone();
+    ids.dedup();
+    ids.sort();
+    ids.dedup();
+    for id in ids {
+        // The worst state of the solver constraints the document constraint became.
+        let mut state = Diagnosis::Satisfied;
+        let rank = |d: &Diagnosis| match d {
+            Diagnosis::Conflicting { .. } => 3,
+            Diagnosis::Unmet { .. } => 2,
+            Diagnosis::Redundant { .. } => 1,
+            _ => 0,
         };
-        diagnostics.insert(*id, d);
+        for (i, owner) in to_sketch.iter().enumerate() {
+            if *owner != id {
+                continue;
+            }
+            let d = match report.constraints.get(i) {
+                Some(ConstraintState::Satisfied) => Diagnosis::Satisfied,
+                Some(ConstraintState::Redundant { with }) => Diagnosis::Redundant { with: map(id, with) },
+                Some(ConstraintState::Conflicting { with }) => Diagnosis::Conflicting { with: map(id, with) },
+                Some(ConstraintState::Unmet { residual }) => Diagnosis::Unmet { residual: *residual },
+                None => Diagnosis::NotEvaluated,
+            };
+            if rank(&d) > rank(&state) {
+                state = d;
+            }
+        }
+        diagnostics.insert(id, state);
     }
     let health = match report.status {
         solver::SolveStatus::Solved if report.dof == 0 => Health::FullyConstrained,
@@ -411,6 +625,7 @@ pub fn evaluate_sketch(
         solver::SolveStatus::NotConverged => Health::NotConverged,
     };
     let solved = health.is_valid().then(|| {
+        let mut minors = BTreeMap::new();
         let entities = sketch
             .entities()
             .zip(&report.entities)
@@ -422,12 +637,25 @@ pub fn evaluate_sketch(
                     (DocEntity::Circle { center, .. }, solver::Solved::Circle { radius }) => {
                         DocEntity::Circle { center, radius: radius.abs() }
                     }
+                    // An ellipse whose minor axis the solver saw: the distance from the centre to
+                    // the end of the semi-minor axis is the solved semi-minor radius.
+                    (DocEntity::Ellipse { center, major, minor }, _) => {
+                        let solved = ellipses.get(&id).and_then(|aux| {
+                            let c = report.point(index.of.get(&center).copied()?)?;
+                            let end = report.point(aux.minor_end)?;
+                            Some(c.distance(end)).filter(|m| *m > 0.0)
+                        });
+                        if let Some(m) = solved.filter(|m| (*m - minor).abs() > 1e-12) {
+                            minors.insert(id, m);
+                        }
+                        DocEntity::Ellipse { center, major, minor: solved.unwrap_or(minor) }
+                    }
                     (other, _) => other,
                 };
                 (id, SketchEntity { entity, construction: e.construction })
             })
             .collect();
-        SolvedSketch { entities }
+        SolvedSketch { entities, minors }
     });
     if let Some(s) = &solved {
         for (id, c) in sketch.constraints() {
@@ -482,6 +710,10 @@ pub fn measure(s: &SolvedSketch, kind: DimensionKind) -> Option<Value> {
         }
         DimensionKind::Radius { curve } => len(s.radius(curve)?),
         DimensionKind::Diameter { curve } => len(2.0 * s.radius(curve)?),
+        DimensionKind::MinorDiameter { ellipse } => match s.entities.get(&ellipse)?.entity {
+            DocEntity::Ellipse { minor, .. } => len(2.0 * minor),
+            _ => None,
+        },
         DimensionKind::Angle { from, to } => {
             let ((a0, a1), (b0, b1)) = (line(from)?, line(to)?);
             // libm: platform-independent bits (DR-13).

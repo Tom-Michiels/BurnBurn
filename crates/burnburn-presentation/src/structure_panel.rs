@@ -30,6 +30,8 @@ pub struct InstanceRow {
     /// Default values, then the variant, then the overrides.
     pub effective: Vec<PartValue>,
     pub plate: Option<String>,
+    /// The same plate by id (G7-editor), for the choice that moves the instance.
+    pub plate_id: Option<u64>,
     pub status: InstanceStatus,
 }
 
@@ -40,6 +42,37 @@ pub struct VariantRow {
     pub values: Vec<PartValue>,
 }
 
+/// The kind of a shape of a part (G7-editor, S07).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum PartShapeKind {
+    Rectangle,
+    Circle,
+    /// Fixed geometry (for example imported): no numbers to edit.
+    Fixed,
+}
+
+/// One number of a part shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ShapeField {
+    X,
+    Y,
+    Width,
+    Height,
+    Radius,
+}
+
+/// One shape of a part definition. A number is shown as millimetres or as the name of the
+/// parameter it follows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartShapeRow {
+    pub key: u32,
+    pub name: String,
+    pub kind: PartShapeKind,
+    pub fields: Vec<(ShapeField, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartRow {
     pub id: u64,
@@ -48,7 +81,21 @@ pub struct PartRow {
     pub variants: Vec<String>,
     /// The same variants with their values (G6-werk).
     pub variant_values: Vec<VariantRow>,
+    /// The shapes of the definition, in key order (G7-editor).
+    pub shapes: Vec<PartShapeRow>,
     pub instances: Vec<InstanceRow>,
+}
+
+/// A text field of a plate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum PlateField {
+    Name,
+    Width,
+    Height,
+    Material,
+    /// Empty text means no thickness.
+    Thickness,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +164,62 @@ pub enum PlateIssueRow {
     Blocked { object: u64 },
 }
 
+/// The kind of one step of a modifier chain (G7-editor, E06).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ModifierKind {
+    Offset,
+    Boolean,
+    LinearArray,
+    GridArray,
+    CircularArray,
+    PathArray,
+}
+
+/// What the one editable number of a step means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ModifierValueKind {
+    /// Copies including the original.
+    Count,
+    /// Offset distance in mm (positive grows).
+    Distance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModifierStepRow {
+    pub index: usize,
+    pub kind: ModifierKind,
+    /// The step's main number as text (`None`: the step has no single number to edit).
+    pub value: Option<(ModifierValueKind, String)>,
+    pub enabled: bool,
+    /// This step is the one the chain could not compute.
+    pub failed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModifierStatus {
+    Valid,
+    /// Its outputs are the last valid ones, blocked for production; `step` names the offending step.
+    Failed {
+        step: Option<usize>,
+    },
+    Pending,
+}
+
+/// One non-destructive chain: a source that stays editable, steps in order, derived outputs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModifierRow {
+    pub id: u64,
+    pub name: String,
+    pub source: u64,
+    pub source_name: Option<String>,
+    pub steps: Vec<ModifierStepRow>,
+    pub status: ModifierStatus,
+    /// Derived objects the chain currently makes.
+    pub outputs: usize,
+}
+
 /// Everything the structure panel shows; empty lists for a document without structure.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StructureViewModel {
@@ -134,6 +237,8 @@ pub struct StructureViewModel {
     /// The edges of the selected object when exactly one is selected; empty otherwise.
     pub edges: Vec<EdgeRow>,
     pub edge_object: Option<u64>,
+    /// The modifier chains of the document, in creation order (G7-editor, E06).
+    pub modifiers: Vec<ModifierRow>,
 }
 
 /// An edit of one instance, each one undo step.
@@ -201,6 +306,103 @@ pub enum StructureEdit {
     RemoveReference {
         reference: u64,
     },
+    /// A new plate from typed text; width and height are lengths, an empty thickness is none (P06).
+    CreatePlate {
+        name: String,
+        width: String,
+        height: String,
+        material: String,
+        thickness: String,
+    },
+    /// One field of a plate as typed.
+    SetPlateField {
+        plate: u64,
+        field: PlateField,
+        text: String,
+    },
+    /// The plate goes; its objects and instances become unassigned.
+    RemovePlate {
+        plate: u64,
+    },
+    /// The selected objects onto a plate (`None`: off any plate). Part outputs follow their
+    /// instance: assign the instance instead.
+    AssignSelectionToPlate {
+        plate: Option<u64>,
+    },
+    /// An instance onto a plate (`None`: off any plate).
+    SetInstancePlate {
+        instance: u64,
+        plate: Option<u64>,
+    },
+    /// A variant under another name; its instances follow (S07).
+    RenameVariant {
+        definition: u64,
+        from: String,
+        to: String,
+    },
+    /// Takes a variant away; refused while an instance uses it.
+    RemoveVariant {
+        definition: u64,
+        name: String,
+    },
+    /// A new rectangle or circle in the definition (every instance gets it).
+    AddPartShape {
+        definition: u64,
+        kind: PartShapeKind,
+        name: String,
+    },
+    RemovePartShape {
+        definition: u64,
+        shape: u32,
+    },
+    RenamePartShape {
+        definition: u64,
+        shape: u32,
+        name: String,
+    },
+    /// One number of a shape as typed: the name of a parameter makes it follow that parameter,
+    /// anything else is a length.
+    SetPartShapeField {
+        definition: u64,
+        shape: u32,
+        field: ShapeField,
+        text: String,
+    },
+    /// One step of a modifier chain on or off; source and other steps are untouched (E06).
+    ToggleModifierStep {
+        modifier: u64,
+        step: usize,
+        enabled: bool,
+    },
+    /// The step one place earlier (`up`) or later in the chain; the order changes the result.
+    MoveModifierStep {
+        modifier: u64,
+        step: usize,
+        up: bool,
+    },
+    /// Takes one step out of the chain (the last step stays: remove the chain instead).
+    RemoveModifierStep {
+        modifier: u64,
+        step: usize,
+    },
+    /// The main number of a step as typed (copies, or an offset distance with its unit).
+    SetModifierStepValue {
+        modifier: u64,
+        step: usize,
+        text: String,
+    },
+    /// Removes the chain and its outputs.
+    RemoveModifier {
+        modifier: u64,
+    },
+    /// Applies the chain: its outputs become ordinary objects, the chain is gone, the source stays.
+    BakeModifier {
+        modifier: u64,
+    },
+    /// A chain with one offset step on the selected object; the distance as typed.
+    CreateOffsetModifier {
+        distance: String,
+    },
 }
 
 /// Why a structure edit was refused (G6-werk). Nothing changed.
@@ -225,4 +427,26 @@ pub enum StructureProblem {
     /// Only an ambiguous reference is rebound, by choosing one of its candidates.
     NotAmbiguous,
     NoCandidate,
+    /// The chain does not exist (any more).
+    UnknownModifier,
+    /// The chain has no such step.
+    UnknownStep,
+    /// The step is already first / last.
+    CannotMoveStep,
+    /// The last step of a chain stays; remove the chain instead.
+    LastStep,
+    /// The step has no single number to edit (a boolean or a grid).
+    StepHasNoValue,
+    /// A number of copies must be a whole number of at least one.
+    InvalidCount,
+    UnknownPlate,
+    UnknownShape,
+    /// The shape has no such number (a radius on a rectangle).
+    NoSuchField,
+    /// An instance still uses the variant.
+    VariantInUse,
+    /// The selection holds the output of a part: assign its instance instead.
+    PartOutputSelected,
+    /// Fixed geometry has no numbers; a rectangle or circle can be added.
+    CannotAddFixed,
 }

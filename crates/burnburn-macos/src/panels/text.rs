@@ -68,10 +68,12 @@ pub enum Slot {
     BcWidth,
     BcCreate,
     BcCancel,
+    /// The text-on-path sheet: keep the text bound to the guide (G7-editor, E08).
+    PathLive,
 }
 
 impl Slot {
-    pub const ALL: [Slot; 47] = [
+    pub const ALL: [Slot; 48] = [
         Slot::Family,
         Slot::Bold,
         Slot::Italic,
@@ -119,6 +121,7 @@ impl Slot {
         Slot::BcWidth,
         Slot::BcCreate,
         Slot::BcCancel,
+        Slot::PathLive,
     ];
 
     /// How the control reports itself.
@@ -128,7 +131,7 @@ impl Slot {
             Height | HSpace | VSpace | PathStart | PathOffset | VarOffset | SerialCurrent | SerialStart | SerialEnd
             | SerialBy | SerialDigits | VarRow | BcPayload | BcModule | BcMinModule | BcQuiet | BcHeight
             | BcColumns | BcWidth => SlotKind::Text,
-            Bold | Italic | Uppercase | Welded | SingleLine | PathReverse | SerialWrap => SlotKind::Toggle,
+            Bold | Italic | Uppercase | Welded | SingleLine | PathReverse | PathLive | SerialWrap => SlotKind::Toggle,
             Family | Align | VAlign | PathDistort | VarKind | VarPolicy | BcType | BcEcc | BcInputMode => {
                 SlotKind::Choice
             }
@@ -200,6 +203,11 @@ pub struct ToolbarPanel {
     /// The reason of the last refusal, missing characters or a missing font; empty when fine.
     pub note: String,
     pub convert_enabled: bool,
+    /// How many text objects the toolbar edits (G7-editor, E07).
+    pub count: usize,
+    /// The controls whose value differs between those texts: they show no value (empty field,
+    /// no choice) until one is picked, and then the pick goes to all of them.
+    pub mixed: Vec<Slot>,
 }
 
 /// The text-on-path sheet.
@@ -209,6 +217,8 @@ pub struct PathPanel {
     pub start: String,
     pub offset: String,
     pub reverse: bool,
+    /// Keep the text bound to the guide (E08).
+    pub live: bool,
     pub apply_enabled: bool,
     /// "Select one text and one path" while the selection does not fit, else the last refusal.
     pub note: String,
@@ -320,6 +330,7 @@ pub enum TextText {
     PathStart,
     PathOffset,
     PathReverse,
+    PathLive,
     Apply,
     Cancel,
     VariableTitle,
@@ -391,6 +402,7 @@ fn pair(text: TextText) -> (&'static str, &'static str) {
         T::PathStart => ("Start op pad (mm)", "Start on the path (mm)"),
         T::PathOffset => ("Afstand tot pad (mm)", "Distance from the path (mm)"),
         T::PathReverse => ("Pad omkeren", "Reverse the path"),
+        T::PathLive => ("Tekst blijft het pad volgen", "Keep the text following the path"),
         T::Apply => ("Toepassen", "Apply"),
         T::Cancel => ("Annuleer", "Cancel"),
         T::VariableTitle => ("Variabele tekst", "Variable text"),
@@ -487,6 +499,7 @@ pub fn text_issue_text(issue: TextIssue, locale: Locale) -> String {
         TextIssue::PathEmptyGuide => tr("Het pad heeft geen lengte", "The path has no length", locale),
         TextIssue::PathFailed => tr("Tekst op pad is mislukt", "Text on a path failed", locale),
         TextIssue::NoFonts => tr("Geen lettertype beschikbaar", "No font available", locale),
+        TextIssue::NotOnPath => tr("Deze tekst volgt geen pad", "This text does not follow a path", locale),
         _ => tr("Niet mogelijk", "Not possible", locale),
     }
 }
@@ -530,9 +543,38 @@ fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
             Locale::Nl => format!("{} teken(s) ontbreken in het lettertype", t.missing_glyphs),
             Locale::En => format!("{} character(s) missing from the font", t.missing_glyphs),
         }
+    } else if t.count > 1 {
+        match locale {
+            Locale::Nl => format!(
+                "{} teksten geselecteerd; een leeg veld betekent verschillende waarden, een keuze geldt voor alle",
+                t.count
+            ),
+            Locale::En => format!(
+                "{} texts selected; an empty field means different values, a choice applies to all of them",
+                t.count
+            ),
+        }
     } else {
         String::new()
     };
+    let m = t.mixed;
+    let mixed: Vec<Slot> = [
+        (m.family, Slot::Family),
+        (m.bold, Slot::Bold),
+        (m.italic, Slot::Italic),
+        (m.uppercase, Slot::Uppercase),
+        (m.welded, Slot::Welded),
+        (m.single_line, Slot::SingleLine),
+        (m.align, Slot::Align),
+        (m.valign, Slot::VAlign),
+        (m.h_space, Slot::HSpace),
+        (m.v_space, Slot::VSpace),
+        (m.height, Slot::Height),
+    ]
+    .into_iter()
+    .filter_map(|(is_mixed, slot)| is_mixed.then_some(slot))
+    .collect();
+    let shown = |is_mixed: bool, value: &String| if is_mixed { String::new() } else { value.clone() };
     let bold_tip = tr("Dit lettertype heeft geen vette variant", "This font has no bold face", locale);
     let italic_tip = tr("Dit lettertype heeft geen cursieve variant", "This font has no italic face", locale);
     ToolbarPanel {
@@ -545,11 +587,13 @@ fn toolbar_panel(t: &TextToolbarViewModel, locale: Locale) -> ToolbarPanel {
         single_line: t.single_line,
         align: ALIGNS.iter().position(|a| *a == t.align).unwrap_or(0),
         valign: VALIGNS.iter().position(|a| *a == t.valign).unwrap_or(0),
-        h_space: t.h_space.clone(),
-        v_space: t.v_space.clone(),
-        height: t.height.clone(),
+        h_space: shown(m.h_space, &t.h_space),
+        v_space: shown(m.v_space, &t.v_space),
+        height: shown(m.height, &t.height),
         note,
         convert_enabled: t.can_convert,
+        count: t.count,
+        mixed,
     }
 }
 
@@ -564,6 +608,7 @@ fn path_panel(p: &TextOnPathViewModel, locale: Locale) -> PathPanel {
         start: p.start.clone(),
         offset: p.offset.clone(),
         reverse: p.reverse,
+        live: p.live,
         apply_enabled: p.ready,
         note,
     }
@@ -872,7 +917,7 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         (Slot::Family, SlotValue::Choice(i)) => {
             let bar = doc.text_toolbar.as_ref()?;
             let name = bar.families.get(i)?;
-            (*name != bar.family).then(|| text(TextEdit::Family(name.clone())))
+            (*name != bar.family || bar.mixed.family).then(|| text(TextEdit::Family(name.clone())))
         }
         (Slot::Bold, SlotValue::Toggle(on)) => {
             (on != doc.text_toolbar.as_ref()?.bold.on).then(|| text(TextEdit::Bold(on)))
@@ -891,23 +936,28 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         }
         (Slot::Align, SlotValue::Choice(i)) => {
             let align = *ALIGNS.get(i)?;
-            (align != doc.text_toolbar.as_ref()?.align).then(|| text(TextEdit::Align(align)))
+            let bar = doc.text_toolbar.as_ref()?;
+            (align != bar.align || bar.mixed.align).then(|| text(TextEdit::Align(align)))
         }
         (Slot::VAlign, SlotValue::Choice(i)) => {
             let valign = *VALIGNS.get(i)?;
-            (valign != doc.text_toolbar.as_ref()?.valign).then(|| text(TextEdit::VAlign(valign)))
+            let bar = doc.text_toolbar.as_ref()?;
+            (valign != bar.valign || bar.mixed.valign).then(|| text(TextEdit::VAlign(valign)))
         }
         (Slot::HSpace, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.h_space, &t, bar.issue.is_some()).then(|| text(TextEdit::HSpace(t)))
+            (changed(&bar.h_space, &t, bar.issue.is_some()) && !(bar.mixed.h_space && t.trim().is_empty()))
+                .then(|| text(TextEdit::HSpace(t)))
         }
         (Slot::VSpace, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.v_space, &t, bar.issue.is_some()).then(|| text(TextEdit::VSpace(t)))
+            (changed(&bar.v_space, &t, bar.issue.is_some()) && !(bar.mixed.v_space && t.trim().is_empty()))
+                .then(|| text(TextEdit::VSpace(t)))
         }
         (Slot::Height, SlotValue::Text(t)) => {
             let bar = doc.text_toolbar.as_ref()?;
-            changed(&bar.height, &t, bar.issue.is_some()).then(|| text(TextEdit::Height(t)))
+            (changed(&bar.height, &t, bar.issue.is_some()) && !(bar.mixed.height && t.trim().is_empty()))
+                .then(|| text(TextEdit::Height(t)))
         }
         (Slot::Convert, SlotValue::Press) => {
             doc.text_toolbar.as_ref()?;
@@ -928,6 +978,9 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         }
         (Slot::PathReverse, SlotValue::Toggle(on)) => {
             (on != doc.text_on_path.as_ref()?.reverse).then(|| path(TextPathEdit::Reverse(on)))
+        }
+        (Slot::PathLive, SlotValue::Toggle(on)) => {
+            (on != doc.text_on_path.as_ref()?.live).then(|| path(TextPathEdit::Live(on)))
         }
         (Slot::PathApply, SlotValue::Press) => doc.text_on_path.as_ref().map(|_| path(TextPathEdit::Apply)),
         (Slot::PathCancel, SlotValue::Press) => doc.text_on_path.as_ref().map(|_| path(TextPathEdit::Cancel)),

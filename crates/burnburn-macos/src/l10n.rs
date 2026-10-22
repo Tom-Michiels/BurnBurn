@@ -200,6 +200,11 @@ pub enum HostText {
     ParamCount,
     ParamSweep,
     ParamKeepOriginal,
+    ParamFilletRadius,
+    ParamMinorAxis,
+    ParamChamferDistance,
+    ParamChamferDistance2,
+    ParamChamferAngle,
     ImageMenu,
     ImageMenuImport,
     ImageMenuTrace,
@@ -424,6 +429,11 @@ impl HostText {
         HostText::ParamCount,
         HostText::ParamSweep,
         HostText::ParamKeepOriginal,
+        HostText::ParamFilletRadius,
+        HostText::ParamMinorAxis,
+        HostText::ParamChamferDistance,
+        HostText::ParamChamferDistance2,
+        HostText::ParamChamferAngle,
         HostText::ImageMenu,
         HostText::ImageMenuImport,
         HostText::ImageMenuTrace,
@@ -684,6 +694,11 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::ParamCount => ("Aantal", "Count"),
         T::ParamSweep => ("Hoek (°)", "Sweep (°)"),
         T::ParamKeepOriginal => ("Origineel behouden", "Keep original"),
+        T::ParamFilletRadius => ("Straal (mm)", "Radius (mm)"),
+        T::ParamMinorAxis => ("Kleine as van een ellips meten", "Dimension the minor axis of an ellipse"),
+        T::ParamChamferDistance => ("Afstand (mm)", "Distance (mm)"),
+        T::ParamChamferDistance2 => ("Tweede afstand (mm)", "Second distance (mm)"),
+        T::ParamChamferAngle => ("Hoek (graden)", "Angle (degrees)"),
         T::ImageMenu => ("Beeld", "Image"),
         T::ImageMenuImport => ("Beeld importeren…", "Import Image…"),
         T::ImageMenuTrace => ("Beeld tracen…", "Trace Image…"),
@@ -986,6 +1001,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
             CompoundLabel::ImportLayers => ("Importeren met lagen", "Import with Layers"),
             CompoundLabel::ReplaceToFit => ("Beeld vervangen en passen", "Replace Image to Fit"),
+            CompoundLabel::EditTexts => ("Teksten wijzigen", "Edit Texts"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1030,7 +1046,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ShapeLabel::ConvertToPath => ("Omzetten naar pad", "Convert to Path"),
             _ => return None,
         },
-        UndoLabel::Structure(StructureLabel::CreateModifier) => ("Patroon maken", "Create Pattern"),
+        UndoLabel::Structure(l) => return crate::l10n_g7_editor::structure_undo_pair(l),
         UndoLabel::Generator(l) => match l {
             GeneratorLabel::Create => ("Generator maken", "Create Generator"),
             GeneratorLabel::Edit => ("Generator wijzigen", "Edit Generator"),
@@ -1582,6 +1598,7 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             SketchConstraintKind::DistanceY => ("Afstand Y", "Distance Y"),
             SketchConstraintKind::Radius => ("Straal", "Radius"),
             SketchConstraintKind::Diameter => ("Diameter", "Diameter"),
+            SketchConstraintKind::MinorDiameter => ("Kleine as", "Minor axis"),
             SketchConstraintKind::Angle => ("Hoek", "Angle"),
             _ => return None,
         },
@@ -1783,10 +1800,12 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             CompoundLabel::ImportProject,
             CompoundLabel::ReplaceToFit,
             CompoundLabel::ImportLayers,
+            CompoundLabel::EditTexts,
         ]
         .map(UndoLabel::Compound),
     );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
+    undo.extend(crate::l10n_g7_editor::STRUCTURE_LABELS.map(UndoLabel::Structure));
     undo.extend([GeneratorLabel::Create, GeneratorLabel::Edit, GeneratorLabel::Delete].map(UndoLabel::Generator));
     undo.extend(
         [
@@ -1914,6 +1933,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
             SketchConstraintKind::DistanceY,
             SketchConstraintKind::Radius,
             SketchConstraintKind::Diameter,
+            SketchConstraintKind::MinorDiameter,
             SketchConstraintKind::Angle,
         ]
         .map(MessageKey::SketchConstraint),

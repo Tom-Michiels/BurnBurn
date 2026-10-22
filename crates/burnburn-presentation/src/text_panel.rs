@@ -51,6 +51,8 @@ pub enum TextIssue {
     PathFailed,
     /// No font source is attached.
     NoFonts,
+    /// A path setting was changed on a text that does not follow a path (G7-editor, E08).
+    NotOnPath,
 }
 
 /// A toggle of the toolbar: its state, whether it can be used, and why not.
@@ -61,10 +63,31 @@ pub struct TextToggle {
     pub why_off: Option<TextIssue>,
 }
 
-/// The toolbar for the one selected text object. Values of the text source, formatted for the
+/// For each toolbar value: the selected texts do not all have it (G7-editor, E07). The toolbar then
+/// shows the value of the first text and the host marks the control as mixed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextMixed {
+    pub family: bool,
+    pub bold: bool,
+    pub italic: bool,
+    pub uppercase: bool,
+    pub align: bool,
+    pub valign: bool,
+    pub h_space: bool,
+    pub v_space: bool,
+    pub height: bool,
+    pub welded: bool,
+    pub single_line: bool,
+}
+
+/// The toolbar for the selected text object(s): one text, or several at once. Values of the text source, formatted for the
 /// fields (millimetres); `None` in the document view model when no single text is selected.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextToolbarViewModel {
+    /// How many text objects the toolbar edits (1 for a single text).
+    pub count: usize,
+    /// Which values differ between those texts.
+    pub mixed: TextMixed,
     /// Font families the source lists, sorted; at least the current one.
     pub families: Arc<[String]>,
     pub family: String,
@@ -95,6 +118,31 @@ pub struct TextToolbarViewModel {
     pub variable: bool,
     /// Why the last input was refused.
     pub issue: Option<TextIssue>,
+    /// The text follows a guide path (live binding), and how (G7-editor, E08).
+    pub path: Option<TextPathView>,
+}
+
+/// Whether a text bound to a path can follow it now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PathBindingStatus {
+    Following,
+    /// The guide object is gone: the last outlines stay and production is blocked.
+    GuideMissing,
+    /// The guide cannot carry the text (too short, empty, several lines): same consequences.
+    DoesNotFit,
+}
+
+/// A text that follows a guide path (E08): what the toolbar shows and lets the user change.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextPathView {
+    /// Name of the guide object, when it still exists.
+    pub guide: Option<String>,
+    pub start: String,
+    pub offset: String,
+    pub reverse: bool,
+    pub distort: Distort,
+    pub status: PathBindingStatus,
 }
 
 /// The replacement choice shown while the font of a text is not installed.
@@ -126,6 +174,14 @@ pub enum TextEdit {
     Welded(bool),
     /// Single-line (engraving stroke) text instead of outline text.
     SingleLine(bool),
+    /// Where the text starts along its guide (raw text, mm). Only for a text that follows a path.
+    PathStart(String),
+    /// Distance of the baseline from the guide (raw text, mm, may be negative).
+    PathOffset(String),
+    PathReverse(bool),
+    PathDistort(Distort),
+    /// The text stops following its guide and returns to its own place.
+    UnbindPath,
 }
 
 /// The text-on-path dialog, open after `CommandKey::TextOnPath`.
@@ -135,6 +191,9 @@ pub struct TextOnPathViewModel {
     pub start: String,
     pub offset: String,
     pub reverse: bool,
+    /// Keep the text bound to the guide: it follows when the guide changes (the default). Off,
+    /// the dialog makes ordinary paths of the bent text.
+    pub live: bool,
     /// The selection is one text and one guide.
     pub ready: bool,
     pub issue: Option<TextIssue>,
@@ -149,6 +208,8 @@ pub enum TextPathEdit {
     Start(String),
     Offset(String),
     Reverse(bool),
+    /// Follow the guide (`true`) or make ordinary paths (`false`).
+    Live(bool),
     Apply,
     Cancel,
 }

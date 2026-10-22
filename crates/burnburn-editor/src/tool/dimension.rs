@@ -7,7 +7,7 @@ use burnburn_document::sketch::{
 };
 use burnburn_geometry::Point;
 
-use super::modify::{Action, Measurement, Rejection, line_preview, rejected};
+use super::modify::{Action, Measurement, ModifyParam, Rejection, line_preview, rejected};
 use super::sketch_pick::{PickKind, SketchPick, pick_entity, point_of, radius_of};
 use super::{CLICK_TOLERANCE_PT, EditCommit, ToolContext, ToolPreview, ToolStep};
 use crate::input::PointerEvent;
@@ -24,6 +24,8 @@ enum First {
 pub(super) struct DimensionAction {
     first: Option<First>,
     hover: Option<Point>,
+    /// A click on an ellipse gives its minor axis instead of its major axis (S01).
+    minor_axis: bool,
 }
 
 /// `12.5 mm`: the shortest text of the value at 1e-4 mm, with its unit (a bare number is
@@ -50,7 +52,7 @@ fn commit(sketch: SketchId, kind: DimensionKind, mm: f64) -> ToolStep {
 
 impl DimensionAction {
     /// The dimension a single click on a curve completes, or `None` for a point.
-    fn single(ctx: &ToolContext<'_>, pick: SketchPick) -> Option<ToolStep> {
+    fn single(&self, ctx: &ToolContext<'_>, pick: SketchPick) -> Option<ToolStep> {
         let sketch = ctx.document.sketch(pick.sketch)?;
         let entity = sketch.entity(pick.entity)?.entity;
         let invalid = || Some(rejected(Rejection::InvalidSelection));
@@ -66,6 +68,9 @@ impl DimensionAction {
             (PickKind::Arc, Entity::Arc { center, start, .. }) => {
                 let Some((c, s)) = point_of(sketch, center).zip(point_of(sketch, start)) else { return invalid() };
                 Some(commit(pick.sketch, DimensionKind::Radius { curve: pick.entity }, c.distance(s)))
+            }
+            (PickKind::Ellipse, Entity::Ellipse { minor, .. }) if self.minor_axis => {
+                Some(commit(pick.sketch, DimensionKind::MinorDiameter { ellipse: pick.entity }, 2.0 * minor))
             }
             (PickKind::Ellipse, Entity::Ellipse { center, major, .. }) => {
                 let Some((c, m)) = point_of(sketch, center).zip(point_of(sketch, major)) else { return invalid() };
@@ -83,7 +88,7 @@ impl Action for DimensionAction {
             None => {
                 self.hover = None;
                 match pick {
-                    Some(p) => match Self::single(ctx, p) {
+                    Some(p) => match self.single(ctx, p) {
                         Some(step) => step,
                         None => {
                             self.first = Some(First::Entity(p));
@@ -121,6 +126,16 @@ impl Action for DimensionAction {
         self.first.take().is_some()
     }
 
+    fn set_param(&mut self, param: ModifyParam) -> bool {
+        match param {
+            ModifyParam::MinorAxis(on) => {
+                self.minor_axis = on;
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn preview(&self) -> Option<ToolPreview> {
         match (self.first?, self.hover) {
             (First::Free(a), Some(h)) => line_preview(a, h),
@@ -138,7 +153,7 @@ mod tests {
 
     use super::super::fixture::*;
     use super::super::modify::kit::*;
-    use super::super::modify::{Measurement, Rejection};
+    use super::super::modify::{Measurement, ModifyParam, Rejection};
     use super::super::{EditCommit, ToolKind, ToolStep};
     use crate::input::CanvasKey;
 
@@ -190,6 +205,24 @@ mod tests {
         let ellipse = s.ellipse(c, m, 3.0).unwrap();
         let f = with_sketch(vec![], s);
         let mut ed = editor(ToolKind::Dimension);
+        let steps = click(&mut ed, &f, 0.1, 43.0);
+        assert_eq!(only(&steps), dimension(DimensionKind::Diameter { curve: ellipse }, "16 mm"));
+    }
+
+    #[test]
+    fn with_the_minor_axis_option_an_ellipse_gets_its_minor_axis_instead() {
+        let mut s = sketch();
+        let (c, m) = (s.point(0.0, 40.0).unwrap(), s.point(8.0, 40.0).unwrap());
+        let ellipse = s.ellipse(c, m, 3.0).unwrap();
+        let f = with_sketch(vec![], s);
+        let mut ed = editor(ToolKind::Dimension);
+        param(&mut ed, ModifyParam::MinorAxis(true));
+        let steps = click(&mut ed, &f, 0.1, 43.0);
+        assert_eq!(only(&steps), dimension(DimensionKind::MinorDiameter { ellipse }, "6 mm"));
+        // The option only concerns ellipses and can be switched off again.
+        let steps = click(&mut ed, &f, 35.0, 0.2);
+        assert_eq!(only(&steps), dimension(DimensionKind::Diameter { curve: EntityId::from_raw(4) }, "10 mm"));
+        param(&mut ed, ModifyParam::MinorAxis(false));
         let steps = click(&mut ed, &f, 0.1, 43.0);
         assert_eq!(only(&steps), dimension(DimensionKind::Diameter { curve: ellipse }, "16 mm"));
     }

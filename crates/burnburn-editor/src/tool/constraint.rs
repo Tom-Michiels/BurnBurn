@@ -77,10 +77,10 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
     let is_axis = |k: PickKind| k == Line || k == Ellipse;
     Some(match (kind, kinds.as_slice()) {
         (ConstraintKind::Coincident, [Pt, Pt]) => vec![Relation::Coincident(e[0], e[1])],
-        (ConstraintKind::Coincident, [Pt, k]) if *k == Line || is_curve(*k) => {
+        (ConstraintKind::Coincident, [Pt, k]) if *k == Line || *k == Ellipse || is_curve(*k) => {
             vec![Relation::PointOn { point: e[0], curve: e[1] }]
         }
-        (ConstraintKind::Coincident, [k, Pt]) if *k == Line || is_curve(*k) => {
+        (ConstraintKind::Coincident, [k, Pt]) if *k == Line || *k == Ellipse || is_curve(*k) => {
             vec![Relation::PointOn { point: e[1], curve: e[0] }]
         }
         (ConstraintKind::Collinear, [Line, Line]) => {
@@ -129,7 +129,10 @@ pub fn constraint_relations(kind: ConstraintKind, sketch: &Sketch, entities: &[E
             let (&[a, b], &[about]) = (points.as_slice(), axes.as_slice()) else { return None };
             vec![Relation::Symmetric { a, b, about }]
         }
-        (ConstraintKind::Tangent, [Line, k]) | (ConstraintKind::Tangent, [k, Line]) if is_curve(*k) => {
+        // A line touches a circle, an arc or an ellipse (G7-editor, S01).
+        (ConstraintKind::Tangent, [Line, k]) | (ConstraintKind::Tangent, [k, Line])
+            if is_curve(*k) || *k == Ellipse =>
+        {
             vec![Relation::Tangent(e[0], e[1])]
         }
         (ConstraintKind::Tangent, [a, b]) if is_curve(*a) && is_curve(*b) => vec![Relation::Tangent(e[0], e[1])],
@@ -577,10 +580,11 @@ mod tests {
         assert_eq!(table(ConstraintKind::Parallel, &[L1, 99]), None, "an entity the sketch does not have");
         assert_eq!(table(ConstraintKind::Midpoint, &[L1, L2]), None);
     }
-    /// S01/S05: an ellipse takes part through its major axis and its centre; nothing can lie on it,
-    /// be tangent to it or be equal to a circle, and the table says no instead of the solver failing.
+    /// S01/S05: an ellipse takes part through its major axis and its centre; a point can lie on it
+    /// and a line can be tangent to it (G7-editor), but it is never tangent to a circle or equal to
+    /// one, and the table says no instead of the solver failing.
     #[test]
-    fn an_ellipse_is_an_axis_and_a_centre_but_no_circular_curve() {
+    fn an_ellipse_is_an_axis_and_a_centre_a_point_lies_on_it_a_line_touches_it() {
         let mut s = sketch();
         let (c, m) = (s.point(0.0, 30.0).unwrap(), s.point(8.0, 30.0).unwrap());
         let ellipse = s.ellipse(c, m, 3.0).unwrap();
@@ -598,8 +602,20 @@ mod tests {
             ask(ConstraintKind::Concentric, &[ellipse, circle]),
             Some(vec![Relation::Concentric(ellipse, circle)])
         );
-        assert_eq!(ask(ConstraintKind::Coincident, &[point, ellipse]), None, "nothing lies on an ellipse");
-        assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), None);
+        assert_eq!(
+            ask(ConstraintKind::Coincident, &[point, ellipse]),
+            Some(vec![Relation::PointOn { point, curve: ellipse }]),
+            "a point lies on an ellipse"
+        );
+        assert_eq!(
+            ask(ConstraintKind::Coincident, &[ellipse, point]),
+            Some(vec![Relation::PointOn { point, curve: ellipse }]),
+            "in either order"
+        );
+        assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), Some(vec![Relation::Tangent(l1, ellipse)]));
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, l1]), Some(vec![Relation::Tangent(ellipse, l1)]));
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, circle]), None, "a circle is not a line");
+        assert_eq!(ask(ConstraintKind::Tangent, &[ellipse, ellipse]), None);
         assert_eq!(ask(ConstraintKind::Equal, &[ellipse, circle]), None);
         assert_eq!(ask(ConstraintKind::Equal, &[ellipse, l1]), None, "which length would be meant?");
     }

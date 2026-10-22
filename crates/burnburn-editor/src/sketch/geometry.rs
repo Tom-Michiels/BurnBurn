@@ -35,7 +35,11 @@ impl<'a> SketchGeometry<'a> {
     /// Centre, major-axis end and semi-minor radius of an ellipse.
     pub fn ellipse(&self, id: EntityId) -> Option<(Point, Point, f64)> {
         match self.sketch.entity(id)?.entity {
-            Entity::Ellipse { center, major, minor } => Some((self.point(center)?, self.point(major)?, minor)),
+            Entity::Ellipse { center, major, minor } => {
+                // The radius the solver last gave it (a minor-axis dimension or a relation), else as drawn.
+                let minor = self.sketch.solution().and_then(|s| s.minors.get(&id).copied()).unwrap_or(minor);
+                Some((self.point(center)?, self.point(major)?, minor))
+            }
             _ => None,
         }
     }

@@ -13,13 +13,13 @@ use burnburn_document::text::{TextCommand, TextId, TextObject, VariableText};
 use burnburn_document::{
     CommandPayload, DerivedOwner, DocumentCommand, DocumentSession, DocumentSnapshot, EvalDiagnosis, EvalStatus,
 };
+use burnburn_generators::BoundTextEvaluator;
 use burnburn_generators::{
     AdvancePolicy, Commit, CsvError, CutField, DataTable, FrozenRows, JobClock, JobEvent, OnEnd, ProductionCounters,
     ProductionRecord, RowError, SerialCounter, SerialSpec, Template, Token, VariableError, bake_command, resolve_text,
 };
 use burnburn_io::{AdvanceChoice, AssetStore, ProductionState, RowsSource, SerialState};
 use burnburn_machine::{ExecutionId, ExecutionState, FailReason, UnknownReason};
-use burnburn_text::TextEvaluator;
 use burnburn_types::{DocumentId, RequestId, StableId, TaskId};
 
 use crate::field::format_mm;
@@ -539,7 +539,7 @@ pub(super) fn bind(
     let fonts = fonts.ok_or_else(|| plain(VariableIssue::NoFonts))?;
     // A scratch session: the document and its history are not touched.
     let mut scratch = DocumentSession::from_snapshot(s.doc.id(), (*snapshot).clone());
-    let evaluator = TextEvaluator::new(fonts.clone());
+    let evaluator = BoundTextEvaluator::new(fonts.clone());
     for (n, (id, text)) in texts.iter().enumerate() {
         let source = resolved(text, &record, 0)?;
         let cmd = DocumentCommand {

@@ -94,6 +94,9 @@ fn constraint_to(id: ConstraintId, c: &SketchConstraint) -> Option<d::Constraint
                 DimensionKind::Length { line } => d::Kind::Length { line: line.raw(), text, role },
                 DimensionKind::Radius { curve } => d::Kind::Radius { curve: curve.raw(), text, role },
                 DimensionKind::Diameter { curve } => d::Kind::Diameter { curve: curve.raw(), text, role },
+                DimensionKind::MinorDiameter { ellipse } => {
+                    d::Kind::MinorDiameter { ellipse: ellipse.raw(), text, role }
+                }
                 DimensionKind::Angle { from, to } => d::Kind::Angle { from: from.raw(), to: to.raw(), text, role },
                 _ => return None,
             }
@@ -118,6 +121,7 @@ pub(crate) fn sketches_to_dto(doc: &DocumentSnapshot) -> Vec<d::Sketch> {
                 points: sol.points.iter().map(|(i, p)| (i.raw(), xy(*p))).collect(),
                 radii: sol.radii.iter().map(|(i, r)| (i.raw(), Num(*r))).collect(),
                 dof: sol.dof,
+                minors: sol.minors.iter().map(|(i, m)| (i.raw(), Num(*m))).collect(),
             }),
             evaluation: layer
                 .record(DerivedOwner::Sketch(id))
@@ -217,6 +221,9 @@ fn sketch_from(si: usize, s: &d::Sketch) -> Result<Sketch, LoadError> {
             d::Kind::Length { line, text, role } => dim(DimensionKind::Length { line: e(*line) }, text, *role),
             d::Kind::Radius { curve, text, role } => dim(DimensionKind::Radius { curve: e(*curve) }, text, *role),
             d::Kind::Diameter { curve, text, role } => dim(DimensionKind::Diameter { curve: e(*curve) }, text, *role),
+            d::Kind::MinorDiameter { ellipse, text, role } => {
+                dim(DimensionKind::MinorDiameter { ellipse: e(*ellipse) }, text, *role)
+            }
             d::Kind::Angle { from, to, text, role } => {
                 dim(DimensionKind::Angle { from: e(*from), to: e(*to) }, text, *role)
             }
@@ -236,6 +243,9 @@ fn sketch_from(si: usize, s: &d::Sketch) -> Result<Sketch, LoadError> {
             }
             for (k, (id, r)) in sol.radii.iter().enumerate() {
                 out.radii.insert(e(*id), num(&|| format!("{}.solution.radii[{k}]", base()), *r)?);
+            }
+            for (k, (id, m)) in sol.minors.iter().enumerate() {
+                out.minors.insert(e(*id), num(&|| format!("{}.solution.minors[{k}]", base()), *m)?);
             }
             Some(out)
         }

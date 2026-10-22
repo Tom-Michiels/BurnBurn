@@ -9,7 +9,7 @@ use burnburn_document::{CommandError, CommandOutcome, CommandPayload, DocumentCo
 use burnburn_editor::{
     Camera, Editor, GeometryIssue, Selection, SelectionChange, SnapSettings, Viewport, geometry_issues,
 };
-use burnburn_generators::GeneratorEvaluator;
+use burnburn_generators::{BoundTextEvaluator, GeneratorEvaluator};
 use burnburn_geometry::Point;
 use burnburn_io::fs::FileSystem;
 use burnburn_io::{AssetStore, ProjectUuid};
@@ -20,7 +20,7 @@ use burnburn_sketch::solver::SketchSolverAdapter;
 use burnburn_types::{CancellationSource, DocumentId, IdAllocator, RequestId, RevisionId, StableId, TaskId};
 
 use crate::commit::NameKind;
-use burnburn_text::{FontRef, TextEvaluator};
+use burnburn_text::FontRef;
 
 use crate::camera::{CameraDeviceId, CameraMode, CameraPort};
 use crate::intent::{CloseChoice, CommandKey, DialogKind, FieldKey, SelectMode, UiIntent};
@@ -916,7 +916,7 @@ fn apply_command(
     let cmd = DocumentCommand { payload: generator::retarget(&doc.snapshot(), cmd.payload), ..cmd };
     let sketches = SketchEvaluator::new(SketchSolverAdapter);
     match fonts {
-        Some(f) => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator, &TextEvaluator::new(f.clone())]),
+        Some(f) => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator, &BoundTextEvaluator::new(f.clone())]),
         None => doc.apply_with(cmd, &[&sketches, &GeneratorEvaluator]),
     }
 }

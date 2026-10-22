@@ -112,7 +112,7 @@ fn the_toolbar_follows_the_selected_text_and_only_that() {
 }
 
 #[test]
-fn two_texts_selected_show_no_toolbar_and_an_edit_changes_neither() {
+fn two_texts_selected_share_one_toolbar_and_an_edit_changes_both() {
     let (mut h, doc) = text_doc("one");
     h.send(UiIntent::InsertText { document: doc, text: "two".into() }); // extends the selected text
     h.invoke(doc, CommandKey::ToolSelect);
@@ -122,10 +122,10 @@ fn two_texts_selected_show_no_toolbar_and_an_edit_changes_neither() {
     assert_eq!(h.text_contents(doc).len(), 2);
     let all: Vec<_> = vm(&h, doc).objects.iter().map(|o| o.id).collect();
     h.send(UiIntent::Select { document: doc, ids: all, mode: SelectMode::Replace });
-    assert!(vm(&h, doc).text_toolbar.is_none());
-    let rev = vm(&h, doc).revision;
+    // Changed in G7-editor (E07): several texts share one toolbar and an edit reaches all of them.
+    assert_eq!(vm(&h, doc).text_toolbar.map(|b| b.count), Some(2));
     edit(&mut h, doc, TextEdit::Uppercase(true));
-    assert_eq!(vm(&h, doc).revision, rev, "no single text, no command");
+    assert!(h.controller().text_sources(doc).iter().all(|t| t.layout.uppercase));
 }
 
 #[test]
@@ -416,6 +416,8 @@ fn rigid_text_on_a_circle_equals_the_generator_and_crosses_the_guide_warped_text
     };
 
     h.invoke(doc, CommandKey::TextOnPath);
+    // Since G7-editor the dialog binds by default; these tests are about the plain paths.
+    path_edit(&mut h, doc, TextPathEdit::Live(false));
     path_edit(&mut h, doc, TextPathEdit::Apply);
     assert!(vm(&h, doc).text_on_path.is_none(), "applying closes the dialog");
     assert_eq!(vm(&h, doc).undo, Some(UndoLabel::Edit(burnburn_document::EditLabel::CreatePath)));
@@ -436,6 +438,7 @@ fn rigid_text_on_a_circle_equals_the_generator_and_crosses_the_guide_warped_text
     both.push(circle);
     h.send(UiIntent::Select { document: doc, ids: both, mode: SelectMode::Replace });
     h.invoke(doc, CommandKey::TextOnPath);
+    path_edit(&mut h, doc, TextPathEdit::Live(false));
     path_edit(&mut h, doc, TextPathEdit::Distort(Distort::Warp));
     assert_eq!(vm(&h, doc).text_on_path.unwrap().distort, Distort::Warp);
     path_edit(&mut h, doc, TextPathEdit::Apply);
@@ -475,6 +478,7 @@ fn text_on_a_path_start_offset_and_direction_reach_the_generator() {
     let expected = burnburn_generators::text_on_path(&text, &*src, &guide, &params).unwrap().path;
 
     h.invoke(doc, CommandKey::TextOnPath);
+    path_edit(&mut h, doc, TextPathEdit::Live(false));
     path_edit(&mut h, doc, TextPathEdit::Distort(Distort::Warp));
     path_edit(&mut h, doc, TextPathEdit::Start("12,5 mm".into()));
     path_edit(&mut h, doc, TextPathEdit::Offset("-1,5".into()));

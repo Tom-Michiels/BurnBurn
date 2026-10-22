@@ -21,6 +21,7 @@ pub mod l10n_files;
 pub mod l10n_g5;
 pub mod l10n_g6;
 pub mod l10n_g6_werk;
+pub mod l10n_g7_editor;
 pub mod l10n_g7_trace;
 pub mod l10n_g7_werk;
 pub mod l10n_machine;

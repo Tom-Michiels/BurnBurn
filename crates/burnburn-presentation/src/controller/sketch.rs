@@ -89,6 +89,12 @@ fn seeded(sketch: &Sketch, previous: &SketchSolution) -> Option<Sketch> {
             .filter(|(id, _)| is(id, |e| matches!(e, Entity::Circle { .. })))
             .map(|(i, r)| (*i, *r))
             .collect(),
+        minors: previous
+            .minors
+            .iter()
+            .filter(|(id, _)| is(id, |e| matches!(e, Entity::Ellipse { .. })))
+            .map(|(i, m)| (*i, *m))
+            .collect(),
         dof: previous.dof,
     };
     Sketch::from_parts(
@@ -693,6 +699,9 @@ fn dimension_for(kind: SketchDimensionKind, sketch: &Sketch, selected: &BTreeSet
             Some(DimensionKind::Radius { curve: *c })
         }
         (SketchDimensionKind::Diameter, [(c, k)]) if is_curve(*k) => Some(DimensionKind::Diameter { curve: *c }),
+        (SketchDimensionKind::MinorDiameter, [(c, Kind::Ellipse)]) => {
+            Some(DimensionKind::MinorDiameter { ellipse: *c })
+        }
         (SketchDimensionKind::Auto | SketchDimensionKind::Angle, [(a, Kind::Line), (b, Kind::Line)]) => {
             Some(DimensionKind::Angle { from: *a, to: *b })
         }
@@ -726,6 +735,7 @@ fn measured_text(kind: DimensionKind, g: &SketchGeometry<'_>) -> Option<String> 
         }
         DimensionKind::Radius { curve } => mm(radius_of_curve(g, curve)?),
         DimensionKind::Diameter { curve } => mm(2.0 * radius_of_curve(g, curve)?),
+        DimensionKind::MinorDiameter { ellipse } => mm(2.0 * g.ellipse(ellipse)?.2),
         DimensionKind::Angle { from, to } => {
             let ((a0, a1), (b0, b1)) = (g.line(from)?, g.line(to)?);
             let ta = (a1.y - a0.y).atan2(a1.x - a0.x);
@@ -875,6 +885,7 @@ fn kind_label(c: &SketchConstraint) -> Option<SketchConstraintKind> {
             DimensionKind::Length { .. } => K::Length,
             DimensionKind::Radius { .. } => K::Radius,
             DimensionKind::Diameter { .. } => K::Diameter,
+            DimensionKind::MinorDiameter { .. } => K::MinorDiameter,
             DimensionKind::Angle { .. } => K::Angle,
             _ => return None,
         },

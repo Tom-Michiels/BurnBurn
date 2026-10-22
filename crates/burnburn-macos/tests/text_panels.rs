@@ -72,7 +72,7 @@ fn every_slot_reports_itself_in_one_way() {
     assert_eq!(count(SlotKind::Csv), 1, "only the CSV button opens a file panel");
     assert_eq!(
         (count(SlotKind::Text), count(SlotKind::Toggle), count(SlotKind::Choice), count(SlotKind::Press)),
-        (19, 7, 9, 11)
+        (19, 8, 9, 11)
     );
 }
 

@@ -6,7 +6,7 @@
 use std::fmt;
 
 use burnburn_geometry::Affine;
-use burnburn_types::{ContentHash, Length, StableId};
+use burnburn_types::{ContentHash, GeometryId, Length, StableId};
 
 /// Identity of a text object in a document. Allocated from the project's shared id counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -204,6 +204,25 @@ pub struct VariableText {
     pub offset: i64,
 }
 
+/// Text on a path as a live binding (G7-editor, E08): the text follows another object, its guide.
+/// The outlines of the text are the text bent along the guide's first outline; when the guide
+/// changes (moved, reshaped) the outlines are computed again in the same transaction. The guide
+/// stays an ordinary, separately editable object; deleting it leaves the last outlines in place
+/// and blocks production until the text is unbound or the guide is back.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathBinding {
+    /// The object the text follows.
+    pub guide: GeometryId,
+    /// Distance along the guide where the text starts, mm (not negative).
+    pub start_mm: f64,
+    /// Distance of the baseline from the guide, mm, along the left normal of the travel direction.
+    pub offset_mm: f64,
+    /// Travel the guide backwards.
+    pub reverse: bool,
+    /// Bend the outlines with the guide (`false`: every glyph keeps its shape and turns only).
+    pub warp: bool,
+}
+
 /// A text object as document data. `placement` maps text space (mm, y-up, first baseline at
 /// y = 0, alignment point at x = 0) to document millimetres.
 #[derive(Debug, Clone, PartialEq)]
@@ -218,6 +237,8 @@ pub struct TextObject {
     pub mode: TextMode,
     /// `Some`: variable text (see [`VariableText`]).
     pub variable: Option<VariableText>,
+    /// `Some`: the text follows a guide (see [`PathBinding`]); `placement` is then ignored.
+    pub path: Option<PathBinding>,
 }
 
 impl TextObject {
@@ -231,6 +252,7 @@ impl TextObject {
             placement: Affine::IDENTITY,
             mode: TextMode::Outline,
             variable: None,
+            path: None,
         }
     }
 }

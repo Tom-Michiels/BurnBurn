@@ -33,6 +33,12 @@ pub enum StructureCommand {
     RemoveModifier {
         modifier: ModifierId,
     },
+    /// Applies the chain (G7-editor, E06): its outputs become ordinary drawn objects with the same
+    /// ids and outlines, the chain is gone and the source is untouched. One undo step brings the
+    /// chain and its derived outputs back.
+    BakeModifier {
+        modifier: ModifierId,
+    },
     /// The target must be bound when the reference is made.
     AddReference {
         reference: AssocReference,
@@ -62,6 +68,13 @@ pub enum StructureCommand {
     /// Only when no instance uses it.
     RemovePartDefinition {
         definition: PartDefinitionId,
+    },
+    /// Gives a variant another name (G7-editor, S07): the definition and every instance that uses
+    /// it follow in the same transaction, so nothing falls back to the default.
+    RenameVariant {
+        definition: PartDefinitionId,
+        from: String,
+        to: String,
     },
     PlaceInstance {
         instance: PartInstance,
@@ -105,6 +118,7 @@ pub enum StructureLabel {
     EditModifier,
     ToggleModifierStep,
     RemoveModifier,
+    BakeModifier,
     AddReference,
     RebindReference,
     RemoveReference,
@@ -113,6 +127,7 @@ pub enum StructureLabel {
     DefinePart,
     EditPart,
     RemovePart,
+    RenameVariant,
     PlaceInstance,
     EditInstance,
     RemoveInstance,
@@ -132,6 +147,7 @@ impl StructureCommand {
             C::SetModifier { .. } => L::EditModifier,
             C::SetStepEnabled { .. } => L::ToggleModifierStep,
             C::RemoveModifier { .. } => L::RemoveModifier,
+            C::BakeModifier { .. } => L::BakeModifier,
             C::AddReference { .. } => L::AddReference,
             C::RebindReference { .. } => L::RebindReference,
             C::RemoveReference { .. } => L::RemoveReference,
@@ -140,6 +156,7 @@ impl StructureCommand {
             C::DefinePart { .. } => L::DefinePart,
             C::SetPartDefinition { .. } => L::EditPart,
             C::RemovePartDefinition { .. } => L::RemovePart,
+            C::RenameVariant { .. } => L::RenameVariant,
             C::PlaceInstance { .. } => L::PlaceInstance,
             C::SetInstance { .. } => L::EditInstance,
             C::RemoveInstance { .. } => L::RemoveInstance,
@@ -248,6 +265,8 @@ pub(crate) enum StructureEffect {
     None,
     /// The owner is gone: remove its derived outputs and records.
     RemoveOwner(DerivedOwner),
+    /// The owner is gone but its outputs stay as ordinary drawn objects (baking).
+    Detach(DerivedOwner),
 }
 
 fn positive(v: f64, field: &'static str) -> Result<(), StructureError> {
@@ -450,6 +469,11 @@ pub(crate) fn apply(cmd: StructureCommand, t: StructureTxn<'_>) -> Result<Struct
             changed.push(StructureChange::Modifier(modifier));
             return Ok(StructureEffect::RemoveOwner(DerivedOwner::Modifier(modifier)));
         }
+        C::BakeModifier { modifier } => {
+            layer.modifiers.remove(&modifier).ok_or(StructureError::UnknownModifier(modifier))?;
+            changed.push(StructureChange::Modifier(modifier));
+            return Ok(StructureEffect::Detach(DerivedOwner::Modifier(modifier)));
+        }
         C::AddReference { reference } => {
             let status = resolve_in(layer, &lookup, &reference.target);
             not_bound(status)?;
@@ -523,6 +547,31 @@ pub(crate) fn apply(cmd: StructureCommand, t: StructureTxn<'_>) -> Result<Struct
                 return Err(StructureError::DefinitionInUse { definition, instance: *instance });
             }
             layer.definitions.remove(&definition).ok_or(StructureError::UnknownDefinition(definition))?;
+            changed.push(StructureChange::Definition(definition));
+        }
+        C::RenameVariant { definition, from, to } => {
+            let to = to.trim().to_owned();
+            let slot = layer.definitions.get(&definition).ok_or(StructureError::UnknownDefinition(definition))?;
+            if !slot.variants.contains_key(&from) {
+                return Err(StructureError::UnknownVariant(from));
+            }
+            if to.is_empty() || (to != from && slot.variants.contains_key(&to)) {
+                return Err(StructureError::InvalidValue { field: "variant name" });
+            }
+            if to == from {
+                return Err(StructureError::NothingChanged);
+            }
+            let mut next = (**slot).clone();
+            if let Some(values) = next.variants.remove(&from) {
+                next.variants.insert(to.clone(), values);
+            }
+            layer.definitions.insert(definition, Arc::new(next));
+            for (id, inst) in layer.instances.iter_mut() {
+                if inst.definition == definition && inst.variant.as_deref() == Some(from.as_str()) {
+                    inst.variant = Some(to.clone());
+                    changed.push(StructureChange::Instance(*id));
+                }
+            }
             changed.push(StructureChange::Definition(definition));
         }
         C::PlaceInstance { instance } => {

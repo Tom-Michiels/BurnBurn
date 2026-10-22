@@ -40,10 +40,12 @@ pub enum G5Panel {
     Remnants,
     /// Venster ▸ Herkenning: learn a product from the camera picture, find it, decide, place (G7-werk, W06).
     Recognition,
+    /// The binding of the selected text to its guide path; opens by itself (G7-editor, E08).
+    TextPath,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 11] = [
+    pub const ALL: [G5Panel; 12] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -55,6 +57,7 @@ impl G5Panel {
         G5Panel::StartConfirm,
         G5Panel::Remnants,
         G5Panel::Recognition,
+        G5Panel::TextPath,
     ];
 }
 
@@ -284,6 +287,8 @@ pub enum G5Control {
         index: usize,
     },
     RecogPlace,
+    // --- The golf-7 editor sections (G7-editor): modifier stack, plates and variants.
+    Editor(super::g7_editor::EditorControl),
 }
 
 /// One line of a panel.
@@ -348,7 +353,15 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search | G5Panel::StartConfirm)
+    matches!(
+        panel,
+        G5Panel::Notes
+            | G5Panel::Centerline
+            | G5Panel::Generator
+            | G5Panel::Search
+            | G5Panel::StartConfirm
+            | G5Panel::TextPath
+    )
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -419,6 +432,11 @@ pub fn g5_panel(
         G5Panel::TracePrep => {
             let lines = super::g6_werk::trace_prep_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::TextPath => {
+            let lines = super::g7_editor::text_path_lines(doc, locale)?;
+            let title = crate::l10n_g7_editor::g7_text(crate::l10n_g7_editor::G7Text::TextPathTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
         G5Panel::Operator => {
@@ -714,6 +732,7 @@ fn structure_lines(doc: &DocumentViewModel, locale: Locale) -> Vec<G5Line> {
         });
         lines.extend(super::g6_werk::reference_edit_lines(r, locale));
     }
+    lines.extend(super::g7_editor::editor_lines(s, locale));
     lines
 }
 
@@ -830,6 +849,7 @@ pub fn g5_intent(
         | G5Control::RefCandidate { .. }
         | G5Control::RefRebind { .. }
         | G5Control::RefRemove { .. } => super::g6_werk::structure_edit_intent(doc, document, control, values),
+        G5Control::Editor(editor) => super::g7_editor::editor_intent(doc, document, editor, values),
         G5Control::NotesSave => {
             let text = typed(G5Control::NotesText)?;
             let max = doc.notes.as_ref()?.max_chars;

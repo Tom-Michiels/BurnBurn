@@ -89,6 +89,7 @@ impl CanonicalEncode for Definition<'_> {
                         DimensionKind::Radius { curve } => ids(out, "radius", &[curve.raw()]),
                         DimensionKind::Diameter { curve } => ids(out, "diameter", &[curve.raw()]),
                         DimensionKind::Angle { from, to } => ids(out, "angle", &[from.raw(), to.raw()]),
+                        DimensionKind::MinorDiameter { ellipse } => ids(out, "minor-diameter", &[ellipse.raw()]),
                     }
                     out.str(&d.text);
                     out.tag(match d.role {
@@ -120,6 +121,16 @@ impl CanonicalEncode for SketchSolution {
             out.f64(*r);
         }
         out.u64(u64::from(self.dof));
+        // Written only when an ellipse's minor axis was moved by the solver, so a solution without
+        // one keeps the form (and the hash) it always had.
+        if !self.minors.is_empty() {
+            out.tag("minors");
+            out.u64(self.minors.len() as u64);
+            for (id, m) in &self.minors {
+                out.u64(u64::from(id.raw()));
+                out.f64(*m);
+            }
+        }
     }
 }
 

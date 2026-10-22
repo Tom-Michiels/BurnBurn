@@ -6,18 +6,22 @@
 use std::collections::BTreeMap;
 
 use burnburn_document::structure::{
-    AssocReference, BreakReason, EdgeName, GeometryRef, PartDefinitionId, PartFromObjectsError, PartInstance,
-    PartInstanceId, PlateId, PlateIssue, RefStatus, ReferenceId, Resolved, StructureCommand, SubRef,
+    AssocReference, BreakReason, Dim, EdgeName, EvalMode, GeometryRef, Modifier, ModifierChain, ModifierId,
+    ModifierStep, NamedShape, PartDefinition, PartDefinitionId, PartFromObjectsError, PartInstance, PartInstanceId,
+    PartShape, Plate, PlateId, PlateIssue, RefStatus, ReferenceId, Resolved, StructureCommand, SubRef,
     effective_parameters, part_from_objects,
 };
-use burnburn_document::{CommandPayload, DerivedOwner, DocumentSnapshot, EvalDiagnosis, EvalStatus, GeometryObject};
+use burnburn_document::{
+    CommandPayload, DerivedOwner, DocumentSnapshot, EvalDiagnosis, EvalStatus, GeometryObject, GeometrySource,
+};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point, Segment, SegmentRef, Subpath, Vector};
 use burnburn_types::{DocumentId, GeometryId, Length, RequestId, StableId};
 
 use crate::field::{format_mm, parse_length, parse_position};
 use crate::structure_panel::{
-    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
-    ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
+    BrokenReason, EdgeRow, InstanceRow, InstanceStatus, ModifierKind, ModifierRow, ModifierStatus, ModifierStepRow,
+    ModifierValueKind, PartRow, PartShapeKind, PartShapeRow, PartValue, PlateField, PlateIssueRow, PlateRow,
+    ReferenceRow, ReferenceStatus, ShapeField, StructureEdit, StructureProblem, StructureViewModel, VariantRow,
 };
 use crate::view_model::{MessageKey, ProblemViewModel};
 
@@ -111,6 +115,114 @@ fn candidate_label(snapshot: &DocumentSnapshot, object: GeometryId, name: &EdgeN
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The modifier stack (G7-editor, E06)
+// ---------------------------------------------------------------------------------------------
+
+fn kind_of(modifier: &Modifier) -> ModifierKind {
+    match modifier {
+        Modifier::Offset { .. } => ModifierKind::Offset,
+        Modifier::Boolean { .. } => ModifierKind::Boolean,
+        Modifier::LinearArray { .. } => ModifierKind::LinearArray,
+        Modifier::GridArray(_) => ModifierKind::GridArray,
+        Modifier::CircularArray(_) => ModifierKind::CircularArray,
+        Modifier::PathArray { .. } => ModifierKind::PathArray,
+        // A step kind this panel has no words for yet is shown as the nearest known one.
+        _ => ModifierKind::Boolean,
+    }
+}
+
+/// The one number of a step the panel can edit.
+fn value_of(modifier: &Modifier) -> Option<(ModifierValueKind, String)> {
+    match modifier {
+        Modifier::Offset { distance, .. } => Some((ModifierValueKind::Distance, format_mm(distance.mm()))),
+        Modifier::LinearArray { count, .. } | Modifier::PathArray { count, .. } => {
+            Some((ModifierValueKind::Count, count.to_string()))
+        }
+        Modifier::CircularArray(c) => Some((ModifierValueKind::Count, c.count.to_string())),
+        _ => None,
+    }
+}
+
+fn modifiers_view(snapshot: &DocumentSnapshot) -> Vec<ModifierRow> {
+    snapshot
+        .structure()
+        .modifiers()
+        .map(|(id, chain)| {
+            let owner = DerivedOwner::Modifier(id);
+            let record = snapshot.derived_record(owner);
+            let failed_step = match record.map(|r| &r.status) {
+                Some(EvalStatus::Failed { diagnosis: EvalDiagnosis::ModifierStep { step, .. } }) => Some(*step),
+                _ => None,
+            };
+            let status = match record.map(|r| &r.status) {
+                Some(EvalStatus::Valid) => ModifierStatus::Valid,
+                Some(EvalStatus::Failed { .. }) => ModifierStatus::Failed { step: failed_step },
+                _ => ModifierStatus::Pending,
+            };
+            ModifierRow {
+                id: id.raw(),
+                name: chain.name.clone(),
+                source: chain.source.raw(),
+                source_name: snapshot.object(chain.source).map(|o| o.name().to_owned()),
+                steps: chain
+                    .steps
+                    .iter()
+                    .enumerate()
+                    .map(|(index, step)| ModifierStepRow {
+                        index,
+                        kind: kind_of(&step.modifier),
+                        value: value_of(&step.modifier),
+                        enabled: step.enabled,
+                        failed: failed_step == Some(index),
+                    })
+                    .collect(),
+                status,
+                outputs: snapshot
+                    .objects()
+                    .filter(|(_, o)| matches!(o.source(), GeometrySource::Derived(k) if k.owner == owner))
+                    .count(),
+            }
+        })
+        .collect()
+}
+
+fn dim_text(d: &Dim) -> String {
+    match d {
+        Dim::Mm(v) => format_mm(*v),
+        Dim::Param(p) => p.clone(),
+    }
+}
+
+fn shapes_view(def: &PartDefinition) -> Vec<PartShapeRow> {
+    def.shapes
+        .iter()
+        .map(|(key, named)| {
+            let (kind, fields) = match &named.shape {
+                PartShape::Rectangle { x, y, width, height } => (
+                    PartShapeKind::Rectangle,
+                    vec![
+                        (ShapeField::X, dim_text(x)),
+                        (ShapeField::Y, dim_text(y)),
+                        (ShapeField::Width, dim_text(width)),
+                        (ShapeField::Height, dim_text(height)),
+                    ],
+                ),
+                PartShape::Circle { x, y, radius } => (
+                    PartShapeKind::Circle,
+                    vec![
+                        (ShapeField::X, dim_text(x)),
+                        (ShapeField::Y, dim_text(y)),
+                        (ShapeField::Radius, dim_text(radius)),
+                    ],
+                ),
+                _ => (PartShapeKind::Fixed, Vec::new()),
+            };
+            PartShapeRow { key: *key, name: named.name.clone(), kind, fields }
+        })
+        .collect()
+}
+
 pub(super) fn view(s: &Session) -> StructureViewModel {
     let snapshot = s.doc.snapshot();
     let layer = snapshot.structure();
@@ -127,6 +239,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
                 .iter()
                 .map(|(name, v)| VariantRow { name: name.clone(), values: values(v) })
                 .collect(),
+            shapes: shapes_view(def),
             instances: layer
                 .instances()
                 .filter(|(_, i)| i.definition == id)
@@ -136,6 +249,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
                     overrides: values(&inst.overrides),
                     effective: values(&effective_parameters(def, inst)),
                     plate: inst.plate.and_then(plate_name),
+                    plate_id: inst.plate.map(StableId::raw),
                     status: status_of(&snapshot, iid),
                 })
                 .collect(),
@@ -206,6 +320,7 @@ pub(super) fn view(s: &Session) -> StructureViewModel {
         selected: s.selection.ids().iter().filter(|id| snapshot.object(**id).is_some()).count(),
         edges: edges_view(&snapshot, s.selection.single()),
         edge_object: s.selection.single().filter(|id| snapshot.object(*id).is_some()).map(StableId::raw),
+        modifiers: modifiers_view(&snapshot),
     }
 }
 
@@ -240,6 +355,31 @@ fn problem(p: StructureProblem) -> MessageKey {
 /// The length of the typed text, or the refusal to show.
 fn typed_length(text: &str) -> Result<Length, MessageKey> {
     parse_length(text).map_err(MessageKey::InvalidLength)
+}
+
+/// The plate `raw` names, or the refusal to show.
+fn plate_of(layer: &burnburn_document::structure::StructureLayer, raw: u64) -> Result<(PlateId, Plate), MessageKey> {
+    let id = PlateId::from_raw(raw);
+    layer.plate(id).map(|p| (id, p.clone())).ok_or(problem(StructureProblem::UnknownPlate))
+}
+
+/// The chain `raw` names, or the refusal to show.
+fn chain_of(
+    layer: &burnburn_document::structure::StructureLayer,
+    raw: u64,
+) -> Result<(ModifierId, ModifierChain), MessageKey> {
+    let id = ModifierId::from_raw(raw);
+    layer.modifier(id).map(|c| (id, c.clone())).ok_or(problem(StructureProblem::UnknownModifier))
+}
+
+/// A number of copies typed in a field: a whole number of at least one.
+fn typed_count(text: &str) -> Result<u32, MessageKey> {
+    let v = crate::field::parse_number(text, &[]).map_err(MessageKey::InvalidLength)?;
+    if v.fract() == 0.0 && (1.0..=f64::from(u32::MAX)).contains(&v) {
+        Ok(v as u32)
+    } else {
+        Err(problem(StructureProblem::InvalidCount))
+    }
 }
 
 /// A position typed in a field: empty is 0.
@@ -357,6 +497,213 @@ fn build(s: &Session, edit: StructureEdit) -> Result<StructureCommand, MessageKe
             let id = ReferenceId::from_raw(reference);
             layer.reference(id).ok_or(problem(StructureProblem::UnknownReference))?;
             Ok(StructureCommand::RemoveReference { reference: id })
+        }
+        StructureEdit::CreatePlate { name, width, height, material, thickness } => {
+            let name = name.trim().to_owned();
+            if name.is_empty() {
+                return Err(problem(StructureProblem::NeedsName));
+            }
+            let thickness = if thickness.trim().is_empty() { None } else { Some(typed_length(&thickness)?) };
+            let plate = Plate {
+                name,
+                width: typed_length(&width)?,
+                height: typed_length(&height)?,
+                material: material.trim().to_owned(),
+                thickness,
+            };
+            Ok(StructureCommand::CreatePlate { plate })
+        }
+        StructureEdit::SetPlateField { plate, field, text } => {
+            let (id, mut value) = plate_of(layer, plate)?;
+            match field {
+                PlateField::Name => {
+                    value.name = text.trim().to_owned();
+                    if value.name.is_empty() {
+                        return Err(problem(StructureProblem::NeedsName));
+                    }
+                }
+                PlateField::Width => value.width = typed_length(&text)?,
+                PlateField::Height => value.height = typed_length(&text)?,
+                PlateField::Material => value.material = text.trim().to_owned(),
+                PlateField::Thickness => {
+                    value.thickness = if text.trim().is_empty() { None } else { Some(typed_length(&text)?) };
+                }
+            }
+            Ok(StructureCommand::SetPlate { plate: id, value })
+        }
+        StructureEdit::RemovePlate { plate } => {
+            let (id, _) = plate_of(layer, plate)?;
+            Ok(StructureCommand::RemovePlate { plate: id })
+        }
+        StructureEdit::AssignSelectionToPlate { plate } => {
+            let objects: Vec<GeometryId> =
+                s.selection.ids().iter().copied().filter(|id| snapshot.object(*id).is_some()).collect();
+            if objects.is_empty() {
+                return Err(problem(StructureProblem::NeedsSelection));
+            }
+            let plate = plate.map(|raw| plate_of(layer, raw).map(|(id, _)| id)).transpose()?;
+            let part_output = |id: &GeometryId| {
+                snapshot.object(*id).is_some_and(
+                    |o| matches!(o.source(), GeometrySource::Derived(k) if matches!(k.owner, DerivedOwner::Part(_))),
+                )
+            };
+            if objects.iter().any(part_output) {
+                return Err(problem(StructureProblem::PartOutputSelected));
+            }
+            Ok(StructureCommand::AssignToPlate { objects, plate })
+        }
+        StructureEdit::SetInstancePlate { instance, plate } => {
+            let id = PartInstanceId::from_raw(instance);
+            let mut value = layer.instance(id).cloned().ok_or(problem(StructureProblem::UnknownInstance))?;
+            value.plate = plate.map(|raw| plate_of(layer, raw).map(|(id, _)| id)).transpose()?;
+            Ok(StructureCommand::SetInstance { instance: id, value })
+        }
+        StructureEdit::RenameVariant { definition, from, to } => {
+            let (id, def) = definition_of(definition)?;
+            if !def.variants.contains_key(&from) {
+                return Err(problem(StructureProblem::UnknownVariant));
+            }
+            let to = to.trim().to_owned();
+            if to.is_empty() {
+                return Err(problem(StructureProblem::NeedsName));
+            }
+            if to != from && def.variants.contains_key(&to) {
+                return Err(problem(StructureProblem::VariantExists));
+            }
+            Ok(StructureCommand::RenameVariant { definition: id, from, to })
+        }
+        StructureEdit::RemoveVariant { definition, name } => {
+            let (id, mut value) = definition_of(definition)?;
+            if value.variants.remove(&name).is_none() {
+                return Err(problem(StructureProblem::UnknownVariant));
+            }
+            if layer.instances().any(|(_, i)| i.definition == id && i.variant.as_deref() == Some(name.as_str())) {
+                return Err(problem(StructureProblem::VariantInUse));
+            }
+            Ok(StructureCommand::SetPartDefinition { definition: id, value })
+        }
+        StructureEdit::AddPartShape { definition, kind, name } => {
+            let (id, mut value) = definition_of(definition)?;
+            let shape = match kind {
+                PartShapeKind::Rectangle => PartShape::Rectangle {
+                    x: Dim::Mm(0.0),
+                    y: Dim::Mm(0.0),
+                    width: Dim::Mm(10.0),
+                    height: Dim::Mm(10.0),
+                },
+                PartShapeKind::Circle => PartShape::Circle { x: Dim::Mm(5.0), y: Dim::Mm(5.0), radius: Dim::Mm(5.0) },
+                _ => return Err(problem(StructureProblem::CannotAddFixed)),
+            };
+            let name = name.trim().to_owned();
+            if name.is_empty() {
+                return Err(problem(StructureProblem::NeedsName));
+            }
+            let key = value.shapes.keys().next_back().map_or(1, |k| k.saturating_add(1));
+            value.shapes.insert(key, NamedShape { name, shape });
+            Ok(StructureCommand::SetPartDefinition { definition: id, value })
+        }
+        StructureEdit::RemovePartShape { definition, shape } => {
+            let (id, mut value) = definition_of(definition)?;
+            value.shapes.remove(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
+            Ok(StructureCommand::SetPartDefinition { definition: id, value })
+        }
+        StructureEdit::RenamePartShape { definition, shape, name } => {
+            let (id, mut value) = definition_of(definition)?;
+            let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
+            slot.name = name.trim().to_owned();
+            if slot.name.is_empty() {
+                return Err(problem(StructureProblem::NeedsName));
+            }
+            Ok(StructureCommand::SetPartDefinition { definition: id, value })
+        }
+        StructureEdit::SetPartShapeField { definition, shape, field, text } => {
+            let (id, mut value) = definition_of(definition)?;
+            let known = value.parameters.keys().any(|p| *p == text.trim());
+            let positioned = matches!(field, ShapeField::X | ShapeField::Y);
+            let dim = if known {
+                Dim::Param(text.trim().to_owned())
+            } else if positioned {
+                Dim::Mm(parse_position(&text).map_err(MessageKey::InvalidLength)?.mm())
+            } else {
+                Dim::Mm(typed_length(&text)?.mm())
+            };
+            let slot = value.shapes.get_mut(&shape).ok_or(problem(StructureProblem::UnknownShape))?;
+            let target = match (&mut slot.shape, field) {
+                (PartShape::Rectangle { x, .. } | PartShape::Circle { x, .. }, ShapeField::X) => x,
+                (PartShape::Rectangle { y, .. } | PartShape::Circle { y, .. }, ShapeField::Y) => y,
+                (PartShape::Rectangle { width, .. }, ShapeField::Width) => width,
+                (PartShape::Rectangle { height, .. }, ShapeField::Height) => height,
+                (PartShape::Circle { radius, .. }, ShapeField::Radius) => radius,
+                _ => return Err(problem(StructureProblem::NoSuchField)),
+            };
+            *target = dim;
+            Ok(StructureCommand::SetPartDefinition { definition: id, value })
+        }
+        StructureEdit::ToggleModifierStep { modifier, step, enabled } => {
+            let (id, chain) = chain_of(layer, modifier)?;
+            chain.steps.get(step).ok_or(problem(StructureProblem::UnknownStep))?;
+            Ok(StructureCommand::SetStepEnabled { modifier: id, step, enabled })
+        }
+        StructureEdit::MoveModifierStep { modifier, step, up } => {
+            let (id, mut chain) = chain_of(layer, modifier)?;
+            if step >= chain.steps.len() {
+                return Err(problem(StructureProblem::UnknownStep));
+            }
+            let other = if up { step.checked_sub(1) } else { Some(step + 1).filter(|n| *n < chain.steps.len()) };
+            let other = other.ok_or(problem(StructureProblem::CannotMoveStep))?;
+            chain.steps.swap(step, other);
+            Ok(StructureCommand::SetModifier { modifier: id, chain })
+        }
+        StructureEdit::RemoveModifierStep { modifier, step } => {
+            let (id, mut chain) = chain_of(layer, modifier)?;
+            if step >= chain.steps.len() {
+                return Err(problem(StructureProblem::UnknownStep));
+            }
+            if chain.steps.len() == 1 {
+                return Err(problem(StructureProblem::LastStep));
+            }
+            chain.steps.remove(step);
+            Ok(StructureCommand::SetModifier { modifier: id, chain })
+        }
+        StructureEdit::SetModifierStepValue { modifier, step, text } => {
+            let (id, mut chain) = chain_of(layer, modifier)?;
+            let slot = chain.steps.get_mut(step).ok_or(problem(StructureProblem::UnknownStep))?;
+            match &mut slot.modifier {
+                Modifier::Offset { distance, .. } => {
+                    *distance = Length::from_mm(typed_position(&text)?).map_err(|_| MessageKey::CommandRejected)?;
+                }
+                Modifier::LinearArray { count, .. } | Modifier::PathArray { count, .. } => {
+                    *count = typed_count(&text)?;
+                }
+                Modifier::CircularArray(c) => c.count = typed_count(&text)?,
+                _ => return Err(problem(StructureProblem::StepHasNoValue)),
+            }
+            Ok(StructureCommand::SetModifier { modifier: id, chain })
+        }
+        StructureEdit::RemoveModifier { modifier } => {
+            let (id, _) = chain_of(layer, modifier)?;
+            Ok(StructureCommand::RemoveModifier { modifier: id })
+        }
+        StructureEdit::BakeModifier { modifier } => {
+            let (id, _) = chain_of(layer, modifier)?;
+            Ok(StructureCommand::BakeModifier { modifier: id })
+        }
+        StructureEdit::CreateOffsetModifier { distance } => {
+            let source = s.selection.single().filter(|id| snapshot.object(*id).is_some());
+            let source = source.ok_or(problem(StructureProblem::NeedsSelection))?;
+            let distance = Length::from_mm(typed_position(&distance)?).map_err(|_| MessageKey::CommandRejected)?;
+            let tolerance = crate::commit::boolean_options().map(|o| o.tolerance).ok_or(MessageKey::CommandRejected)?;
+            let chain = ModifierChain {
+                name: "Offset".to_owned(),
+                source,
+                steps: vec![ModifierStep {
+                    modifier: Modifier::Offset { distance, join: burnburn_geometry::OffsetJoin::Round },
+                    enabled: true,
+                }],
+                tolerance,
+                mode: EvalMode::Inline,
+            };
+            Ok(StructureCommand::CreateModifier { chain })
         }
     }
 }

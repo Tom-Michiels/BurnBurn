@@ -104,7 +104,10 @@ impl Path {
                 let rebuilt = Subpath::new(start, segs, false).map_err(|_| ExtendError::NoBoundaryAhead)?;
                 Ok(replace_subpath(self, si, vec![rebuilt]))
             }
-            Segment::Cubic { .. } => Err(ExtendError::NotExtendable),
+            Segment::Cubic { .. } => {
+                let rebuilt = extended_cubic_subpath(sp, at_end, boundaries)?;
+                Ok(replace_subpath(self, si, vec![rebuilt]))
+            }
         }
     }
 
@@ -144,6 +147,73 @@ fn replace_subpath(path: &Path, index: usize, pieces: Vec<Subpath>) -> Path {
     out.extend(pieces);
     out.extend_from_slice(&path.subpaths()[index + 1..]);
     Path::from_subpaths(out)
+}
+
+/// How far past its end a Bézier is followed, in curve parameter (the polynomial runs on past
+/// `t = 1`; far beyond that it no longer says anything about the drawn shape).
+const BEZIER_REACH: f64 = 3.0;
+
+/// The point of the control polygon's blossom for parameters `u`, `v`, `w` (de Casteljau with a
+/// different parameter per level; any real parameters, also outside `[0, 1]`).
+fn blossom(poly: [Point; 4], u: f64, v: f64, w: f64) -> Point {
+    let a = [poly[0].lerp(poly[1], u), poly[1].lerp(poly[2], u), poly[2].lerp(poly[3], u)];
+    let b = [a[0].lerp(a[1], v), a[1].lerp(a[2], v)];
+    b[0].lerp(b[1], w)
+}
+
+/// The cubic `poly` over the parameter range `[a, b]` as control points.
+fn cubic_over(poly: [Point; 4], a: f64, b: f64) -> [Point; 4] {
+    [blossom(poly, a, a, a), blossom(poly, a, a, b), blossom(poly, a, b, b), blossom(poly, b, b, b)]
+}
+
+/// The subpath `sp` with its end (or start) Bézier segment continued along the same cubic
+/// polynomial to the first boundary crossing ahead. The result is still one cubic there.
+fn extended_cubic_subpath(sp: &Subpath, at_end: bool, boundaries: &[&Path]) -> Result<Subpath, ExtendError> {
+    let segs = sp.segments();
+    // Work on the end: a start is the end of the reversed segment.
+    let (from, c1, c2, to, index) = if at_end {
+        let last = segs.len().checked_sub(1).ok_or(ExtendError::NoSuchEnd)?;
+        let from = last.checked_sub(1).and_then(|i| segs.get(i)).map_or(sp.start(), Segment::end);
+        match segs.get(last) {
+            Some(Segment::Cubic { c1, c2, to }) => (from, *c1, *c2, *to, last),
+            _ => return Err(ExtendError::NoSuchEnd),
+        }
+    } else {
+        match segs.first() {
+            Some(Segment::Cubic { c1, c2, to }) => (*to, *c2, *c1, sp.start(), 0),
+            _ => return Err(ExtendError::NoSuchEnd),
+        }
+    };
+    let poly = [from, c1, c2, to];
+    let ahead_poly = cubic_over(poly, 1.0, 1.0 + BEZIER_REACH);
+    let ahead = Segment::Cubic { c1: ahead_poly[1], c2: ahead_poly[2], to: ahead_poly[3] };
+    let mut best: Option<f64> = None;
+    for boundary in boundaries {
+        for (_, bf, bs) in segments_of(boundary) {
+            for (t, _, _) in segment_intersections(to, &ahead, bf, &bs) {
+                if t * BEZIER_REACH > POS_EPS && best.is_none_or(|b| t < b) {
+                    best = Some(t);
+                }
+            }
+        }
+    }
+    let t = best.ok_or(ExtendError::NoBoundaryAhead)?;
+    let longer = cubic_over(poly, 0.0, 1.0 + t * BEZIER_REACH);
+    let new = Segment::Cubic { c1: longer[1], c2: longer[2], to: longer[3] };
+    let (start, mut rebuilt) = (sp.start(), segs.to_vec());
+    if at_end {
+        if let Some(slot) = rebuilt.get_mut(index) {
+            *slot = new;
+        }
+        Subpath::new(start, rebuilt, false).map_err(|_| ExtendError::NoBoundaryAhead)
+    } else {
+        // The cubic was reversed: turn the lengthened one around again.
+        let reversed = Segment::Cubic { c1: longer[2], c2: longer[1], to: longer[0] };
+        if let Some(slot) = rebuilt.get_mut(index) {
+            *slot = reversed;
+        }
+        Subpath::new(longer[3], rebuilt, false).map_err(|_| ExtendError::NoBoundaryAhead)
+    }
 }
 
 /// `arc` lengthened at its end (or start) along its own ellipse to the first boundary crossing.

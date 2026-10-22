@@ -48,6 +48,13 @@ pub(super) struct ToolOptions {
     count: u32,
     sweep_deg: f64,
     keep_original: bool,
+    /// The dimension tool gives an ellipse its minor axis (G7-editor, S01).
+    minor_axis: bool,
+    /// Fillet radius and the chamfer sizes (G7-editor, E05); the same defaults as the editor's tools.
+    fillet_radius: f64,
+    chamfer_distance: f64,
+    chamfer_distance2: f64,
+    chamfer_angle: f64,
     /// The option whose last input was refused, and why (cleared by the next tool choice).
     refused: Option<(ParamKey, MessageKey)>,
     /// The shape parameter whose last input was refused: object, key and reason.
@@ -62,6 +69,11 @@ impl Default for ToolOptions {
             count: 6,
             sweep_deg: 360.0,
             keep_original: false,
+            minor_axis: false,
+            fillet_radius: 2.0,
+            chamfer_distance: 2.0,
+            chamfer_distance2: 2.0,
+            chamfer_angle: 45.0,
             refused: None,
             shape_refused: None,
         }
@@ -330,7 +342,7 @@ fn number(text: &str) -> Result<f64, MessageKey> {
 
 fn row(key: ParamKey, text: String, s: &Session) -> ParamRow {
     let error = s.options.refused.filter(|(k, _)| *k == key).map(|(_, m)| m);
-    ParamRow { key, text, toggle: key == ParamKey::KeepOriginal, error }
+    ParamRow { key, text, toggle: matches!(key, ParamKey::KeepOriginal | ParamKey::MinorAxis), error }
 }
 
 /// The options rows of the active tool.
@@ -355,6 +367,17 @@ pub(super) fn option_rows(s: &Session) -> Vec<ParamRow> {
             vec![row(ParamKey::Count, o.count.to_string(), s), row(ParamKey::Sweep, format_mm(o.sweep_deg), s)]
         }
         ToolKind::Mirror => vec![row(ParamKey::KeepOriginal, u8::from(o.keep_original).to_string(), s)],
+        ToolKind::Dimension => vec![row(ParamKey::MinorAxis, u8::from(o.minor_axis).to_string(), s)],
+        ToolKind::Fillet => vec![row(ParamKey::FilletRadius, format_mm(o.fillet_radius), s)],
+        ToolKind::ChamferEqual => vec![row(ParamKey::ChamferDistance, format_mm(o.chamfer_distance), s)],
+        ToolKind::ChamferTwo => vec![
+            row(ParamKey::ChamferDistance, format_mm(o.chamfer_distance), s),
+            row(ParamKey::ChamferDistance2, format_mm(o.chamfer_distance2), s),
+        ],
+        ToolKind::ChamferAngle => vec![
+            row(ParamKey::ChamferDistance, format_mm(o.chamfer_distance), s),
+            row(ParamKey::ChamferAngle, format_mm(o.chamfer_angle), s),
+        ],
         _ => Vec::new(),
     }
 }
@@ -369,6 +392,11 @@ pub(super) fn apply_options(s: &mut Session) {
         ModifyParam::Count(o.count),
         ModifyParam::SweepDeg(o.sweep_deg),
         ModifyParam::KeepOriginal(o.keep_original),
+        ModifyParam::MinorAxis(o.minor_axis),
+        ModifyParam::Radius(o.fillet_radius),
+        ModifyParam::Distance(o.chamfer_distance),
+        ModifyParam::Distance2(o.chamfer_distance2),
+        ModifyParam::AngleDeg(o.chamfer_angle),
     ] {
         s.editor.set_param(ToolParam::Modify(param));
     }
@@ -426,6 +454,26 @@ pub(super) fn set_tool_option(s: &mut Session, document: DocumentId, key: ParamK
         (ToolKind::Mirror, ParamKey::KeepOriginal) => {
             let on = number(text)? != 0.0;
             keep(s, ModifyParam::KeepOriginal(on), |o| o.keep_original = on)
+        }
+        (ToolKind::Dimension, ParamKey::MinorAxis) => {
+            let on = number(text)? != 0.0;
+            keep(s, ModifyParam::MinorAxis(on), |o| o.minor_axis = on)
+        }
+        (ToolKind::Fillet, ParamKey::FilletRadius) => {
+            let radius = number(text)?;
+            keep(s, ModifyParam::Radius(radius), |o| o.fillet_radius = radius)
+        }
+        (ToolKind::ChamferEqual | ToolKind::ChamferTwo | ToolKind::ChamferAngle, ParamKey::ChamferDistance) => {
+            let distance = number(text)?;
+            keep(s, ModifyParam::Distance(distance), |o| o.chamfer_distance = distance)
+        }
+        (ToolKind::ChamferTwo, ParamKey::ChamferDistance2) => {
+            let distance = number(text)?;
+            keep(s, ModifyParam::Distance2(distance), |o| o.chamfer_distance2 = distance)
+        }
+        (ToolKind::ChamferAngle, ParamKey::ChamferAngle) => {
+            let degrees = number(text)?;
+            keep(s, ModifyParam::AngleDeg(degrees), |o| o.chamfer_angle = degrees)
         }
         _ => Err(MessageKey::ShapeParamInvalid),
     })();
