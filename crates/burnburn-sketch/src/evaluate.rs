@@ -260,7 +260,11 @@ fn lower(sketch: &Sketch) -> Option<(Problem, Index)> {
 }
 
 /// The solver entity of the centre of a circle, arc or ellipse.
-fn centre_of(sketch: &Sketch, id: EntityId, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<solver::EntityId> {
+fn centre_of(
+    sketch: &Sketch,
+    id: EntityId,
+    e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
+) -> Option<solver::EntityId> {
     match sketch.entity(id)?.entity {
         DocEntity::Circle { center, .. } | DocEntity::Arc { center, .. } | DocEntity::Ellipse { center, .. } => {
             e(center)
@@ -269,12 +273,9 @@ fn centre_of(sketch: &Sketch, id: EntityId, e: &dyn Fn(EntityId) -> Option<solve
     }
 }
 
-fn relation(
-    sketch: &Sketch,
-    r: Relation,
-    e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
-) -> Option<Constraint> {
-    let is_ellipse = |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
+fn relation(sketch: &Sketch, r: Relation, e: &dyn Fn(EntityId) -> Option<solver::EntityId>) -> Option<Constraint> {
+    let is_ellipse =
+        |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
     Some(match r {
         // The solver's concentricity wants round curves; an ellipse shares its centre point.
         Relation::Concentric(a, b) if is_ellipse(a) || is_ellipse(b) => {
@@ -302,7 +303,8 @@ fn dimension(
     value: f64,
     e: &dyn Fn(EntityId) -> Option<solver::EntityId>,
 ) -> Option<Constraint> {
-    let is_ellipse = |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
+    let is_ellipse =
+        |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
     Some(match kind {
         // An ellipse is its major axis for the solver: radius = semi-major, diameter = full axis.
         DimensionKind::Radius { curve } if is_ellipse(curve) => Constraint::Length { line: e(curve)?, value },

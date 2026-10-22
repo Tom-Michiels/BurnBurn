@@ -11,8 +11,8 @@ mod g6_fixtures;
 use burnburn_macos::l10n::{Locale, message_or_key, undo_label_text};
 use burnburn_macos::panels::{G5Control as C, G5Line, G5Panel, G5PanelModel, g5_intent, g5_opens_by_itself, g5_panel};
 use burnburn_presentation::{
-    CommandKey, FilesIntent, GeneratorEdit, GeneratorField, GeneratorKind, HeadlessEditorHarness, MessageKey, SelectMode,
-    UiIntent,
+    CommandKey, FilesIntent, GeneratorEdit, GeneratorField, GeneratorKind, HeadlessEditorHarness, MessageKey,
+    SelectMode, UiIntent,
 };
 use burnburn_types::DocumentId;
 use g6_fixtures::*;
@@ -100,7 +100,9 @@ fn the_box_panel_shows_kind_fields_lid_the_kerf_note_and_the_preview_in_the_wind
         (GeneratorField::PanelSpacing, "5"),
     ] {
         match line(&h, doc, C::GeneratorField(field)) {
-            G5Line::Field { text: t, caption, .. } => assert_eq!((t.as_str(), caption.is_empty()), (text, false), "{field:?}"),
+            G5Line::Field { text: t, caption, .. } => {
+                assert_eq!((t.as_str(), caption.is_empty()), (text, false), "{field:?}")
+            }
             other => panic!("{other:?}"),
         }
     }
@@ -129,7 +131,15 @@ fn the_box_panel_shows_kind_fields_lid_the_kerf_note_and_the_preview_in_the_wind
 fn controls_become_generator_edits_and_an_unchanged_value_sends_nothing() {
     let (mut h, doc) = open();
     // Field text goes unparsed; the shown value sends nothing.
-    assert_eq!(press(&mut h, doc, C::GeneratorField(GeneratorField::Width), &[(C::GeneratorField(GeneratorField::Width), "100")]), None);
+    assert_eq!(
+        press(
+            &mut h,
+            doc,
+            C::GeneratorField(GeneratorField::Width),
+            &[(C::GeneratorField(GeneratorField::Width), "100")]
+        ),
+        None
+    );
     let intent = press(
         &mut h,
         doc,
@@ -138,7 +148,10 @@ fn controls_become_generator_edits_and_an_unchanged_value_sends_nothing() {
     );
     assert_eq!(
         intent,
-        Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Field(GeneratorField::Width, "80,5 mm".into()) })
+        Some(UiIntent::Generator {
+            document: doc,
+            edit: GeneratorEdit::Field(GeneratorField::Width, "80,5 mm".into())
+        })
     );
     // Four panels of 80.5, two of 60 and five gaps of 5 mm in the flat row: 4 * 80.5 + 120 + 25 = 467.
     assert_eq!(h.document(doc).unwrap().generator_dialog.unwrap().preview.unwrap().width, "467");
@@ -153,22 +166,36 @@ fn controls_become_generator_edits_and_an_unchanged_value_sends_nothing() {
         Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Kind(GeneratorKind::LivingHinge) })
     );
     assert!(!lines(&h, doc, Locale::En).iter().any(|l| l.control() == Some(C::GeneratorLid)), "a hinge has no lid");
-    assert!(lines(&h, doc, Locale::En).iter().any(|l| l.control() == Some(C::GeneratorField(GeneratorField::CutLength))));
+    assert!(
+        lines(&h, doc, Locale::En).iter().any(|l| l.control() == Some(C::GeneratorField(GeneratorField::CutLength)))
+    );
 }
 
 #[test]
 fn a_refused_field_is_a_problem_line_in_words_and_insert_is_greyed() {
     let (mut h, doc) = open();
-    press(&mut h, doc, C::GeneratorField(GeneratorField::FingerWidth), &[(C::GeneratorField(GeneratorField::FingerWidth), "2")]);
+    press(
+        &mut h,
+        doc,
+        C::GeneratorField(GeneratorField::FingerWidth),
+        &[(C::GeneratorField(GeneratorField::FingerWidth), "2")],
+    );
     let en = problems(&h, doc, Locale::En);
     assert_eq!(en.len(), 1, "{en:?}");
-    assert!(en[0].to_lowercase().contains("finger") && en[0].contains('3') && en[0].contains('2'), "the limit is named: {en:?}");
+    assert!(
+        en[0].to_lowercase().contains("finger") && en[0].contains('3') && en[0].contains('2'),
+        "the limit is named: {en:?}"
+    );
     let nl = problems(&h, doc, Locale::Nl);
     assert!(nl[0].to_lowercase().contains("vinger"), "{nl:?}");
     assert!(matches!(line(&h, doc, C::GeneratorInsert), G5Line::Button { enabled: false, .. }));
     assert_eq!(press(&mut h, doc, C::GeneratorInsert, &[]), None, "a greyed button sends nothing");
     press(&mut h, doc, C::GeneratorField(GeneratorField::Width), &[(C::GeneratorField(GeneratorField::Width), "abc")]);
-    assert!(problems(&h, doc, Locale::En).iter().any(|p| p.to_lowercase().contains("number")), "{:?}", problems(&h, doc, Locale::En));
+    assert!(
+        problems(&h, doc, Locale::En).iter().any(|p| p.to_lowercase().contains("number")),
+        "{:?}",
+        problems(&h, doc, Locale::En)
+    );
 }
 
 #[test]
@@ -182,7 +209,10 @@ fn insert_makes_the_box_and_a_generated_object_opens_with_an_apply_button() {
         G5Line::Button { title, .. } => assert_eq!(title, "Apply"),
         other => panic!("{other:?}"),
     }
-    assert_eq!(press(&mut h, doc, C::GeneratorCancel, &[]), Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Cancel }));
+    assert_eq!(
+        press(&mut h, doc, C::GeneratorCancel, &[]),
+        Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Cancel })
+    );
     h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
     assert!(panel(&h, doc, Locale::En).is_none());
 }
@@ -191,7 +221,12 @@ fn insert_makes_the_box_and_a_generated_object_opens_with_an_apply_button() {
 // Project search (P08)
 // ---------------------------------------------------------------------------------------------
 
-fn search_panel(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale, draft: &[(C, &str)]) -> Option<G5PanelModel> {
+fn search_panel(
+    h: &HeadlessEditorHarness,
+    doc: DocumentId,
+    locale: Locale,
+    draft: &[(C, &str)],
+) -> Option<G5PanelModel> {
     let draft: Vec<(C, String)> = draft.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
     g5_panel(&h.view(), doc, G5Panel::Search, locale, &draft)
 }
@@ -200,12 +235,7 @@ fn search_lines(h: &HeadlessEditorHarness, doc: DocumentId, draft: &[(C, &str)])
     search_panel(h, doc, Locale::En, draft).expect("the search panel").lines
 }
 
-fn search_press(
-    h: &mut HeadlessEditorHarness,
-    doc: DocumentId,
-    c: C,
-    values: &[(C, &str)],
-) -> Option<UiIntent> {
+fn search_press(h: &mut HeadlessEditorHarness, doc: DocumentId, c: C, values: &[(C, &str)]) -> Option<UiIntent> {
     let values: Vec<(C, String)> = values.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
     let intent = g5_intent(&h.view(), doc, G5Panel::Search, c, &values)?;
     h.send(intent.clone());
@@ -232,15 +262,19 @@ fn the_search_panel_opens_by_itself_with_the_search_and_titles_in_both_languages
 fn the_panel_lists_the_projects_with_their_date_a_preview_and_what_could_not_be_read() {
     let (h, doc) = searching();
     let lines = search_lines(&h, doc, &[]);
-    let field = |c: C| lines.iter().find_map(|l| match l {
-        G5Line::Field { control, text, .. } if *control == c => Some(text.clone()),
-        _ => None,
-    });
+    let field = |c: C| {
+        lines.iter().find_map(|l| match l {
+            G5Line::Field { control, text, .. } if *control == c => Some(text.clone()),
+            _ => None,
+        })
+    };
     assert_eq!(field(C::SearchFolder).as_deref(), Some("/werk"));
     assert_eq!(field(C::SearchQuery).as_deref(), Some(""));
-    let texts: Vec<&String> = lines.iter().filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None }).collect();
+    let texts: Vec<&String> =
+        lines.iter().filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None }).collect();
     assert!(texts.iter().any(|t| t.contains("2 projects")), "{texts:?}");
-    let problems: Vec<&String> = lines.iter().filter_map(|l| if let G5Line::Problem(t) = l { Some(t) } else { None }).collect();
+    let problems: Vec<&String> =
+        lines.iter().filter_map(|l| if let G5Line::Problem(t) = l { Some(t) } else { None }).collect();
     assert!(problems.iter().any(|t| t.contains("kapot.burnburn")), "a broken file is named: {problems:?}");
     match lines.iter().find(|l| l.control() == Some(C::SearchResult)).expect("the result list") {
         G5Line::Choice { options, selected, .. } => {
@@ -277,10 +311,23 @@ fn the_chosen_result_decides_the_preview_the_revisions_and_what_matched() {
     // A query says what matched, in the window language.
     search_press(&mut h, doc, C::SearchQuery, &[(C::SearchQuery, "multiplex")]);
     let texts = |locale| -> Vec<String> {
-        search_panel(&h, doc, locale, &[]).unwrap().lines.into_iter().filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None }).collect()
+        search_panel(&h, doc, locale, &[])
+            .unwrap()
+            .lines
+            .into_iter()
+            .filter_map(|l| if let G5Line::Text(t) = l { Some(t) } else { None })
+            .collect()
     };
-    assert!(texts(Locale::En).iter().any(|t| t.contains("Found in") && t.contains("material")), "{:?}", texts(Locale::En));
-    assert!(texts(Locale::Nl).iter().any(|t| t.contains("Gevonden in") && t.contains("materiaal")), "{:?}", texts(Locale::Nl));
+    assert!(
+        texts(Locale::En).iter().any(|t| t.contains("Found in") && t.contains("material")),
+        "{:?}",
+        texts(Locale::En)
+    );
+    assert!(
+        texts(Locale::Nl).iter().any(|t| t.contains("Gevonden in") && t.contains("materiaal")),
+        "{:?}",
+        texts(Locale::Nl)
+    );
 }
 
 #[test]

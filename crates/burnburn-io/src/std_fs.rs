@@ -117,11 +117,7 @@ impl FileSystem for StdFileSystem {
     fn modified(&self, path: &Path) -> Result<Option<u64>, FsError> {
         let metadata = fs::metadata(path).map_err(|e| err(FsOp::Read, path, &e))?;
         // A platform without a modification time, or one before the epoch, stays unknown.
-        Ok(metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs()))
+        Ok(metadata.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()))
     }
 
     fn remove_file(&self, path: &Path) -> Result<(), FsError> {

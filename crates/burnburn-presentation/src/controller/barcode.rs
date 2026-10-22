@@ -8,19 +8,19 @@
 
 use std::sync::Arc;
 
+use burnburn_document::CommandPayload;
 use burnburn_document::engine::{EngineRecipe, ParamValue};
 use burnburn_document::generator::{GeneratorCommand, GeneratorDefinition, GeneratorId};
-use burnburn_document::CommandPayload;
 use burnburn_generators::{
-    EncodedSymbol, GENERATOR_ENGINE, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus, Symbology,
-    SymbologyParams, encode_symbol, symbology_catalog,
+    EncodedSymbol, GENERATOR_ENGINE, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus,
+    Symbology, SymbologyParams, encode_symbol, symbology_catalog,
 };
 use burnburn_geometry::{Affine, Vector};
 use burnburn_types::{DocumentId, RequestId};
 
 use crate::barcode_panel::{
-    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem,
-    BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability,
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeTypeRow, EccStepViewModel,
+    EccViewModel, Readability,
 };
 use crate::field::{format_mm, parse_length};
 
@@ -338,7 +338,8 @@ fn create(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> 
     let editing = d.editing.clone();
     let command = match editing {
         Some((generator, old)) => {
-            let definition = GeneratorDefinition { name, generator: "symbology".into(), recipe, placement: old.placement };
+            let definition =
+                GeneratorDefinition { name, generator: "symbology".into(), recipe, placement: old.placement };
             if definition == old {
                 s.barcode.dialog = None;
                 return AppUpdate::redraw(document);

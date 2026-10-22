@@ -11,8 +11,8 @@ use burnburn_types::DocumentId;
 
 use super::g5::{G5Control, G5Line, flag_of, index_of, value_of};
 use crate::l10n::Locale;
-use crate::panels_image::BitmapImage;
 use crate::l10n_g6::{G6Text, g6_fmt, g6_text};
+use crate::panels_image::BitmapImage;
 
 const KINDS: [GeneratorKind; 2] = [GeneratorKind::FingerBox, GeneratorKind::LivingHinge];
 
@@ -55,11 +55,9 @@ fn problem_text(kind: GeneratorKind, p: &GeneratorProblem, locale: Locale) -> St
         GeneratorIssue::TooSmall { min_mm, value_mm } => {
             g6_fmt(G6Text::ProblemTooSmall, locale, &[caption, &mm_text(min_mm, locale), &mm_text(value_mm, locale)])
         }
-        GeneratorIssue::Count { min, max, value } => g6_fmt(
-            G6Text::ProblemCount,
-            locale,
-            &[caption, &min.to_string(), &max.to_string(), &value.to_string()],
-        ),
+        GeneratorIssue::Count { min, max, value } => {
+            g6_fmt(G6Text::ProblemCount, locale, &[caption, &min.to_string(), &max.to_string(), &value.to_string()])
+        }
         _ => g6_fmt(G6Text::ProblemEngine, locale, &[caption]),
     }
 }
@@ -186,8 +184,16 @@ pub(super) fn search_lines(
     let search = doc.files.search.as_ref()?;
     let t = |x: G6Text| g6_text(x, locale).to_owned();
     let mut lines = vec![
-        G5Line::Field { control: G5Control::SearchFolder, caption: t(G6Text::SearchFolderCaption), text: search.folder.clone() },
-        G5Line::Field { control: G5Control::SearchQuery, caption: t(G6Text::SearchQueryCaption), text: search.query.clone() },
+        G5Line::Field {
+            control: G5Control::SearchFolder,
+            caption: t(G6Text::SearchFolderCaption),
+            text: search.folder.clone(),
+        },
+        G5Line::Field {
+            control: G5Control::SearchQuery,
+            caption: t(G6Text::SearchQueryCaption),
+            text: search.query.clone(),
+        },
         G5Line::Button { control: G5Control::SearchRescan, title: t(G6Text::SearchRescan), enabled: !search.scanning },
     ];
     if search.scanning {
@@ -241,7 +247,11 @@ pub(super) fn search_lines(
             selected: revision,
         });
     }
-    lines.push(G5Line::Button { control: G5Control::SearchOpenProject, title: t(G6Text::SearchOpenProject), enabled: true });
+    lines.push(G5Line::Button {
+        control: G5Control::SearchOpenProject,
+        title: t(G6Text::SearchOpenProject),
+        enabled: true,
+    });
     lines.push(G5Line::Button {
         control: G5Control::SearchOpenRevision,
         title: t(G6Text::SearchOpenRevision),

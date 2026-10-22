@@ -77,8 +77,18 @@ pub(super) struct Analysis {
 fn seeded(sketch: &Sketch, previous: &SketchSolution) -> Option<Sketch> {
     let is = |id: &EntityId, want: fn(&Entity) -> bool| sketch.entity(*id).is_some_and(|e| want(&e.entity));
     let solution = SketchSolution {
-        points: previous.points.iter().filter(|(id, _)| is(id, |e| matches!(e, Entity::Point { .. }))).map(|(i, p)| (*i, *p)).collect(),
-        radii: previous.radii.iter().filter(|(id, _)| is(id, |e| matches!(e, Entity::Circle { .. }))).map(|(i, r)| (*i, *r)).collect(),
+        points: previous
+            .points
+            .iter()
+            .filter(|(id, _)| is(id, |e| matches!(e, Entity::Point { .. })))
+            .map(|(i, p)| (*i, *p))
+            .collect(),
+        radii: previous
+            .radii
+            .iter()
+            .filter(|(id, _)| is(id, |e| matches!(e, Entity::Circle { .. })))
+            .map(|(i, r)| (*i, *r))
+            .collect(),
         dof: previous.dof,
     };
     Sketch::from_parts(

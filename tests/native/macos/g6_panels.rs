@@ -113,17 +113,24 @@ fn generator() -> Result<(), String> {
     s.wait(3.0, "the generator panel", || s.app.g5_panel_shown(doc, P::Generator))?;
     let vm = s.doc(doc).ok_or("no document")?;
     let dialog = vm.generator_dialog.ok_or("no dialog in the view model")?;
-    expect(|| format!("six panels in the preview, got {:?}", dialog.preview), dialog.preview.as_ref().is_some_and(|p| p.parts == 6))?;
+    expect(
+        || format!("six panels in the preview, got {:?}", dialog.preview),
+        dialog.preview.as_ref().is_some_and(|p| p.parts == 6),
+    )?;
 
     // Typing a field previews the new size; a refused value is named in the panel and greys Insert.
     type_into(&s, doc, C::GeneratorField(GeneratorField::Depth), "45")?;
-    let depth = s.doc(doc).and_then(|d| d.generator_dialog).and_then(|d| {
-        d.fields.iter().find(|f| f.field == GeneratorField::Depth).map(|f| f.text.clone())
-    });
+    let depth = s
+        .doc(doc)
+        .and_then(|d| d.generator_dialog)
+        .and_then(|d| d.fields.iter().find(|f| f.field == GeneratorField::Depth).map(|f| f.text.clone()));
     expect(|| format!("the depth was taken, got {depth:?}"), depth.as_deref() == Some("45"))?;
     type_into(&s, doc, C::GeneratorField(GeneratorField::FingerWidth), "2")?;
     let labels = s.app.g5_labels(doc, P::Generator).join(" | ");
-    expect(|| format!("the refusal is in the panel, got {labels}"), labels.contains("at least") || labels.contains("minstens"))?;
+    expect(
+        || format!("the refusal is in the panel, got {labels}"),
+        labels.contains("at least") || labels.contains("minstens"),
+    )?;
     let insert = control(&s, doc, C::GeneratorInsert)?;
     #[allow(unsafe_code)]
     let enabled = {
@@ -172,8 +179,12 @@ fn search() -> Result<(), String> {
     let werk = s.dir.join("werk");
     std::fs::create_dir_all(&werk).map_err(|e| e.to_string())?;
     let rect = |session: &mut DocumentSession, name: &str, x: f64| -> Result<(), String> {
-        let r = Rect::new(Point::new(x, 0.0), Length::from_mm(10.0).map_err(|e| e.to_string())?, Length::from_mm(10.0).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        let r = Rect::new(
+            Point::new(x, 0.0),
+            Length::from_mm(10.0).map_err(|e| e.to_string())?,
+            Length::from_mm(10.0).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         let cmd = DocumentCommand {
             document: session.id(),
             expected: session.revision(),
@@ -210,7 +221,10 @@ fn search() -> Result<(), String> {
     })?;
     s.pump(0.2);
     let search = s.doc(doc).and_then(|d| d.files.search).ok_or("no search view")?;
-    expect(|| format!("the folder of the open project, got {}", search.folder), search.folder == werk.display().to_string())?;
+    expect(
+        || format!("the folder of the open project, got {}", search.folder),
+        search.folder == werk.display().to_string(),
+    )?;
     // A query narrows the list to the project whose frozen revision carries the label.
     panel_control(&s, doc, P::Search, C::SearchQuery)?;
     type_into_search(&s, doc, C::SearchQuery, "4711")?;
@@ -226,11 +240,19 @@ fn search() -> Result<(), String> {
     let opened = s.app.open_documents().into_iter().find(|d| *d != doc).ok_or("no second window")?;
     let revision = s.doc(opened).ok_or("no revision document")?;
     expect(
-        || format!("the design as it was frozen, got {:?}", revision.objects.iter().map(|o| &o.label).collect::<Vec<_>>()),
+        || {
+            format!(
+                "the design as it was frozen, got {:?}",
+                revision.objects.iter().map(|o| &o.label).collect::<Vec<_>>()
+            )
+        },
         revision.objects.len() == 1,
     )?;
     expect(|| format!("title names the revision, got {}", revision.title), revision.title.contains("Order 4711"))?;
-    expect(|| "the current design keeps both objects".into(), s.doc(doc).is_some_and(|d| d.objects.len() == 2 && !d.dirty))?;
+    expect(
+        || "the current design keeps both objects".into(),
+        s.doc(doc).is_some_and(|d| d.objects.len() == 2 && !d.dirty),
+    )?;
     press_search(&s, doc, C::SearchClose)?;
     expect(|| "Sluit closes the panel".into(), !s.app.g5_panel_shown(doc, P::Search))?;
     Ok(())

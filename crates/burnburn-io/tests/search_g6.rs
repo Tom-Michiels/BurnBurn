@@ -16,12 +16,9 @@ use burnburn_types::{DocumentId, Length, RequestId, StableId};
 fn project(objects: usize) -> Project {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     for i in 0..objects {
-        let rect = Rect::new(
-            Point::new(i as f64 * 2.0, 0.0),
-            Length::from_mm(1.0).unwrap(),
-            Length::from_mm(1.0).unwrap(),
-        )
-        .unwrap();
+        let rect =
+            Rect::new(Point::new(i as f64 * 2.0, 0.0), Length::from_mm(1.0).unwrap(), Length::from_mm(1.0).unwrap())
+                .unwrap();
         let cmd = DocumentCommand {
             document: s.id(),
             expected: s.revision(),

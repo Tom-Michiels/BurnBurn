@@ -9,12 +9,12 @@ use burnburn_document::{CommandError, CommandOutcome, CommandPayload, DocumentCo
 use burnburn_editor::{
     Camera, Editor, GeometryIssue, Selection, SelectionChange, SnapSettings, Viewport, geometry_issues,
 };
+use burnburn_generators::GeneratorEvaluator;
 use burnburn_geometry::Point;
 use burnburn_io::fs::FileSystem;
 use burnburn_io::{AssetStore, ProjectUuid};
 use burnburn_job::JobPlan;
 use burnburn_machine::ExecutionId;
-use burnburn_generators::GeneratorEvaluator;
 use burnburn_sketch::SketchEvaluator;
 use burnburn_sketch::solver::SketchSolverAdapter;
 use burnburn_types::{CancellationSource, DocumentId, IdAllocator, RequestId, RevisionId, StableId, TaskId};
@@ -45,10 +45,10 @@ mod device;
 mod document;
 mod feeder_dialog;
 mod fields;
+mod generator;
 mod geometry;
 mod grbl;
 mod history_panel;
-mod generator;
 mod image;
 mod import;
 mod kerf_view;

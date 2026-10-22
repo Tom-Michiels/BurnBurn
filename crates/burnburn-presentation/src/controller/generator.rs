@@ -184,7 +184,11 @@ impl Dialog {
     }
 
     fn box_params(&mut self) -> Option<BoxParams> {
-        let (w, d, h) = (self.number(GeneratorField::Width), self.number(GeneratorField::Depth), self.number(GeneratorField::Height));
+        let (w, d, h) = (
+            self.number(GeneratorField::Width),
+            self.number(GeneratorField::Depth),
+            self.number(GeneratorField::Height),
+        );
         let (t, f, s) = (
             self.number(GeneratorField::Thickness),
             self.number(GeneratorField::FingerWidth),
@@ -231,7 +235,8 @@ impl Dialog {
         match living_hinge(&LivingHinge { width, height, cut_length, bridge, spacing }) {
             Ok(cuts) => {
                 let subpaths = cuts.iter().flat_map(|c| c.subpaths().iter().cloned()).collect();
-                self.made = Some(Made { parts: vec![(0, String::new(), Path::from_subpaths(subpaths))], cuts: cuts.len() });
+                self.made =
+                    Some(Made { parts: vec![(0, String::new(), Path::from_subpaths(subpaths))], cuts: cuts.len() });
             }
             Err(e) => self.refuse(&e, GeneratorKind::LivingHinge),
         }
@@ -366,7 +371,8 @@ fn is_rigid(m: &Affine) -> bool {
 
 /// "Bewerk generator" applies to a selected box, hinge or barcode.
 pub(super) fn edit_enabled(s: &Session) -> bool {
-    selected_generator(s).is_some_and(|(_, def)| matches!(def.generator.as_str(), "finger-box" | "living-hinge" | "symbology"))
+    selected_generator(s)
+        .is_some_and(|(_, def)| matches!(def.generator.as_str(), "finger-box" | "living-hinge" | "symbology"))
 }
 
 pub(super) fn open(s: &mut Session, document: DocumentId) -> AppUpdate {
@@ -402,7 +408,12 @@ fn changed() -> AppUpdate {
     AppUpdate { view_changed: true, ..AppUpdate::default() }
 }
 
-pub(super) fn edit(s: &mut Session, document: DocumentId, edit: GeneratorEdit, request: Option<RequestId>) -> AppUpdate {
+pub(super) fn edit(
+    s: &mut Session,
+    document: DocumentId,
+    edit: GeneratorEdit,
+    request: Option<RequestId>,
+) -> AppUpdate {
     if s.generator.dialog.is_none() {
         return AppUpdate::default();
     }

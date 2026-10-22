@@ -49,7 +49,9 @@ fn an_ellipse_survives_save_and_reopen() {
         sketch.entities().filter(|(_, e)| matches!(e.entity, Entity::Ellipse { .. })).map(|(_, e)| *e).collect();
     assert_eq!(ellipses.len(), 2, "both ellipses came back");
     assert!(ellipses.iter().any(|e| e.construction));
-    assert!(ellipses.iter().any(|e| matches!(e.entity, Entity::Ellipse { minor, .. } if minor == 2.0) && !e.construction));
+    assert!(
+        ellipses.iter().any(|e| matches!(e.entity, Entity::Ellipse { minor, .. } if minor == 2.0) && !e.construction)
+    );
     assert_eq!(back.document.sketch_layer(), original.document.sketch_layer());
     assert_eq!(sketch.constraints().len(), 2);
     let _ = Point::new(0.0, 0.0);

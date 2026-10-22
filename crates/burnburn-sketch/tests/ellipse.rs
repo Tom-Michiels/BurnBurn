@@ -112,8 +112,10 @@ fn a_zero_or_negative_minor_radius_is_refused() {
     let c = s.point(0.0, 0.0).unwrap();
     let m = s.point(5.0, 0.0).unwrap();
     for bad in [0.0, -1.0, f64::NAN] {
-        let r = s
-            .add_entity(SketchEntity { entity: Entity::Ellipse { center: c, major: m, minor: bad }, construction: false });
+        let r = s.add_entity(SketchEntity {
+            entity: Entity::Ellipse { center: c, major: m, minor: bad },
+            construction: false,
+        });
         assert_eq!(r, Err(SketchError::InvalidValue), "{bad}");
     }
 }

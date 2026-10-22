@@ -28,7 +28,7 @@ use burnburn_types::ContentHash;
 use burnburn_geometry::Path;
 
 use crate::{
-    BoxParams, Code128Params, GenError, GeneratedPart, LivingHinge, Lid, PanelRole, QrEcc, QrParams, SymbolError,
+    BoxParams, Code128Params, GenError, GeneratedPart, Lid, LivingHinge, PanelRole, QrEcc, QrParams, SymbolError,
     SymbolInputMode, Symbology, SymbologyParams, code128, encode_symbol, finger_box, living_hinge, qr,
 };
 

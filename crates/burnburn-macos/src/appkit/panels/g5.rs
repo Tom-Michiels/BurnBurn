@@ -17,8 +17,8 @@ use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSApplication, NSBackingStoreType, NSButton, NSColor, NSControl, NSControlStateValueOff,
-    NSControlStateValueOn, NSFont, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField, NSTextView,
-    NSImageView, NSView, NSWindowStyleMask,
+    NSControlStateValueOn, NSFont, NSImageView, NSLineBreakMode, NSPanel, NSPopUpButton, NSScrollView, NSTextField,
+    NSTextView, NSView, NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 
@@ -27,10 +27,10 @@ use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
 use crate::appkit::panels::image::{image_view, show_bitmap};
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
-use crate::panels_image::BitmapImage;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
 use crate::panels::{G5Control, G5Line, G5Panel, g5_opens_by_itself, g5_panel};
+use crate::panels_image::BitmapImage;
 
 const PANEL_WIDTH: f64 = 440.0;
 const MARGIN: f64 = 12.0;

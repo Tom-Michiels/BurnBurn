@@ -382,4 +382,3 @@ fn barcode_errors_and_the_readability_warning_say_what_and_where_in_the_window_l
     let en = panels(&h, doc, Locale::En).barcode.unwrap();
     assert!(en.readability.to_lowercase().contains("readable"), "{:?}", en.readability);
 }
-

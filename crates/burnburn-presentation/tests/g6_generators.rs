@@ -110,7 +110,10 @@ fn each_refusal_is_named_at_its_field_and_nothing_is_inserted() {
     field(&mut h, doc, GeneratorField::Width, "100");
     field(&mut h, doc, GeneratorField::Height, "-5");
     assert!(
-        matches!(problem(&h, doc, GeneratorField::Height), Some(GeneratorIssue::Negative | GeneratorIssue::NotPositive)),
+        matches!(
+            problem(&h, doc, GeneratorField::Height),
+            Some(GeneratorIssue::Negative | GeneratorIssue::NotPositive)
+        ),
         "{:?}",
         problem(&h, doc, GeneratorField::Height)
     );
@@ -175,7 +178,8 @@ fn the_joints_follow_the_thickness_nominally() {
     field(&mut h, doc, GeneratorField::Thickness, "5");
     edit(&mut h, doc, GeneratorEdit::Insert);
     let scene = h.scene(doc).unwrap();
-    let thick: Vec<f64> = ids.iter().map(|id| scene.items.iter().find(|i| i.source == *id).unwrap().path.signed_area().abs()).collect();
+    let thick: Vec<f64> =
+        ids.iter().map(|id| scene.items.iter().find(|i| i.source == *id).unwrap().path.signed_area().abs()).collect();
     assert!(thin.iter().zip(&thick).any(|(a, b)| (a - b).abs() > 1.0), "the joints changed: {thin:?} -> {thick:?}");
 }
 
@@ -204,7 +208,9 @@ fn a_whole_generated_box_moves_through_its_placement_and_one_panel_alone_does_no
     let ids = object_ids(&h, doc);
     let min_x = |h: &HeadlessEditorHarness| {
         let scene = h.scene(doc).unwrap();
-        ids.iter().map(|id| scene.items.iter().find(|i| i.source == *id).unwrap().path.bounds().unwrap().min().x).fold(f64::MAX, f64::min)
+        ids.iter()
+            .map(|id| scene.items.iter().find(|i| i.source == *id).unwrap().path.bounds().unwrap().min().x)
+            .fold(f64::MAX, f64::min)
     };
     let before = min_x(&h);
     assert!(vm(&h, doc).selection.len() == 6, "the new box is selected");

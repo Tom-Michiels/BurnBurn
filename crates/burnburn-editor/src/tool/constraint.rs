@@ -590,8 +590,14 @@ mod tests {
         assert_eq!(ask(ConstraintKind::Vertical, &[ellipse]), Some(vec![Relation::Vertical(ellipse)]));
         assert_eq!(ask(ConstraintKind::HorizontalVertical, &[ellipse]), Some(vec![Relation::Horizontal(ellipse)]));
         assert_eq!(ask(ConstraintKind::Parallel, &[l1, ellipse]), Some(vec![Relation::Parallel(l1, ellipse)]));
-        assert_eq!(ask(ConstraintKind::Perpendicular, &[ellipse, l1]), Some(vec![Relation::Perpendicular(ellipse, l1)]));
-        assert_eq!(ask(ConstraintKind::Concentric, &[ellipse, circle]), Some(vec![Relation::Concentric(ellipse, circle)]));
+        assert_eq!(
+            ask(ConstraintKind::Perpendicular, &[ellipse, l1]),
+            Some(vec![Relation::Perpendicular(ellipse, l1)])
+        );
+        assert_eq!(
+            ask(ConstraintKind::Concentric, &[ellipse, circle]),
+            Some(vec![Relation::Concentric(ellipse, circle)])
+        );
         assert_eq!(ask(ConstraintKind::Coincident, &[point, ellipse]), None, "nothing lies on an ellipse");
         assert_eq!(ask(ConstraintKind::Tangent, &[l1, ellipse]), None);
         assert_eq!(ask(ConstraintKind::Equal, &[ellipse, circle]), None);

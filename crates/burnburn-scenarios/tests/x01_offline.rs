@@ -69,7 +69,8 @@ fn x01_open_draw_trace_compile_and_the_local_machine_work_with_no_network_port()
         .unwrap();
     assert!(load_project(r.h.fs(), &path).is_ok());
     r.h.send(UiIntent::Open { path });
-    let opened = r.h.run_tasks().iter().flat_map(|u| u.effects.clone()).any(|e| matches!(e, HostEffect::OpenWindow { .. }));
+    let opened =
+        r.h.run_tasks().iter().flat_map(|u| u.effects.clone()).any(|e| matches!(e, HostEffect::OpenWindow { .. }));
     assert!(opened, "open works on the local disk");
 
     // Draw: the rig's window already holds a drawn rectangle and a cut operation.
@@ -192,7 +193,8 @@ fn x01_the_lock_file_has_no_http_tls_resolver_or_socket_crate() {
 /// has no socket constructor.
 #[test]
 fn x01_only_the_machine_transport_and_the_loopback_automation_create_sockets() {
-    const SOCKET: &[&str] = &["UdpSocket::bind", "TcpStream::connect", "TcpListener::bind", "ToSocketAddrs", "TcpStream::"];
+    const SOCKET: &[&str] =
+        &["UdpSocket::bind", "TcpStream::connect", "TcpListener::bind", "ToSocketAddrs", "TcpStream::"];
     let allowed = ["crates/burnburn-runtime/src/udp.rs", "crates/burnburn-runtime/src/automation.rs"];
     let root = repo().canonicalize().unwrap();
     let mut offenders = Vec::new();
@@ -210,7 +212,11 @@ fn x01_only_the_machine_transport_and_the_loopback_automation_create_sockets() {
             }
         }
     }
-    assert!(offenders.is_empty(), "sockets outside the machine transport and the automation:\n{}", offenders.join("\n"));
+    assert!(
+        offenders.is_empty(),
+        "sockets outside the machine transport and the automation:\n{}",
+        offenders.join("\n")
+    );
 }
 
 /// No source file carries a web address: nothing is fetched from a built-in server. The only URLs
@@ -268,6 +274,7 @@ fn x01_missing_optional_services_block_no_local_project() {
         "a library that cannot be read is never overwritten"
     );
     h.send(UiIntent::Open { path });
-    let reopened = h.run_tasks().iter().flat_map(|u| u.effects.clone()).any(|e| matches!(e, HostEffect::OpenWindow { .. }));
+    let reopened =
+        h.run_tasks().iter().flat_map(|u| u.effects.clone()).any(|e| matches!(e, HostEffect::OpenWindow { .. }));
     assert!(reopened, "and it opens again");
 }

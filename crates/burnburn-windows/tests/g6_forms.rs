@@ -77,7 +77,10 @@ fn the_generator_form_opens_by_itself_with_the_dialog_and_goes_with_it() {
     let f = form(&h, doc);
     assert_eq!(f.placement, Placement::Floating);
     assert_eq!(f.title, "Box or Hinge");
-    assert_eq!(forms(&h, doc, Locale::Nl).iter().find(|f| f.kind == FormKind::G5(P::Generator)).unwrap().title, "Doos of scharnier");
+    assert_eq!(
+        forms(&h, doc, Locale::Nl).iter().find(|f| f.kind == FormKind::G5(P::Generator)).unwrap().title,
+        "Doos of scharnier"
+    );
     h.send(UiIntent::Generator { document: doc, edit: GeneratorEdit::Cancel });
     assert!(forms(&h, doc, Locale::En).is_empty());
 }
@@ -90,9 +93,22 @@ fn the_form_lists_the_fields_of_the_kind_and_each_control_becomes_one_intent() {
         assert!(ids.contains(&ControlId::G5(C::GeneratorField(field))), "{field:?}");
     }
     assert!(ids.contains(&ControlId::G5(C::GeneratorLid)));
-    assert_eq!(press(&mut h, doc, C::GeneratorField(GeneratorField::Depth), &[(C::GeneratorField(GeneratorField::Depth), text("60"))]), None);
     assert_eq!(
-        press(&mut h, doc, C::GeneratorField(GeneratorField::Depth), &[(C::GeneratorField(GeneratorField::Depth), text("45"))]),
+        press(
+            &mut h,
+            doc,
+            C::GeneratorField(GeneratorField::Depth),
+            &[(C::GeneratorField(GeneratorField::Depth), text("60"))]
+        ),
+        None
+    );
+    assert_eq!(
+        press(
+            &mut h,
+            doc,
+            C::GeneratorField(GeneratorField::Depth),
+            &[(C::GeneratorField(GeneratorField::Depth), text("45"))]
+        ),
         Some(UiIntent::Generator { document: doc, edit: GeneratorEdit::Field(GeneratorField::Depth, "45".into()) })
     );
     assert_eq!(
@@ -131,7 +147,12 @@ fn search_form(h: &HeadlessEditorHarness, doc: DocumentId) -> Form {
     forms(h, doc, Locale::En).into_iter().find(|f| f.kind == FormKind::G5(P::Search)).expect("the search form")
 }
 
-fn search_press(h: &mut HeadlessEditorHarness, doc: DocumentId, c: C, overrides: &[(C, ControlValue)]) -> Option<UiIntent> {
+fn search_press(
+    h: &mut HeadlessEditorHarness,
+    doc: DocumentId,
+    c: C,
+    overrides: &[(C, ControlValue)],
+) -> Option<UiIntent> {
     let mut values = search_form(h, doc).values();
     for (c, v) in overrides {
         match values.iter_mut().find(|(id, _)| *id == ControlId::G5(*c)) {
@@ -140,12 +161,8 @@ fn search_press(h: &mut HeadlessEditorHarness, doc: DocumentId, c: C, overrides:
         }
     }
     let vm = h.view();
-    let outcome = g5::react(
-        P::Search,
-        &ControlId::G5(c),
-        &values,
-        &FormContext { vm: &vm, document: doc, locale: Locale::En },
-    );
+    let outcome =
+        g5::react(P::Search, &ControlId::G5(c), &values, &FormContext { vm: &vm, document: doc, locale: Locale::En });
     match outcome {
         FormOutcome::Intent(i) => {
             h.send(i.clone());
@@ -164,14 +181,31 @@ fn the_search_form_shows_the_results_a_preview_and_the_open_buttons() {
     assert_eq!(f.title, "Find Projects");
     assert_eq!(f.placement, Placement::Floating);
     let ids = f.ids();
-    for c in [C::SearchFolder, C::SearchQuery, C::SearchRescan, C::SearchResult, C::SearchRevision, C::SearchOpenProject, C::SearchOpenRevision, C::SearchClose] {
+    for c in [
+        C::SearchFolder,
+        C::SearchQuery,
+        C::SearchRescan,
+        C::SearchResult,
+        C::SearchRevision,
+        C::SearchOpenProject,
+        C::SearchOpenRevision,
+        C::SearchClose,
+    ] {
         assert!(ids.contains(&ControlId::G5(c)), "{c:?}");
     }
-    let image = f.lines.iter().find_map(|l| if let FormLine::Image(i) = l { Some(i) } else { None }).expect("a preview picture");
+    let image = f
+        .lines
+        .iter()
+        .find_map(|l| if let FormLine::Image(i) = l { Some(i) } else { None })
+        .expect("a preview picture");
     assert_eq!((image.width, image.height), (64, 64));
     for width in [260, 380, 520] {
         let l = layout(&f, width, 1.0);
-        let pic = l.items.iter().find(|p| matches!(p.item, burnburn_windows::forms::layout::Item::Image(_))).expect("the picture is placed");
+        let pic = l
+            .items
+            .iter()
+            .find(|p| matches!(p.item, burnburn_windows::forms::layout::Item::Image(_)))
+            .expect("the picture is placed");
         assert!(pic.rect.w > 0 && pic.rect.right() <= width);
         for (i, a) in l.items.iter().enumerate() {
             for b in l.items.iter().skip(i + 1) {
@@ -190,7 +224,12 @@ fn search_controls_become_the_same_intents_as_on_the_mac() {
         Some(UiIntent::Files(FilesIntent::SetSearchQuery { document: doc, query: "multiplex".into() }))
     );
     assert_eq!(
-        search_press(&mut h, doc, C::SearchOpenRevision, &[(C::SearchResult, ControlValue::Choice(0)), (C::SearchRevision, ControlValue::Choice(0))]),
+        search_press(
+            &mut h,
+            doc,
+            C::SearchOpenRevision,
+            &[(C::SearchResult, ControlValue::Choice(0)), (C::SearchRevision, ControlValue::Choice(0))]
+        ),
         Some(UiIntent::Files(FilesIntent::OpenFoundRevision {
             document: doc,
             path: "/werk/deurbord.burnburn".into(),

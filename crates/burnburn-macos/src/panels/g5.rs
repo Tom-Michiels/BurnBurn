@@ -32,14 +32,8 @@ pub enum G5Panel {
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 6] = [
-        G5Panel::Notes,
-        G5Panel::Offset,
-        G5Panel::Centerline,
-        G5Panel::Structure,
-        G5Panel::Generator,
-        G5Panel::Search,
-    ];
+    pub const ALL: [G5Panel; 6] =
+        [G5Panel::Notes, G5Panel::Offset, G5Panel::Centerline, G5Panel::Structure, G5Panel::Generator, G5Panel::Search];
 }
 
 /// A control of a panel. Fields, choices, checks and the note report their value; buttons only the

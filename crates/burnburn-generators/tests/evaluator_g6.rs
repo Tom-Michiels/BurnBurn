@@ -79,7 +79,13 @@ fn editing_the_payload_keeps_the_object_id() {
     apply(&mut s, GeneratorCommand::Create { definition: Box::new(symbol_def(Symbology::QrCode, "eerste", 0.5)) });
     let g = first(&s);
     let before = outputs(&s.snapshot(), g);
-    apply(&mut s, GeneratorCommand::Set { generator: g, definition: Box::new(symbol_def(Symbology::QrCode, "tweede en langer", 0.5)) });
+    apply(
+        &mut s,
+        GeneratorCommand::Set {
+            generator: g,
+            definition: Box::new(symbol_def(Symbology::QrCode, "tweede en langer", 0.5)),
+        },
+    );
     assert_eq!(outputs(&s.snapshot(), g), before, "same key, same id: operations keep pointing at it");
 }
 
@@ -90,7 +96,10 @@ fn a_bad_payload_or_module_names_its_parameter_and_keeps_the_last_symbol() {
     let g = first(&s);
     let before = outputs(&s.snapshot(), g);
     // A wrong check digit.
-    apply(&mut s, GeneratorCommand::Set { generator: g, definition: Box::new(symbol_def(Symbology::Ean, "5901234123450", 0.33)) });
+    apply(
+        &mut s,
+        GeneratorCommand::Set { generator: g, definition: Box::new(symbol_def(Symbology::Ean, "5901234123450", 0.33)) },
+    );
     let snap = s.snapshot();
     assert_eq!(
         snap.derived_record(DerivedOwner::Generator(g)).unwrap().status,
@@ -99,7 +108,10 @@ fn a_bad_payload_or_module_names_its_parameter_and_keeps_the_last_symbol() {
     assert_eq!(outputs(&snap, g), before);
     assert!(snap.production_blocked(before[0].1));
     // A module below the minimum is never rounded up.
-    apply(&mut s, GeneratorCommand::Set { generator: g, definition: Box::new(symbol_def(Symbology::Ean, "5901234123457", 0.1)) });
+    apply(
+        &mut s,
+        GeneratorCommand::Set { generator: g, definition: Box::new(symbol_def(Symbology::Ean, "5901234123457", 0.1)) },
+    );
     assert_eq!(
         s.snapshot().derived_record(DerivedOwner::Generator(g)).unwrap().status,
         EvalStatus::Failed { diagnosis: EvalDiagnosis::InvalidParameters { parameter: Some("module".into()) } }
@@ -129,8 +141,8 @@ fn a_living_hinge_generator_is_one_object_holding_every_cut() {
     assert_eq!(snap.derived_record(DerivedOwner::Generator(g)).unwrap().status, EvalStatus::Valid);
     let out = outputs(&snap, g);
     assert_eq!(out.len(), 1, "one object, however many cuts");
-    let cuts = living_hinge(&LivingHinge { width: 30.0, height: 40.0, cut_length: 10.0, bridge: 2.0, spacing: 3.0 })
-        .unwrap();
+    let cuts =
+        living_hinge(&LivingHinge { width: 30.0, height: 40.0, cut_length: 10.0, bridge: 2.0, spacing: 3.0 }).unwrap();
     let object = snap.object(out[0].1).unwrap();
     assert_eq!(object.path().subpaths().len(), cuts.len());
     assert!(object.path().subpaths().iter().all(|sp| !sp.is_closed()), "cut lines are open");

@@ -52,8 +52,12 @@ fn werk(h: &HeadlessEditorHarness) -> (PathBuf, PathBuf) {
     let mut o = DocumentSession::new(DocumentId::from_raw(2));
     rect(&mut o, "Onderzetter", 0.0);
     let onderzetters = PathBuf::from("/werk/onderzetters.burnburn");
-    save_project(h.fs(), &onderzetters, &Project::new(ProjectUuid::from_bytes(*b"burnburn-search2"), (*o.snapshot()).clone()))
-        .unwrap();
+    save_project(
+        h.fs(),
+        &onderzetters,
+        &Project::new(ProjectUuid::from_bytes(*b"burnburn-search2"), (*o.snapshot()).clone()),
+    )
+    .unwrap();
     h.fs().insert(Path::new("/werk/kapot.burnburn"), b"not a zip".to_vec());
     h.fs().set_modified_for_test(&deurbord_path, 1_781_751_845);
     (deurbord_path, onderzetters)
@@ -97,9 +101,16 @@ fn the_panel_opens_on_the_folder_of_the_project_and_lists_every_project_without_
     assert_eq!(s.folder, "/werk");
     assert!(!s.scanning);
     assert_eq!(s.scanned, Some(2));
-    assert_eq!(s.results.iter().map(|r| r.file_name.as_str()).collect::<Vec<_>>(), ["deurbord.burnburn", "onderzetters.burnburn"]);
+    assert_eq!(
+        s.results.iter().map(|r| r.file_name.as_str()).collect::<Vec<_>>(),
+        ["deurbord.burnburn", "onderzetters.burnburn"]
+    );
     assert!(s.results.iter().all(|r| r.matched.is_empty()), "nothing was asked, nothing matched");
-    assert_eq!(s.issues.iter().map(|i| i.file_name.as_str()).collect::<Vec<_>>(), ["kapot.burnburn"], "a broken file is listed");
+    assert_eq!(
+        s.issues.iter().map(|i| i.file_name.as_str()).collect::<Vec<_>>(),
+        ["kapot.burnburn"],
+        "a broken file is listed"
+    );
 }
 
 #[test]
@@ -108,7 +119,10 @@ fn a_query_shows_what_matched_in_the_project() {
     files(&mut h, FilesIntent::SetSearchQuery { document: doc, query: "MULTIPLEX".into() });
     let s = search(&h, doc);
     assert_eq!(s.results.len(), 1);
-    assert_eq!((s.results[0].file_name.as_str(), s.results[0].matched.clone()), ("deurbord.burnburn", vec![SearchField::Material]));
+    assert_eq!(
+        (s.results[0].file_name.as_str(), s.results[0].matched.clone()),
+        ("deurbord.burnburn", vec![SearchField::Material])
+    );
     files(&mut h, FilesIntent::SetSearchQuery { document: doc, query: "4711".into() });
     assert_eq!(search(&h, doc).results[0].matched, [SearchField::Revision]);
     files(&mut h, FilesIntent::SetSearchQuery { document: doc, query: "onderzet".into() });
@@ -129,7 +143,10 @@ fn a_hit_shows_a_preview_when_it_was_saved_and_its_frozen_revisions() {
     assert_eq!((thumbnail.width, thumbnail.height), (64, 64));
     assert_eq!(deurbord.modified, Some(1_781_751_845));
     assert_eq!(deurbord.objects, 2);
-    assert_eq!(deurbord.revisions.iter().map(|r| (r.number, r.label.as_str())).collect::<Vec<_>>(), [(1, "Order 4711")]);
+    assert_eq!(
+        deurbord.revisions.iter().map(|r| (r.number, r.label.as_str())).collect::<Vec<_>>(),
+        [(1, "Order 4711")]
+    );
     assert_eq!(s.results[1].modified, None, "unknown stays unknown");
 }
 
@@ -137,7 +154,10 @@ fn a_hit_shows_a_preview_when_it_was_saved_and_its_frozen_revisions() {
 fn a_found_project_opens_in_a_window_of_its_own() {
     let (mut h, doc) = searching();
     let before = h.view().documents.len();
-    h.send(UiIntent::Files(FilesIntent::OpenFoundProject { document: doc, path: PathBuf::from("/werk/onderzetters.burnburn") }));
+    h.send(UiIntent::Files(FilesIntent::OpenFoundProject {
+        document: doc,
+        path: PathBuf::from("/werk/onderzetters.burnburn"),
+    }));
     let effects: Vec<HostEffect> = h.run_tasks().into_iter().flat_map(|u| u.effects).collect();
     let opened = effects
         .iter()
@@ -173,7 +193,10 @@ impl HistoryStore for CountingJournal {
         self.calls.lock().unwrap().push("live intent");
         Err(HistoryStoreError("unused".into()))
     }
-    fn recover(&self, _: &burnburn_machine::MachineId) -> Result<burnburn_presentation::RecoveredMachine, HistoryStoreError> {
+    fn recover(
+        &self,
+        _: &burnburn_machine::MachineId,
+    ) -> Result<burnburn_presentation::RecoveredMachine, HistoryStoreError> {
         Ok(Default::default())
     }
     fn record_order(&self, _: &burnburn_presentation::StoredOrder) -> Result<(), HistoryStoreError> {
@@ -215,13 +238,18 @@ fn reopening_old_revision_creates_no_production_intent() {
     let opened = opened.expect("the revision opened in a window");
     assert_eq!(h.view().documents.len(), windows + 1, "next to the current design");
     let revision = h.document(opened).unwrap();
-    assert_eq!(revision.objects.iter().map(|o| o.label.as_str()).collect::<Vec<_>>(), ["Deurbord"], "the design as it was frozen");
+    assert_eq!(
+        revision.objects.iter().map(|o| o.label.as_str()).collect::<Vec<_>>(),
+        ["Deurbord"],
+        "the design as it was frozen"
+    );
     assert!(revision.title.contains("Order 4711"), "{:?}", revision.title);
     assert_eq!(h.document(doc).unwrap().objects.len(), 2, "the current design keeps its second object");
 
     // Nothing of production happened: no compile, prepare, export or upload task, and the journal
     // was never asked to record an intent, an upload, an outcome or an order.
-    let production = [TaskKind::Compile, TaskKind::PrepareJob, TaskKind::ExportRd, TaskKind::ExportGcode, TaskKind::TestJob];
+    let production =
+        [TaskKind::Compile, TaskKind::PrepareJob, TaskKind::ExportRd, TaskKind::ExportGcode, TaskKind::TestJob];
     assert!(kinds.iter().all(|k| !production.contains(k)), "{kinds:?}");
     assert!(journal.calls.lock().unwrap().is_empty(), "{:?}", journal.calls.lock().unwrap());
     assert!(revision.job.is_none(), "no job exists for the reopened revision");
