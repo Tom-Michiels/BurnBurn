@@ -12,6 +12,7 @@
 pub mod app;
 pub mod camera;
 pub mod camera_port;
+pub mod camera_source;
 pub mod files;
 pub mod filters;
 pub mod ids;

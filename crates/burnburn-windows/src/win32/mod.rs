@@ -20,6 +20,7 @@
 
 #![allow(unsafe_code)]
 
+mod camera;
 mod dialogs;
 mod forms;
 mod menu;
@@ -87,6 +88,8 @@ mod panels_bridge;
 const WM_TASKS_DONE: u32 = WM_APP + 1;
 /// Posted after a caught panic: autosave unsaved work into recovery files.
 const WM_AUTOSAVE: u32 = WM_APP + 2;
+/// Posted by the camera capture thread (at most ten times a second): a new frame is waiting.
+const WM_CAMERA_FRAME: u32 = WM_APP + 3;
 /// The autosave timer on the message window (every 30 s; only changed documents are written).
 const AUTOSAVE_TIMER: usize = 1;
 const AUTOSAVE_MS: u32 = 30_000;
@@ -891,6 +894,11 @@ extern "system" fn message_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam
                     apply(update);
                 }
             }
+            return LRESULT(0);
+        }
+        if message == WM_CAMERA_FRAME {
+            // The camera panel redraws from the latest frame (every panel follows the controller).
+            crate::win32_panels::manager::refresh();
             return LRESULT(0);
         }
         if message == WM_AUTOSAVE || (message == WM_TIMER && wparam.0 == AUTOSAVE_TIMER) {

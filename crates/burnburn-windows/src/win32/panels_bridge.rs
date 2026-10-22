@@ -11,9 +11,10 @@ use burnburn_presentation::{DiagnosticOptions, UiIntent};
 use burnburn_types::DocumentId;
 
 use super::{dispatch, system_locale, with_host};
-use crate::host_panels::camera_port::UnavailableCameraPort;
 use crate::l10n::Locale;
 use crate::win32_panels::manager::{self, Bridge, Snapshot, rgba_of};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
 struct PanelBridge;
 
@@ -74,15 +75,22 @@ fn layer_palette() -> Vec<[u8; 3]> {
     burnburn_render::Theme::light().process_layers.iter().map(|c| [channel(c.r), channel(c.g), channel(c.b)]).collect()
 }
 
-/// Connects the panels: the library folder and palette, the camera port (honestly unavailable: no
-/// Media Foundation source exists yet) and the panel windows' events. Call once after the host
-/// state exists.
+/// Connects the panels: the library folder and palette, the camera port (Media Foundation, never
+/// run on a real camera: see `win32::camera`) and the panel windows' events. Call once after the
+/// host state exists.
 pub(super) fn install() {
     let dir = library_dir();
+    let message_window = with_host(|h| h.message_window.0 as isize);
+    let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        if let Some(target) = message_window {
+            // SAFETY: PostMessageW is thread-safe; the handle is our message window (a plain value).
+            let _ = unsafe { PostMessageW(Some(HWND(target as *mut _)), super::WM_CAMERA_FRAME, WPARAM(0), LPARAM(0)) };
+        }
+    });
     with_host(|h| {
         h.controller.set_library_dir(dir);
         h.controller.set_layer_palette(layer_palette());
-        h.controller.attach_camera(Arc::new(UnavailableCameraPort));
+        h.controller.attach_camera(Arc::new(super::camera::WindowsCameraPort::new(wake)));
     });
     manager::install(Rc::new(PanelBridge));
 }
