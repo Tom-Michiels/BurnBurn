@@ -16,7 +16,7 @@ use burnburn_document::process::{
 use burnburn_document::{CommandPayload, DocumentSnapshot};
 use burnburn_editor::{SceneSnapshot, StyleRole};
 use burnburn_job::{Feature, MachineCapabilities, Support};
-use burnburn_types::{DocumentId, GeometryId, Length, OperationId, RequestId};
+use burnburn_types::{DocumentId, GeometryId, Length, OperationId, RequestId, StableId};
 
 use super::cut_options;
 use super::process::{parse_speed, refused};
@@ -73,6 +73,18 @@ pub(in crate::controller) fn slots(state: &LayerState, snapshot: &DocumentSnapsh
         out.insert(id, slot);
     }
     out
+}
+
+/// The colour of every current layer, as the project file keeps it (`(operation id, button)`).
+pub(super) fn export(s: &Session) -> Vec<(u64, u8)> {
+    slots(&s.layers, &s.doc.snapshot()).into_iter().map(|(op, slot)| (op.raw(), slot)).collect()
+}
+
+impl LayerState {
+    /// The colours stored in a project file; entries for unknown layers were refused on load.
+    pub(super) fn restore(&mut self, stored: &[(u64, u8)]) {
+        self.slots.extend(stored.iter().map(|(op, slot)| (OperationId::from_raw(*op), *slot)));
+    }
 }
 
 /// Store the colours of operations that only had an implicit one, so later operations cannot

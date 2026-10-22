@@ -24,6 +24,10 @@ const PROFILES: &str = "profiles.json";
 const REVISIONS: &str = "revisions.json";
 /// Material-library provenance of recipes (W2-L6, C08); only present when the project has some.
 const LIBRARY_LINKS: &str = "library-links.json";
+/// The palette button of each layer (C01, G5-cam); only present when the project has some.
+const LAYER_SLOTS: &str = "layer-slots.json";
+/// The last palette button (30 colours and the tool layers T1/T2).
+const MAX_LAYER_SLOT: u8 = 31;
 const ASSET_DIR: &str = "assets/";
 const PREVIEW_DIR: &str = "previews/";
 
@@ -88,6 +92,12 @@ pub fn encode_container(project: &Project) -> Result<Vec<u8>, SaveError> {
         zip.start_file(LIBRARY_LINKS, json).map_err(|e| enc(&e))?;
         zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
     }
+    if !project.layer_slots.is_empty() {
+        let dtos: Vec<SlotDto> =
+            project.layer_slots.iter().map(|(operation, slot)| SlotDto { operation: *operation, slot: *slot }).collect();
+        zip.start_file(LAYER_SLOTS, json).map_err(|e| enc(&e))?;
+        zip.write_all(&serde_json::to_vec_pretty(&dtos).map_err(|e| enc(&e))?).map_err(|e| enc(&e))?;
+    }
     for (h, a) in project.assets.iter() {
         zip.start_file(format!("{ASSET_DIR}{}", asset_key(h)), options(CompressionMethod::Stored))
             .map_err(|e| enc(&e))?;
@@ -116,6 +126,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let mut profile_bytes = None;
     let mut revision_bytes = None;
     let mut link_bytes = None;
+    let mut slot_bytes = None;
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
@@ -127,6 +138,7 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
             PROFILES => (Some(&mut profile_bytes), MAX_JSON_BYTES),
             REVISIONS => (Some(&mut revision_bytes), MAX_JSON_BYTES),
             LIBRARY_LINKS => (Some(&mut link_bytes), MAX_JSON_BYTES),
+            LAYER_SLOTS => (Some(&mut slot_bytes), MAX_JSON_BYTES),
             n if n.starts_with(ASSET_DIR) && !n[ASSET_DIR.len()..].contains('/') => (None, MAX_ASSET_BYTES),
             n if n.starts_with(PREVIEW_DIR) && !n.contains("..") => continue,
             _ => return Err(LoadError::UnexpectedEntry(name)),
@@ -196,7 +208,15 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
     let schema = u32::try_from(schema).unwrap_or(u32::MAX);
     let document = document_from_dto(&dto, schema, &|h| assets.get(h).is_some())?;
     let mut project =
-        Project { uuid, document, assets, profiles: Vec::new(), revisions: Vec::new(), library_links: Vec::new() };
+        Project {
+        uuid,
+        document,
+        assets,
+        profiles: Vec::new(),
+        revisions: Vec::new(),
+        library_links: Vec::new(),
+        layer_slots: Vec::new(),
+    };
     if let Some(bytes) = profile_bytes {
         let dtos: Vec<crate::profile::ProfileDto> =
             serde_json::from_slice(&bytes).map_err(|e| json_error(PROFILES, &e))?;
@@ -223,6 +243,23 @@ pub fn decode_container(bytes: &[u8]) -> Result<Project, LoadError> {
                 entry: l.entry,
                 revision: l.revision,
             });
+        }
+    }
+    if let Some(bytes) = slot_bytes {
+        let dtos: Vec<SlotDto> = serde_json::from_slice(&bytes).map_err(|e| json_error(LAYER_SLOTS, &e))?;
+        if dtos.is_empty() || dtos.len() > MAX_ENTRIES {
+            return Err(LoadError::InvalidValue { path: "layer-slots".into(), reason: "empty or too long".into() });
+        }
+        for d in dtos {
+            let known = project.document.process().operations().any(|o| burnburn_types::StableId::raw(o.id()) == d.operation);
+            let twice = project.layer_slots.iter().any(|(op, _)| *op == d.operation);
+            if !known || twice || d.slot > MAX_LAYER_SLOT {
+                return Err(LoadError::InvalidValue {
+                    path: "layer-slots".into(),
+                    reason: format!("layer {} with button {} cannot be used", d.operation, d.slot),
+                });
+            }
+            project.layer_slots.push((d.operation, d.slot));
         }
     }
     if let Some(bytes) = revision_bytes {
@@ -258,6 +295,14 @@ struct RevisionDto {
     label: String,
     project_hash: String,
     document: v1::Document,
+}
+
+/// The palette button of one layer on disk.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SlotDto {
+    operation: u64,
+    slot: u8,
 }
 
 /// One library link on disk.

@@ -69,6 +69,7 @@ pub fn template_of(project: &Project, content: TemplateContent) -> Result<Projec
             profiles: project.profiles.clone(),
             revisions: Vec::new(),
             library_links: project.library_links.clone(),
+            layer_slots: project.layer_slots.clone(),
         }),
         TemplateContent::SettingsOnly => {
             let layer = project.document.process();
@@ -104,6 +105,7 @@ pub fn template_of(project: &Project, content: TemplateContent) -> Result<Projec
                 revisions: Vec::new(),
                 // The recipes survive in a settings-only template, so their provenance does too.
                 library_links: project.library_links.clone(),
+                layer_slots: project.layer_slots.clone(),
             })
         }
     }

@@ -108,6 +108,9 @@ pub struct Project {
     /// Which library entry each project recipe was made from (C08). Provenance only: it is not
     /// part of the canonical project hash and never changes any setting.
     pub library_links: Vec<LibraryLink>,
+    /// The palette button of each layer, `(operation id, slot)` (C01). Window convenience: not
+    /// part of the project hash, and a layer without an entry gets the first free colour.
+    pub layer_slots: Vec<(u64, u8)>,
 }
 
 /// A project recipe that came from a material-library entry: the library, the entry and the
@@ -143,6 +146,7 @@ impl Project {
             profiles: Vec::new(),
             revisions: Vec::new(),
             library_links: Vec::new(),
+            layer_slots: Vec::new(),
         }
     }
 
@@ -169,6 +173,7 @@ impl Project {
             profiles: Vec::new(),
             revisions: Vec::new(),
             library_links: Vec::new(),
+            layer_slots: Vec::new(),
         }
     }
 
