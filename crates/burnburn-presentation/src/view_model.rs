@@ -117,6 +117,8 @@ pub struct DocumentViewModel {
     pub node_selection: Vec<NodeRef>,
     /// Dock, Move Together, reshape, slots, nesting and registration (W3-UI-schikken).
     pub schikken: crate::schikken::SchikkenViewModel,
+    /// The project notes panel while it is open (P04).
+    pub notes: Option<crate::notes::NotesViewModel>,
     /// The text toolbar while exactly one text object is selected (W3-UI-tekst).
     pub text_toolbar: Option<crate::text_panel::TextToolbarViewModel>,
     /// The text-on-path dialog while it is open.

@@ -2,6 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use burnburn_document::process::ProcessLabel;
+use burnburn_document::UndoLabel;
 use burnburn_presentation::{CommandKey, DocumentViewModel, HeadlessEditorHarness, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId};
 
@@ -60,4 +62,45 @@ fn a_selection_change_between_commands_is_part_of_the_next_undo_record() {
     assert_eq!(selected(&h, doc), [b]);
     h.invoke(doc, CommandKey::Undo);
     assert_eq!(selected(&h, doc), [a]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// P04: Bestand > Notities tonen
+// ---------------------------------------------------------------------------------------------
+
+/// Show Notes opens the panel with the stored text; committing changes the document in one undo
+/// step and marks it dirty; an unchanged text is no new step.
+#[test]
+fn show_notes_opens_the_stored_text_and_a_commit_is_one_undo_step() {
+    let (mut h, doc, _) = two_rects();
+    assert!(vm(&h, doc).notes.is_none());
+    assert!(h.view().commands[&CommandKey::ShowNotes].enabled);
+    h.invoke(doc, CommandKey::ShowNotes);
+    assert_eq!(vm(&h, doc).notes.as_ref().unwrap().text, "");
+    assert!(h.view().commands[&CommandKey::ShowNotes].checked);
+    let revision = vm(&h, doc).revision;
+    h.send(UiIntent::SetNotes { document: doc, text: "Klant Jansen".into() });
+    let now = vm(&h, doc);
+    assert!(now.revision != revision);
+    assert_eq!(now.notes.as_ref().unwrap().text, "Klant Jansen");
+    assert_eq!(now.undo, Some(UndoLabel::Process(ProcessLabel::SetNotes)));
+    let again = now.revision;
+    h.send(UiIntent::SetNotes { document: doc, text: "Klant Jansen".into() });
+    assert_eq!(vm(&h, doc).revision, again, "the same text is no new step");
+    h.invoke(doc, CommandKey::Undo);
+    assert_eq!(vm(&h, doc).notes.as_ref().unwrap().text, "", "undo takes the note back");
+    h.send(UiIntent::CloseNotes { document: doc });
+    assert!(vm(&h, doc).notes.is_none());
+    assert!(!h.view().commands[&CommandKey::ShowNotes].checked);
+}
+
+/// A text beyond the limit is refused and the panel keeps the stored note.
+#[test]
+fn notes_beyond_the_limit_are_refused_without_touching_the_document() {
+    let (mut h, doc, _) = two_rects();
+    h.invoke(doc, CommandKey::ShowNotes);
+    let revision = vm(&h, doc).revision;
+    h.send(UiIntent::SetNotes { document: doc, text: "a".repeat(20_001) });
+    assert_eq!(vm(&h, doc).revision, revision);
+    assert!(vm(&h, doc).notes.is_some(), "the panel stays open");
 }

@@ -134,6 +134,7 @@ impl AppController {
                     crate::files::FilesIntent::OpenArtLibrary { document }
                 })
             }
+            CommandKey::ShowNotes => self.with_session(document, |s| super::notes::toggle(s, document)),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
             // The grid distance is a preference (X02), not a session constant.

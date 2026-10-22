@@ -222,6 +222,7 @@ pub(super) fn document_view(
         },
         text_toolbar: super::text::toolbar_view(s),
         text_on_path: super::text::path_view(s),
+        notes: super::notes::view(s),
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
         barcode_scale_warning: super::barcode::scale_warning(s),
@@ -246,6 +247,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::ViewWireframe, Some(s)) => (true, s.arrange.wireframe),
         (CommandKey::ShowMaterialLibrary, Some(s)) => (true, s.files.material.is_some()),
         (CommandKey::ShowArtLibrary, Some(s)) => (true, s.files.art.is_some()),
+        (CommandKey::ShowNotes, Some(s)) => (true, s.notes_open),
         (CommandKey::SnapToObjects, Some(s)) => (true, s.snap.objects),
         (CommandKey::SnapToGrid, Some(s)) => (true, s.snap.grid_mm.is_some()),
         (

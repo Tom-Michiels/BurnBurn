@@ -182,6 +182,16 @@ pub enum UiIntent {
         kind: burnburn_document::ObjectKind,
         mode: SelectMode,
     },
+    /// Bestand > Notities tonen (P04): stores the project notes as one undo step. The same text is
+    /// no new step; a text beyond the limit is refused and the panel stays open.
+    SetNotes {
+        document: DocumentId,
+        text: String,
+    },
+    /// Closes the notes panel without a change.
+    CloseNotes {
+        document: DocumentId,
+    },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {
         document: DocumentId,
@@ -949,6 +959,8 @@ pub enum CommandKey {
     ShowMaterialLibrary,
     /// Venster ▸ Kunstbibliotheek: shows or hides the panel.
     ShowArtLibrary,
+    /// Bestand > Notities tonen: shows or hides the project notes (P04).
+    ShowNotes,
 }
 
 impl CommandKey {
@@ -1095,6 +1107,7 @@ impl CommandKey {
         CommandKey::ImportBundle,
         CommandKey::ShowMaterialLibrary,
         CommandKey::ShowArtLibrary,
+        CommandKey::ShowNotes,
     ];
 }
 

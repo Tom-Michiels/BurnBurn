@@ -51,6 +51,7 @@ mod layers;
 mod library;
 mod machine;
 mod nest;
+mod notes;
 mod prefs;
 mod preview;
 mod process;
@@ -204,6 +205,8 @@ struct Session {
     doc: DocumentSession,
     /// Palette colours and canvas visibility of the operations (window state, see `layers`).
     layers: layers::LayerState,
+    /// The project notes panel is open (P04; window state).
+    notes_open: bool,
     /// Text evaluator input (from `AppController::attach_fonts`).
     fonts: Option<SharedFonts>,
     /// Why the last operations-panel input sent no command.
@@ -295,6 +298,7 @@ impl Session {
         Some(Session {
             doc,
             layers: layers::LayerState::default(),
+            notes_open: false,
             editor: Editor::new(),
             selection: Selection::default(),
             camera,
@@ -520,6 +524,11 @@ impl AppController {
                 }
                 AppUpdate::default()
             }
+            UiIntent::SetNotes { document, text } => {
+                let request = self.next_id::<RequestId>();
+                self.with_session(document, |s| notes::set(s, document, text, request))
+            }
+            UiIntent::CloseNotes { document } => self.with_session(document, |s| notes::close(s, document)),
             UiIntent::SelectByKind { document, kind, mode } => {
                 self.with_session(document, |s| arrange::select_by_kind(s, document, kind, mode))
             }
@@ -868,6 +877,8 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::DialogCancelled { document, .. }
         | UiIntent::Select { document, .. }
         | UiIntent::SelectByKind { document, .. }
+        | UiIntent::SetNotes { document, .. }
+        | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }

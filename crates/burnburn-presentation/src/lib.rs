@@ -21,6 +21,7 @@ mod image_task;
 mod intent;
 mod laser;
 mod nest_task;
+mod notes;
 mod production;
 mod schikken;
 mod task;
@@ -82,6 +83,7 @@ pub use files::{
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
 };
+pub use notes::NotesViewModel;
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,
