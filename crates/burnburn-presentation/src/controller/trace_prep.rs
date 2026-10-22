@@ -122,15 +122,32 @@ fn apply(t: &Tracer, intent: TracePrepIntent) -> Result<TraceRecipe, PrepIssue> 
             recipe.image.threshold = Threshold::Adaptive { radius, offset: offset as u8 };
         }
         TracePrepIntent::UseGlobalThreshold => recipe.image.threshold = Threshold::Otsu,
-        TracePrepIntent::UseLens { k1, k2 } => {
-            let lens = LensDistortion { k1: number(&k1, PrepField::LensK1)?, k2: number(&k2, PrepField::LensK2)? };
+        TracePrepIntent::UseLens { k1, k2, p1, p2 } => {
+            let lens = LensDistortion {
+                k1: number(&k1, PrepField::LensK1)?,
+                k2: number(&k2, PrepField::LensK2)?,
+                p1: number(&p1, PrepField::LensP1)?,
+                p2: number(&p2, PrepField::LensP2)?,
+            };
             // The coefficients are separately in range; together they must still be a lens.
-            for (value, field) in [(lens.k1, PrepField::LensK1), (lens.k2, PrepField::LensK2)] {
+            for (value, field) in [
+                (lens.k1, PrepField::LensK1),
+                (lens.k2, PrepField::LensK2),
+                (lens.p1, PrepField::LensP1),
+                (lens.p2, PrepField::LensP2),
+            ] {
                 if value.abs() > LensDistortion::MAX_COEFFICIENT {
                     return Err(PrepIssue::OutOfRange(field));
                 }
             }
-            lens.validate().map_err(|_| PrepIssue::OutOfRange(PrepField::LensK1))?;
+            // The refusal is shown at the tangential field that is in use, else at k1.
+            lens.validate().map_err(|_| {
+                PrepIssue::OutOfRange(match (lens.p1 != 0.0, lens.p2 != 0.0) {
+                    (_, true) => PrepField::LensP2,
+                    (true, false) => PrepField::LensP1,
+                    (false, false) => PrepField::LensK1,
+                })
+            })?;
             recipe.image.lens = Some(lens);
         }
         TracePrepIntent::ClearLens => recipe.image.lens = None,
@@ -528,8 +545,8 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         corrections: corrections_view(t),
         report: t.report.clone().filter(|_| t.form.mode == TraceMode::Contour && t.result.is_some()),
         lens: match recipe.image.lens {
-            Some(l) => PrepLens { on: true, k1: text(l.k1), k2: text(l.k2) },
-            None => PrepLens { on: false, k1: "0".to_owned(), k2: "0".to_owned() },
+            Some(l) => PrepLens { on: true, k1: text(l.k1), k2: text(l.k2), p1: text(l.p1), p2: text(l.p2) },
+            None => PrepLens { on: false, k1: "0".to_owned(), k2: "0".to_owned(), p1: "0".to_owned(), p2: "0".to_owned() },
         },
         contours: contours_view(t),
         node_target: t

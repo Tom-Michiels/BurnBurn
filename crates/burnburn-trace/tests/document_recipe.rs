@@ -58,7 +58,7 @@ fn every_field() -> TraceRecipe {
                 width: 11,
                 height: 12,
             }),
-            lens: Some(LensDistortion { k1: -0.12, k2: 0.03 }),
+            lens: Some(LensDistortion { k1: -0.12, k2: 0.03, p1: 0.0, p2: 0.0 }),
         },
         contour: ContourSettings {
             diagonal: DiagonalPolicy::Separate,
@@ -106,10 +106,30 @@ fn a_lens_that_is_not_a_lens_is_refused_when_the_recipe_is_read_and_when_it_is_t
         .insert("image.lens".into(), ParamValue::List(vec![ParamValue::Number(-0.9), ParamValue::Number(0.0)]));
     assert!(recipe_from_engine(&engine).is_err(), "k1 = -0.9 folds the image over itself");
     let mut recipe = every_field();
-    recipe.image.lens = Some(LensDistortion { k1: f64::NAN, k2: 0.0 });
+    recipe.image.lens = Some(LensDistortion { k1: f64::NAN, k2: 0.0, p1: 0.0, p2: 0.0 });
     assert!(recipe.validate().is_err());
     // A recipe without a lens has no `image.lens` parameter at all.
     assert!(!recipe_to_engine(&TraceRecipe::default()).params.contains_key("image.lens"));
+}
+
+#[test]
+fn tangential_lens_terms_survive_the_stored_recipe_and_a_radial_lens_keeps_its_two_numbers() {
+    let mut recipe = every_field();
+    recipe.image.lens = Some(LensDistortion { k1: -0.12, k2: 0.03, p1: 0.004, p2: -0.002 });
+    let engine = recipe_to_engine(&recipe);
+    assert_eq!(recipe_from_engine(&engine).unwrap(), recipe);
+    let Some(ParamValue::List(items)) = engine.params.get("image.lens") else { panic!("no image.lens") };
+    assert_eq!(items.len(), 4);
+    // Without tangential terms the stored shape is the one older projects have: two numbers.
+    recipe.image.lens = Some(LensDistortion::radial(-0.12, 0.03));
+    let Some(ParamValue::List(items)) = recipe_to_engine(&recipe).params.get("image.lens").cloned() else {
+        panic!("no image.lens")
+    };
+    assert_eq!(items.len(), 2);
+    // Three numbers are neither shape.
+    let mut bad = recipe_to_engine(&recipe);
+    bad.params.insert("image.lens".into(), ParamValue::List(vec![ParamValue::Number(0.0); 3]));
+    assert!(recipe_from_engine(&bad).is_err());
 }
 
 #[test]

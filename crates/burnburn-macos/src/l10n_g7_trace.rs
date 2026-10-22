@@ -33,9 +33,15 @@ texts! {
         "Radial distortion of the camera: negative is barrel. Corrected before the plane correction."
     ),
     LensOn => ("Lenscorrectie in gebruik: k1 {0}, k2 {1}.", "Lens correction in use: k1 {0}, k2 {1}."),
+    LensOnTangential => (
+        "Lenscorrectie in gebruik: k1 {0}, k2 {1}, p1 {2}, p2 {3}.",
+        "Lens correction in use: k1 {0}, k2 {1}, p1 {2}, p2 {3}."
+    ),
     LensOff => ("Geen lenscorrectie.", "No lens correction."),
     LensK1Caption => ("k1 (negatief = tonvormig)", "k1 (negative = barrel)"),
     LensK2Caption => ("k2", "k2"),
+    LensP1Caption => ("p1 (tangentieel, lens uit het midden)", "p1 (tangential, lens off-centre)"),
+    LensP2Caption => ("p2 (tangentieel)", "p2 (tangential)"),
     LensApply => ("Pas lenscorrectie toe", "Apply lens correction"),
     LensClear => ("Verwijder lenscorrectie", "Remove lens correction"),
     // --- Pointing (T03).
@@ -156,6 +162,8 @@ texts! {
     // --- Problems of the new fields and actions.
     FieldLensK1 => ("Lens k1", "Lens k1"),
     FieldLensK2 => ("Lens k2", "Lens k2"),
+    FieldLensP1 => ("Lens p1", "Lens p1"),
+    FieldLensP2 => ("Lens p2", "Lens p2"),
     FieldNodeLimit => ("Hoogstens knooppunten", "At most nodes"),
     FieldNodeTolerance => ("Grofste tolerantie", "Coarsest tolerance"),
     FieldBrushRadius => ("Straal van de kwast", "Radius of the brush"),

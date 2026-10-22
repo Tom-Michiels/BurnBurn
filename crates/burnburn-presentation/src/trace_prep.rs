@@ -30,6 +30,9 @@ pub enum PrepField {
     /// The radial lens coefficients (G7-trace, T03).
     LensK1,
     LensK2,
+    /// The tangential lens coefficients (G8-trace, T03).
+    LensP1,
+    LensP2,
     /// Node goal of a local correction (G7-trace, T05): most nodes, and the coarsest tolerance (mm).
     NodeLimit,
     NodeTolerance,
@@ -122,6 +125,9 @@ pub enum TracePrepIntent {
     UseLens {
         k1: String,
         k2: String,
+        /// Tangential coefficients (decentring); `0` for a purely radial lens.
+        p1: String,
+        p2: String,
     },
     ClearLens,
     /// Contour `id` of the result in force is (`on`) or is no longer protected from the next area
@@ -270,6 +276,8 @@ pub struct PrepLens {
     pub on: bool,
     pub k1: String,
     pub k2: String,
+    pub p1: String,
+    pub p2: String,
 }
 
 /// The goal of the next area retrace, as typed (T05).

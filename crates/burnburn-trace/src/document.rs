@@ -135,7 +135,11 @@ fn image_to_params(mut r: EngineRecipe, i: &ImageRecipe) -> EngineRecipe {
         r = r.with("image.perspective", V::List(item));
     }
     if let Some(l) = &i.lens {
-        r = r.with("image.lens", V::List(vec![V::Number(l.k1), V::Number(l.k2)]));
+        let mut numbers = vec![V::Number(l.k1), V::Number(l.k2)];
+        if l.has_tangential() {
+            numbers.extend([V::Number(l.p1), V::Number(l.p2)]);
+        }
+        r = r.with("image.lens", V::List(numbers));
     }
     r
 }
@@ -338,7 +342,13 @@ fn image_from_params(r: &Reader<'_>) -> Result<ImageRecipe, TraceError> {
     let perspective = r.optional_list("image.perspective")?.map(perspective_from).transpose()?;
     let lens = match r.optional_list("image.lens")? {
         None => None,
-        Some([k1, k2]) => Some(LensDistortion { k1: number("image.lens", k1)?, k2: number("image.lens", k2)? }),
+        Some([k1, k2]) => Some(LensDistortion::radial(number("image.lens", k1)?, number("image.lens", k2)?)),
+        Some([k1, k2, p1, p2]) => Some(LensDistortion {
+            k1: number("image.lens", k1)?,
+            k2: number("image.lens", k2)?,
+            p1: number("image.lens", p1)?,
+            p2: number("image.lens", p2)?,
+        }),
         Some(_) => return Err(TraceError::InvalidRecipe("image.lens")),
     };
     Ok(ImageRecipe {

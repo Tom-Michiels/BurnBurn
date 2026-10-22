@@ -43,7 +43,7 @@ fn the_lens_coefficients_straighten_a_line_that_the_lens_bowed() {
     let bowed = tracer(&h, doc).result.expect("a trace").width_mm;
     assert!(bowed > 0.45, "the fixture is bowed: {bowed} mm wide for a 0.15 mm line");
 
-    send(&mut h, doc, TracePrepIntent::UseLens { k1: s("-0.25"), k2: s("0") });
+    send(&mut h, doc, TracePrepIntent::UseLens { k1: s("-0.25"), k2: s("0"), p1: s("0"), p2: s("0") });
     let p = prep(&h, doc);
     assert_eq!(p.issue, None);
     assert!(p.lens.on);
@@ -69,7 +69,7 @@ fn a_lens_that_cannot_be_read_or_is_no_lens_is_refused_where_it_was_typed() {
         // 1 + 3 k1 r² is zero inside the image: the mapping folds over itself.
         ("-0.5", "0", PrepIssue::OutOfRange(PrepField::LensK1)),
     ] {
-        send(&mut h, doc, TracePrepIntent::UseLens { k1: s(k1), k2: s(k2) });
+        send(&mut h, doc, TracePrepIntent::UseLens { k1: s(k1), k2: s(k2), p1: s("0"), p2: s("0") });
         let p = prep(&h, doc);
         assert_eq!(p.issue, Some(want), "{k1:?} {k2:?}");
         assert!(!p.lens.on);
@@ -81,7 +81,7 @@ fn a_lens_that_cannot_be_read_or_is_no_lens_is_refused_where_it_was_typed() {
 fn the_lens_is_stored_with_the_applied_trace_and_comes_back_when_it_is_reopened() {
     use burnburn_presentation::CommandKey;
     let (mut h, doc) = opened_with(&bowed_line(-0.25));
-    send(&mut h, doc, TracePrepIntent::UseLens { k1: s("-0.25"), k2: s("0.01") });
+    send(&mut h, doc, TracePrepIntent::UseLens { k1: s("-0.25"), k2: s("0.01"), p1: s("0"), p2: s("0") });
     let straight = tracer(&h, doc).result.unwrap().width_mm;
     h.invoke(doc, CommandKey::ApplyTraceLinked);
     let id = vm(&h, doc).objects.last().unwrap().id;

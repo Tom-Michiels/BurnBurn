@@ -76,7 +76,7 @@ fn the_lens_buttons_send_the_typed_coefficients_and_the_panel_says_the_correctio
         intent,
         UiIntent::TracePrep {
             document: doc,
-            intent: TracePrepIntent::UseLens { k1: "-0,12".into(), k2: "0.02".into() }
+            intent: TracePrepIntent::UseLens { k1: "-0,12".into(), k2: "0.02".into(), p1: "0".into(), p2: "0".into() }
         }
     );
     assert!(has_text(&h, doc, Locale::En, "Lens correction in use: k1 -0.12, k2 0.02."));
@@ -85,6 +85,34 @@ fn the_lens_buttons_send_the_typed_coefficients_and_the_panel_says_the_correctio
     assert!(has_text(&h, doc, Locale::En, "Lens k1: this is not a number."));
     press(&mut h, doc, C::LensClear, &[]).unwrap();
     assert!(has_text(&h, doc, Locale::En, "No lens correction."));
+}
+
+#[test]
+fn the_lens_panel_has_tangential_fields_that_are_sent_and_shown() {
+    let (mut h, doc) = opened();
+    let intent = press(
+        &mut h,
+        doc,
+        C::LensApply,
+        &[(C::LensK1, "-0.05"), (C::LensK2, "0"), (C::LensP1, "0,003"), (C::LensP2, "-0.001")],
+    )
+    .unwrap();
+    assert_eq!(
+        intent,
+        UiIntent::TracePrep {
+            document: doc,
+            intent: TracePrepIntent::UseLens {
+                k1: "-0.05".into(),
+                k2: "0".into(),
+                p1: "0,003".into(),
+                p2: "-0.001".into()
+            }
+        }
+    );
+    assert!(has_text(&h, doc, Locale::En, "Lens correction in use: k1 -0.05, k2 0, p1 0.003, p2 -0.001."));
+    assert!(has_text(&h, doc, Locale::Nl, "Lenscorrectie in gebruik: k1 -0.05, k2 0, p1 0.003, p2 -0.001."));
+    press(&mut h, doc, C::LensApply, &[(C::LensK1, "0"), (C::LensK2, "0"), (C::LensP1, "x")]);
+    assert!(has_text(&h, doc, Locale::En, "Lens p1: this is not a number."));
 }
 
 #[test]

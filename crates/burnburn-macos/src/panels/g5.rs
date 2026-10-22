@@ -117,6 +117,8 @@ pub enum G5Control {
     // --- Trace, golf 7 (G7-trace): lens, pointing, protect/keep, node goal, recipes, A/B, batch.
     LensK1,
     LensK2,
+    LensP1,
+    LensP2,
     LensApply,
     LensClear,
     PickCorners,
@@ -797,6 +799,8 @@ pub fn g5_intent(
         | G5Control::BatchClear => super::g7_trace::intent(doc, document, control, values),
         G5Control::LensK1
         | G5Control::LensK2
+        | G5Control::LensP1
+        | G5Control::LensP2
         | G5Control::BrushRadius
         | G5Control::NodeLimit
         | G5Control::NodeTolerance

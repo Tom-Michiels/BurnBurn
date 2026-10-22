@@ -56,6 +56,8 @@ pub(super) fn field_name(field: PrepField, locale: Locale) -> String {
     match field {
         PrepField::LensK1 => t(G7Text::FieldLensK1, locale),
         PrepField::LensK2 => t(G7Text::FieldLensK2, locale),
+        PrepField::LensP1 => t(G7Text::FieldLensP1, locale),
+        PrepField::LensP2 => t(G7Text::FieldLensP2, locale),
         PrepField::NodeLimit => t(G7Text::FieldNodeLimit, locale),
         PrepField::NodeTolerance => t(G7Text::FieldNodeTolerance, locale),
         PrepField::BrushRadius => t(G7Text::FieldBrushRadius, locale),
@@ -111,13 +113,17 @@ pub(super) fn lines(doc: &DocumentViewModel, p: &TracePrepViewModel, locale: Loc
 fn lens_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(G5Line::Heading(t(G7Text::LensHeading, locale)));
     out.push(G5Line::Text(t(G7Text::LensHint, locale)));
-    out.push(G5Line::Text(if p.lens.on {
+    out.push(G5Line::Text(if p.lens.on && (p.lens.p1 != "0" || p.lens.p2 != "0") {
+        g7_fmt(G7Text::LensOnTangential, locale, &[&p.lens.k1, &p.lens.k2, &p.lens.p1, &p.lens.p2])
+    } else if p.lens.on {
         g7_fmt(G7Text::LensOn, locale, &[&p.lens.k1, &p.lens.k2])
     } else {
         t(G7Text::LensOff, locale)
     }));
     out.push(field(G5Control::LensK1, t(G7Text::LensK1Caption, locale), p.lens.k1.clone()));
     out.push(field(G5Control::LensK2, t(G7Text::LensK2Caption, locale), p.lens.k2.clone()));
+    out.push(field(G5Control::LensP1, t(G7Text::LensP1Caption, locale), p.lens.p1.clone()));
+    out.push(field(G5Control::LensP2, t(G7Text::LensP2Caption, locale), p.lens.p2.clone()));
     out.push(button(G5Control::LensApply, t(G7Text::LensApply, locale), true));
     out.push(button(G5Control::LensClear, t(G7Text::LensClear, locale), p.lens.on));
 }
@@ -452,6 +458,8 @@ pub(super) fn intent(
         G5Control::LensApply => prep(TracePrepIntent::UseLens {
             k1: typed(G5Control::LensK1, &p.lens.k1),
             k2: typed(G5Control::LensK2, &p.lens.k2),
+            p1: typed(G5Control::LensP1, &p.lens.p1),
+            p2: typed(G5Control::LensP2, &p.lens.p2),
         }),
         G5Control::LensClear => {
             p.lens.on.then_some(UiIntent::TracePrep { document, intent: TracePrepIntent::ClearLens })
