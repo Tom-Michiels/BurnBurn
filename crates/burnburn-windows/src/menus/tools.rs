@@ -35,6 +35,8 @@ pub(super) fn shapes_items() -> Vec<MenuNode> {
     items.push(sep());
     items.extend(cmds(&[CommandKey::ShapesReverse, CommandKey::ShapesClockwise, CommandKey::ShapesCounterClockwise]));
     items.push(sep());
+    items.extend(cmds(&[CommandKey::LockPathStart, CommandKey::LockPathDirection]));
+    items.push(sep());
     items.push(cmd(CommandKey::ShapesConvertToPath));
     items.push(sep());
     items.extend(cmds(&[

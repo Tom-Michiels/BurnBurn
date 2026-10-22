@@ -901,6 +901,11 @@ pub enum CommandKey {
     ShapesOptimize,
     /// Vormen ▸ Richting omkeren, met de klok mee, tegen de klok in.
     ShapesReverse,
+    /// Shapes ▸ Lock Start Point: the cut-path optimization keeps the start point of the selected
+    /// shapes (a toggle: checked when every selected shape has it).
+    LockPathStart,
+    /// Shapes ▸ Lock Direction: the optimization keeps the direction of the selected shapes.
+    LockPathDirection,
     ShapesClockwise,
     ShapesCounterClockwise,
     /// Bewerken ▸ Omzetten naar pad: a basic shape loses its parameters, the outline stays.
@@ -1115,6 +1120,8 @@ impl CommandKey {
         CommandKey::ShapesRoundCorners,
         CommandKey::ShapesOptimize,
         CommandKey::ShapesReverse,
+        CommandKey::LockPathStart,
+        CommandKey::LockPathDirection,
         CommandKey::ShapesClockwise,
         CommandKey::ShapesCounterClockwise,
         CommandKey::ShapesConvertToPath,

@@ -58,6 +58,7 @@ mod machine_hub;
 mod machine_rest;
 mod nest;
 mod notes;
+mod path_lock;
 mod offset_preview;
 mod order_dialog;
 mod preflight_dialog;

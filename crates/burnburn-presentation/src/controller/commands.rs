@@ -138,6 +138,7 @@ impl AppController {
                 })
             }
             CommandKey::ShowNotes => self.with_session(document, |s| super::notes::toggle(s, document)),
+            CommandKey::LockPathStart | CommandKey::LockPathDirection => self.toggle_path_lock(document, command),
             CommandKey::Close => self.close(document),
             CommandKey::Measure => self.submit_measure(document),
             // The grid distance is a preference (X02), not a session constant.
