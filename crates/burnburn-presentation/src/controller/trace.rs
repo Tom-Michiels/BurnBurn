@@ -89,8 +89,8 @@ impl Tracer {
     }
 
     /// The tracer of an existing trace: its stored recipe is in force and the first trace starts.
-    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe) {
-        self.form = form_of(&recipe, TraceMode::Contour);
+    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe, mode: TraceMode) {
+        self.form = form_of(&recipe, mode);
         self.recipe = Some(recipe);
         self.editing = Some(trace);
         self.autostart = true;
