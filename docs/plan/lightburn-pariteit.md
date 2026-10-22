@@ -211,6 +211,19 @@ Stand na golf 6 (main 9335726): `cargo xtask verify` exit 0, 3946 tests geslaagd
 - **Integratie**: preflight weigert nu de laatste omtrek van afgeleide geometrie die niet meer uitrekent (`Finding::BlockedGeometry`,
   bugfix); Windows-updatepoort bij afsluiten. Verify op 9a269ba: 4418 geslaagd, 0 gefaald, 11 genegeerd.
 
+## Golf 8 (uitgevoerd)
+
+- **G8-cam-werk**: common-line volgens IM32 (laatste vorm, na het binnenwerk), nerf per onderdeel, alle onderdelen in het
+  nestpaneel, tabvermogen in de historie, herkenning met rotatie/schaal en bewaarde sjablonen, orderaantallen naar de nest.
+- **G8-editor**: afronden/afschuinen tussen krommen, stappen toevoegen in de modifierstapel, meerdere teksten omzetten, tekst
+  op pad meerregelig en verschuifbaar, formules en vaste vormen in onderdelen, verdelen over platen, ellips-raakrelaties.
+- **G8-trace**: tangentiële lensterm, beschermen door klikken en beschermde hoeken, meervoudige bestandskeuze en A/B op het
+  canvas, paletkleuren bij import, drie tekstfouten opgelost (`.ttc`, Arabische letterafstand, onzichtbare tekens), een
+  telling-gebaseerde prestatiebewaking in `verify`, en de nooit getekende `ResultPreview`-overlay hersteld.
+- **Stille native tests**: `cargo xtask verify` draait de macOS-vensters transparant en zonder focus; `--native` toont ze.
+- **G8-refactor**: de 19 `#[path]`-gedeelde modellen staan in de nieuwe crate `burnburn-host-models` (ADR 0009); `xtask
+  path-attrs` verbiedt `#[path]` buiten de eigen crate in `src/`. Verify op d63270f: 4690 geslaagd, 0 gefaald, 13 genegeerd.
+
 ## Wat overblijft
 
 - **Hardware (W1-HW, eigenaar B-2/B-3):** een geverifieerd Ruida-wire-dialect en het vrijgeven van `ScanAngle`, `GrayscaleModulation`,
