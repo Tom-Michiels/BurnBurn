@@ -8,7 +8,7 @@
 use burnburn_document::ObjectKind;
 use burnburn_document::engine::{EngineRecipe, ParamValue};
 use burnburn_document::trace::{TraceCommand, TraceDefinition, TraceId, TraceOutput};
-use burnburn_geometry::Affine;
+use burnburn_geometry::{Affine, Point};
 use burnburn_image::{
     AlphaPolicy, ImageRecipe, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask, RegionMode,
     RegionShape, Threshold,
@@ -16,8 +16,8 @@ use burnburn_image::{
 use burnburn_types::ContentHash;
 
 use crate::{
-    CENTERLINE_ENGINE_VERSION, CenterlineResult, CenterlineSettings, ContourSettings, DiagonalPolicy, ENGINE_VERSION,
-    FitSettings, TraceError, TraceRecipe, TraceResult,
+    CENTERLINE_ENGINE_VERSION, CenterlineDecision, CenterlineResult, CenterlineSettings, ChainEnd, ChainId,
+    ContourSettings, DiagonalPolicy, ENGINE_VERSION, FitSettings, TraceError, TraceRecipe, TraceResult,
 };
 
 use ParamValue as V;
@@ -408,6 +408,9 @@ pub fn centerline_command(
     if result.revision > 0 {
         recipe = recipe.with("centerline.edits", V::Integer(i64::try_from(result.revision).unwrap_or(i64::MAX)));
     }
+    if !result.decisions().is_empty() {
+        recipe = recipe.with("centerline.decisions", decisions_to_param(result.decisions()));
+    }
     let definition = Box::new(TraceDefinition {
         name: name.to_owned(),
         source: source_asset,
@@ -429,4 +432,73 @@ pub fn centerline_command(
         None => TraceCommand::Create { definition, outputs },
         Some(trace) => TraceCommand::Replace { trace, definition, outputs },
     })
+}
+
+/// The operator decisions stored in a centreline recipe (none for a plain run).
+pub fn centerline_decisions_from_engine(recipe: &EngineRecipe) -> Result<Vec<CenterlineDecision>, TraceError> {
+    const NAME: &str = "centerline.decisions";
+    let Some(value) = recipe.get(NAME) else { return Ok(Vec::new()) };
+    list(NAME, value)?
+        .iter()
+        .map(|item| {
+            let point = |x: &ParamValue, y: &ParamValue| -> Result<Point, TraceError> {
+                Ok(Point::new(number(NAME, x)?, number(NAME, y)?))
+            };
+            let end = |chain: &ParamValue, at_start: &ParamValue| match at_start {
+                V::Bool(at_start) => Ok(ChainEnd { chain: ChainId(uint(NAME, chain)?), at_start: *at_start }),
+                _ => Err(TraceError::InvalidRecipe(NAME)),
+            };
+            match list(NAME, item)? {
+                [V::Text(kind), x, y, pairs @ ..] if kind == "junction" && pairs.len() % 4 == 0 => {
+                    let pairs = pairs
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|[ca, sa, cb, sb]| Ok((end(ca, sa)?, end(cb, sb)?)))
+                        .collect::<Result<_, TraceError>>()?;
+                    Ok(CenterlineDecision::ResolveJunction { at: point(x, y)?, pairs })
+                }
+                [V::Text(kind), chain, x, y] if kind == "confirm" => {
+                    Ok(CenterlineDecision::ConfirmPrimitive { chain: ChainId(uint(NAME, chain)?), at: point(x, y)? })
+                }
+                [V::Text(kind), ax, ay, bx, by] if kind == "join" => {
+                    Ok(CenterlineDecision::JoinEndpoints { a: point(ax, ay)?, b: point(bx, by)? })
+                }
+                _ => Err(TraceError::InvalidRecipe(NAME)),
+            }
+        })
+        .collect()
+}
+
+/// The decisions as the `centerline.decisions` parameter.
+fn decisions_to_param(decisions: &[CenterlineDecision]) -> ParamValue {
+    let end = |e: &ChainEnd| [V::Integer(i64::from(e.chain.0)), V::Bool(e.at_start)];
+    V::List(
+        decisions
+            .iter()
+            .map(|d| match d {
+                CenterlineDecision::ResolveJunction { at, pairs } => {
+                    let mut item = vec![V::Text("junction".into()), V::Number(at.x), V::Number(at.y)];
+                    for (a, b) in pairs {
+                        item.extend(end(a));
+                        item.extend(end(b));
+                    }
+                    V::List(item)
+                }
+                CenterlineDecision::ConfirmPrimitive { chain, at } => V::List(vec![
+                    V::Text("confirm".into()),
+                    V::Integer(i64::from(chain.0)),
+                    V::Number(at.x),
+                    V::Number(at.y),
+                ]),
+                CenterlineDecision::JoinEndpoints { a, b } => V::List(vec![
+                    V::Text("join".into()),
+                    V::Number(a.x),
+                    V::Number(a.y),
+                    V::Number(b.x),
+                    V::Number(b.y),
+                ]),
+            })
+            .collect(),
+    )
 }

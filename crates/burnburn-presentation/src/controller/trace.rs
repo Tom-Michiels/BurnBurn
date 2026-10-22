@@ -11,8 +11,8 @@ use burnburn_document::trace::TraceId;
 use burnburn_geometry::Path;
 use burnburn_image::{PixelScale, SourceImage, Threshold};
 use burnburn_trace::{
-    CenterlineEditError, CenterlineRequest, CenterlineResult, CenterlineSettings, ChainId, Connections, NodeId,
-    NodeKind, Primitive, TraceRecipe, TraceRequest, TraceResult,
+    CenterlineDecision, CenterlineEditError, CenterlineRequest, CenterlineResult, CenterlineSettings, ChainId,
+    Connections, NodeId, NodeKind, Primitive, TraceRecipe, TraceRequest, TraceResult,
 };
 use burnburn_types::{CancellationSource, DocumentId, TaskId};
 
@@ -68,6 +68,10 @@ pub(super) struct Tracer {
     pub(super) autostart: bool,
     /// The trace of the document this tracer edits: applying as a trace replaces its outputs.
     pub(super) editing: Option<TraceId>,
+    /// The operator's decisions on the centre-line result in force, in the order they were taken.
+    /// A fresh centre-line trace applies them again; the ones that no longer fit are counted.
+    pub(super) decisions: Vec<CenterlineDecision>,
+    pub(super) dropped: usize,
 }
 
 impl Tracer {
@@ -91,11 +95,20 @@ impl Tracer {
             centerline: None,
             autostart,
             editing: None,
+            decisions: Vec::new(),
+            dropped: 0,
         }
     }
 
     /// The tracer of an existing trace: its stored recipe is in force and the first trace starts.
-    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe, mode: TraceMode) {
+    pub(super) fn reopen(
+        &mut self,
+        trace: TraceId,
+        recipe: TraceRecipe,
+        mode: TraceMode,
+        decisions: Vec<CenterlineDecision>,
+    ) {
+        self.decisions = decisions;
         self.form = form_of(&recipe, mode);
         self.recipe = Some(recipe);
         self.editing = Some(trace);
@@ -359,6 +372,15 @@ pub(super) fn centerline_finished(
             let key = t.centerline_request(id, revision).and_then(|r| r.key().ok());
             let fresh = matches!((t.latest, key), (Some(latest), Some(key)) if latest == id && result.check_fresh(latest, key).is_ok());
             if fresh {
+                // The operator's decisions apply again where their place is still there.
+                let result = if t.decisions.is_empty() {
+                    t.dropped = 0;
+                    result
+                } else {
+                    let replayed = result.replay(&t.decisions);
+                    t.dropped = replayed.skipped.len();
+                    Arc::new(replayed.result)
+                };
                 t.centerline = Some(CenterlineOutcome::of(result));
                 t.latest = None;
                 update.scenes_changed.push(s.doc.id());
@@ -408,6 +430,10 @@ pub(super) fn centerline_edit(s: &mut Session, document: DocumentId, edit: Cente
     match next {
         Ok(next) => {
             if let Some(t) = s.tracer.as_mut() {
+                // The edit added one decision to the recipe in force.
+                if let Some(taken) = next.decisions().last() {
+                    t.decisions.push(taken.clone());
+                }
                 t.centerline = Some(CenterlineOutcome::of(Arc::new(next)));
             }
             AppUpdate { view_changed: true, scenes_changed: vec![document], ..AppUpdate::default() }
@@ -430,10 +456,10 @@ fn kind_of(p: &Primitive) -> PrimitiveKind {
 /// What can be decided on the open centre-line result (centre-line mode only).
 pub(super) fn centerline_panel(s: &Session) -> Option<CenterlineEditViewModel> {
     let t = s.tracer.as_ref().filter(|t| t.form.mode == TraceMode::Centerline)?;
-    t.centerline.as_ref().map(edit_view)
+    t.centerline.as_ref().map(|c| edit_view(c, t.dropped))
 }
 
-fn edit_view(c: &CenterlineOutcome) -> CenterlineEditViewModel {
+fn edit_view(c: &CenterlineOutcome, dropped: usize) -> CenterlineEditViewModel {
     let r = &c.result;
     CenterlineEditViewModel {
         junctions: r
@@ -467,6 +493,7 @@ fn edit_view(c: &CenterlineOutcome) -> CenterlineEditViewModel {
             })
             .collect(),
         edits: r.revision,
+        dropped,
     }
 }
 

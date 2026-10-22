@@ -10,6 +10,7 @@
 //! Huttenlocher (2012) 1-D squared distance transform, Kåsa (1976) algebraic circle fit refined by
 //! Gauss–Newton. No tracer source code was used.
 
+mod decisions;
 mod graph;
 mod primitive;
 mod skeleton;
@@ -25,6 +26,8 @@ use burnburn_types::{
 
 use crate::error::{StaleTrace, TraceError};
 use crate::fit::{self, FitParams};
+
+pub use decisions::{CenterlineDecision, Replayed, SkipReason, SkippedDecision};
 
 pub const CENTERLINE_ENGINE_VERSION: &str = "burnburn-trace/centerline-1";
 
@@ -258,6 +261,7 @@ pub struct CenterlineResult {
     pub spurs_removed: Vec<RemovedSpur>,
     pub near_contacts: Vec<NearContact>,
     pub(crate) settings: CenterlineSettings,
+    pub(crate) decisions: Vec<CenterlineDecision>,
 }
 
 impl CenterlineRequest {
@@ -433,7 +437,9 @@ impl CenterlineResult {
                 return Err(CenterlineEditError::InvalidPairing);
             }
         }
+        let at = n.at;
         let mut next = self.edited();
+        next.decisions.push(CenterlineDecision::ResolveJunction { at, pairs: pairs.clone() });
         if let Some(m) = next.nodes.iter_mut().find(|m| m.id == node) {
             m.connections = Connections::Resolved { pairs };
         }
@@ -463,6 +469,7 @@ impl CenterlineResult {
         let id = ChainId(self.chains.iter().map(|c| c.id.0 + 1).max().unwrap_or(0));
         let (ea, eb) = (na.ends[0], nb.ends[0]);
         let mut next = self.edited();
+        next.decisions.push(CenterlineDecision::JoinEndpoints { a: na.at, b: nb.at });
         next.chains.push(Chain {
             id,
             from: Some(a),
@@ -516,7 +523,9 @@ impl CenterlineResult {
             return Err(CenterlineEditError::Stale);
         }
         let path = primitive::path_of(&proposal.candidate.primitive).ok_or(CenterlineEditError::NonFinite)?;
+        let at = c.points.first().copied().unwrap_or(Point::ORIGIN);
         let mut next = self.edited();
+        next.decisions.push(CenterlineDecision::ConfirmPrimitive { chain: proposal.chain, at });
         if let Some(c) = next.chains.iter_mut().find(|c| c.id == proposal.chain) {
             c.confirmed = Some(proposal.candidate.primitive);
             c.path = path;
@@ -689,6 +698,7 @@ pub fn trace_centerline(req: &CenterlineRequest, cancel: &CancellationToken) -> 
         spurs_removed,
         near_contacts,
         settings: req.settings.clone(),
+        decisions: Vec::new(),
     })
 }
 

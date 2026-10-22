@@ -71,6 +71,10 @@ texts! {
     CenterlineTitle => ("Centerline-beslissingen", "Centre-line decisions"),
     CenterlineNothing => ("Er valt niets te beslissen.", "There is nothing to decide."),
     CenterlineEdits => ("Genomen beslissingen: {0}", "Decisions taken: {0}"),
+    CenterlineDropped => (
+        "{0} bewaarde beslissing(en) passen niet meer en zijn niet toegepast.",
+        "{0} stored decision(s) no longer fit and were not applied."
+    ),
     JunctionOpen => (
         "Knooppunt {0} bij ({1}, {2}) mm: kies welke takken doorlopen.",
         "Junction {0} at ({1}, {2}) mm: choose which branches continue."

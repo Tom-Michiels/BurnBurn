@@ -344,6 +344,9 @@ fn centerline_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Lin
     if c.edits > 0 {
         lines.push(G5Line::Text(g5_fmt(G5Text::CenterlineEdits, locale, &[&c.edits.to_string()])));
     }
+    if c.dropped > 0 {
+        lines.push(G5Line::Problem(g5_fmt(G5Text::CenterlineDropped, locale, &[&c.dropped.to_string()])));
+    }
     Some(lines)
 }
 
