@@ -30,6 +30,8 @@ pub(crate) enum Step {
     Cut {
         to: Point,
         source: GeometryId,
+        /// Tab Cut Power (C04): the cut runs at this percentage of the operation's power.
+        tab_percent: Option<f64>,
     },
     Scan {
         from: Point,
@@ -202,10 +204,18 @@ pub fn compile_with(
                         tolerance_mm,
                         cancel,
                     )?;
-                    let steps = match optimization.remove_overlapping_mm() {
-                        Some(tol) => {
+                    // Common-line cutting of this operation (C12) names its own tolerance and minimal
+                    // overlap; otherwise the document's Remove Overlapping Lines applies.
+                    let overlap = unit
+                        .op
+                        .advanced()
+                        .common_line
+                        .map(|c| (c.tolerance_mm(), c.min_overlap_mm()))
+                        .or_else(|| optimization.remove_overlapping_mm().map(|tol| (tol, 0.0)));
+                    let steps = match overlap {
+                        Some((tol, min_overlap)) => {
                             let kept = kept.entry((chunk.unit, pass)).or_insert_with(|| overlap::Kept::new(tol));
-                            overlap::remove(steps, before, tol, kept, cancel)?
+                            overlap::remove(steps, before, tol, min_overlap, kept, cancel)?
                         }
                         None => steps,
                     };
@@ -511,8 +521,12 @@ fn emit(
                     plan.push(PlanEvent::Travel { to })?;
                 }
             }
-            Step::Cut { to, source } => {
+            Step::Cut { to, source, tab_percent: None } => {
                 plan.push(PlanEvent::Cut { to: frame.to_machine(to)?, origin: origin(source) })?
+            }
+            Step::Cut { to, source, tab_percent: Some(percent) } => {
+                let power = PowerRatio::new(hi * percent / 100.0)?;
+                plan.push(PlanEvent::CutPower { to: frame.to_machine(to)?, power, origin: origin(source) })?
             }
             Step::Dot { source } => plan.push(PlanEvent::Dot { origin: origin(source) })?,
             Step::Scan { from, to, source }

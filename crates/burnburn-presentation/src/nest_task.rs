@@ -5,8 +5,8 @@
 use std::sync::Arc;
 
 use burnburn_cam::nest::{
-    MirrorPolicy, NestError, NestOptions, NestParams, NestPart, PartKey, RotationSet, Stock, StockId, UnplacedReason,
-    UtilisationBasis, complete_sets, nest_with, order_status,
+    MirrorPolicy, NestError, NestOptions, NestParams, NestPart, Packing, PartKey, RotationSet, Stock, StockId,
+    UnplacedReason, UtilisationBasis, complete_sets, nest_packed, order_status, shared_edge_length_mm,
 };
 use burnburn_document::{DocumentSnapshot, GeometrySource};
 use burnburn_editor::expand_to_groups;
@@ -14,7 +14,7 @@ use burnburn_geometry::{Affine, Bounds, Path, Point, ProductionTolerance, Rect, 
 use burnburn_types::{CancellationToken, GeometryId, GroupId, Length, StableId};
 
 use crate::schikken::{
-    NestFailure, NestMirror, NestPartStatusRow, NestRotations, NestScope, NestSheetChoice, NestSheetUseRow,
+    NestFailure, NestHoles, NestMirror, NestPartStatusRow, NestRotations, NestScope, NestSheetChoice, NestSheetUseRow,
     NestSheetView, NestSkipReason, NestSkippedRow, NestUnplacedReason, NestUnplacedRow,
 };
 use crate::task::TaskError;
@@ -27,7 +27,7 @@ const SHEET_GAP_MM: f64 = 10.0;
 const CANDIDATE_BUDGET: u64 = 40_000_000;
 
 /// The parsed options of the panel.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NestSettings {
     pub padding_mm: f64,
     pub edge_buffer_mm: f64,
@@ -37,6 +37,23 @@ pub struct NestSettings {
     pub sheets: u32,
     /// The closed object whose contour is the sheet (a remnant); `None`: the bed or the parts' bounds.
     pub sheet_object: Option<GeometryId>,
+    /// Copies of every part without a number of its own (C12).
+    pub copies: u32,
+    /// The parts with their own number: the first object of the part and the copies.
+    pub part_copies: Vec<(GeometryId, u32)>,
+    pub holes: NestHoles,
+    pub tight: bool,
+    /// Pack without space so that parts share edges (C12).
+    pub common_line: bool,
+    /// Grain direction of the sheet; the parts keep their own X axis along it.
+    pub grain_deg: Option<f64>,
+}
+
+impl NestSettings {
+    /// The number of copies of the part whose first object is `first`.
+    pub fn copies_of(&self, first: GeometryId) -> u32 {
+        self.part_copies.iter().find(|(id, _)| *id == first).map_or(self.copies, |(_, n)| *n)
+    }
 }
 
 /// Everything the worker needs; owned, so the task outlives the window state.
@@ -48,6 +65,9 @@ pub struct NestJob {
     stocks: Vec<Stock>,
     options: NestOptions,
     params: NestParams,
+    packing: Packing,
+    /// Count the edges the parts share.
+    common_line: bool,
     skipped: Vec<NestSkippedRow>,
 }
 
@@ -61,6 +81,8 @@ impl NestJob {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartPlacement {
     pub objects: Vec<GeometryId>,
+    /// Which copy of the part this is; copy 0 is the part itself, the others are made on apply.
+    pub copy: u32,
     pub rotation_deg: f64,
     /// Placed as its mirror image.
     pub mirrored: bool,
@@ -78,6 +100,8 @@ pub struct NestOutput {
     pub sheets: Vec<NestSheetUseRow>,
     pub parts: Vec<NestPartStatusRow>,
     pub complete_sets: u32,
+    /// Length of the edges the placed parts share (mm); `Some` only for a common-line nest.
+    pub shared_mm: Option<f64>,
 }
 
 /// Why `build_job` made no job.
@@ -124,7 +148,12 @@ pub struct Classified {
 }
 
 /// Sorts the objects `scope` covers into parts and skipped ones. Cheap: no outlines are copied.
-pub fn classify(snapshot: &DocumentSnapshot, scope: NestScope, selection: &[GeometryId]) -> Classified {
+pub fn classify(
+    snapshot: &DocumentSnapshot,
+    scope: NestScope,
+    selection: &[GeometryId],
+    holes: NestHoles,
+) -> Classified {
     let candidates: Vec<GeometryId> = match scope {
         NestScope::Quick => snapshot.draw_order().into_iter().filter(|id| snapshot.is_selectable(*id)).collect(),
         NestScope::Selected => {
@@ -165,7 +194,69 @@ pub fn classify(snapshot: &DocumentSnapshot, scope: NestScope, selection: &[Geom
             Some(Some(reason)) => skipped.extend(members.iter().map(|m| NestSkippedRow { object: *m, reason })),
         }
     }
+    if holes == NestHoles::Join && movable.len() <= MAX_HOLE_BODIES {
+        movable = join_holes(snapshot, movable);
+    }
     Classified { movable, skipped }
+}
+
+/// Most bodies the containment search looks at (it compares every pair).
+const MAX_HOLE_BODIES: usize = 3000;
+/// Clearance of an inner object from the outline that encloses it (mm).
+const ENCLOSE_TOLERANCE_MM: f64 = 0.01;
+
+/// The bodies that lie inside another body's outline join it (C10): an inner contour is a hole of
+/// the part, an object inside that hole is an island of it, and all of it moves as one piece.
+/// Each body joins the smallest outline that encloses all its objects, and that one in turn joins
+/// the next, so a body ends up with the outermost one.
+fn join_holes(snapshot: &DocumentSnapshot, movable: Vec<Vec<GeometryId>>) -> Vec<Vec<GeometryId>> {
+    let area =
+        |id: GeometryId| snapshot.object(id).and_then(|o| o.bounds()).map_or(f64::INFINITY, |b| b.width() * b.height());
+    let mut parent: Vec<Option<usize>> = vec![None; movable.len()];
+    for (i, body) in movable.iter().enumerate() {
+        let encloser = movable
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .flat_map(|(j, other)| other.iter().map(move |id| (j, *id)))
+            .filter(|(_, outer)| {
+                let Some(outer) = snapshot.object(*outer) else { return false };
+                body.iter().all(|inner| {
+                    snapshot
+                        .object(*inner)
+                        .is_some_and(|o| burnburn_geometry::encloses(outer.path(), o.path(), ENCLOSE_TOLERANCE_MM))
+                })
+            })
+            .min_by(|a, b| area(a.1).total_cmp(&area(b.1)));
+        parent[i] = encloser.map(|(j, _)| j);
+    }
+    let root_of = |mut i: usize| {
+        // An enclosure is strict and so has no cycle; the bound is only a guard.
+        for _ in 0..movable.len() {
+            match parent[i] {
+                Some(p) => i = p,
+                None => break,
+            }
+        }
+        i
+    };
+    let mut joined: Vec<Vec<GeometryId>> = Vec::new();
+    let mut slot: Vec<Option<usize>> = vec![None; movable.len()];
+    for (i, body) in movable.iter().enumerate() {
+        if root_of(i) == i {
+            slot[i] = Some(joined.len());
+            joined.push(body.clone());
+        }
+    }
+    for (i, body) in movable.iter().enumerate() {
+        let root = root_of(i);
+        if root != i
+            && let Some(at) = slot[root]
+        {
+            joined[at].extend(body.iter().copied());
+        }
+    }
+    joined
 }
 
 /// The contour of the chosen sheet object, taken out of the parts: in a nest of the selection it is
@@ -256,7 +347,7 @@ pub fn build_job(
     settings: &NestSettings,
     bed: Option<(f64, f64)>,
 ) -> Result<NestJob, BuildError> {
-    let mut classified = classify(snapshot, scope, selection);
+    let mut classified = classify(snapshot, scope, selection, settings.holes);
     let sheet_outline = match settings.sheet_object {
         Some(id) => Some(take_sheet(snapshot, &mut classified, scope, id)?),
         None => None,
@@ -279,9 +370,9 @@ pub fn build_job(
             NestPart {
                 key: PartKey(i as u32),
                 outline: Path::from_subpaths(subpaths),
-                count: 1,
+                count: members.first().map_or(1, |first| settings.copies_of(*first)),
                 rotations: rotations.clone(),
-                grain_deg: None,
+                grain_deg: settings.grain_deg.map(|_| 0.0),
             }
         })
         .collect();
@@ -317,11 +408,12 @@ pub fn build_job(
                     Path::rectangle(rect)
                 }
             };
-            Ok(Stock { id: StockId(k), outline, keep_out: keep_out.clone(), grain_deg: None })
+            Ok(Stock { id: StockId(k), outline, keep_out: keep_out.clone(), grain_deg: settings.grain_deg })
         })
         .collect::<Result<_, BuildError>>()?;
     let params = NestParams {
-        spacing: length(settings.padding_mm)?,
+        // Common-line cutting needs the parts to touch: no space between them.
+        spacing: length(if settings.common_line { 0.0 } else { settings.padding_mm })?,
         edge_margin: length(settings.edge_buffer_mm)?,
         step: length(settings.step_mm)?,
         tolerance: ProductionTolerance::new(length(OUTLINE_TOLERANCE_MM)?).map_err(|_| BuildError::Geometry)?,
@@ -339,22 +431,26 @@ pub fn build_job(
             },
         },
         params,
+        packing: if settings.tight || settings.common_line { Packing::Tight } else { Packing::Grid },
+        common_line: settings.common_line,
         skipped,
     })
 }
 
 /// Runs the job. Cancellation is checked inside the packing; a cancelled job gives no result.
 pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput, TaskError> {
-    let result = nest_with(&job.parts, &job.stocks, &job.params, &job.options, cancel).map_err(|e| match e {
-        NestError::Cancelled => TaskError::Cancelled,
-        other => TaskError::Nest(other),
-    })?;
+    let result =
+        nest_packed(&job.parts, &job.stocks, &job.params, &job.options, job.packing, cancel).map_err(|e| match e {
+            NestError::Cancelled => TaskError::Cancelled,
+            other => TaskError::Nest(other),
+        })?;
     let members = |key: PartKey| job.members.get(key.0 as usize).cloned().unwrap_or_default();
     let placements = result
         .placements
         .iter()
         .map(|p| PartPlacement {
             objects: members(p.part),
+            copy: p.copy,
             rotation_deg: p.rotation_deg,
             mirrored: p.mirrored,
             transform: p.transform,
@@ -370,6 +466,7 @@ pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput,
                 UnplacedReason::NoAllowedRotation => NestUnplacedReason::NoAllowedRotation,
                 UnplacedReason::Budget => NestUnplacedReason::Budget,
             },
+            count: u.count,
         })
         .collect();
     Ok(NestOutput {
@@ -388,7 +485,11 @@ pub fn run_nest(job: &NestJob, cancel: &CancellationToken) -> Result<NestOutput,
             .map(|st| NestPartStatusRow { objects: members(st.part), ordered: st.ordered, placed: st.placed })
             .collect(),
         // A set is one of every part.
-        complete_sets: complete_sets(&result, &job.parts.iter().map(|p| (p.key, p.count)).collect::<Vec<_>>()),
+        complete_sets: complete_sets(&result, &job.parts.iter().map(|p| (p.key, 1)).collect::<Vec<_>>()),
+        shared_mm: job.common_line.then(|| {
+            // Edges within the tolerance of the exact checks count as one line.
+            shared_edge_length_mm(&job.parts, &result, &job.params.tolerance, 0.02)
+        }),
     })
 }
 
@@ -427,6 +528,8 @@ mod tests {
             members: vec![vec![GeometryId::from_raw(7)]],
             stocks: vec![Stock { id: StockId(0), outline: poly(&big), keep_out: vec![], grain_deg: None }],
             options: NestOptions { mirror: policy },
+            packing: Packing::Grid,
+            common_line: false,
             params: NestParams {
                 spacing: mm(0.0),
                 edge_margin: mm(0.0),

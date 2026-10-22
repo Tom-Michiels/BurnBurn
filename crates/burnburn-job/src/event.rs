@@ -173,6 +173,10 @@ pub enum PlanEvent {
     Travel { to: MachinePoint },
     /// Laser on, straight line from the current position (Line mode only).
     Cut { to: MachinePoint, origin: Option<SourceRef> },
+    /// Laser on at its own `power` (a fraction of the rated power, not of the settings' power),
+    /// straight line from the current position (Line mode only). Tab Cut Power (C04): a tab
+    /// cut with less power than the rest of the contour. Needs the `TabCutPower` capability.
+    CutPower { to: MachinePoint, power: PowerRatio, origin: Option<SourceRef> },
     /// One scan run (Scan/AngledScan modes). The head travels to `line.from` first via a `Travel`.
     ScanRun { line: ScanLine, origin: Option<SourceRef> },
     /// One scan run at its own `power` (GrayscaleScan mode only).

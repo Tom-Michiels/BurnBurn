@@ -29,6 +29,8 @@ pub enum CutField {
     /// Tab count or spacing in mm, as `TabsMode` says.
     TabsValue,
     TabsWidth,
+    /// Percentage of the operation's power the tabs are cut with; `0` or empty = skipped (C04).
+    TabsPower,
     LeadInEnabled,
     LeadInLength,
     LeadInShape,
@@ -45,6 +47,12 @@ pub enum CutField {
     DotEnabled,
     DotSpacing,
     DotDwell,
+    /// Common-line cutting of the shapes of the layer (C12).
+    CommonLineEnabled,
+    /// Distance in mm within which two lines are one line.
+    CommonLineTolerance,
+    /// Shortest shared stretch in mm that is cut once.
+    CommonLineMinOverlap,
     FillInterval,
     FillAngle,
     FillBidirectional,
@@ -129,11 +137,12 @@ pub const IMAGE_MODES: [CutChoice; 11] = [
 
 impl CutField {
     /// Every field, in sheet order.
-    pub const ALL: [CutField; 41] = [
+    pub const ALL: [CutField; 45] = [
         CutField::TabsEnabled,
         CutField::TabsMode,
         CutField::TabsValue,
         CutField::TabsWidth,
+        CutField::TabsPower,
         CutField::LeadInEnabled,
         CutField::LeadInLength,
         CutField::LeadInShape,
@@ -149,6 +158,9 @@ impl CutField {
         CutField::DotEnabled,
         CutField::DotSpacing,
         CutField::DotDwell,
+        CutField::CommonLineEnabled,
+        CutField::CommonLineTolerance,
+        CutField::CommonLineMinOverlap,
         CutField::FillInterval,
         CutField::FillAngle,
         CutField::FillBidirectional,
@@ -210,6 +222,7 @@ impl CutField {
             | F::LeadOutEnabled
             | F::PerforationEnabled
             | F::DotEnabled
+            | F::CommonLineEnabled
             | F::FillBidirectional
             | F::FillCrossHatch
             | F::FillFloodFill
@@ -235,11 +248,12 @@ impl CutField {
     pub fn switch(self) -> Option<CutField> {
         use CutField as F;
         match self {
-            F::TabsMode | F::TabsValue | F::TabsWidth => Some(F::TabsEnabled),
+            F::TabsMode | F::TabsValue | F::TabsWidth | F::TabsPower => Some(F::TabsEnabled),
             F::LeadInLength | F::LeadInShape | F::LeadInAngle => Some(F::LeadInEnabled),
             F::LeadOutLength | F::LeadOutShape | F::LeadOutAngle => Some(F::LeadOutEnabled),
             F::PerforationOn | F::PerforationOff => Some(F::PerforationEnabled),
             F::DotSpacing | F::DotDwell => Some(F::DotEnabled),
+            F::CommonLineTolerance | F::CommonLineMinOverlap => Some(F::CommonLineEnabled),
             _ => None,
         }
     }
@@ -253,6 +267,7 @@ impl CutField {
                 | F::TabsMode
                 | F::TabsValue
                 | F::TabsWidth
+                | F::TabsPower
                 | F::LeadInEnabled
                 | F::LeadInLength
                 | F::LeadInShape
@@ -265,6 +280,9 @@ impl CutField {
                 | F::PerforationEnabled
                 | F::PerforationOn
                 | F::PerforationOff
+                | F::CommonLineEnabled
+                | F::CommonLineTolerance
+                | F::CommonLineMinOverlap
         )
     }
 

@@ -108,7 +108,15 @@ define_class!(
 );
 
 fn is_check(control: SchikkenControl) -> bool {
-    matches!(control, SchikkenControl::PlaceByGroup | SchikkenControl::WarpBilinear)
+    matches!(
+        control,
+        SchikkenControl::PlaceByGroup
+            | SchikkenControl::WarpBilinear
+            | SchikkenControl::NestMirror
+            | SchikkenControl::NestHoles
+            | SchikkenControl::NestTight
+            | SchikkenControl::NestCommonLine
+    )
 }
 
 /// Every value-carrying control's value now.

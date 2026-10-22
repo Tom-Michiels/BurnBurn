@@ -19,6 +19,15 @@
       "origin": "Written 2026-10-18 by the ignored test burnburn-scenarios::project_fixtures::write_v2_plate_fixture (container schema 2, burnburn-io 0.1.0; Testing, on request of CAM); document.json reviewed by hand.",
       "consumer": "crates/burnburn-scenarios/tests/project_fixtures.rs",
       "content": "Rectangle 'Plaat' 120 x 80 from (0,0) (GeometryId 1); circle 'Gat' r 10 at (60,40) as four quarter arcs (2); rectangle 'Logo' 20 x 10 at (10,60) (3). Operations: 4 'Graveren' fill 0.1 mm X bidirectional, 300 mm/s 10-25 %, on 3; 5 'Binnen' line 20 mm/s 60 % air, on 2; 6 'Buiten' line on 1 with recipe 7 rev 1 applied (15 mm/s, 55-65 %, 2 passes, air). Order constraint 5 before 6. Recipe 7 'Multiplex 3 mm snijden', Berken multiplex 3 mm, machine research-1500x900. next_id 8; no assets; uuid 0b0b0b0b-0002-4000-8000-000000000120."
+    },
+    {
+      "file": "v2/recipes-in-rows.burnburn",
+      "schema": 2,
+      "bytes": 1178,
+      "sha256": "25a65667bdfd0a788bcbc690ee32d4746c7828ea4bd5f0370a5731c5c792efe1",
+      "origin": "Written by hand 2026-10-22 (G7-cam, C08) with a throwaway script from reviewed JSON, not by the encoder: schema 2 as it was before library links (no library-links entry).",
+      "consumer": "crates/burnburn-io/tests/g7_recipe_migration.rs, crates/burnburn-presentation/tests/g7_recipes_in_rows.rs",
+      "content": "Rectangles 'Paneel' 50 x 30 (1), 'Sleuf' 20 x 4 at (10,10) (2), 'Logo' 15 x 6 (3), 'Hulp' 10 x 10 at (60,0) (4). Operations: 5 'Binnen' line 22 mm/s 60 % air on 2 with recipe 7 rev 2 applied; 6 'Buiten' line 25 mm/s 70 % air on 1 with recipe 7 rev 1 applied (the recipe has been edited since); 10 'Graveren' fill 0.1 mm X bidirectional 300 mm/s 10-25 % on 3 with recipe 8 rev 1; 11 'Handwerk' line 10 mm/s 30 % on 4 without recipe. Recipes 7 'Berken 3 mm snijden' rev 2 (22 mm/s 60 %), 8 'Berken graveren' rev 1 (fill), 9 'Acryl 5 mm snijden' rev 1 (unused). next_id 12; no assets; uuid 0b0b0b0b-0003-4000-8000-000000000120."
     }
   ]
 }

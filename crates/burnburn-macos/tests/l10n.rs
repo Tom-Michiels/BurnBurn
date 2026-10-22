@@ -116,6 +116,7 @@ fn edit_round_keys_are_listed_with_nl_and_en() {
         ArrangeLabel::Hide,
         ArrangeLabel::Show,
         ArrangeLabel::Paste,
+        ArrangeLabel::NestCopies,
         ArrangeLabel::BreakApart,
         ArrangeLabel::AutoGroup,
         ArrangeLabel::Ungroup,

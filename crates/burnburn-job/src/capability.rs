@@ -48,11 +48,14 @@ pub enum Feature {
     FillGrouping,
     /// Power ramp at the ends of scan runs (`RampRun` events).
     RampLength,
+    /// Tabs cut with a lowered power instead of skipped (`CutPower` events, C04). Whether a
+    /// controller takes a power per movement is a hardware fact, not a compiler one.
+    TabCutPower,
 }
 
 impl Feature {
     /// Every feature, in canonical order.
-    pub const ALL: [Feature; 17] = [
+    pub const ALL: [Feature; 18] = [
         Feature::KerfCompensation,
         Feature::OffsetFill,
         Feature::ScanAngle,
@@ -70,6 +73,7 @@ impl Feature {
         Feature::FloodFill,
         Feature::FillGrouping,
         Feature::RampLength,
+        Feature::TabCutPower,
     ];
 
     /// Number of features (a prefix of [`Feature::ALL`]) whose support is part of every profile
@@ -95,6 +99,7 @@ impl Feature {
             Feature::FloodFill => "flood-fill",
             Feature::FillGrouping => "fill-grouping",
             Feature::RampLength => "ramp-length",
+            Feature::TabCutPower => "tab-cut-power",
         }
     }
 }
@@ -154,6 +159,9 @@ impl MachineCapabilities {
             Feature::ZStep => Support::Unsupported,
             Feature::DotMode => Support::Unverified { reason: "dot pulses have no RD form yet".into() },
             Feature::RampLength => Support::Unverified { reason: "power ramps along a run have no RD form yet".into() },
+            Feature::TabCutPower => {
+                Support::Unverified { reason: "a power per movement has no proven RD form yet".into() }
+            }
             _ => Support::Supported,
         }
     }

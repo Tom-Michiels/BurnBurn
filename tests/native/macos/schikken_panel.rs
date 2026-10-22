@@ -174,6 +174,35 @@ fn flows() -> Result<(), String> {
     press(&s, doc, C::NestClose)?;
     expect(|| "the nest panel closes".into(), !s.app.schikken_panel_shown(doc))?;
 
+    // G7-cam: the checks of the nest panel report their state through the real widgets (the
+    // mirror check did not, before), copies are typed, and Apply makes the copies in one entry.
+    s.menu(c(CommandKey::QuickNest))?;
+    s.pump(0.2);
+    press(&s, doc, C::NestMirror)?;
+    press(&s, doc, C::NestTight)?;
+    type_into(&s, doc, C::NestCopies, "2")?;
+    // Without a machine the sheet is as big as the first two parts need: the copies go on a second.
+    type_into(&s, doc, C::NestSheets, "2")?;
+    let input = s.doc(doc).and_then(|d| d.schikken.nest).ok_or("no nest panel")?.input;
+    expect(
+        || format!("the checks and the copies arrive, got {input:?}"),
+        input.mirror == burnburn_presentation::NestMirror::Allowed && input.tight && input.copies == "2",
+    )?;
+    press(&s, doc, C::NestStart)?;
+    s.wait(10.0, "the nest result with copies", || {
+        s.doc(doc).and_then(|d| d.schikken.nest).is_some_and(|n| n.run == NestRun::Done)
+    })?;
+    s.pump(0.2);
+    let all = labels(&s, doc);
+    expect(|| format!("four placed, got {all:?}"), all.iter().any(|l| l.contains("4 geplaatst")))?;
+    press(&s, doc, C::NestApply)?;
+    let vm = s.doc(doc).ok_or("no document")?;
+    expect(
+        || format!("one entry with the copies, got {:?}", vm.undo),
+        vm.undo == Some(UndoLabel::Arrange(burnburn_document::ArrangeLabel::NestCopies)) && vm.objects.len() == 4,
+    )?;
+    press(&s, doc, C::NestClose)?;
+
     // Resize Slots: rectangles have none of that width; the dialog says why and stays.
     s.menu(c(CommandKey::ResizeSlots))?;
     s.pump(0.2);

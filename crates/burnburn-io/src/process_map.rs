@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
-    ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
+    AdvancedOptions, CommonLine, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop,
+    ImageRender, ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
     Overcut, Passes, PathLock, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft,
     RecipeId, RecipeRef, ScanAxis, ScanDirection, ScreenSettings, SharedEdgePolicy, Speed, SubOperation, TabPlacement,
@@ -151,10 +151,18 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
         sub_operations.push(v1::SubOperationDto { mode: mode_to_dto(s.mode)?, settings: settings_to_dto(&s.settings) });
     }
     Ok(Some(v1::Advanced {
-        tabs: a.line.tabs.map(|t| match t.placement() {
-            TabPlacement::Count(n) => v1::Tabs { count: Some(n), spacing_mm: None, width_mm: v1::Num(t.width_mm()) },
-            TabPlacement::Spacing(s) => {
-                v1::Tabs { count: None, spacing_mm: Some(v1::Num(s)), width_mm: v1::Num(t.width_mm()) }
+        tabs: a.line.tabs.map(|t| {
+            let cut_power_percent = t.cut_power_percent().map(v1::Num);
+            match t.placement() {
+                TabPlacement::Count(n) => {
+                    v1::Tabs { count: Some(n), spacing_mm: None, width_mm: v1::Num(t.width_mm()), cut_power_percent }
+                }
+                TabPlacement::Spacing(s) => v1::Tabs {
+                    count: None,
+                    spacing_mm: Some(v1::Num(s)),
+                    width_mm: v1::Num(t.width_mm()),
+                    cut_power_percent,
+                },
             }
         }),
         lead_in_mm: a.line.lead_in.map(|l| v1::Num(l.length_mm())),
@@ -179,6 +187,10 @@ fn advanced_to_dto(a: &AdvancedOptions) -> Result<Option<v1::Advanced>, SaveErro
         tool: a.tool.map(|t| match t {
             ToolLayer::T1 => v1::ToolDto::T1,
             ToolLayer::T2 => v1::ToolDto::T2,
+        }),
+        common_line: a.common_line.map(|c| v1::CommonLineDto {
+            tolerance_mm: v1::Num(c.tolerance_mm()),
+            min_overlap_mm: v1::Num(c.min_overlap_mm()),
         }),
     }))
 }
@@ -477,7 +489,15 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
                     return Err(invalid(&at("tabs"), "exactly one of count and spacing_mm is required"));
                 }
             };
-            Some(spec.map_err(|e| invalid(&at("tabs"), e))?)
+            let spec = spec.map_err(|e| invalid(&at("tabs"), e))?;
+            let spec = match t.cut_power_percent {
+                None => spec,
+                Some(p) => {
+                    let percent = num(&at("tabs.cut_power_percent"), p)?;
+                    spec.with_cut_power(percent).map_err(|e| invalid(&at("tabs.cut_power_percent"), e))?
+                }
+            };
+            Some(spec)
         }
     };
     let lead = |f: &'static str,
@@ -550,6 +570,14 @@ fn advanced_from_dto(path: PathFn<'_>, a: &v1::Advanced) -> Result<AdvancedOptio
             v1::ToolDto::T1 => ToolLayer::T1,
             v1::ToolDto::T2 => ToolLayer::T2,
         }),
+        common_line: match a.common_line {
+            None => None,
+            Some(c) => {
+                let tolerance = length(&at("common_line.tolerance_mm"), c.tolerance_mm)?;
+                let overlap = length(&at("common_line.min_overlap_mm"), c.min_overlap_mm)?;
+                Some(CommonLine::new(tolerance, overlap).map_err(|e| invalid(&at("common_line"), e))?)
+            }
+        },
     })
 }
 

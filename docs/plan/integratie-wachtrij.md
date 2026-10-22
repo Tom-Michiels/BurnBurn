@@ -15,9 +15,20 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 ### Software (eerlijk nog niet gebouwd)
 
 - **Hosts delen modellen via `#[path]`** in plaats van via `burnburn-presentation` (W4-L8a, contracts-phase-c §IM20).
-- **CAM**: Tab Cut Power (vermogen per beweging in het plan; G5-cam, G6-machine); C06 is klaar. Common-line cutting en
-  korrelrichting in de UI; aantal exemplaren per onderdeel in de nest (C12); delen-in-gaten en raster-gebonden benutting (C10);
-  recepten in de bedieningsregels van bestaande projecten (C08, migratie).
+- **CAM** (G7-cam, 22-10-2026; zie `docs/dev-notes/G7-cam.md`): Tab Cut Power is gebouwd tot en met plan, preview, GRBL-S per
+  beweging en het Cut Settings-veld op beide hosts; common-line cutting (document, bestand, compile, nest, Cut Settings) en
+  korrelrichting van de plaat staan in de UI; de nest kent aantal exemplaren per onderdeel (ook per onderdeel), binnencontouren
+  als gaten, strak pakken met exacte controle en een gedeelde-randteller; recepten in de rijen van bestaande projecten (C08)
+  hebben een handgeschreven schema-2-fixture met migratie- en paneeltests. Wat daarvan eerlijk open blijft:
+  - *Tab Cut Power*: RD weigert het getypeerd (`tab cut power`, `Feature::TabCutPower` is `Unverified`), GRBL schrijft het als één
+    `G1` met eigen `S` (alleen tegen de eigen interpreter getest); de plan-blob van de historie slaat zo'n plan niet op (RD-jobs
+    zonder tabvermogen wel). Het vermogen is een percentage van het bewerkingsvermogen, 0 = overslaan (zoals voorheen).
+  - *Common-line*: de compiler snijdt een gedeeld stuk één keer binnen een tolerantie en vanaf een minimale overlap, bij de
+    *eerst* gesneden vorm; de contractregel "laatste vorm, ná het binnenwerk van beide" (`contracts-phase-c` IM32) is niet
+    gebouwd. `Feature::CommonLine` blijft `Unverified` op RD en GRBL: zo'n plan wordt geweigerd tot er bewijs is.
+  - *Nest*: `Packing::Tight` houdt de afstand tot op de productietolerantie (0,01 mm) en is trager; niet gemeten op echte
+    plaatdata. Nerf geldt voor de hele plaat met de X-as van elk onderdeel langs de nerf (geen nerf per onderdeel in de UI).
+    Het paneel toont rijen voor de eerste 12 onderdelen. Kopieën krijgen de naam van hun bron.
 - **Werkpakketten van het plan** (golf 7 sloot W04, W07, W01/W02, W09 en de basis van W06, zie "G7-werk" hieronder): open blijft
   bij W06 het herkennen van gedraaide/geschaalde producten (nu alleen translatie), het bewaren van geleerde sjablonen
   (alleen in het geheugen) en het wijzen van het vak in het beeld (nu getypt); bij W07 open aantallen/exemplaren in de nest;
@@ -65,8 +76,9 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 ### Hardware (Ruida, GRBL, camera)
 
 - **Ruida**: er is geen geverifieerd wire-dialect; upload/start worden geweigerd en een upload-ACK bewijst niets. `Unverified`
-  blijven `ScanAngle`, `GrayscaleModulation`, `CommonLine`, `ZStep`; RD-export van Y-as-scan, scanhoek ≠ 0° en Z-focusoffset, Tab
-  Cut Power in RD, feeder naar RD, controllerinstellingen lezen/schrijven blijven getypeerd geweigerd. Beweging, jog, frame, home
+  blijven `ScanAngle`, `GrayscaleModulation`, `CommonLine`, `TabCutPower` (nieuw, G7-cam), `ZStep`; RD-export van Y-as-scan,
+  scanhoek ≠ 0° en Z-focusoffset, Tab Cut Power in RD, common-line uitvoer, feeder naar RD, controllerinstellingen
+  lezen/schrijven blijven getypeerd geweigerd. Beweging, jog, frame, home
   en `MoveAbsolute`, het pauze-/hervatbewijs en naamconflict/volle opslag zijn niet op een controller gezien.
 - **GRBL**: geen enkele controller gecontacteerd en geen seriële adapter; de fake is uit de publieke beschrijving nagebouwd.
   Onbewezen: `$32=1`, M4-dynamisch vermogen, lucht (M8), G54, de foutcodetabel, jog-richting bij omgekeerde assen. Start/upload

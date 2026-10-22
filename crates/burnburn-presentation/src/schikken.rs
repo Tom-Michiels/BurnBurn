@@ -204,6 +204,30 @@ pub struct NestInput {
     pub sheet_object: Option<u64>,
     /// How many identical sheets the parts may go on (whole number, at least 1).
     pub sheets: String,
+    /// How many copies of every part (whole number, 1 to 1000) unless the part has its own (C12).
+    pub copies: String,
+    /// The parts that have their own number of copies: the first object of the part and the text.
+    pub part_copies: Vec<(u64, String)>,
+    /// Whether an object inside another one is a hole of that part (C10).
+    pub holes: NestHoles,
+    /// Grain direction of the sheet in degrees (blank: none). With a grain every part keeps its
+    /// own X axis along it, turning only to the orientations that follow it (C10).
+    pub grain: String,
+    /// Pack the parts without space so that they share edges (common-line cutting, C12): the
+    /// padding is not used, packing is tight, and the report counts the shared edge.
+    pub common_line: bool,
+    /// Slide every placement against its neighbours with exact geometry (slower, packs tighter).
+    pub tight: bool,
+}
+
+/// What an object that lies inside another object is for the nest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NestHoles {
+    /// A hole of that part: it moves with it, and the space is free for other parts.
+    #[default]
+    Join,
+    /// A part of its own.
+    Separate,
 }
 
 /// Whether the nest may mirror a part. Mirroring changes what a cut part is, so it is a choice that
@@ -225,6 +249,12 @@ impl Default for NestInput {
             mirror: NestMirror::default(),
             sheet_object: None,
             sheets: "1".to_owned(),
+            copies: "1".to_owned(),
+            part_copies: Vec::new(),
+            holes: NestHoles::default(),
+            grain: String::new(),
+            common_line: false,
+            tight: false,
         }
     }
 }
@@ -235,6 +265,10 @@ pub enum NestField {
     EdgeBuffer,
     Step,
     Sheets,
+    /// The number of copies of a part.
+    Copies,
+    /// The grain direction of the sheet.
+    Grain,
 }
 
 /// Why a nest did not run or gave nothing.
@@ -313,6 +347,8 @@ pub enum NestSkipReason {
 pub struct NestUnplacedRow {
     pub objects: Vec<burnburn_types::GeometryId>,
     pub reason: NestUnplacedReason,
+    /// How many copies of the part were not placed.
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,6 +373,9 @@ pub struct NestReportViewModel {
     pub parts: Vec<NestPartStatusRow>,
     /// Complete sets placed: a set is one of every part.
     pub complete_sets: u32,
+    /// Length of the straight edges the placed parts share, in mm; `Some` only with common-line
+    /// cutting chosen.
+    pub shared_mm: Option<f64>,
 }
 
 /// What is used and left of one sheet, in mm².
@@ -355,6 +394,18 @@ pub struct NestPartStatusRow {
     pub placed: u32,
 }
 
+/// One part of the nest as the panel lists it, with the number of copies it will get (C12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NestPartRow {
+    /// The first object of the part (its key in `NestInput::part_copies`).
+    pub object: u64,
+    pub name: String,
+    /// The number of copies as text: its own, or the one of the panel.
+    pub copies: String,
+    /// The part has its own number.
+    pub own: bool,
+}
+
 /// The nest panel (Quick Nest, Nest Selected) while it is open.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NestPanelViewModel {
@@ -368,6 +419,8 @@ pub struct NestPanelViewModel {
     pub sheet: Option<NestSheetView>,
     /// The closed objects that may be the sheet instead of the bed (W07).
     pub sheet_choices: Vec<NestSheetChoice>,
+    /// The parts with the number of copies each will get (C12).
+    pub part_rows: Vec<NestPartRow>,
     pub report: Option<NestReportViewModel>,
     /// Apply is available: a fresh result with at least one placement.
     pub can_apply: bool,
@@ -682,7 +735,8 @@ pub enum SchikkenIntent {
     /// A result of other options is dropped.
     SetNestOptions {
         document: burnburn_types::DocumentId,
-        input: NestInput,
+        // Boxed: the options of the panel are larger than any other intent.
+        input: Box<NestInput>,
     },
     /// Start the nest as a cancellable task (an older one is cancelled).
     StartNest {

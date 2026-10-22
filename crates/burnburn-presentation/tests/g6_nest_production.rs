@@ -47,7 +47,7 @@ fn send(h: &mut Harness, intent: SchikkenIntent) {
 }
 
 fn options(h: &mut Harness, doc: DocumentId, input: NestInput) {
-    send(h, SchikkenIntent::SetNestOptions { document: doc, input });
+    send(h, SchikkenIntent::SetNestOptions { document: doc, input: Box::new(input) });
 }
 
 fn nest(h: &mut Harness, doc: DocumentId) -> NestPanelViewModel {

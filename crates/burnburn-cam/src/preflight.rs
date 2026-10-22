@@ -161,7 +161,7 @@ pub fn preflight_with(
                 }
                 at = to;
             }
-            PlanEvent::Cut { to, origin } => {
+            PlanEvent::Cut { to, origin } | PlanEvent::CutPower { to, origin, .. } => {
                 if let Some(src) = origin {
                     grow(src, at, to);
                 }

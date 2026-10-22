@@ -109,9 +109,11 @@ fn read_ruida_fixture_returns_checked_bytes() {
 fn project_fixture_hashes_match_manifest() {
     let verified = verify_manifest(&fixture_dir("projects")).unwrap_or_else(|e| panic!("{e}"));
     let paths: Vec<_> = verified.iter().map(|f| f.path.as_str()).collect();
-    assert_eq!(paths, ["v1/rectangle-120x80.burnburn", "v2/plate-operations.burnburn"]);
+    assert_eq!(paths, ["v1/rectangle-120x80.burnburn", "v2/plate-operations.burnburn", "v2/recipes-in-rows.burnburn"]);
     assert_eq!(verified[0].sha256, "9f0b355a2bedad4d06abec316613641a5df546376dc492e0370ed6a8ed9b651d");
     assert_eq!(verified[1].sha256, "2ec762d383f5da1652ddfa529367059fd65f7ef3962aaaa02d057f3fa063088d");
+    // G7-cam: written by hand, recorded once.
+    assert_eq!(verified[2].sha256, "25a65667bdfd0a788bcbc690ee32d4746c7828ea4bd5f0370a5731c5c792efe1");
 }
 
 #[test]

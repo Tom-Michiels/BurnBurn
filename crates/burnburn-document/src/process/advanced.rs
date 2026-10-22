@@ -27,6 +27,8 @@ pub enum TabPlacement {
 pub struct TabSpec {
     placement: TabPlacement,
     width_mm: f64,
+    /// Percentage of the operation's power the tabs are cut with; `None` leaves them uncut.
+    cut_power_percent: Option<f64>,
 }
 
 impl TabSpec {
@@ -36,7 +38,11 @@ impl TabSpec {
         if !(1..=Self::MAX_COUNT).contains(&count) {
             return Err(ProcessError::OutOfRange { field: "tab count" });
         }
-        Ok(TabSpec { placement: TabPlacement::Count(count), width_mm: positive(width, "tab width")? })
+        Ok(TabSpec {
+            placement: TabPlacement::Count(count),
+            width_mm: positive(width, "tab width")?,
+            cut_power_percent: None,
+        })
     }
 
     /// Tabs every `spacing` of contour length. The spacing must exceed the tab width.
@@ -46,7 +52,7 @@ impl TabSpec {
         if spacing_mm <= width_mm {
             return Err(ProcessError::OutOfRange { field: "tab spacing" });
         }
-        Ok(TabSpec { placement: TabPlacement::Spacing(spacing_mm), width_mm })
+        Ok(TabSpec { placement: TabPlacement::Spacing(spacing_mm), width_mm, cut_power_percent: None })
     }
 
     pub fn placement(&self) -> TabPlacement {
@@ -62,6 +68,60 @@ impl TabSpec {
     }
     pub fn width_mm(&self) -> f64 {
         self.width_mm
+    }
+
+    /// The same tabs, cut at `percent` of the operation's power instead of skipped (C04).
+    pub fn with_cut_power(mut self, percent: f64) -> Result<Self, ProcessError> {
+        // 0 is "skip" (leave it unset) and 100 would be no tab at all.
+        if !(percent.is_finite() && percent > 0.0 && percent < 100.0) {
+            return Err(ProcessError::OutOfRange { field: "tab cut power" });
+        }
+        self.cut_power_percent = Some(percent);
+        Ok(self)
+    }
+
+    /// The same tabs, skipped again.
+    pub fn without_cut_power(mut self) -> Self {
+        self.cut_power_percent = None;
+        self
+    }
+
+    /// The share of the operation's power the tabs are cut with, or `None` when they are skipped.
+    pub fn cut_power_percent(&self) -> Option<f64> {
+        self.cut_power_percent
+    }
+}
+
+/// Common-line cutting (C12): where the toolpaths of different shapes of a Line operation coincide
+/// within `tolerance` over at least `min_overlap`, the stretch is cut once. Parts that touch (or
+/// lie a kerf apart) then share one cut. Needs the `CommonLine` capability of the machine.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CommonLine {
+    tolerance_mm: f64,
+    min_overlap_mm: f64,
+}
+
+impl CommonLine {
+    /// Largest tolerance (mm): beyond it two lines are no longer "the same line".
+    pub const MAX_TOLERANCE_MM: f64 = 5.0;
+
+    pub fn new(tolerance: Length, min_overlap: Length) -> Result<Self, ProcessError> {
+        let (tolerance_mm, min_overlap_mm) = (tolerance.mm(), min_overlap.mm());
+        if !(tolerance_mm > 0.0 && tolerance_mm <= Self::MAX_TOLERANCE_MM) {
+            return Err(ProcessError::OutOfRange { field: "common-line tolerance" });
+        }
+        if !(min_overlap_mm >= 0.0) {
+            return Err(ProcessError::OutOfRange { field: "common-line overlap" });
+        }
+        Ok(CommonLine { tolerance_mm, min_overlap_mm })
+    }
+
+    pub fn tolerance_mm(&self) -> f64 {
+        self.tolerance_mm
+    }
+
+    pub fn min_overlap_mm(&self) -> f64 {
+        self.min_overlap_mm
     }
 }
 
@@ -284,6 +344,8 @@ pub struct AdvancedOptions {
     pub shared_edges: SharedEdgePolicy,
     /// Set on a tool layer (T1/T2): no output, no cut options.
     pub tool: Option<ToolLayer>,
+    /// Common-line cutting of the shapes of a Line operation (C12); off by default.
+    pub common_line: Option<CommonLine>,
 }
 
 impl AdvancedOptions {
@@ -311,6 +373,7 @@ impl AdvancedOptions {
                 (self.z_step.is_some(), "z step"),
                 (self.z_offset.is_some(), "z offset"),
                 (!self.sub_operations.is_empty(), "sub-operations"),
+                (self.common_line.is_some(), "common line"),
             ];
             if let Some((_, second)) = cut_options.into_iter().find(|(on, _)| *on) {
                 return Err(ProcessError::ConflictingOptions { first: "tool layer", second });
@@ -323,6 +386,7 @@ impl AdvancedOptions {
                 (l.lead_out.is_some(), "lead-out"),
                 (l.overcut.is_some(), "overcut"),
                 (l.perforation.is_some(), "perforation"),
+                (self.common_line.is_some(), "common line"),
             ];
             if let Some((_, second)) = others.into_iter().find(|(on, _)| *on) {
                 return Err(ProcessError::ConflictingOptions { first: "dot mode", second });

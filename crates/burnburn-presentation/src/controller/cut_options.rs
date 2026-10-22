@@ -6,8 +6,9 @@
 //! stored option the profile lacks stays untouched.
 
 use burnburn_document::process::{
-    AdvancedOptions, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead, LeadStyle,
-    LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec, ZOffset, ZStep,
+    AdvancedOptions, CommonLine, DitherMode, DotMode, FillGrouping, FillSettings, ImageRender, ImageSettings, Lead,
+    LeadStyle, LineOptions, Operation, Overcut, Perforation, ScanDirection, ScreenSettings, TabPlacement, TabSpec,
+    ZOffset, ZStep,
 };
 use burnburn_job::{Feature, MachineCapabilities, Support};
 use burnburn_types::Length;
@@ -17,23 +18,30 @@ use crate::field::{format_mm, parse_angle, parse_length, parse_number, parse_pos
 use crate::intent::OperationKind;
 use crate::view_model::MessageKey;
 
-const TABS: [CutField; 4] = [CutField::TabsEnabled, CutField::TabsMode, CutField::TabsValue, CutField::TabsWidth];
+const TABS: [CutField; 5] =
+    [CutField::TabsEnabled, CutField::TabsMode, CutField::TabsValue, CutField::TabsWidth, CutField::TabsPower];
 const LEAD_IN: [CutField; 4] =
     [CutField::LeadInEnabled, CutField::LeadInLength, CutField::LeadInShape, CutField::LeadInAngle];
 const LEAD_OUT: [CutField; 4] =
     [CutField::LeadOutEnabled, CutField::LeadOutLength, CutField::LeadOutShape, CutField::LeadOutAngle];
 const PERFORATION: [CutField; 3] = [CutField::PerforationEnabled, CutField::PerforationOn, CutField::PerforationOff];
 const DOT: [CutField; 3] = [CutField::DotEnabled, CutField::DotSpacing, CutField::DotDwell];
+const COMMON_LINE: [CutField; 3] =
+    [CutField::CommonLineEnabled, CutField::CommonLineTolerance, CutField::CommonLineMinOverlap];
 const SCREEN: [CutField; 2] = [CutField::ScreenCell, CutField::ScreenAngle];
 
 // Defaults shown for an option that is off (LightBurn-like starting values).
 const DEFAULT_TAB_COUNT: &str = "4";
 const DEFAULT_TAB_WIDTH_MM: &str = "0.5";
+/// No power: the tabs are skipped.
+const DEFAULT_TAB_POWER: &str = "0";
 const DEFAULT_LEAD_MM: &str = "2";
 const DEFAULT_LEAD_ANGLE_DEG: &str = "90";
 const DEFAULT_PERFORATION_MM: &str = "1";
 const DEFAULT_DOT_SPACING_MM: &str = "1";
 const DEFAULT_DOT_DWELL_MS: &str = "10";
+const DEFAULT_COMMON_TOLERANCE_MM: &str = "0.05";
+const DEFAULT_COMMON_OVERLAP_MM: &str = "1";
 const DEFAULT_LEVEL: &str = "128";
 const DEFAULT_MATRIX: &str = "4";
 
@@ -49,8 +57,24 @@ fn lead_fields(e: &mut CutExtras, lead: Option<Lead>, f: [CutField; 4]) {
     e.set_text(angle, lead.map_or(DEFAULT_LEAD_ANGLE_DEG.to_owned(), |l| format_mm(l.angle_deg())));
 }
 
+fn common_line_extras(c: Option<CommonLine>, e: &mut CutExtras) {
+    e.set_flag(CutField::CommonLineEnabled, c.is_some());
+    e.set_text(
+        CutField::CommonLineTolerance,
+        c.map_or(DEFAULT_COMMON_TOLERANCE_MM.to_owned(), |c| format_mm(c.tolerance_mm())),
+    );
+    e.set_text(
+        CutField::CommonLineMinOverlap,
+        c.map_or(DEFAULT_COMMON_OVERLAP_MM.to_owned(), |c| format_mm(c.min_overlap_mm())),
+    );
+}
+
 fn line_extras(l: &LineOptions, e: &mut CutExtras) {
     e.set_flag(CutField::TabsEnabled, l.tabs.is_some());
+    e.set_text(
+        CutField::TabsPower,
+        l.tabs.and_then(|t| t.cut_power_percent()).map_or(DEFAULT_TAB_POWER.to_owned(), format_mm),
+    );
     match l.tabs.map(|t| (t.placement(), t.width_mm())) {
         Some((TabPlacement::Count(n), w)) => {
             e.set_choice(CutField::TabsMode, CutChoice::TabsByCount);
@@ -159,6 +183,7 @@ pub(super) fn extras_of(op: &Operation) -> CutExtras {
     }
     let line = if matches!(op.mode(), M::Line { .. }) { op.advanced().line } else { LineOptions::default() };
     line_extras(&line, &mut e);
+    common_line_extras(if matches!(op.mode(), M::Line { .. }) { op.advanced().common_line } else { None }, &mut e);
     match (op.mode(), super::layers::default_fill()) {
         (M::Fill(f), _) | (_, Some(f)) => fill_extras(&f, &mut e),
         _ => {}
@@ -197,11 +222,14 @@ pub(super) fn gates_of(kind: OperationKind, caps: &MachineCapabilities) -> CutGa
             }
         }
         _ => {
+            // The power first: when the tabs themselves are missing too, their reason wins.
+            block(&[CutField::TabsPower], Feature::TabCutPower);
             block(&TABS, Feature::Tabs);
             block(&[LEAD_IN, LEAD_OUT].concat(), Feature::Leads);
             block(&[CutField::Overcut], Feature::Overcut);
             block(&PERFORATION, Feature::Perforation);
             block(&DOT, Feature::DotMode);
+            block(&COMMON_LINE, Feature::CommonLine);
             block(&[CutField::FillCrossHatch], Feature::CrossHatch);
             block(&[CutField::FillFloodFill], Feature::FloodFill);
             block(&[CutField::FillGrouping], Feature::FillGrouping);
@@ -254,7 +282,17 @@ fn tabs(m: &CutExtras) -> Result<TabSpec, MessageKey> {
         Some(CutChoice::TabsBySpacing) => TabSpec::spaced(length(value, CutField::TabsValue)?, width),
         _ => TabSpec::new(whole(value, CutField::TabsValue)?, width),
     };
-    spec.map_err(|_| invalid(CutField::TabsValue))
+    let spec = spec.map_err(|_| invalid(CutField::TabsValue))?;
+    // `0` or an empty field: the tabs are skipped (C04); otherwise a percentage of the power.
+    let text = m.text(CutField::TabsPower);
+    if text.trim().is_empty() {
+        return Ok(spec);
+    }
+    let percent = parse_number(text, &["%"]).map_err(|_| invalid(CutField::TabsPower))?;
+    if percent == 0.0 {
+        return Ok(spec);
+    }
+    spec.with_cut_power(percent).map_err(|_| invalid(CutField::TabsPower))
 }
 
 fn lead(m: &CutExtras, f: [CutField; 4]) -> Result<Option<Lead>, MessageKey> {
@@ -322,6 +360,26 @@ fn line_options(
         return Err(MessageKey::CutOptionsConflict);
     }
     Ok(out)
+}
+
+/// Common-line cutting from its three fields: off, or the tolerance and the minimal overlap.
+fn common_line(m: &CutExtras) -> Result<Option<CommonLine>, MessageKey> {
+    if !m.flag(CutField::CommonLineEnabled) {
+        return Ok(None);
+    }
+    let tolerance = length(m.text(CutField::CommonLineTolerance), CutField::CommonLineTolerance)?;
+    let overlap_text = m.text(CutField::CommonLineMinOverlap);
+    let overlap = if overlap_text.trim().is_empty() {
+        length_or_zero("0", CutField::CommonLineMinOverlap)?
+    } else {
+        parse_position(overlap_text).map_err(|_| invalid(CutField::CommonLineMinOverlap))?
+    };
+    CommonLine::new(tolerance, overlap).map(Some).map_err(|e| match e {
+        burnburn_document::process::ProcessError::OutOfRange { field: "common-line overlap" } => {
+            invalid(CutField::CommonLineMinOverlap)
+        }
+        _ => invalid(CutField::CommonLineTolerance),
+    })
 }
 
 fn grouping(c: Option<CutChoice>, stored: FillGrouping) -> FillGrouping {
@@ -509,18 +567,24 @@ pub(super) fn apply(
     let mode = match mode {
         M::Line { kerf } => {
             advanced.line = line_options(op.advanced().line, &merged, &changed)?;
+            if changed(&COMMON_LINE) {
+                advanced.common_line = common_line(&merged)?;
+            }
             M::Line { kerf }
         }
         M::Fill(f) => {
             advanced.line = LineOptions::default();
+            advanced.common_line = None;
             M::Fill(fill(f, &merged, &changed)?)
         }
         M::Image(i) => {
             advanced.line = LineOptions::default();
+            advanced.common_line = None;
             M::Image(image(i, &merged, &changed)?)
         }
         other => {
             advanced.line = LineOptions::default();
+            advanced.common_line = None;
             other
         }
     };

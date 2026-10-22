@@ -13,7 +13,7 @@
 use std::fmt;
 
 use burnburn_geometry::{
-    Affine, BooleanOp, BooleanOptions, Bounds, FillRule, OffsetJoin, Path, Point, ProductionTolerance,
+    Affine, BooleanOp, BooleanOptions, Bounds, FillRule, OffsetJoin, Path, Point, ProductionTolerance, Vector,
 };
 use burnburn_types::{CancellationToken, Cancelled, Length};
 
@@ -382,6 +382,22 @@ struct Shape {
     local: Affine,
     raw: Vec<(i64, i64)>,
     grown: Vec<(i64, i64)>,
+    /// Only for [`Packing::Tight`].
+    tight: Option<TightShape>,
+}
+
+/// What exact placement needs of a shape (local coordinates, bbox minimum at the origin).
+#[derive(Debug, Clone)]
+struct TightShape {
+    /// Cells whose centre lies inside the shape: the optimistic raster, validated exactly.
+    raw_centres: Vec<(i64, i64)>,
+    /// The shape pulled in by the slack, so that the exact checks accept a position that is at
+    /// most the slack inside a neighbour and never one with a poking corner.
+    shrunk: Path,
+    /// The shape grown by the spacing: what a later part must keep out of.
+    grown: Path,
+    /// Width and height of the shape (its bounds start at the local origin).
+    size: (f64, f64),
 }
 
 /// A cancelled offset is a cancelled nest, not a geometry problem.
@@ -392,11 +408,28 @@ fn offset_error(e: burnburn_geometry::OffsetError, what: &'static str) -> NestEr
     }
 }
 
+#[cfg(test)]
 fn rotated(
     part: &NestPart,
     deg: f64,
     mirrored: bool,
     p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Shape, NestError> {
+    rotated_with(part, deg, mirrored, p, false, cancel)
+}
+
+/// How far the exact checks may let two parts overlap (mm): a tenth of the production tolerance.
+fn slack_mm(p: &NestParams) -> f64 {
+    p.tolerance.mm() / 10.0
+}
+
+fn rotated_with(
+    part: &NestPart,
+    deg: f64,
+    mirrored: bool,
+    p: &NestParams,
+    tight: bool,
     cancel: &CancellationToken,
 ) -> Result<Shape, NestError> {
     let bad = |what| move |_| NestError::Geometry { what };
@@ -415,10 +448,46 @@ fn rotated(
         burnburn_geometry::offset(&shape, p.spacing.mm(), OffsetJoin::Round, &p.tolerance, cancel)
             .map_err(|e| offset_error(e, "spacing offset"))?
     } else {
-        shape
+        shape.clone()
     };
     let grown = touched_cells(&polygons(&grown_path, &p.tolerance)?, Point::ORIGIN, step);
-    Ok(Shape { rotation_deg: deg, mirrored, local, raw, grown })
+    let tight = if tight {
+        // A part too thin to pull in keeps its outline: the exact check is then merely strict.
+        let shrunk = match burnburn_geometry::offset(&shape, -slack_mm(p), OffsetJoin::Miter, &p.tolerance, cancel) {
+            Ok(path) if !path.is_empty() => path,
+            Err(burnburn_geometry::OffsetError::Cancelled) => return Err(NestError::Cancelled),
+            _ => shape.clone(),
+        };
+        let raw_centres = centre_cells(&polygons(&shape, &p.tolerance)?, Point::ORIGIN, step);
+        let size = shape.bounds().map_or((0.0, 0.0), |b| (b.width(), b.height()));
+        Some(TightShape { raw_centres, shrunk, grown: grown_path, size })
+    } else {
+        None
+    };
+    Ok(Shape { rotation_deg: deg, mirrored, local, raw, grown, tight })
+}
+
+/// Cells whose centre is inside the area bounded by `polys` (even-odd).
+fn centre_cells(polys: &[Vec<Point>], origin: Point, step: f64) -> Vec<(i64, i64)> {
+    let cell = |v: f64, o: f64| ((v - o) / step).floor() as i64;
+    let mut bounds: Option<Bounds> = None;
+    for p in polys.iter().flatten() {
+        match bounds.as_mut() {
+            Some(b) => b.include(*p),
+            None => bounds = Some(Bounds::from_point(*p)),
+        }
+    }
+    let mut cells = Vec::new();
+    if let Some(b) = bounds {
+        for r in cell(b.min().y, origin.y)..=cell(b.max().y, origin.y) {
+            for c in cell(b.min().x, origin.x)..=cell(b.max().x, origin.x) {
+                if inside_even_odd(centre(origin, step, c, r), polys) {
+                    cells.push((c, r));
+                }
+            }
+        }
+    }
+    cells
 }
 
 /// Free/blocked raster of one sheet plus its net area.
@@ -429,9 +498,31 @@ struct Sheet<'a> {
     placed: Vec<Bounds>,
     /// Net area of the parts placed so far, mm².
     placed_mm2: f64,
+    /// Only for [`Packing::Tight`].
+    tight: Option<TightSheet>,
 }
 
+/// The exact side of a sheet: the usable area and the grown outline of every placed part.
+struct TightSheet {
+    usable: Path,
+    usable_bounds: Option<Bounds>,
+    /// Optimistic raster: blocked when the centre of a cell is outside the usable area or inside
+    /// a placed part's grown outline. A candidate is always confirmed exactly.
+    blocked: Grid,
+    placed: Vec<(Bounds, Path)>,
+}
+
+#[cfg(test)]
 fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Result<Sheet<'a>, NestError> {
+    sheet_with(stock, p, false, cancel)
+}
+
+fn sheet_with<'a>(
+    stock: &'a Stock,
+    p: &NestParams,
+    tight: bool,
+    cancel: &CancellationToken,
+) -> Result<Sheet<'a>, NestError> {
     let options = BooleanOptions { fill: FillRule::EvenOdd, tolerance: p.tolerance };
     let mut usable = stock.outline.clone();
     for k in &stock.keep_out {
@@ -461,10 +552,17 @@ fn sheet<'a>(stock: &'a Stock, p: &NestParams, cancel: &CancellationToken) -> Re
             }
         }
     }
+    // At this point `blocked` holds exactly the cells whose centre is outside the usable area.
+    let tight = tight.then(|| TightSheet {
+        usable_bounds: usable.bounds(),
+        usable: usable.clone(),
+        blocked: blocked.clone(),
+        placed: Vec::new(),
+    });
     for (c, r) in boundary_cells(&polys, b.min(), step) {
         blocked.set(c, r);
     }
-    Ok(Sheet { stock, blocked, net_area, placed: Vec::new(), placed_mm2: 0.0 })
+    Ok(Sheet { stock, blocked, net_area, placed: Vec::new(), placed_mm2: 0.0, tight })
 }
 
 /// Liang–Barsky on the *open* box: does segment `a b` pass through the cell interior? A
@@ -520,6 +618,29 @@ pub fn nest_with(
     options: &NestOptions,
     cancel: &CancellationToken,
 ) -> Result<NestResult, NestError> {
+    nest_packed(parts, stock, p, options, Packing::Grid, cancel)
+}
+
+/// How closely accepted placements are packed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Packing {
+    /// Positions on the grid of `NestParams::step` only: a part occupies whole cells.
+    #[default]
+    Grid,
+    /// After the grid has found a position, slide it against its neighbours with exact geometry.
+    Tight,
+}
+
+/// [`nest_with`] with a choice of [`Packing`].
+pub fn nest_packed(
+    parts: &[NestPart],
+    stock: &[Stock],
+    p: &NestParams,
+    options: &NestOptions,
+    packing: Packing,
+    cancel: &CancellationToken,
+) -> Result<NestResult, NestError> {
+    let tight = packing == Packing::Tight;
     let mirror_choices: &[bool] = match options.mirror {
         MirrorPolicy::Forbidden => &[false],
         // Unmirrored first: at equal positions the part is not mirrored.
@@ -532,7 +653,7 @@ pub fn nest_with(
         return Err(NestError::InvalidInput { field: "spacing" });
     }
     cancel.check()?;
-    let mut sheets: Vec<Sheet<'_>> = stock.iter().map(|s| sheet(s, p, cancel)).collect::<Result<_, _>>()?;
+    let mut sheets: Vec<Sheet<'_>> = stock.iter().map(|s| sheet_with(s, p, tight, cancel)).collect::<Result<_, _>>()?;
     let mut order: Vec<(usize, f64)> = Vec::with_capacity(parts.len());
     for (i, part) in parts.iter().enumerate() {
         order.push((i, net_area(&polygons(&part.outline, &p.tolerance)?)));
@@ -550,7 +671,7 @@ pub fn nest_with(
         for &mirrored in mirror_choices {
             for &deg in part.rotations.degrees() {
                 if stock.iter().any(|s| grain_allows(part, s, deg, mirrored)) {
-                    shapes.push(rotated(part, deg, mirrored, p, cancel)?);
+                    shapes.push(rotated_with(part, deg, mirrored, p, tight, cancel)?);
                 }
             }
         }
@@ -561,38 +682,59 @@ pub fn nest_with(
         let mut copy = 0;
         while copy < part.count {
             cancel.check()?;
-            let mut found: Option<(usize, &Shape, i64, i64)> = None;
+            let mut found: Option<(usize, &Shape, Point)> = None;
             let mut exhausted = false;
             for (si, sh) in sheets.iter().enumerate() {
-                let mut best: Option<(&Shape, i64, i64)> = None;
+                let mut best: Option<(&Shape, Point)> = None;
                 for shape in shapes.iter().filter(|s| grain_allows(part, sh.stock, s.rotation_deg, s.mirrored)) {
-                    if let Some((c, r)) = first_fit(&sh.blocked, shape, &mut budget, cancel)? {
-                        if best.is_none_or(|(_, bc, br)| (r, c) < (br, bc)) {
-                            best = Some((shape, c, r));
+                    let fit = match &sh.tight {
+                        Some(t) => first_fit_tight(t, shape, p, &mut budget, cancel)?,
+                        None => first_fit(&sh.blocked, shape, &mut budget, cancel)?.map(|(c, r)| {
+                            Point::new(
+                                sh.blocked.origin.x + c as f64 * p.step.mm(),
+                                sh.blocked.origin.y + r as f64 * p.step.mm(),
+                            )
+                        }),
+                    };
+                    match fit {
+                        // Lowest row, then lowest column (the order of the grid search).
+                        Some(at) => {
+                            if best.is_none_or(|(_, b)| at.y.total_cmp(&b.y).then(at.x.total_cmp(&b.x)).is_lt()) {
+                                best = Some((shape, at));
+                            }
                         }
-                    } else if budget == 0 {
-                        exhausted = true;
+                        None if budget == 0 => exhausted = true,
+                        None => {}
                     }
                 }
-                if let Some((shape, c, r)) = best {
-                    found = Some((si, shape, c, r));
+                if let Some((shape, at)) = best {
+                    found = Some((si, shape, at));
                     break;
                 }
             }
-            let Some((si, shape, c, r)) = found else {
+            let Some((si, shape, at)) = found else {
                 let reason = if exhausted { UnplacedReason::Budget } else { UnplacedReason::NoFit };
                 unplaced.push(Unplaced { part: part.key, count: part.count - copy, reason });
                 break;
             };
             let sh = &mut sheets[si];
-            for &(dc, dr) in &shape.grown {
-                sh.blocked.set(c + dc, r + dr);
-            }
-            let at =
-                Point::new(sh.blocked.origin.x + c as f64 * p.step.mm(), sh.blocked.origin.y + r as f64 * p.step.mm());
             let transform = shape
                 .local
                 .then(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
+            match (&mut sh.tight, &shape.tight) {
+                (Some(t), Some(ts)) => occupy_exact(t, ts, at, p)?,
+                _ => {
+                    // The grid position is a whole number of cells from the origin.
+                    let step = p.step.mm();
+                    let (c, r) = (
+                        ((at.x - sh.blocked.origin.x) / step).round() as i64,
+                        ((at.y - sh.blocked.origin.y) / step).round() as i64,
+                    );
+                    for &(dc, dr) in &shape.grown {
+                        sh.blocked.set(c + dc, r + dr);
+                    }
+                }
+            }
             if let Some(b) = part.outline.transform(&transform).bounds() {
                 sh.placed.push(b);
             }
@@ -658,6 +800,275 @@ fn first_fit(
         }
     }
     Ok(None)
+}
+
+/// Total length of the straight edges that placed parts share: edges of two different placed parts
+/// that lie within `edge_tolerance_mm` of one common line and overlap along it. Parts nested
+/// without spacing and packed tight touch like this, and the shared edge can be cut once
+/// (common-line cutting, C12). Outlines are flattened within `tolerance`.
+pub fn shared_edge_length_mm(
+    parts: &[NestPart],
+    result: &NestResult,
+    tolerance: &ProductionTolerance,
+    edge_tolerance_mm: f64,
+) -> f64 {
+    // The placed outlines as segments, with their bounds.
+    let mut placed: Vec<(Bounds, Vec<(Point, Point)>)> = Vec::new();
+    for pl in &result.placements {
+        let Some(part) = parts.iter().find(|p| p.key == pl.part) else { continue };
+        let moved = part.outline.transform(&pl.transform);
+        let Some(bounds) = moved.bounds() else { continue };
+        let mut segments = Vec::new();
+        for pl in moved.flatten(tolerance) {
+            let n = pl.points.len();
+            let closed = pl.closed && n > 2;
+            for k in 0..n.saturating_sub(1) {
+                segments.push((pl.points[k], pl.points[k + 1]));
+            }
+            if closed && pl.points.first() != pl.points.last() {
+                segments.push((pl.points[n - 1], pl.points[0]));
+            }
+        }
+        placed.push((bounds, segments));
+    }
+    let mut total = 0.0;
+    for (i, (bi, si)) in placed.iter().enumerate() {
+        for (bj, sj) in &placed[i + 1..] {
+            if !bi.expanded(edge_tolerance_mm).intersects(bj) {
+                continue;
+            }
+            for &(a, b) in si {
+                for &(c, d) in sj {
+                    total += collinear_overlap_mm(a, b, c, d, edge_tolerance_mm);
+                }
+            }
+        }
+    }
+    total
+}
+
+/// Length along which segment `c..d` lies within `tol` of the line through `a..b` and projects
+/// onto `a..b`.
+fn collinear_overlap_mm(a: Point, b: Point, c: Point, d: Point, tol: f64) -> f64 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len = dx.hypot(dy);
+    if len <= 0.0 {
+        return 0.0;
+    }
+    let (ux, uy) = (dx / len, dy / len);
+    // Distance of a point from the line, and its position along it.
+    let across = |p: Point| ((p.x - a.x) * -uy + (p.y - a.y) * ux).abs();
+    let along = |p: Point| (p.x - a.x) * ux + (p.y - a.y) * uy;
+    if across(c) > tol || across(d) > tol {
+        return 0.0;
+    }
+    let (t0, t1) = (along(c).min(along(d)), along(c).max(along(d)));
+    (t1.min(len) - t0.max(0.0)).max(0.0)
+}
+
+/// Slides at most this many steps in one direction in one sweep.
+const MAX_SLIDE_STEPS: u32 = 4;
+/// Sub-cell offsets tried for each free cell, in the order of a bottom-left search.
+const SUB_CELL: [f64; 4] = [0.0, 0.25, 0.5, 0.75];
+
+/// Whether an overlay result is empty up to rounding of the overlay grid.
+fn negligible(path: &Path) -> bool {
+    path.subpaths().iter().filter_map(|sp| sp.signed_area()).map(f64::abs).sum::<f64>() < 1e-9
+}
+
+/// The exact check of a tight nest: the shape (pulled in by the slack) at translation `at` lies
+/// inside the usable area and clear of the grown outline of every placed part.
+fn exact_valid(
+    t: &TightSheet,
+    ts: &TightShape,
+    at: Point,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<bool, NestError> {
+    let moved = ts
+        .shrunk
+        .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
+    let Some(b) = moved.bounds() else { return Ok(false) };
+    let options = BooleanOptions { fill: FillRule::EvenOdd, tolerance: p.tolerance };
+    let boolean = |a: &Path, c: &Path, op| {
+        burnburn_geometry::boolean(a, c, op, &options, cancel).map_err(|e| match e {
+            burnburn_geometry::BooleanError::Cancelled => NestError::Cancelled,
+            _ => NestError::Geometry { what: "exact placement" },
+        })
+    };
+    if !negligible(&boolean(&moved, &t.usable, BooleanOp::Difference)?) {
+        return Ok(false);
+    }
+    for (other, grown) in &t.placed {
+        if other.intersects(&b) && !negligible(&boolean(&moved, grown, BooleanOp::Intersection)?) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Bottom-left first position of `shape` on a tight sheet: the optimistic raster proposes cells,
+/// the exact check confirms a position inside the cell, and the result slides down and to the
+/// left against what is there until it touches (within the slack).
+fn first_fit_tight(
+    t: &TightSheet,
+    shape: &Shape,
+    p: &NestParams,
+    budget: &mut u64,
+    cancel: &CancellationToken,
+) -> Result<Option<Point>, NestError> {
+    let Some(ts) = &shape.tight else { return Ok(None) };
+    let grid = grid_fit_tight(t, ts, p, budget, cancel)?;
+    let contact = contact_fit_tight(t, ts, grid, p, cancel)?;
+    // The lower row wins, then the lower column.
+    Ok(match (grid, contact) {
+        (Some(a), Some(b)) => Some(if b.y.total_cmp(&a.y).then(b.x.total_cmp(&a.x)).is_lt() { b } else { a }),
+        (a, b) => a.or(b),
+    })
+}
+
+/// Most contact positions tried for one part.
+const CONTACT_LIMIT: usize = 1024;
+
+/// Positions where the part touches the usable area or a placed part: the part's lower left corner
+/// at an edge of the usable area or at the far side of a neighbour's grown outline. The raster's
+/// cells cannot propose these (a part that fits exactly into what is left of a row), so they are
+/// tried in addition, lower rows first, and only those not worse than `known`.
+fn contact_fit_tight(
+    t: &TightSheet,
+    ts: &TightShape,
+    known: Option<Point>,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Option<Point>, NestError> {
+    let Some(usable) = t.usable_bounds else { return Ok(None) };
+    let mut xs = vec![usable.min().x];
+    let mut ys = vec![usable.min().y];
+    for (b, _) in &t.placed {
+        xs.push(b.max().x);
+        ys.push(b.max().y);
+    }
+    for v in [&mut xs, &mut ys] {
+        v.sort_by(f64::total_cmp);
+        v.dedup();
+    }
+    let slack = slack_mm(p);
+    let fits = |x: f64, y: f64| x + ts.size.0 <= usable.max().x + slack && y + ts.size.1 <= usable.max().y + slack;
+    let mut tried = 0;
+    for &y in &ys {
+        if known.is_some_and(|k| y > k.y + slack) {
+            break;
+        }
+        for &x in &xs {
+            if !fits(x, y) {
+                continue;
+            }
+            tried += 1;
+            if tried > CONTACT_LIMIT {
+                return Ok(None);
+            }
+            cancel.check()?;
+            let at = Point::new(x, y);
+            if exact_valid(t, ts, at, p, cancel)? {
+                return slide(t, ts, at, p, cancel).map(Some);
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The raster's bottom-left position (see [`first_fit_tight`]).
+fn grid_fit_tight(
+    t: &TightSheet,
+    ts: &TightShape,
+    p: &NestParams,
+    budget: &mut u64,
+    cancel: &CancellationToken,
+) -> Result<Option<Point>, NestError> {
+    let (grid, step) = (&t.blocked, p.step.mm());
+    for r in 0..grid.rows {
+        cancel.check()?;
+        for c in 0..grid.cols {
+            if *budget == 0 {
+                return Ok(None);
+            }
+            *budget -= 1;
+            let free = ts.raw_centres.iter().all(|&(dc, dr)| {
+                let (x, y) = (c + dc, r + dr);
+                x >= 0 && y >= 0 && x < grid.cols && y < grid.rows && !grid.get(x, y)
+            });
+            if !free {
+                continue;
+            }
+            for fy in SUB_CELL {
+                for fx in SUB_CELL {
+                    if *budget == 0 {
+                        return Ok(None);
+                    }
+                    *budget -= 1;
+                    let at = Point::new(grid.origin.x + (c as f64 + fx) * step, grid.origin.y + (r as f64 + fy) * step);
+                    if exact_valid(t, ts, at, p, cancel)? {
+                        return slide(t, ts, at, p, cancel).map(Some);
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Moves a valid position down, then left, as far as it stays valid (bisection down to the
+/// slack), until a sweep moves nothing.
+fn slide(
+    t: &TightSheet,
+    ts: &TightShape,
+    mut at: Point,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Point, NestError> {
+    let (step, slack) = (p.step.mm(), slack_mm(p));
+    for _ in 0..3 {
+        let before = at;
+        for dir in [Vector::new(0.0, -1.0), Vector::new(-1.0, 0.0)] {
+            for _ in 0..MAX_SLIDE_STEPS {
+                let far = at + dir * step;
+                if exact_valid(t, ts, far, p, cancel)? {
+                    at = far;
+                    continue;
+                }
+                let (mut ok, mut bad) = (0.0, step);
+                while bad - ok > slack {
+                    let mid = 0.5 * (ok + bad);
+                    if exact_valid(t, ts, at + dir * mid, p, cancel)? {
+                        ok = mid;
+                    } else {
+                        bad = mid;
+                    }
+                }
+                at = at + dir * ok;
+                break;
+            }
+        }
+        if before.distance(at) <= slack {
+            break;
+        }
+    }
+    Ok(at)
+}
+
+/// Marks a tight placement at `at`: the grown outline for later exact checks and the cells whose
+/// centre it covers for the optimistic raster.
+fn occupy_exact(t: &mut TightSheet, ts: &TightShape, at: Point, p: &NestParams) -> Result<(), NestError> {
+    let grown = ts
+        .grown
+        .transform(&Affine::translate(at - Point::ORIGIN).map_err(|_| NestError::Geometry { what: "placement" })?);
+    if let Some(b) = grown.bounds() {
+        for (c, r) in centre_cells(&polygons(&grown, &p.tolerance)?, t.blocked.origin, p.step.mm()) {
+            t.blocked.set(c, r);
+        }
+        t.placed.push((b, grown));
+    }
+    Ok(())
 }
 
 /// The placements of `result` on `stock` as one document command on `plate` (IM26 ↔ IM21):

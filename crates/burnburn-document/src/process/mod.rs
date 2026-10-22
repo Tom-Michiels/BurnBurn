@@ -19,8 +19,8 @@ mod recipe;
 mod settings;
 
 pub use advanced::{
-    AdvancedOptions, DotMode, Lead, LeadStyle, LineOptions, Overcut, Perforation, SharedEdgePolicy, SubOperation,
-    TabPlacement, TabSpec, ToolLayer, ZOffset, ZStep,
+    AdvancedOptions, CommonLine, DotMode, Lead, LeadStyle, LineOptions, Overcut, Perforation, SharedEdgePolicy,
+    SubOperation, TabPlacement, TabSpec, ToolLayer, ZOffset, ZStep,
 };
 pub use command::{ProcessCommand, ProcessLabel};
 pub(crate) use command::{ProcessTxn, apply};

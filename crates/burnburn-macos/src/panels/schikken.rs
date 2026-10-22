@@ -14,6 +14,9 @@ use burnburn_presentation::{
 };
 use burnburn_types::DocumentId;
 
+/// Most parts that get a row of their own for the number of copies (the panel is a fixed form).
+const MAX_PART_ROWS: usize = 12;
+
 use crate::l10n::{
     Locale, center_problem_text, message_or_key, nest_skip_text, nest_unplaced_text, reshape_problem_text,
     tangent_problem_text,
@@ -43,6 +46,18 @@ pub enum SchikkenControl {
     NestMirror,
     NestSheets,
     NestSheet,
+    /// Grain direction of the sheet (C10).
+    NestGrain,
+    /// Copies of every part (C12).
+    NestCopies,
+    /// Copies of one part, by its row in the panel.
+    NestPartCopies(usize),
+    /// Whether an inner contour is a hole of its part (C10).
+    NestHoles,
+    /// Exact, tight packing (C10).
+    NestTight,
+    /// Common-line cutting: parts touch and share edges (C12).
+    NestCommonLine,
     NestStart,
     NestStop,
     NestApply,
@@ -168,6 +183,13 @@ pub enum SchikkenText {
     NestRotations,
     NestMirror,
     NestSheets,
+    NestGrain,
+    NestCopies,
+    NestPartCopies,
+    NestHoles,
+    NestTight,
+    NestCommonLine,
+    NestSharedRow,
     NestSheetCaption,
     NestSheetBedOption,
     NestSheetContour,
@@ -274,6 +296,13 @@ impl SchikkenText {
             T::NestRotations,
             T::NestMirror,
             T::NestSheets,
+            T::NestGrain,
+            T::NestCopies,
+            T::NestPartCopies,
+            T::NestHoles,
+            T::NestTight,
+            T::NestCommonLine,
+            T::NestSharedRow,
             T::NestSheetCaption,
             T::NestSheetBedOption,
             T::NestSheetContour,
@@ -386,6 +415,19 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestRotations => ("Draaiingen", "Rotations"),
         T::NestMirror => ("Spiegelen toestaan", "Allow mirroring"),
         T::NestSheets => ("Aantal platen", "Number of sheets"),
+        T::NestGrain => ("Nerfrichting plaat (°, leeg = geen)", "Sheet grain (°, blank = none)"),
+        T::NestCopies => ("Exemplaren per onderdeel", "Copies per part"),
+        T::NestPartCopies => ("Onderdeel {n}: {name}", "Part {n}: {name}"),
+        T::NestHoles => ("Binnencontouren zijn gaten van het onderdeel", "Inner contours are holes of the part"),
+        T::NestTight => ("Strak pakken (exact, trager)", "Pack tightly (exact, slower)"),
+        T::NestCommonLine => (
+            "Gemeenschappelijke snijlijn (delen raken elkaar, gedeelde randen worden één keer gesneden)",
+            "Common-line cutting (parts touch, shared edges are cut once)",
+        ),
+        T::NestSharedRow => (
+            "Gedeelde rand: {length} mm. Zet Gemeenschappelijke snijlijn aan in de Snij-instellingen van de laag om hem één keer te snijden.",
+            "Shared edge: {length} mm. Switch on Common-line cutting in the layer's Cut Settings to cut it once.",
+        ),
         T::NestSheetCaption => ("Plaat", "Sheet"),
         T::NestSheetBedOption => ("Machinebed", "Machine bed"),
         T::NestSheetContour => {
@@ -701,7 +743,12 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
     }
     if !n.sheet_choices.is_empty() {
         let mut options = vec![t(SchikkenText::NestSheetBedOption)];
-        options.extend(n.sheet_choices.iter().map(|c| c.name.clone()));
+        // A pop-up holds one item per title: objects with one name (the copies of a part) are told
+        // apart by their number.
+        options.extend(n.sheet_choices.iter().map(|c| {
+            let twins = n.sheet_choices.iter().filter(|o| o.name == c.name).count() > 1;
+            if twins { format!("{} (#{})", c.name, c.object) } else { c.name.clone() }
+        }));
         let selected =
             n.input.sheet_object.and_then(|o| n.sheet_choices.iter().position(|c| c.object == o)).map_or(0, |i| i + 1);
         lines.push(SchikkenLine::Choice {
@@ -763,6 +810,48 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
         text: n.input.sheets.clone(),
         invalid: invalid(NestField::Sheets),
     });
+    lines.push(SchikkenLine::Field {
+        control: SchikkenControl::NestGrain,
+        caption: t(SchikkenText::NestGrain),
+        text: n.input.grain.clone(),
+        invalid: invalid(NestField::Grain),
+    });
+    lines.push(SchikkenLine::Field {
+        control: SchikkenControl::NestCopies,
+        caption: t(SchikkenText::NestCopies),
+        text: n.input.copies.clone(),
+        invalid: invalid(NestField::Copies),
+    });
+    // A number of its own per part, for the first few parts (the panel is a fixed form).
+    if n.part_rows.len() > 1 {
+        for (i, row) in n.part_rows.iter().enumerate().take(MAX_PART_ROWS) {
+            lines.push(SchikkenLine::Field {
+                control: SchikkenControl::NestPartCopies(i),
+                caption: fill(
+                    SchikkenText::NestPartCopies,
+                    locale,
+                    &[("n", (i + 1).to_string()), ("name", row.name.clone())],
+                ),
+                text: row.copies.clone(),
+                invalid: invalid(NestField::Copies) && row.own,
+            });
+        }
+    }
+    lines.push(SchikkenLine::Check {
+        control: SchikkenControl::NestHoles,
+        caption: t(SchikkenText::NestHoles),
+        on: n.input.holes == burnburn_presentation::NestHoles::Join,
+    });
+    lines.push(SchikkenLine::Check {
+        control: SchikkenControl::NestTight,
+        caption: t(SchikkenText::NestTight),
+        on: n.input.tight,
+    });
+    lines.push(SchikkenLine::Check {
+        control: SchikkenControl::NestCommonLine,
+        caption: t(SchikkenText::NestCommonLine),
+        on: n.input.common_line,
+    });
     if let Some(e) = n.error {
         lines.push(SchikkenLine::Problem(message_or_key(burnburn_presentation::MessageKey::Schikken(e), locale)));
     }
@@ -776,7 +865,7 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
                 locale,
                 &[
                     ("placed", r.placed.to_string()),
-                    ("unplaced", r.unplaced.iter().map(|u| u.objects.len()).sum::<usize>().to_string()),
+                    ("unplaced", r.unplaced.iter().map(|u| u.count as usize).sum::<usize>().to_string()),
                     ("skipped", r.skipped.len().to_string()),
                     ("percent", percent(r.utilisation)),
                 ],
@@ -794,6 +883,13 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
                 SchikkenText::NestMirroredRow,
                 locale,
                 &[("count", r.mirrored.to_string())],
+            )));
+        }
+        if let Some(shared) = r.shared_mm {
+            lines.push(SchikkenLine::Text(fill(
+                SchikkenText::NestSharedRow,
+                locale,
+                &[("length", mm(shared, locale))],
             )));
         }
         for (i, sheet) in r.sheets.iter().enumerate() {
@@ -832,7 +928,7 @@ fn nest_lines(n: &NestPanelViewModel, locale: Locale) -> Vec<SchikkenLine> {
             lines.push(SchikkenLine::Problem(fill(
                 SchikkenText::NestUnplacedRow,
                 locale,
-                &[("count", row.objects.len().to_string()), ("reason", nest_unplaced_text(row.reason, locale))],
+                &[("count", row.count.to_string()), ("reason", nest_unplaced_text(row.reason, locale))],
             )));
         }
         for row in &r.skipped {
@@ -1109,7 +1205,7 @@ pub fn schikken_intent(
     let nest = |f: &dyn Fn(&mut NestInput)| {
         let mut input = s.nest.as_ref()?.input.clone();
         f(&mut input);
-        send(SchikkenIntent::SetNestOptions { document, input })
+        send(SchikkenIntent::SetNestOptions { document, input: Box::new(input) })
     };
     match control {
         SchikkenControl::PlaceReference => place(&|i| {
@@ -1167,6 +1263,28 @@ pub fn schikken_intent(
             i.mirror = if value(values, control) == "1" { NestMirror::Allowed } else { NestMirror::Forbidden };
         }),
         SchikkenControl::NestSheets => nest(&|i| i.sheets = value(values, control).to_owned()),
+        SchikkenControl::NestGrain => nest(&|i| i.grain = value(values, control).to_owned()),
+        SchikkenControl::NestCopies => nest(&|i| i.copies = value(values, control).to_owned()),
+        SchikkenControl::NestPartCopies(row) => {
+            let object = s.nest.as_ref()?.part_rows.get(row)?.object;
+            let text = value(values, control).trim().to_owned();
+            nest(&|i| {
+                i.part_copies.retain(|(o, _)| *o != object);
+                // Empty, or the number every part has: the part follows the panel again.
+                if !text.is_empty() && text != i.copies.trim() {
+                    i.part_copies.push((object, text.clone()));
+                }
+            })
+        }
+        SchikkenControl::NestHoles => nest(&|i| {
+            i.holes = if value(values, control) == "1" {
+                burnburn_presentation::NestHoles::Join
+            } else {
+                burnburn_presentation::NestHoles::Separate
+            };
+        }),
+        SchikkenControl::NestTight => nest(&|i| i.tight = value(values, control) == "1"),
+        SchikkenControl::NestCommonLine => nest(&|i| i.common_line = value(values, control) == "1"),
         SchikkenControl::NestSheet => {
             let object = {
                 let choices = &s.nest.as_ref()?.sheet_choices;

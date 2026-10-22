@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use burnburn_document::{CommandPayload, DocumentCommand, GeometryCommand, PlaceCommand};
+use burnburn_document::{ArrangeCommand, CommandPayload, DocumentCommand, GeometryCommand, NestCopy, PlaceCommand};
 use burnburn_editor::{Overlay, SelectionChange};
 use burnburn_types::{CancellationSource, DocumentId, GeometryId, RequestId, RevisionId, StableId, TaskId};
 
@@ -12,8 +12,8 @@ use crate::field::{parse_length, parse_position};
 use crate::intent::CommandKey;
 use crate::nest_task::{NestOutput, NestSettings, build_job, classify, failure_of, sheet_of};
 use crate::schikken::{
-    NestFailure, NestField, NestInput, NestPanelViewModel, NestReportViewModel, NestRun, NestScope, SchikkenIntent,
-    SchikkenMessage,
+    NestFailure, NestField, NestInput, NestPanelViewModel, NestPartRow, NestReportViewModel, NestRun, NestScope,
+    SchikkenIntent, SchikkenMessage,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;
@@ -23,6 +23,8 @@ use super::{AppController, AppUpdate, Session, after_change, apply_command, appl
 
 /// Most sheets one nest may use.
 const MAX_SHEETS: u32 = 20;
+/// Most copies of one part.
+const MAX_COPIES: u32 = 1000;
 
 /// The panel while it is open.
 #[derive(Debug, Clone)]
@@ -69,7 +71,24 @@ fn parse(input: &NestInput) -> Result<NestSettings, NestField> {
         Ok(v) if v.mm() >= 0.0 => Ok(v.mm()),
         _ => Err(field),
     };
+    let copies =
+        |text: &str| text.trim().parse::<u32>().ok().filter(|n| (1..=MAX_COPIES).contains(n)).ok_or(NestField::Copies);
+    let part_copies = input
+        .part_copies
+        .iter()
+        .map(|(object, text)| Ok((GeometryId::from_raw(*object), copies(text)?)))
+        .collect::<Result<Vec<_>, NestField>>()?;
     Ok(NestSettings {
+        copies: copies(&input.copies)?,
+        part_copies,
+        holes: input.holes,
+        tight: input.tight,
+        common_line: input.common_line,
+        grain_deg: if input.grain.trim().is_empty() {
+            None
+        } else {
+            Some(crate::field::parse_angle(&input.grain).map_err(|_| NestField::Grain)?)
+        },
         padding_mm: non_negative(&input.padding, NestField::Padding)?,
         edge_buffer_mm: non_negative(&input.edge_buffer, NestField::EdgeBuffer)?,
         step_mm: parse_length(&input.step).map(|l| l.mm()).map_err(|_| NestField::Step)?,
@@ -107,7 +126,7 @@ impl AppController {
     pub(super) fn nest_intent(&mut self, intent: SchikkenIntent) -> AppUpdate {
         match intent {
             SchikkenIntent::SetNestOptions { document, input } => {
-                self.with_session(document, |s| set_options(s, document, input))
+                self.with_session(document, |s| set_options(s, document, *input))
             }
             SchikkenIntent::StartNest { document } => self.start_nest(document),
             SchikkenIntent::CancelNest { document } => self.with_session(document, |s| {
@@ -151,7 +170,7 @@ impl AppController {
             if matches!(panel.error, Some(SchikkenMessage::Nest(NestFailure::InvalidField(_)))) {
                 return AppUpdate::redraw(document);
             }
-            let (scope, settings) = (panel.scope, panel.settings);
+            let (scope, settings) = (panel.scope, panel.settings.clone());
             let snapshot = s.doc.snapshot();
             let job = match build_job(&snapshot, scope, s.selection.ids(), &settings, bed) {
                 Ok(job) => job,
@@ -213,16 +232,31 @@ fn apply(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> A
         }
         return AppUpdate::redraw(document);
     };
-    let moves: Vec<_> =
-        done.output.placements.iter().flat_map(|p| p.objects.iter().map(|id| (*id, p.transform))).collect();
-    if moves.is_empty() {
+    let moves: Vec<_> = done
+        .output
+        .placements
+        .iter()
+        .filter(|p| p.copy == 0)
+        .flat_map(|p| p.objects.iter().map(|id| (*id, p.transform)))
+        .collect();
+    // Copy 1 and up are new objects: made from the part as it is now, placed where the nest says.
+    let extra: Vec<&crate::nest_task::PartPlacement> = done.output.placements.iter().filter(|p| p.copy > 0).collect();
+    if moves.is_empty() && extra.is_empty() {
         return AppUpdate::default();
     }
     let snapshot = s.doc.snapshot();
     if moves.iter().any(|(id, _)| snapshot.is_locked(*id)) {
         return error(Some(document), MessageKey::ObjectsLocked);
     }
-    let payload = CommandPayload::Edit(GeometryCommand::Place(PlaceCommand::Nest { moves }));
+    let payload = if extra.is_empty() {
+        CommandPayload::Edit(GeometryCommand::Place(PlaceCommand::Nest { moves }))
+    } else {
+        let copies = extra
+            .iter()
+            .map(|p| NestCopy { items: super::clipboard::items_of(s, &p.objects), transform: p.transform })
+            .collect();
+        CommandPayload::Arrange(ArrangeCommand::NestCopies { moves, copies })
+    };
     let cmd = DocumentCommand { document, expected: s.doc.revision(), request, payload };
     match apply_command(&s.fonts, &mut s.doc, cmd) {
         Ok(outcome) => {
@@ -306,7 +340,7 @@ pub(super) fn finished(
 pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelViewModel> {
     let panel = s.nest.panel.as_ref()?;
     let snapshot = s.doc.snapshot();
-    let mut classified = classify(&snapshot, panel.scope, s.selection.ids());
+    let mut classified = classify(&snapshot, panel.scope, s.selection.ids(), panel.settings.holes);
     // A chosen sheet is not one of the parts (when it cannot be, Start says why).
     if let Some(sheet) = panel.settings.sheet_object {
         classified.movable.retain(|body| !body.contains(&sheet) || panel.scope == NestScope::Selected);
@@ -322,6 +356,7 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         sheets: d.output.sheets.clone(),
         parts: d.output.parts.clone(),
         complete_sets: d.output.complete_sets,
+        shared_mm: d.output.shared_mm,
     });
     Some(NestPanelViewModel {
         scope: panel.scope,
@@ -331,6 +366,20 @@ pub(super) fn view(s: &Session, machine: Option<&Machine>) -> Option<NestPanelVi
         parts: classified.movable.len(),
         sheet: sheet_of(&snapshot, &classified.movable, &panel.settings, bed),
         sheet_choices: crate::nest_task::sheet_choices(&snapshot),
+        part_rows: classified
+            .movable
+            .iter()
+            .filter_map(|body| {
+                let first = *body.first()?;
+                let own = panel.input.part_copies.iter().find(|(id, _)| *id == first.raw()).map(|(_, t)| t.clone());
+                Some(NestPartRow {
+                    object: first.raw(),
+                    name: snapshot.object(first).map(|o| o.name().to_owned()).unwrap_or_default(),
+                    copies: own.clone().unwrap_or_else(|| panel.input.copies.clone()),
+                    own: own.is_some(),
+                })
+            })
+            .collect(),
         report,
         can_apply: run == NestRun::Done && s.nest.done.as_ref().is_some_and(|d| !d.output.placements.is_empty()),
     })

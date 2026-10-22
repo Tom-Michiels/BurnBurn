@@ -72,6 +72,13 @@ fn scenario() -> Result<(), String> {
         dot.0 && !dot.1 && dot.2.to_lowercase().contains("ontbrekende capability"),
     )?;
 
+    // G7-cam: the tab power row is there, and greyed with its reason (no proof for a power per movement).
+    let power = part(CutField::TabsPower).ok_or("no tab power row")?;
+    expect(
+        || format!("tab power is visible, greyed, with its reason: {power:?}"),
+        power.0 && !power.1 && power.2.to_lowercase().contains("ontbrekende capability"),
+    )?;
+
     // Ticking the tabs switch enables the tab values (no intent: the sheet only re-lays out).
     s.app.take_dispatched();
     let tabs_switch = |on: bool| {

@@ -211,6 +211,9 @@ pub fn lower(plan: &JobPlan, profile: &RuidaProfile) -> Result<RdProgram, LowerE
                 return Err(LowerError::Unsupported { event, what: "feeder" });
             }
             PlanEvent::PowerRun { .. } => return Err(LowerError::Unsupported { event, what: "grayscale modulation" }),
+            // C04: no proven RD form for a power per movement; writing the tab at full power or
+            // skipping it would be a different job.
+            PlanEvent::CutPower { .. } => return Err(LowerError::Unsupported { event, what: "tab cut power" }),
             _ => return Err(LowerError::Unsupported { event, what: "event" }),
         }
     }
