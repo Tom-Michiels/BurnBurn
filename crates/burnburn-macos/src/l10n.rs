@@ -992,6 +992,7 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             ArrangeLabel::Hide => ("Verbergen", "Hide"),
             ArrangeLabel::Show => ("Tonen", "Show"),
             ArrangeLabel::Paste => ("Plakken", "Paste"),
+            ArrangeLabel::NestCopies => ("Nesten met exemplaren", "Nest with copies"),
             ArrangeLabel::BreakApart => ("Uit elkaar halen", "Break Apart"),
             ArrangeLabel::AutoGroup => ("Automatisch groeperen", "Auto-Group"),
             ArrangeLabel::Ungroup => ("Groep opheffen", "Ungroup"),

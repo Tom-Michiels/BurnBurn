@@ -25,7 +25,7 @@ pub mod text;
 pub mod trace;
 
 pub use arrange::{ArrangeLayer, ArrangeLayerError};
-pub use arrange_edit::{ArrangeCommand, ArrangeError, ArrangeLabel, OrderChange, PasteItem};
+pub use arrange_edit::{ArrangeCommand, ArrangeError, ArrangeLabel, NestCopy, OrderChange, PasteItem};
 pub use command::{
     Anchor, Axis, ChangeSet, CommandError, CommandOutcome, CommandPayload, CommandWarning, DocumentCommand, UndoLabel,
     ValueError,

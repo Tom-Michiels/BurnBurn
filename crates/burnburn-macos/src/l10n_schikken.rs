@@ -111,11 +111,12 @@ fn slots_pair(f: SlotsFailure) -> (&'static str, &'static str) {
     }
 }
 
-const NEST_FAILURES: [NestFailure; 11] = [
+const NEST_FAILURES: [NestFailure; 12] = [
     NestFailure::InvalidField(NestField::Padding),
     NestFailure::InvalidField(NestField::EdgeBuffer),
     NestFailure::InvalidField(NestField::Step),
     NestFailure::InvalidField(NestField::Sheets),
+    NestFailure::InvalidField(NestField::Copies),
     NestFailure::SheetIsPart,
     NestFailure::SheetGone,
     NestFailure::NothingToNest,
@@ -140,6 +141,10 @@ fn nest_pair(f: NestFailure) -> (&'static str, &'static str) {
         NestFailure::InvalidField(NestField::Sheets) => (
             "Het aantal platen moet een geheel getal van 1 tot en met 20 zijn.",
             "The number of sheets must be a whole number from 1 to 20.",
+        ),
+        NestFailure::InvalidField(NestField::Copies) => (
+            "Het aantal exemplaren moet een geheel getal van 1 tot en met 1000 zijn.",
+            "The number of copies must be a whole number from 1 to 1000.",
         ),
         NestFailure::SheetIsPart => (
             "De gekozen plaat is zelf een van de onderdelen die genest worden; kies een andere plaat of selecteer haar niet.",

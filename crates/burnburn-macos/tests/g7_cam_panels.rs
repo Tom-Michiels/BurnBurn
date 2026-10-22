@@ -140,3 +140,103 @@ fn the_preview_draws_tab_stretches_orange_and_the_pick_names_the_power() {
         .unwrap();
     assert!(!picked.contains("power"), "{picked}");
 }
+
+// ---- the nest panel: copies, holes and tight packing ------------------------------------------
+
+mod nest_panel {
+    use burnburn_macos::adapter::{NativeEvent, Reaction, translate};
+    use burnburn_macos::l10n::Locale;
+    use burnburn_macos::panels::{SchikkenControl as C, SchikkenLine, schikken_panel};
+    use burnburn_presentation::{CommandKey, HeadlessEditorHarness, NestHoles};
+    use burnburn_types::DocumentId;
+
+    fn window() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        h.invoke(doc, CommandKey::ToolRectangle);
+        h.drag(doc, (0.0, 0.0), (20.0, 10.0));
+        h.drag(doc, (40.0, 0.0), (60.0, 10.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        h.invoke(doc, CommandKey::SelectAll);
+        h.invoke(doc, CommandKey::QuickNest);
+        (h, doc)
+    }
+
+    fn control(h: &HeadlessEditorHarness, doc: DocumentId, c: C) -> Option<SchikkenLine> {
+        schikken_panel(&h.view(), doc, Locale::En).unwrap().lines.into_iter().find(|l| l.control() == Some(c))
+    }
+
+    fn press(h: &mut HeadlessEditorHarness, doc: DocumentId, c: C, text: &str) {
+        let event = NativeEvent::SchikkenControl { document: doc, control: c, values: vec![(c, text.to_owned())] };
+        let Reaction::Intent(i) = translate(event, &h.view()) else { panic!("{c:?} sends an intent") };
+        h.send(i);
+    }
+
+    #[test]
+    fn the_panel_has_a_copies_field_a_row_per_part_and_the_two_checks() {
+        let (mut h, doc) = window();
+        let Some(SchikkenLine::Field { text, caption, .. }) = control(&h, doc, C::NestCopies) else { panic!("copies") };
+        assert_eq!((text.as_str(), caption.as_str()), ("1", "Copies per part"));
+        let Some(SchikkenLine::Field { caption, text, .. }) = control(&h, doc, C::NestPartCopies(1)) else {
+            panic!("a row for the second part")
+        };
+        assert!(caption.starts_with("Part 2:"), "{caption}");
+        assert_eq!(text, "1");
+        assert!(control(&h, doc, C::NestPartCopies(2)).is_none());
+        let Some(SchikkenLine::Check { on, .. }) = control(&h, doc, C::NestHoles) else { panic!("holes") };
+        assert!(on, "an inner contour is a hole of its part by default");
+        let Some(SchikkenLine::Check { on, .. }) = control(&h, doc, C::NestTight) else { panic!("tight") };
+        assert!(!on);
+
+        press(&mut h, doc, C::NestCopies, "3");
+        press(&mut h, doc, C::NestPartCopies(1), "5");
+        press(&mut h, doc, C::NestTight, "1");
+        press(&mut h, doc, C::NestHoles, "0");
+        let input = h.document(doc).unwrap().schikken.nest.unwrap().input;
+        assert_eq!(input.copies, "3");
+        assert_eq!(input.part_copies.len(), 1);
+        assert_eq!(input.part_copies[0].1, "5");
+        assert!(input.tight);
+        assert_eq!(input.holes, NestHoles::Separate);
+        let Some(SchikkenLine::Field { text, .. }) = control(&h, doc, C::NestPartCopies(0)) else { panic!("row 1") };
+        assert_eq!(text, "3", "a part without a number of its own shows the one of the panel");
+        let Some(SchikkenLine::Field { text, .. }) = control(&h, doc, C::NestPartCopies(1)) else { panic!("row 2") };
+        assert_eq!(text, "5");
+        // The number of the panel again: the part follows the panel.
+        press(&mut h, doc, C::NestPartCopies(1), "3");
+        assert!(h.document(doc).unwrap().schikken.nest.unwrap().input.part_copies.is_empty());
+    }
+
+    #[test]
+    fn objects_with_the_same_name_are_told_apart_in_the_choice_of_a_sheet() {
+        // Copies carry the name of their source; a pop-up cannot hold two items with one title
+        // (AppKit merges them, and the panel then reads past the end of the pop-up).
+        let (mut h, doc) = window();
+        press(&mut h, doc, C::NestCopies, "2");
+        press(&mut h, doc, C::NestSheets, "2");
+        press(&mut h, doc, C::NestStart, "");
+        h.run_tasks();
+        press(&mut h, doc, C::NestApply, "");
+        let Some(SchikkenLine::Choice { options, selected, .. }) = control(&h, doc, C::NestSheet) else {
+            panic!("a sheet choice")
+        };
+        assert_eq!(options.len(), 5, "the bed and four rectangles: {options:?}");
+        let mut unique = options.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), options.len(), "every title is its own: {options:?}");
+        assert_eq!(selected, 0);
+    }
+
+    #[test]
+    fn a_wrong_number_is_marked_on_its_field_and_said_in_words() {
+        let (mut h, doc) = window();
+        press(&mut h, doc, C::NestCopies, "0");
+        let Some(SchikkenLine::Field { invalid, .. }) = control(&h, doc, C::NestCopies) else { panic!("copies") };
+        assert!(invalid);
+        let lines = schikken_panel(&h.view(), doc, Locale::Nl).unwrap().lines;
+        assert!(
+            lines.iter().any(|l| matches!(l, SchikkenLine::Problem(t) if t.contains("geheel getal van 1 tot en met 1000")))
+        );
+    }
+}

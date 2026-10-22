@@ -396,6 +396,8 @@ struct TightShape {
     shrunk: Path,
     /// The shape grown by the spacing: what a later part must keep out of.
     grown: Path,
+    /// Width and height of the shape (its bounds start at the local origin).
+    size: (f64, f64),
 }
 
 /// A cancelled offset is a cancelled nest, not a geometry problem.
@@ -457,7 +459,8 @@ fn rotated_with(
             _ => shape.clone(),
         };
         let raw_centres = centre_cells(&polygons(&shape, &p.tolerance)?, Point::ORIGIN, step);
-        Some(TightShape { raw_centres, shrunk, grown: grown_path })
+        let size = shape.bounds().map_or((0.0, 0.0), |b| (b.width(), b.height()));
+        Some(TightShape { raw_centres, shrunk, grown: grown_path, size })
     } else {
         None
     };
@@ -502,6 +505,7 @@ struct Sheet<'a> {
 /// The exact side of a sheet: the usable area and the grown outline of every placed part.
 struct TightSheet {
     usable: Path,
+    usable_bounds: Option<Bounds>,
     /// Optimistic raster: blocked when the centre of a cell is outside the usable area or inside
     /// a placed part's grown outline. A candidate is always confirmed exactly.
     blocked: Grid,
@@ -549,7 +553,12 @@ fn sheet_with<'a>(
         }
     }
     // At this point `blocked` holds exactly the cells whose centre is outside the usable area.
-    let tight = tight.then(|| TightSheet { usable: usable.clone(), blocked: blocked.clone(), placed: Vec::new() });
+    let tight = tight.then(|| TightSheet {
+        usable_bounds: usable.bounds(),
+        usable: usable.clone(),
+        blocked: blocked.clone(),
+        placed: Vec::new(),
+    });
     for (c, r) in boundary_cells(&polys, b.min(), step) {
         blocked.set(c, r);
     }
@@ -843,6 +852,75 @@ fn first_fit_tight(
     cancel: &CancellationToken,
 ) -> Result<Option<Point>, NestError> {
     let Some(ts) = &shape.tight else { return Ok(None) };
+    let grid = grid_fit_tight(t, ts, p, budget, cancel)?;
+    let contact = contact_fit_tight(t, ts, grid, p, cancel)?;
+    // The lower row wins, then the lower column.
+    Ok(match (grid, contact) {
+        (Some(a), Some(b)) => Some(if b.y.total_cmp(&a.y).then(b.x.total_cmp(&a.x)).is_lt() { b } else { a }),
+        (a, b) => a.or(b),
+    })
+}
+
+/// Most contact positions tried for one part.
+const CONTACT_LIMIT: usize = 1024;
+
+/// Positions where the part touches the usable area or a placed part: the part's lower left corner
+/// at an edge of the usable area or at the far side of a neighbour's grown outline. The raster's
+/// cells cannot propose these (a part that fits exactly into what is left of a row), so they are
+/// tried in addition, lower rows first, and only those not worse than `known`.
+fn contact_fit_tight(
+    t: &TightSheet,
+    ts: &TightShape,
+    known: Option<Point>,
+    p: &NestParams,
+    cancel: &CancellationToken,
+) -> Result<Option<Point>, NestError> {
+    let Some(usable) = t.usable_bounds else { return Ok(None) };
+    let mut xs = vec![usable.min().x];
+    let mut ys = vec![usable.min().y];
+    for (b, _) in &t.placed {
+        xs.push(b.max().x);
+        ys.push(b.max().y);
+    }
+    for v in [&mut xs, &mut ys] {
+        v.sort_by(f64::total_cmp);
+        v.dedup();
+    }
+    let slack = slack_mm(p);
+    let fits = |x: f64, y: f64| {
+        x + ts.size.0 <= usable.max().x + slack && y + ts.size.1 <= usable.max().y + slack
+    };
+    let mut tried = 0;
+    for &y in &ys {
+        if known.is_some_and(|k| y > k.y + slack) {
+            break;
+        }
+        for &x in &xs {
+            if !fits(x, y) {
+                continue;
+            }
+            tried += 1;
+            if tried > CONTACT_LIMIT {
+                return Ok(None);
+            }
+            cancel.check()?;
+            let at = Point::new(x, y);
+            if exact_valid(t, ts, at, p, cancel)? {
+                return slide(t, ts, at, p, cancel).map(Some);
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The raster's bottom-left position (see [`first_fit_tight`]).
+fn grid_fit_tight(
+    t: &TightSheet,
+    ts: &TightShape,
+    p: &NestParams,
+    budget: &mut u64,
+    cancel: &CancellationToken,
+) -> Result<Option<Point>, NestError> {
     let (grid, step) = (&t.blocked, p.step.mm());
     for r in 0..grid.rows {
         cancel.check()?;

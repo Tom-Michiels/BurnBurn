@@ -89,6 +89,16 @@ fn tight_packing_closes_the_gap_a_whole_cell_leaves() {
 }
 
 #[test]
+fn tight_packing_fits_a_part_exactly_into_what_is_left_of_a_row() {
+    // 20.8 mm of sheet and two 10.4 mm parts: the second one fits to the thousandth, which no
+    // position on a grid of 1 mm (or 0.25 mm) proposes.
+    let parts = [part(1, square(0.0, 0.0, 10.4, 10.0), 2, false)];
+    let sheet = stock(square(0.0, 0.0, 20.8, 10.0));
+    let r = run(&parts, &sheet, &params(0.0, 0.0, 1.0), Packing::Tight);
+    assert_eq!(r.placements.len(), 2, "{:?}", r.unplaced);
+}
+
+#[test]
 fn tight_packing_keeps_the_spacing_exactly() {
     // 10 x 10 parts, 1.5 mm apart on a 50 x 10 sheet: x = 0, 11.5, 23, 34.5 and no fifth (46 + 10 > 50).
     let parts = [part(1, square(0.0, 0.0, 10.0, 10.0), 5, false)];

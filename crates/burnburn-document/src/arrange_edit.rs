@@ -35,6 +35,14 @@ pub struct PasteItem {
     pub operations: Vec<OperationId>,
 }
 
+/// One extra copy of a part in a nest (C12): the objects of the part as paste items and the
+/// placement of the copy (part coordinates to sheet coordinates).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NestCopy {
+    pub items: Vec<PasteItem>,
+    pub transform: Affine,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ArrangeCommand {
@@ -55,6 +63,14 @@ pub enum ArrangeCommand {
     Paste {
         items: Vec<PasteItem>,
         offset: Vector,
+    },
+    /// The result of a nest with several copies per part (C12), as one history entry: the
+    /// originals in `moves` go to their places (each object once), and every copy becomes new
+    /// objects there that keep the groups (a new group per copy) and the layers of their source.
+    /// The copies are made from the objects as they were before the moves.
+    NestCopies {
+        moves: Vec<(GeometryId, Affine)>,
+        copies: Vec<NestCopy>,
     },
     /// Every target with several subpaths becomes one object per subpath.
     BreakApart {
@@ -79,6 +95,7 @@ pub enum ArrangeLabel {
     Hide,
     Show,
     Paste,
+    NestCopies,
     BreakApart,
     AutoGroup,
     Ungroup,
@@ -93,6 +110,7 @@ impl ArrangeCommand {
             ArrangeCommand::SetHidden { hidden: true, .. } => ArrangeLabel::Hide,
             ArrangeCommand::SetHidden { hidden: false, .. } => ArrangeLabel::Show,
             ArrangeCommand::Paste { .. } => ArrangeLabel::Paste,
+            ArrangeCommand::NestCopies { .. } => ArrangeLabel::NestCopies,
             ArrangeCommand::BreakApart { .. } => ArrangeLabel::BreakApart,
             ArrangeCommand::AutoGroup { .. } => ArrangeLabel::AutoGroup,
             ArrangeCommand::Ungroup { .. } => ArrangeLabel::Ungroup,
@@ -108,6 +126,8 @@ pub enum ArrangeError {
     DerivedGeometry(GeometryId),
     /// A pasted item has no geometry.
     EmptyPath,
+    /// An object appears twice in the moves of one nest.
+    DuplicateTarget(GeometryId),
     /// The command would not change the document (no history entry is made).
     NothingChanged,
     IdsExhausted,
@@ -202,6 +222,7 @@ pub(crate) fn apply(cmd: ArrangeCommand, mut txn: ArrangeTxn<'_>) -> Result<(), 
             if txn.changes.modified.is_empty() { Err(ArrangeError::NothingChanged) } else { Ok(()) }
         }
         ArrangeCommand::Paste { items, offset } => paste(&mut txn, items, offset),
+        ArrangeCommand::NestCopies { moves, copies } => nest_copies(&mut txn, moves, copies),
         ArrangeCommand::BreakApart { targets } => break_apart(&mut txn, &targets),
         ArrangeCommand::AutoGroup { targets } => auto_group(&mut txn, &targets),
         ArrangeCommand::Ungroup { targets } => ungroup(&mut txn, &targets),
@@ -225,10 +246,49 @@ fn paste(txn: &mut ArrangeTxn<'_>, items: Vec<PasteItem>, offset: Vector) -> Res
     if items.is_empty() {
         return Err(ArrangeError::NothingChanged);
     }
+    let shift = Affine::translate(offset).map_err(|_| ArrangeError::NothingChanged)?;
+    paste_placed(txn, items, &shift)
+}
+
+/// The result of a nest with copies: the copies are made first, from the objects as they are, then
+/// the originals move. Everything or nothing (the session rolls a failed command back).
+fn nest_copies(
+    txn: &mut ArrangeTxn<'_>,
+    moves: Vec<(GeometryId, Affine)>,
+    copies: Vec<NestCopy>,
+) -> Result<(), ArrangeError> {
+    if moves.is_empty() && copies.is_empty() {
+        return Err(ArrangeError::NothingChanged);
+    }
+    let mut seen: Vec<GeometryId> = Vec::with_capacity(moves.len());
+    for (id, _) in &moves {
+        if seen.contains(id) {
+            return Err(ArrangeError::DuplicateTarget(*id));
+        }
+        seen.push(*id);
+    }
+    for (id, _) in &moves {
+        txn.editable(*id)?;
+    }
+    for copy in copies {
+        if copy.items.is_empty() {
+            return Err(ArrangeError::NothingChanged);
+        }
+        paste_placed(txn, copy.items, &copy.transform)?;
+    }
+    for (id, m) in moves {
+        let object = txn.editable(id)?;
+        txn.objects.insert(id, Arc::new(object.transformed(&m)));
+        txn.changes.modified.push(id);
+    }
+    Ok(())
+}
+
+/// New objects from `items`, each placed by `shift`; the items of one source group share a new group.
+fn paste_placed(txn: &mut ArrangeTxn<'_>, items: Vec<PasteItem>, shift: &Affine) -> Result<(), ArrangeError> {
     if items.iter().any(|i| i.path.is_empty()) {
         return Err(ArrangeError::EmptyPath);
     }
-    let shift = Affine::translate(offset).map_err(|_| ArrangeError::NothingChanged)?;
     let mut groups: BTreeMap<u32, GroupId> = BTreeMap::new();
     for item in items {
         let id: GeometryId = txn.ids.allocate().map_err(|_| ArrangeError::IdsExhausted)?;
@@ -251,7 +311,7 @@ fn paste(txn: &mut ArrangeTxn<'_>, items: Vec<PasteItem>, offset: Vector) -> Res
             };
             chain.push(group);
         }
-        let object = object.transformed(&shift).with_groups(chain);
+        let object = object.transformed(shift).with_groups(chain);
         txn.objects.insert(id, Arc::new(object));
         txn.changes.created.push(id);
         for operation in item.operations {

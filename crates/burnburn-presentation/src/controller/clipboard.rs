@@ -18,7 +18,7 @@ use crate::view_model::MessageKey;
 use super::{AppController, AppUpdate, HostEffect, Session, apply_edit, error};
 
 /// The objects of `ids` as paste items, back to front (the draw order is part of a copy).
-fn items_of(s: &Session, ids: &[GeometryId]) -> Vec<PasteItem> {
+pub(super) fn items_of(s: &Session, ids: &[GeometryId]) -> Vec<PasteItem> {
     let snapshot = s.doc.snapshot();
     let wanted: BTreeSet<GeometryId> = ids.iter().copied().collect();
     let mut keys: BTreeMap<GroupId, u32> = BTreeMap::new();
