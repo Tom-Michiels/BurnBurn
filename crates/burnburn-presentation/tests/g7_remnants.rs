@@ -319,7 +319,7 @@ fn a_remnant_from_the_library_is_the_sheet_of_a_nest() {
     h.invoke(doc, CommandKey::NestSelected);
     h.send(UiIntent::Schikken(SchikkenIntent::SetNestOptions {
         document: doc,
-        input: NestInput { sheet_object: Some(sheet.raw()), ..NestInput::default() },
+        input: Box::new(NestInput { sheet_object: Some(sheet.raw()), ..NestInput::default() }),
     }));
     h.send(UiIntent::Schikken(SchikkenIntent::StartNest { document: doc }));
     h.run_tasks();
