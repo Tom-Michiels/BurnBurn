@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 use burnburn_geometry::Path;
 use burnburn_presentation::{
-    BatchProblemView, CompareViewModel, DocumentViewModel, MaskMode, PickKind, PrepField, PrepIssue, RecipeChoice,
-    RecipeIssue, TracePick, TracePrepIntent, TracePrepViewModel, TracePreset, TraceRecipeIntent, TraceRecipesViewModel,
-    UiIntent, VariantSummary,
+    BatchProblemView, CompareCorrectionState, CompareViewModel, DocumentViewModel, MaskMode, PickKind, PrepField,
+    PrepIssue, RecipeChoice, RecipeIssue, TracePick, TracePrepIntent, TracePrepViewModel, TracePreset,
+    TraceRecipeIntent, TraceRecipesViewModel, UiIntent, VariantSummary,
 };
 use burnburn_types::DocumentId;
 
@@ -370,6 +370,20 @@ fn compare_lines(c: &CompareViewModel, locale: Locale, out: &mut Vec<G5Line>) {
             &[&k.stored.to_string(), &k.a_applied.to_string(), &k.b_applied.to_string()],
         )));
     }
+    for row in &c.b_corrections {
+        let n = (row.index + 1).to_string();
+        let (line, button_title) = match row.state {
+            CompareCorrectionState::Unbound { lost, new_in_region } => (
+                g7_fmt(G7Text::CompareUnbound, locale, &[&n, &lost.to_string(), &new_in_region.to_string()]),
+                g7_fmt(G7Text::CompareRelinkButton, locale, &[&n]),
+            ),
+            CompareCorrectionState::Relinked => {
+                (g7_fmt(G7Text::CompareRelinked, locale, &[&n]), g7_fmt(G7Text::CompareUnlinkButton, locale, &[&n]))
+            }
+        };
+        out.push(G5Line::Text(line));
+        out.push(button(G5Control::CompareRelink { index: row.index }, button_title, true));
+    }
     if c.a_outline.is_some() && c.b_outline.is_some() {
         out.push(G5Line::Text(t(G7Text::CompareOnSheet, locale)));
     }
@@ -527,6 +541,12 @@ pub(super) fn intent(
         }
         G5Control::CompareAdopt => recipe(TraceRecipeIntent::AdoptCompared),
         G5Control::CompareClear => recipe(TraceRecipeIntent::ClearCompare),
+        G5Control::CompareRelink { index } => {
+            // The button's meaning follows the row: an unbound correction is linked, a linked one is taken back.
+            let rows = &doc.trace_recipes.as_ref()?.compare.as_ref()?.b_corrections;
+            let on = matches!(rows.iter().find(|r| r.index == index)?.state, CompareCorrectionState::Unbound { .. });
+            recipe(TraceRecipeIntent::RelinkCorrection { index, on })
+        }
         G5Control::BatchRun => {
             let paths: Vec<PathBuf> = typed(G5Control::BatchFiles, "")
                 .lines()

@@ -2,6 +2,7 @@
 //! one picture, and one recipe traced on a batch of files. Both are cancellable and both only ever
 //! read: the document and the tracer's source are untouched.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,7 +11,7 @@ use burnburn_image::{DecodeLimits, PixelScale, SourceImage, decode};
 use burnburn_io::fs::FileSystem;
 use burnburn_trace::{
     BatchItem, BatchProblem, CorrectionRecord, RecipeComparison, RecipeSummary, TraceError, TraceRecipe,
-    compare_recipes_corrected, trace_batch,
+    compare_recipes_corrected_relinking, trace_batch,
 };
 use burnburn_types::{CancellationToken, RevisionId, TaskId};
 
@@ -30,6 +31,8 @@ pub enum StudyJob {
         a: Box<TraceRecipe>,
         b: Box<TraceRecipe>,
         corrections: Vec<CorrectionRecord>,
+        /// Corrections (by position) linked to B's contours although they no longer bind there.
+        relink_b: BTreeSet<usize>,
     },
     /// One recipe on every file, in order.
     Batch { task: TaskId, revision: RevisionId, paths: Vec<PathBuf>, recipe: Box<TraceRecipe>, fs: Arc<dyn FileSystem> },
@@ -78,8 +81,8 @@ pub enum StudyOutput {
 
 pub fn run_study(job: &StudyJob, cancel: &CancellationToken) -> Result<StudyOutput, TaskError> {
     match job {
-        StudyJob::Compare { task, source, a, b, corrections } => {
-            compare_recipes_corrected(source, a, b, corrections, *task, cancel)
+        StudyJob::Compare { task, source, a, b, corrections, relink_b } => {
+            compare_recipes_corrected_relinking(source, a, b, corrections, relink_b, *task, cancel)
                 .map(|c| StudyOutput::Compared(Arc::new(c)))
                 .map_err(trace_error)
         }

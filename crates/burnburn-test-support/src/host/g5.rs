@@ -259,3 +259,77 @@ pub fn structure_project() -> (HeadlessEditorHarness, DocumentId, [u64; 3]) {
     let doc = open_window(&mut h, path);
     (h, doc, ids)
 }
+
+/// The comparison scene of the golf-8/9 trace tests as a PNG (same picture as `g7_support::scene` of the
+/// presentation tests): 200 x 120 px with a ring (centre 50, 60; radius 35) and a light-gray counter (150,
+/// radius 15), a black rectangle x 110..180, y 20..100 with a faint bump (180), a faint speck (170) and a
+/// small black disc. At a global threshold of 127: ring with its counter, rectangle, far disc.
+pub fn trace_scene_png() -> Vec<u8> {
+    let (w, h) = (200usize, 120usize);
+    let disc = |x: usize, y: usize, cx: f64, cy: f64, r: f64| (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy) <= r;
+    let mut gray = vec![255u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut v = 255u8;
+            if disc(x, y, 50.0, 60.0, 35.0) {
+                v = 0;
+            }
+            if disc(x, y, 50.0, 60.0, 15.0) {
+                v = 150;
+            }
+            if (110..180).contains(&x) && (20..100).contains(&y) {
+                v = 0;
+            }
+            if disc(x, y, 110.0, 60.0, 8.0) && v == 255 {
+                v = 180;
+            }
+            if disc(x, y, 88.0, 100.0, 5.0) {
+                v = 170;
+            }
+            if disc(x, y, 20.0, 15.0, 8.0) {
+                v = 0;
+            }
+            gray[y * w + x] = v;
+        }
+    }
+    png_of(&gray, w as u32, h as u32)
+}
+
+/// The tracer open on [`trace_scene_png`] with the global threshold fixed at 127, a protected counter and
+/// a local correction traced at 200 in the region 30,40 90 x 70; the photo preset is then compared, which
+/// sees other contours, so the correction does not bind on variant B.
+pub fn compared_with_unbound_correction() -> (HeadlessEditorHarness, DocumentId) {
+    use burnburn_presentation::{RecipeChoice, ThresholdChoice, TracePrepIntent, TracePreset, TraceRecipeIntent};
+    let mut h = HeadlessEditorHarness::new();
+    h.fs().create_dir_all_for_test(FsPath::new("/work"));
+    burnburn_io::fs::FileSystem::write_all(h.fs(), FsPath::new("/work/in.png"), &trace_scene_png()).unwrap();
+    let doc = h.new_document().expect("window");
+    h.send(UiIntent::OpenTraceSource { document: doc, path: PathBuf::from("/work/in.png") });
+    h.run_tasks();
+    let mut input = h.document(doc).unwrap().tracer.expect("tracer panel").form.input;
+    input.threshold_choice = ThresholdChoice::Fixed;
+    input.threshold = "127".to_owned();
+    h.send(UiIntent::SetTraceForm { document: doc, input: Box::new(input) });
+    h.run_tasks();
+    let counter = h.document(doc).unwrap().trace_prep.expect("prep").contours.iter().find(|c| c.hole).unwrap().id;
+    for intent in [
+        TracePrepIntent::ProtectContour { id: counter, on: true },
+        TracePrepIntent::RetraceRegion {
+            x: "30".into(),
+            y: "40".into(),
+            width: "90".into(),
+            height: "70".into(),
+            threshold: "200".into(),
+            anchors: String::new(),
+        },
+    ] {
+        h.send(UiIntent::TracePrep { document: doc, intent });
+        h.run_tasks();
+    }
+    h.send(UiIntent::TraceRecipe {
+        document: doc,
+        intent: TraceRecipeIntent::Compare { with: RecipeChoice::Preset(TracePreset::Photo) },
+    });
+    h.run_tasks();
+    (h, doc)
+}

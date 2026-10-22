@@ -5,6 +5,7 @@
 //! job of its own kind; only the newest of each is shown, a batch can be cancelled, and nothing of
 //! either touches the document or the recipe in force.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,8 +18,9 @@ use burnburn_types::{CancellationSource, DocumentId, TaskId};
 use crate::image_panel::TraceMode;
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::trace_recipes::{
-    BatchProblemView, BatchRowView, BatchViewModel, CompareCorrectionsView, CompareViewModel, RecipeChoice,
-    RecipeIssue, SavedRecipeRow, TraceRecipeIntent, TraceRecipesViewModel, VariantSummary,
+    BatchProblemView, BatchRowView, BatchViewModel, CompareCorrectionRow, CompareCorrectionState,
+    CompareCorrectionsView, CompareViewModel, RecipeChoice, RecipeIssue, SavedRecipeRow, TraceRecipeIntent,
+    TraceRecipesViewModel, VariantSummary,
 };
 use crate::trace_study::{FileOutcome, FileProblem, StudyJob, StudyOutput};
 
@@ -38,6 +40,8 @@ pub(super) struct CompareState {
     b: TraceRecipe,
     latest: TaskId,
     result: Option<Arc<RecipeComparison>>,
+    /// Stored corrections the operator linked to B's contours (G9), by position in the tracer's list.
+    relink: BTreeSet<usize>,
 }
 
 /// The batch of the open tracer.
@@ -127,6 +131,7 @@ impl AppController {
             TraceRecipeIntent::Delete { name } => self.delete_recipe(document, &name),
             TraceRecipeIntent::Compare { with } => self.compare(document, with),
             TraceRecipeIntent::ClearCompare => self.with_study(document, |_, study| study.compare = None),
+            TraceRecipeIntent::RelinkCorrection { index, on } => self.relink_correction(document, index, on),
             TraceRecipeIntent::AdoptCompared => self.adopt_compared(document),
             TraceRecipeIntent::RunBatch { paths } => self.run_batch(document, paths),
             TraceRecipeIntent::CancelBatch => self.with_session(document, |s| {
@@ -269,8 +274,50 @@ impl AppController {
                 a: Box::new(a),
                 b: Box::new(b.clone()),
                 corrections: t.corrections.clone(),
+                relink_b: BTreeSet::new(),
             };
-            t.study.compare = Some(CompareState { choice: with, b, latest: id, result: None });
+            t.study.compare = Some(CompareState { choice: with, b, latest: id, result: None, relink: BTreeSet::new() });
+            let kind = TaskKind::TraceStudy;
+            let cancel = CancellationSource::new();
+            let request = TaskRequest {
+                id,
+                document,
+                source: revision,
+                key: revision_key(kind, document, revision),
+                cancel: cancel.token(),
+                input: TaskInput::TraceStudy(Box::new(job)),
+            };
+            submit(s, &tasks, request, cancel, document)
+        })
+    }
+
+    /// Links (or unlinks) the stored correction `index` to the contours of B and traces the comparison again.
+    /// Only a correction that is in the tracer's list can be linked; anything else changes nothing.
+    fn relink_correction(&mut self, document: DocumentId, index: usize, on: bool) -> AppUpdate {
+        let Some(id) = self.next_id::<TaskId>() else { return self.refuse(document, RecipeIssue::Invalid) };
+        let tasks = Arc::clone(&self.ports.tasks);
+        self.with_session(document, |s| {
+            let revision = s.doc.revision();
+            let Some(t) = s.tracer.as_mut() else { return AppUpdate::default() };
+            let (Some(a), Some(c)) = (t.recipe.clone(), t.study.compare.as_mut()) else { return AppUpdate::default() };
+            if index >= t.corrections.len() || c.relink.contains(&index) == on {
+                return AppUpdate::default();
+            }
+            if on {
+                c.relink.insert(index);
+            } else {
+                c.relink.remove(&index);
+            }
+            let job = StudyJob::Compare {
+                task: id,
+                source: Arc::clone(&t.source),
+                a: Box::new(a),
+                b: Box::new(c.b.clone()),
+                corrections: t.corrections.clone(),
+                relink_b: c.relink.clone(),
+            };
+            c.latest = id;
+            c.result = None;
             let kind = TaskKind::TraceStudy;
             let cancel = CancellationSource::new();
             let request = TaskRequest {
@@ -439,6 +486,23 @@ pub(super) fn finished(s: &mut Session, id: TaskId, result: Result<TaskOutput, T
     }
 }
 
+/// The corrections that do not bind on B, and those the operator linked there, in list order.
+fn correction_rows(r: &RecipeComparison) -> Vec<CompareCorrectionRow> {
+    let mut rows: Vec<CompareCorrectionRow> = r
+        .b_unbound
+        .iter()
+        .map(|u| CompareCorrectionRow {
+            index: u.index,
+            state: CompareCorrectionState::Unbound { lost: u.lost.len(), new_in_region: u.new_in_region.len() },
+        })
+        .chain(
+            r.b_relinked.iter().map(|&index| CompareCorrectionRow { index, state: CompareCorrectionState::Relinked }),
+        )
+        .collect();
+    rows.sort_by_key(|row| row.index);
+    rows
+}
+
 fn summary_of(r: &RecipeSummary) -> VariantSummary {
     VariantSummary {
         paths: r.paths,
@@ -496,6 +560,7 @@ pub(super) fn view(s: &Session, app: &AppPanels) -> Option<TraceRecipesViewModel
                 .map(|r| r.corrections)
                 .filter(|k| k.stored > 0)
                 .map(|k| CompareCorrectionsView { stored: k.stored, a_applied: k.a_applied, b_applied: k.b_applied }),
+            b_corrections: c.result.as_ref().map_or_else(Vec::new, |r| correction_rows(r)),
             b_choice: c.choice.clone(),
             computing: c.result.is_none(),
             a: c.result.as_ref().map(|r| summary_of(&r.a)),
