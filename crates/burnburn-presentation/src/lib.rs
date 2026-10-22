@@ -38,7 +38,7 @@ mod variable_panel;
 mod view_model;
 
 pub use barcode_panel::{
-    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem,
     BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability, SymbolInputMode, SymbolKind, Symbology,
 };
 /// The job clock `attach_clock` takes (UTC seconds and a fixed zone offset).

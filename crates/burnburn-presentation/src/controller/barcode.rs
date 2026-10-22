@@ -2,25 +2,24 @@
 //! `encode_symbol`; whatever the domain refuses is shown at its field and nothing is rounded or
 //! substituted. Create makes a `symbology` generator in the document (G6-editor): the barcode is
 //! an object with a stable key whose type, payload and size stay editable ("Bewerk generator"),
-//! placed in the middle of the view in one history entry. The window remembers the module size of
-//! what it made, so scaling it through the inspector can warn when the module would fall below the
-//! minimum (window state, not part of the project file).
+//! placed in the middle of the view in one history entry. The size of a barcode is its module: the
+//! inspector cannot scale it (only turn and move it), so the dialog is where the minimum module is
+//! checked.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use burnburn_document::engine::{EngineRecipe, ParamValue};
 use burnburn_document::generator::{GeneratorCommand, GeneratorDefinition, GeneratorId};
-use burnburn_document::{CommandPayload, DerivedOwner, GeometrySource};
-use burnburn_generators::{GENERATOR_ENGINE,
-    EncodedSymbol, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus, Symbology,
+use burnburn_document::CommandPayload;
+use burnburn_generators::{
+    EncodedSymbol, GENERATOR_ENGINE, GenError, SymbolError, SymbolInputMode, SymbolKind, SymbolSource, SymbolStatus, Symbology,
     SymbologyParams, encode_symbol, symbology_catalog,
 };
 use burnburn_geometry::{Affine, Vector};
-use burnburn_types::{DocumentId, GeometryId, RequestId};
+use burnburn_types::{DocumentId, RequestId};
 
 use crate::barcode_panel::{
-    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem, BarcodeScaleWarning,
+    BarcodeDialogViewModel, BarcodeEdit, BarcodeField, BarcodeIssue, BarcodeProblem,
     BarcodeTypeRow, EccStepViewModel, EccViewModel, Readability,
 };
 use crate::field::{format_mm, parse_length};
@@ -32,18 +31,9 @@ const DEFAULT_MODULE_MM: &str = "0.5";
 const DEFAULT_MIN_MODULE_MM: &str = "0.2";
 const DEFAULT_HEIGHT_MM: &str = "10";
 
-/// What this window made: the module and its minimum, and the width the symbol had.
-#[derive(Debug, Clone, Copy)]
-struct Made {
-    module_mm: f64,
-    min_module_mm: f64,
-    width_mm: f64,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct BarcodeState {
     dialog: Option<Dialog>,
-    made: BTreeMap<GeometryId, Made>,
 }
 
 #[derive(Debug)]
@@ -341,13 +331,11 @@ pub(super) fn edit(s: &mut Session, document: DocumentId, edit: BarcodeEdit, req
 fn create(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> AppUpdate {
     let Some(d) = s.barcode.dialog.as_mut() else { return AppUpdate::default() };
     let Some(symbol) = d.encoded.clone() else { return AppUpdate::default() };
-    let (module_mm, min_module_mm) = (symbol.module_mm, parse_length(&d.min_module).map_or(0.0, |l| l.mm()));
     let Some(bounds) = symbol.path.bounds() else { return AppUpdate::default() };
     let Some(recipe) = d.recipe() else { return AppUpdate::default() };
     let canonical: String = symbol.canonical_payload.chars().take(40).collect();
     let name = format!("{}: {canonical}", symbol.symbology.display_name());
     let editing = d.editing.clone();
-    let edited = editing.as_ref().map(|(g, _)| *g);
     let command = match editing {
         Some((generator, old)) => {
             let definition = GeneratorDefinition { name, generator: "symbology".into(), recipe, placement: old.placement };
@@ -372,21 +360,6 @@ fn create(s: &mut Session, document: DocumentId, request: Option<RequestId>) -> 
         return update;
     }
     s.barcode.dialog = None;
-    // The object this window made (or changed): the output of the newest or edited generator.
-    let snapshot = s.doc.snapshot();
-    let generator = edited.or_else(|| snapshot.engine_layer().generators().map(|(id, _)| id).max());
-    if let Some(g) = generator {
-        let outputs: Vec<GeometryId> = snapshot
-            .objects()
-            .filter_map(|(id, o)| match o.source() {
-                GeometrySource::Derived(k) if k.owner == DerivedOwner::Generator(g) => Some(id),
-                _ => None,
-            })
-            .collect();
-        if let [id] = outputs.as_slice() {
-            s.barcode.made.insert(*id, Made { module_mm, min_module_mm, width_mm: bounds.width() });
-        }
-    }
     update
 }
 
@@ -468,14 +441,4 @@ pub(super) fn dialog_view(s: &Session) -> Option<BarcodeDialogViewModel> {
         can_create: d.encoded.is_some(),
         editing: d.editing.is_some(),
     })
-}
-
-/// The selected barcode of this window would have a module below its minimum at its current width.
-pub(super) fn scale_warning(s: &Session) -> Option<BarcodeScaleWarning> {
-    let [id] = s.selection.ids() else { return None };
-    let made = s.barcode.made.get(id)?;
-    let width = s.doc.snapshot().object(*id)?.bounds()?.width();
-    let module_mm = made.module_mm * width / made.width_mm;
-    (module_mm < made.min_module_mm - 1e-9)
-        .then_some(BarcodeScaleWarning { module_mm, min_module_mm: made.min_module_mm })
 }

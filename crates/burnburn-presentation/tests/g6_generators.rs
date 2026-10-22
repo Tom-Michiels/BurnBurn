@@ -224,6 +224,36 @@ fn a_whole_generated_box_moves_through_its_placement_and_one_panel_alone_does_no
     assert_eq!(vm(&h, doc).revision, revision, "a single panel is regenerated from the box, not moved");
 }
 
+/// A generated object turns and moves as a whole, but is not scaled behind its parameters' back:
+/// its size is its parameters (a barcode's module, a box's millimetres), edited in the dialog.
+#[test]
+fn a_generated_box_rotates_with_its_placement_but_is_not_scaled() {
+    use burnburn_presentation::FieldKey;
+    let (mut h, doc) = open();
+    edit(&mut h, doc, GeneratorEdit::Insert);
+    let ids = object_ids(&h, doc);
+    let extent = |h: &HeadlessEditorHarness| {
+        let scene = h.scene(doc).unwrap();
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for id in &ids {
+            let b = scene.items.iter().find(|i| i.source == *id).unwrap().path.bounds().unwrap();
+            (x0, y0, x1, y1) = (x0.min(b.min().x), y0.min(b.min().y), x1.max(b.max().x), y1.max(b.max().y));
+        }
+        (x1 - x0, y1 - y0)
+    };
+    let (w, hgt) = extent(&h);
+    h.send(UiIntent::CommitField { document: doc, field: FieldKey::Rotation, text: "90".into() });
+    let (w2, h2) = extent(&h);
+    assert!((w2 - hgt).abs() < 1e-6 && (h2 - w).abs() < 1e-6, "turned a quarter: {w}x{hgt} -> {w2}x{h2}");
+    h.invoke(doc, CommandKey::GeneratorEdit);
+    assert_eq!(text_of(&h, doc, GeneratorField::Width), "100", "the parameters did not change");
+    edit(&mut h, doc, GeneratorEdit::Cancel);
+    let revision = vm(&h, doc).revision;
+    h.send(UiIntent::CommitField { document: doc, field: FieldKey::ScaleX, text: "50".into() });
+    assert_eq!(vm(&h, doc).revision, revision, "scaling is refused; the parameters are the size");
+    assert_eq!(extent(&h), (w2, h2));
+}
+
 #[test]
 fn only_a_generated_object_can_be_edited_as_a_generator() {
     let mut h = HeadlessEditorHarness::new();

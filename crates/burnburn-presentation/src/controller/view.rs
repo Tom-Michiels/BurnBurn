@@ -244,7 +244,6 @@ pub(super) fn document_view(
         repair_preview: super::repair_preview::view(s),
         variable_panel: None,
         barcode_dialog: super::barcode::dialog_view(s),
-        barcode_scale_warning: super::barcode::scale_warning(s),
         generator_dialog: super::generator::dialog_view(s),
         files: crate::files::FilesViewModel::default(),
     }

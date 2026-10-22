@@ -326,12 +326,17 @@ pub(super) fn selected_generator(s: &Session) -> Option<(GeneratorId, GeneratorD
     Some((g, snapshot.generator(g)?.clone()))
 }
 
-/// A transform of every output of one generator (and nothing else) is a change of that generator's
-/// placement (C-8: derived geometry is edited through its definition): the whole box, hinge or
-/// barcode moves, rotates or scales as one object in one history entry. A transform of some of the
-/// outputs, or of outputs mixed with other objects, stays what it was and the document refuses it.
+/// A rigid transform (move, turn, mirror) of every output of one generator (and nothing else) is a
+/// change of that generator's placement (C-8: derived geometry is edited through its definition):
+/// the whole box, hinge or barcode moves as one object in one history entry. Scaling or shearing
+/// would make the size differ from its parameters (a barcode's module, a box's millimetres), a
+/// transform of some of the outputs, or of outputs mixed with other objects: those stay what they
+/// were and the document refuses them.
 pub(super) fn retarget(snapshot: &burnburn_document::DocumentSnapshot, payload: CommandPayload) -> CommandPayload {
     let CommandPayload::Transform { targets, transform } = &payload else { return payload };
+    if !is_rigid(transform) {
+        return payload;
+    }
     let mut owner: Option<GeneratorId> = None;
     for id in targets {
         let Some(GeometrySource::Derived(key)) = snapshot.object(*id).map(|o| o.source()) else { return payload };
@@ -350,6 +355,13 @@ pub(super) fn retarget(snapshot: &burnburn_document::DocumentSnapshot, payload: 
     let mut moved = definition.clone();
     moved.placement = definition.placement.then(transform);
     CommandPayload::Generator(GeneratorCommand::Set { generator: g, definition: Box::new(moved) })
+}
+
+/// Orthonormal columns: lengths and angles are kept (a turn, a mirror, a move).
+fn is_rigid(m: &Affine) -> bool {
+    const EPS: f64 = 1e-9;
+    let [a, b, c, d, _, _] = m.coefficients();
+    (a * a + b * b - 1.0).abs() < EPS && (c * c + d * d - 1.0).abs() < EPS && (a * c + b * d).abs() < EPS
 }
 
 /// "Bewerk generator" applies to a selected box, hinge or barcode.

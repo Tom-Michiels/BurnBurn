@@ -156,14 +156,6 @@ pub struct BarcodeDialogViewModel {
     pub editing: bool,
 }
 
-/// An inspector-size change of a created barcode that would drop its module below the minimum.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BarcodeScaleWarning {
-    /// The module after the scaling, mm.
-    pub module_mm: f64,
-    pub min_module_mm: f64,
-}
-
 /// One edit of the barcode dialog.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
