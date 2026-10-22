@@ -25,7 +25,7 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE,
+    ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask, Loaded, MATERIAL_LIBRARY_FILE,
     PROFILE_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
@@ -48,6 +48,8 @@ pub(super) enum FilesJob {
     SaveArt,
     SaveProfiles,
     SaveCalibration,
+    /// The camera calibrations (lens, workspace alignment) are being written (W04).
+    SaveCameraCalibrations,
     /// An item is being added to the art library; kept whole so it can be repeated on a newer library.
     AddArt {
         document: DocumentId,
@@ -144,6 +146,9 @@ pub(super) struct Libraries {
     /// The calibration file could not be read: it is kept as it is and never written (W09).
     calibration_unreadable: bool,
     calibration_writer: Writer,
+    /// The camera calibration file could not be read: it is kept as it is and never written (W04).
+    camera_calibrations_unreadable: bool,
+    camera_writer: Writer,
     /// Replaced active profiles waiting for the library file to be read before they are merged
     /// into `profiles` and written (P07, `profile_keep`).
     kept: Vec<(Arc<burnburn_job::MachineProfile>, super::machine::Extras)>,
@@ -224,6 +229,7 @@ impl AppController {
             FilesJob::SaveArt => self.art_saved(outcome),
             FilesJob::SaveProfiles => self.profiles_saved(outcome),
             FilesJob::SaveCalibration => self.calibration_saved(outcome),
+            FilesJob::SaveCameraCalibrations => self.camera_calibrations_saved(outcome),
             FilesJob::AddArt { document, request } => self.art_added(document, *request, outcome),
             FilesJob::PlaceArt { document, at } => self.art_placed(document, at, outcome),
             FilesJob::Thumbnails => self.thumbnails_made(outcome),
@@ -241,6 +247,10 @@ impl AppController {
     /// one the libraries live in memory only. Set it before the first panel is opened.
     pub fn set_library_dir(&mut self, dir: Option<PathBuf>) {
         self.libs.dir = dir;
+        // Whichever comes second, the folder or the camera port: the camera calibrations are read (W04).
+        if self.camera.is_some() {
+            self.ensure_libraries_if_folder();
+        }
     }
 
     /// Identity for a new library file (project links name it).
@@ -265,6 +275,14 @@ impl AppController {
         }
     }
 
+    /// Reads the libraries when there is a folder to read them from (the hosts set it before they
+    /// attach the camera); without one nothing is decided yet.
+    pub(super) fn ensure_libraries_if_folder(&mut self) {
+        if self.libs.dir.is_some() {
+            self.ensure_libraries();
+        }
+    }
+
     /// Submits a file job that belongs to the app, not to a window.
     fn submit_files(&mut self, task: FilesTask, job: FilesJob) -> bool {
         let (Some(document), Some(id)) = (self.next_id::<DocumentId>(), self.next_id::<TaskId>()) else {
@@ -286,6 +304,7 @@ impl AppController {
             FilesJob::SaveArt => self.libs.art_writer.in_flight = Some(id),
             FilesJob::SaveProfiles => self.libs.profile_writer.in_flight = Some(id),
             FilesJob::SaveCalibration => self.libs.calibration_writer.in_flight = Some(id),
+            FilesJob::SaveCameraCalibrations => self.libs.camera_writer.in_flight = Some(id),
             _ => {}
         }
         self.files_jobs.insert(id, job);
@@ -298,10 +317,23 @@ impl AppController {
             Ok(TaskOutput::Files(FilesOutput::LibrariesLoaded {
                 profiles,
                 calibration,
+                camera_calibrations,
                 materials,
                 art,
                 thumbnails,
             })) => {
+                match camera_calibrations {
+                    Loaded::Ready(stored) => {
+                        if self.camera_calibrations_loaded(stored) {
+                            self.libs.camera_writer.dirty = true;
+                        }
+                    }
+                    Loaded::Missing => {}
+                    Loaded::Unreadable(_) => {
+                        self.libs.camera_calibrations_unreadable = true;
+                        effects.push(unreadable());
+                    }
+                }
                 match calibration {
                     Loaded::Ready(library) => {
                         if self.proofs_loaded(library) {
@@ -367,7 +399,11 @@ impl AppController {
                 if self.libs.calibration_writer.dirty {
                     effects.extend(self.flush_calibration());
                 }
+                if self.libs.camera_writer.dirty {
+                    effects.extend(self.flush_camera_calibrations());
+                }
                 self.refresh_calibration();
+                self.rebuild_layers();
             }
             // Nothing could be read (cancelled or failed): try again at the next open.
             _ => self.libs.state = LoadState::NotLoaded,
@@ -464,6 +500,67 @@ impl AppController {
             self.libs.calibration_writer.dirty = false;
         }
         Vec::new()
+    }
+
+    /// Writes the camera calibrations when they changed and no write is running. Nothing is written
+    /// before the file has been read (it would drop what is in it) or when it could not be read.
+    pub(super) fn flush_camera_calibrations(&mut self) -> Vec<HostEffect> {
+        self.libs.camera_writer.dirty = true;
+        self.ensure_libraries();
+        if self.libs.state != LoadState::Ready
+            || self.libs.camera_writer.in_flight.is_some()
+            || self.libs.camera_calibrations_unreadable
+        {
+            return Vec::new();
+        }
+        let Some(dir) = self.libs.dir.clone() else { return Vec::new() };
+        let task = FilesTask::SaveCameraCalibrations {
+            store: Box::new(self.camera_ws.store.clone()),
+            path: dir.join(CAMERA_CALIBRATION_FILE),
+            fs: Arc::clone(&self.ports.fs),
+        };
+        if self.submit_files(task, FilesJob::SaveCameraCalibrations) {
+            self.libs.camera_writer.dirty = false;
+        }
+        Vec::new()
+    }
+
+    /// What was read from the camera calibration file joins what the session already holds; the
+    /// session's entries win for the same camera configuration (they are newer). True when the
+    /// session held something the file did not, so the file has to be written again.
+    fn camera_calibrations_loaded(&mut self, stored: burnburn_image::calib::CalibrationStore) -> bool {
+        let session = std::mem::replace(&mut self.camera_ws.store, stored);
+        let mut newer = false;
+        for lens in session.lenses() {
+            newer |= self.camera_ws.store.lens_for(&lens.valid_for).map_or(true, |kept| kept != lens);
+            self.camera_ws.store.insert_lens(lens.clone());
+        }
+        for alignment in session.alignments() {
+            newer |= self
+                .camera_ws
+                .store
+                .alignment_for(alignment.config(), alignment.material_height_mm)
+                .map_or(true, |kept| kept != alignment);
+            self.camera_ws.store.insert_alignment(alignment.clone());
+        }
+        newer
+    }
+
+    fn camera_calibrations_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {
+        self.libs.camera_writer.in_flight = None;
+        let mut effects = Vec::new();
+        match outcome.result {
+            Ok(_) => self.libs.camera_writer.failed = false,
+            Err(TaskError::Cancelled) => {}
+            Err(_) => {
+                self.libs.camera_writer.failed = true;
+                effects.push(save_failed());
+            }
+        }
+        if self.libs.camera_writer.dirty && !self.libs.camera_writer.failed {
+            effects.extend(self.flush_camera_calibrations());
+        }
+        AppUpdate { effects, view_changed: true, ..AppUpdate::default() }
     }
 
     fn calibration_saved(&mut self, outcome: TaskOutcome) -> AppUpdate {

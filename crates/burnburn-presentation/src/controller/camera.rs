@@ -14,6 +14,8 @@ impl AppController {
     pub fn attach_camera(&mut self, camera: Arc<dyn CameraPort>) {
         self.camera = Some(camera);
         self.camera_active = None;
+        // The calibrations made earlier are read from the library folder (W04).
+        self.ensure_libraries_if_folder();
     }
 }
 
@@ -234,6 +236,14 @@ impl AppController {
 
     pub(super) fn camera_workspace(&mut self, intent: CameraWorkspaceIntent) -> AppUpdate {
         self.camera_ws.refusal = None;
+        // The calibrations of the cameras are read from the library folder at the first use.
+        self.ensure_libraries();
+        let changes_store = matches!(
+            intent,
+            CameraWorkspaceIntent::DeleteCalibration { .. }
+                | CameraWorkspaceIntent::AcceptLensCalibration
+                | CameraWorkspaceIntent::SaveAlignment
+        );
         let result = match intent {
             CameraWorkspaceIntent::SetOverlayVisible(on) => {
                 self.camera_ws.visible = on;
@@ -266,8 +276,12 @@ impl AppController {
             CameraWorkspaceIntent::Recalibrate { calibration } => self.recalibrate(&calibration),
             other => self.camera_wizard(other),
         };
-        if let Err(why) = result {
-            self.camera_ws.refusal = Some(why);
+        match result {
+            Ok(()) if changes_store => {
+                self.flush_camera_calibrations();
+            }
+            Ok(()) => {}
+            Err(why) => self.camera_ws.refusal = Some(why),
         }
         self.workspace_update()
     }
