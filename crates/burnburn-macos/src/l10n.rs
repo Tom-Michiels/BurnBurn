@@ -1517,8 +1517,8 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
                 "Not available yet: construction geometry exists only in a sketch.",
             ),
             ToolRejection::CurvedCorner => (
-                "Nog niet beschikbaar: afronden en afschuinen vragen twee rechte zijden.",
-                "Not available yet: fillet and chamfer need two straight sides.",
+                "Nog niet beschikbaar: deze zijde laat zich niet afronden of afschuinen.",
+                "Not available yet: this side cannot be rounded or chamfered.",
             ),
             ToolRejection::BezierExtend => (
                 "Nog niet beschikbaar: alleen lijnen en bogen kunnen worden verlengd.",

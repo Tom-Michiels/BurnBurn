@@ -185,13 +185,41 @@ mod tests {
     }
 
     #[test]
-    fn a_line_arc_corner_is_not_available_and_says_so() {
+    fn a_circle_seam_is_smooth_so_it_is_no_corner() {
         let circle = path_obj(2, Path::circle(Point::new(0.0, 0.0), 5.0).unwrap());
         let f = with_objects(vec![circle]);
         let mut ed = editor(ToolKind::Fillet);
         let steps = click(&mut ed, &f, 5.0, 0.0);
         assert!(commits(&steps).is_empty());
-        assert_eq!(rejection(&steps), Some(Rejection::Unavailable(Unavailable::CurvedCorner)));
+        assert_eq!(rejection(&steps), Some(Rejection::Corner(CornerError::Collinear)));
+    }
+
+    #[test]
+    fn a_corner_between_a_line_and_an_arc_is_rounded_tangent_to_both() {
+        // G8 E05: the line comes down the y axis into the lowest point of a circle of radius 10.
+        let arc = burnburn_geometry::EllipticalArc::circle(
+            Point::new(0.0, 10.0),
+            10.0,
+            burnburn_types::Angle::from_radians(-std::f64::consts::FRAC_PI_2).unwrap(),
+            burnburn_types::Angle::from_radians(std::f64::consts::FRAC_PI_2).unwrap(),
+        )
+        .unwrap();
+        let path = burnburn_geometry::PathBuilder::new()
+            .move_to(Point::new(0.0, 20.0))
+            .line_to(Point::new(0.0, 0.0))
+            .arc(arc)
+            .build()
+            .unwrap();
+        let f = with_objects(vec![path_obj(2, path)]);
+        let mut ed = editor(ToolKind::Fillet);
+        param(&mut ed, ModifyParam::Radius(2.0));
+        let steps = click(&mut ed, &f, 0.1, 0.1);
+        let EditCommit::CutCorner { path, .. } = only(&steps) else { panic!("cut") };
+        let segs = path.subpaths()[0].segments();
+        assert_eq!(segs.len(), 3, "{segs:?}");
+        let Segment::Arc(fillet) = segs[1] else { panic!("fillet arc: {segs:?}") };
+        assert!((fillet.semi_diameters().0.length() - 2.0).abs() < 1e-9);
+        assert!((fillet.center().x - 2.0).abs() < 1e-6, "2 mm from the line: {:?}", fillet.center());
     }
 
     #[test]

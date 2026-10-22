@@ -11,6 +11,7 @@ mod bounds;
 mod canonical;
 mod construct;
 mod corner;
+mod corner_curved;
 mod cut;
 mod cutting;
 mod dock;
