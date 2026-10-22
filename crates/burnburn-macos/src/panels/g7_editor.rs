@@ -5,8 +5,9 @@
 //! sends nothing.
 
 use burnburn_presentation::{
-    Distort, DocumentViewModel, ModifierKind, ModifierRow, ModifierStatus, ModifierValueKind, PartShapeKind,
-    PathBindingStatus, PlateField, ShapeField, StructureEdit, StructureViewModel, TextEdit, UiIntent,
+    BooleanKind, Distort, DocumentViewModel, ModifierKind, ModifierRow, ModifierStatus, ModifierValueKind,
+    NewModifierStep, PartShapeKind, PathBindingStatus, PlateField, ShapeField, StructureEdit, StructureViewModel,
+    TextEdit, UiIntent,
 };
 use burnburn_types::DocumentId;
 
@@ -49,6 +50,24 @@ pub enum EditorControl {
     /// The distance for a new offset chain on the selection, and the button that makes it.
     ModOffsetDistance,
     ModOffsetMake,
+    // --- Adding a step (G8, E06): the kind and the numbers of the step that is going to be made.
+    /// A choice: offset, boolean (union, difference, intersection, xor), grid, circle.
+    ModNewKind,
+    ModNewDistance,
+    ModNewColumns,
+    ModNewRows,
+    ModNewPitchX,
+    ModNewPitchY,
+    ModNewCount,
+    ModNewCenterX,
+    ModNewCenterY,
+    ModNewSweep,
+    /// Appends the step to chain `modifier`.
+    ModAddStep {
+        modifier: u64,
+    },
+    /// A new chain on the selection with the step as its first.
+    ModNewChain,
     // --- Plates (P06).
     /// One text field of plate `plate`.
     PlateText {
@@ -315,7 +334,79 @@ pub(super) fn modifier_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Li
         text: String::new(),
     });
     lines.push(button(EditorControl::ModOffsetMake, t(G7Text::MakeOffsetButton, locale), s.selected == 1));
+    lines.extend(add_step_lines(s, s.modifiers.iter().collect(), locale));
     lines
+}
+
+/// The kinds of step the add block offers, in the order of its choice (see [`new_step`]).
+const NEW_KINDS: [G7Text; 7] = [
+    G7Text::NewKindOffset,
+    G7Text::NewKindUnion,
+    G7Text::NewKindDifference,
+    G7Text::NewKindIntersection,
+    G7Text::NewKindXor,
+    G7Text::NewKindGrid,
+    G7Text::NewKindCircle,
+];
+
+/// The "add a step" block: the kind, the numbers of every kind, a button per chain in `chains`
+/// that appends the step, and one that starts a chain on the selection with it.
+fn add_step_lines(s: &StructureViewModel, chains: Vec<&ModifierRow>, locale: Locale) -> Vec<G5Line> {
+    let mut lines =
+        vec![G5Line::Heading(t(G7Text::AddStepHeading, locale)), G5Line::Text(t(G7Text::AddStepHint, locale))];
+    lines.push(G5Line::Choice {
+        control: G5Control::Editor(EditorControl::ModNewKind),
+        caption: t(G7Text::NewKindCaption, locale),
+        options: NEW_KINDS.iter().map(|k| t(*k, locale)).collect(),
+        selected: 0,
+    });
+    for (control, caption, default) in [
+        (EditorControl::ModNewDistance, G7Text::NewDistance, "1"),
+        (EditorControl::ModNewColumns, G7Text::NewColumns, "2"),
+        (EditorControl::ModNewRows, G7Text::NewRows, "2"),
+        (EditorControl::ModNewPitchX, G7Text::NewPitchX, "20"),
+        (EditorControl::ModNewPitchY, G7Text::NewPitchY, "20"),
+        (EditorControl::ModNewCount, G7Text::NewCount, "4"),
+        (EditorControl::ModNewCenterX, G7Text::NewCenterX, "0"),
+        (EditorControl::ModNewCenterY, G7Text::NewCenterY, "0"),
+        (EditorControl::ModNewSweep, G7Text::NewSweep, "360"),
+    ] {
+        lines.push(field(control, t(caption, locale), default.to_owned()));
+    }
+    for chain in chains {
+        lines.push(button(
+            EditorControl::ModAddStep { modifier: chain.id },
+            g7_fmt(G7Text::AddStepButton, locale, &[&chain.name]),
+            true,
+        ));
+    }
+    lines.push(button(EditorControl::ModNewChain, t(G7Text::NewChainButton, locale), s.selected > 0));
+    lines
+}
+
+/// The step the add block describes, from what is typed (an untouched control has its shown text).
+fn new_step(values: &[(G5Control, String)]) -> NewModifierStep {
+    let text = |c: EditorControl| value_of(values, G5Control::Editor(c)).unwrap_or_default().to_owned();
+    let kind = super::g5::index_of(values, G5Control::Editor(EditorControl::ModNewKind)).unwrap_or(0);
+    match kind {
+        1 => NewModifierStep::Boolean { op: BooleanKind::Union },
+        2 => NewModifierStep::Boolean { op: BooleanKind::Difference },
+        3 => NewModifierStep::Boolean { op: BooleanKind::Intersection },
+        4 => NewModifierStep::Boolean { op: BooleanKind::Xor },
+        5 => NewModifierStep::Grid {
+            columns: text(EditorControl::ModNewColumns),
+            rows: text(EditorControl::ModNewRows),
+            pitch_x: text(EditorControl::ModNewPitchX),
+            pitch_y: text(EditorControl::ModNewPitchY),
+        },
+        6 => NewModifierStep::Circle {
+            count: text(EditorControl::ModNewCount),
+            center_x: text(EditorControl::ModNewCenterX),
+            center_y: text(EditorControl::ModNewCenterY),
+            sweep: text(EditorControl::ModNewSweep),
+        },
+        _ => NewModifierStep::Offset { distance: text(EditorControl::ModNewDistance) },
+    }
 }
 
 fn chain_lines(chain: &ModifierRow, locale: Locale) -> Vec<G5Line> {
@@ -382,6 +473,22 @@ fn chain_lines(chain: &ModifierRow, locale: Locale) -> Vec<G5Line> {
         true,
     ));
     lines
+}
+
+/// The stack panel of the selection: `None` when the selection is neither the source nor an
+/// output of a chain.
+pub(super) fn stack_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Line>> {
+    let s = &doc.structure;
+    let chains: Vec<&ModifierRow> = s.modifiers.iter().filter(|m| m.in_selection).collect();
+    if chains.is_empty() {
+        return None;
+    }
+    let mut lines = vec![G5Line::Text(t(G7Text::StackHint, locale))];
+    for chain in &chains {
+        lines.extend(chain_lines(chain, locale));
+    }
+    lines.extend(add_step_lines(s, chains, locale));
+    Some(lines)
 }
 
 /// The panel of a text that follows a guide path: where it starts, how far from the path, which
@@ -570,6 +677,24 @@ pub(super) fn editor_intent(
             doc.text_toolbar.as_ref()?.path.as_ref()?;
             Some(UiIntent::Text { document, edit: TextEdit::UnbindPath })
         }
+        EditorControl::ModNewKind
+        | EditorControl::ModNewDistance
+        | EditorControl::ModNewColumns
+        | EditorControl::ModNewRows
+        | EditorControl::ModNewPitchX
+        | EditorControl::ModNewPitchY
+        | EditorControl::ModNewCount
+        | EditorControl::ModNewCenterX
+        | EditorControl::ModNewCenterY
+        | EditorControl::ModNewSweep => None,
+        EditorControl::ModAddStep { modifier } => {
+            chain(modifier)?;
+            structure(document, StructureEdit::AddModifierStep { modifier, step: new_step(values) })
+        }
+        EditorControl::ModNewChain => (doc.structure.selected > 0).then(|| UiIntent::Structure {
+            document,
+            edit: StructureEdit::CreateModifierChain { step: new_step(values) },
+        }),
         EditorControl::ModOffsetDistance => None,
         EditorControl::ModOffsetMake => structure(
             document,

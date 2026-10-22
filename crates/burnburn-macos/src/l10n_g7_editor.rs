@@ -68,6 +68,44 @@ texts! {
     MakeOffsetHeading => ("Offsetketen op de selectie", "Offset chain on the selection"),
     MakeOffsetDistance => ("Afstand (mm, positief vergroot)", "Distance (mm, positive grows)"),
     MakeOffsetButton => ("Offsetketen maken", "Make offset chain"),
+    // --- Adding a step, and the stack of the selection (G8, E06).
+    StackTitle => ("Stapel van de selectie", "Stack of the selection"),
+    StackHint => (
+        "De ketens waar de selectie bron of resultaat van is.",
+        "The chains the selection is the source or a result of."
+    ),
+    AddStepHeading => ("Stap toevoegen", "Add a step"),
+    AddStepHint => (
+        "Vul de getallen van de soort in; een booleanstap combineert met de andere geselecteerde objecten.",
+        "Fill in the numbers of the kind; a boolean step combines with the other selected objects."
+    ),
+    NewKindCaption => ("Soort stap", "Kind of step"),
+    NewKindOffset => ("Offset", "Offset"),
+    NewKindUnion => ("Boolean: vereniging", "Boolean: union"),
+    NewKindDifference => ("Boolean: verschil", "Boolean: difference"),
+    NewKindIntersection => ("Boolean: doorsnede", "Boolean: intersection"),
+    NewKindXor => ("Boolean: exclusieve of", "Boolean: xor"),
+    NewKindGrid => ("Raster", "Grid"),
+    NewKindCircle => ("Cirkel", "Circle"),
+    NewDistance => ("Offset: afstand (mm)", "Offset: distance (mm)"),
+    NewColumns => ("Raster: kolommen", "Grid: columns"),
+    NewRows => ("Raster: rijen", "Grid: rows"),
+    NewPitchX => ("Raster: kolomafstand (mm)", "Grid: column pitch (mm)"),
+    NewPitchY => ("Raster: rijafstand (mm)", "Grid: row pitch (mm)"),
+    NewCount => ("Cirkel: aantal", "Circle: count"),
+    NewCenterX => ("Cirkel: middelpunt x (mm)", "Circle: centre x (mm)"),
+    NewCenterY => ("Cirkel: middelpunt y (mm)", "Circle: centre y (mm)"),
+    NewSweep => ("Cirkel: hoek (graden)", "Circle: sweep (degrees)"),
+    AddStepButton => ("Stap toevoegen aan {0}", "Add the step to {0}"),
+    NewChainButton => ("Keten maken van de selectie met deze stap", "Make a chain of the selection with this step"),
+    ProblemNeedsOperands => (
+        "Een booleanstap heeft andere geselecteerde objecten nodig om mee te combineren.",
+        "A boolean step needs other selected objects to combine with."
+    ),
+    ProblemInvalidSweep => (
+        "Een hoek is een getal tussen 0 en 360 graden, niet nul.",
+        "A sweep is an angle between 0 and 360 degrees, not zero."
+    ),
     // --- Text that follows a path (E08).
     TextPathTitle => ("Tekst op pad", "Text on a path"),
     TextPathFollows => ("De tekst volgt het pad {0}.", "The text follows the path {0}."),
@@ -240,6 +278,8 @@ pub fn structure_problem_text(problem: burnburn_presentation::StructureProblem, 
         P::LastStep => G7Text::ProblemLastStep,
         P::StepHasNoValue => G7Text::ProblemStepHasNoValue,
         P::InvalidCount => G7Text::ProblemInvalidCount,
+        P::NeedsOperands => G7Text::ProblemNeedsOperands,
+        P::InvalidSweep => G7Text::ProblemInvalidSweep,
         P::UnknownPlate => G7Text::ProblemUnknownPlate,
         P::UnknownShape => G7Text::ProblemUnknownShape,
         P::NoSuchField => G7Text::ProblemNoSuchField,
