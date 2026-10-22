@@ -74,6 +74,12 @@ pub(super) struct Tracer {
     pub(super) dropped: usize,
     /// Why the last preparation (local threshold, correction, mask) was refused.
     pub(super) prep_issue: Option<crate::trace_prep::PrepIssue>,
+    /// The local corrections in force, in the order they are applied to a fresh contour trace
+    /// (T05), including those the last trace could not bind.
+    pub(super) corrections: Vec<burnburn_trace::CorrectionRecord>,
+    /// Positions in `corrections` the last trace did not apply, and why.
+    pub(super) unbound: Vec<burnburn_trace::UnboundCorrection>,
+    pub(super) failed: Vec<usize>,
 }
 
 impl Tracer {
@@ -100,18 +106,22 @@ impl Tracer {
             decisions: Vec::new(),
             dropped: 0,
             prep_issue: None,
+            corrections: Vec::new(),
+            unbound: Vec::new(),
+            failed: Vec::new(),
         }
     }
 
     /// The tracer of an existing trace: its stored recipe is in force and the first trace starts.
-    pub(super) fn reopen(
-        &mut self,
-        trace: TraceId,
-        recipe: TraceRecipe,
-        mode: TraceMode,
-        decisions: Vec<CenterlineDecision>,
-    ) {
+    pub(super) fn reopen(&mut self, reopening: super::trace_link::Reopening) {
+        let super::trace_link::Reopening { trace, recipe, mode, decisions, stored } = reopening;
+        let recipe = *recipe;
         self.decisions = decisions;
+        // Local corrections need the decoded source (their keys include its hash).
+        match burnburn_trace::corrections_from_engine(&stored, &recipe, self.source.content_hash()) {
+            Ok(corrections) => self.corrections = corrections,
+            Err(_) => self.prep_issue = Some(crate::trace_prep::PrepIssue::StoredCorrectionsUnreadable),
+        }
         self.form = form_of(&recipe, mode);
         self.recipe = Some(recipe);
         self.editing = Some(trace);
@@ -326,12 +336,23 @@ impl AppController {
                 return AppUpdate { view_changed: true, ..AppUpdate::default() };
             }
             let input = match tracer.form.mode {
-                TraceMode::Contour => TaskInput::Trace(Box::new(TraceRequest {
-                    task: id,
-                    source_revision: revision,
-                    source: Arc::clone(&tracer.source),
-                    recipe,
-                })),
+                TraceMode::Contour => {
+                    let request = TraceRequest {
+                        task: id,
+                        source_revision: revision,
+                        source: Arc::clone(&tracer.source),
+                        recipe,
+                    };
+                    if tracer.corrections.is_empty() {
+                        TaskInput::Trace(Box::new(request))
+                    } else {
+                        // The stored local corrections are applied to the fresh trace (T05).
+                        TaskInput::TraceCorrected(Box::new(crate::task::CorrectedTrace {
+                            request,
+                            corrections: Arc::new(tracer.corrections.clone()),
+                        }))
+                    }
+                }
                 TraceMode::Centerline => match tracer.centerline_request(id, revision) {
                     Some(r) => TaskInput::Centerline(Box::new(r)),
                     None => return AppUpdate { view_changed: true, ..AppUpdate::default() },

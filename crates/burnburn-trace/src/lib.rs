@@ -38,14 +38,15 @@ pub use correct::{
 };
 pub use document::{
     centerline_command, centerline_decisions_from_engine, centerline_from_engine, centerline_to_engine,
+    corrections_from_engine,
     recipe_from_engine, recipe_to_engine, trace_command,
 };
 pub use error::{StaleTrace, TraceError};
 pub use preview::{ComparisonPreview, DeviationMap, SegmentDeviation, comparison_preview, deviation_map};
 pub use recipe::{ContourSettings, ENGINE_VERSION, FitSettings, TraceRecipe};
 pub use recipes::{
-    BatchItem, BatchOutcome, BatchProblem, BatchReport, Reapplied, RecipeComparison, RecipeSummary, compare_recipes,
-    reapply_correction, trace_batch,
+    BatchItem, BatchOutcome, BatchProblem, BatchReport, CorrectionReplay, Reapplied, RecipeComparison, RecipeSummary,
+    UnboundCorrection, compare_recipes, reapply_correction, replay_corrections, trace_batch,
 };
 pub use result::{
     ContourId, ContourOrigin, RemovedFeature, TraceObserver, TraceRequest, TraceResult, TraceStage, TraceStats,

@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use burnburn_document::engine::EngineRecipe;
 use burnburn_document::trace::TraceId;
 use burnburn_document::{CommandPayload, DerivedOwner, GeometrySource};
 use burnburn_geometry::Affine;
@@ -21,18 +22,26 @@ use crate::view_model::MessageKey;
 
 use super::{AppController, AppUpdate, Session, after_change, apply_command, error, submit};
 
+/// What a re-opened tracer starts from: the stored trace, its recipe and the decisions and
+/// corrections that belong to it.
+pub(super) struct Reopening {
+    pub(super) trace: TraceId,
+    pub(super) recipe: Box<TraceRecipe>,
+    pub(super) mode: TraceMode,
+    pub(super) decisions: Vec<CenterlineDecision>,
+    /// The stored engine recipe, for the local corrections (they need the decoded source to be read).
+    pub(super) stored: EngineRecipe,
+}
+
 /// Tracers being re-opened: the task that decodes the stored source, and what to show with it.
 #[derive(Default)]
 pub(super) struct TraceLinkState {
-    reopening: BTreeMap<TaskId, (TraceId, Box<TraceRecipe>, TraceMode, Vec<CenterlineDecision>)>,
+    reopening: BTreeMap<TaskId, Reopening>,
 }
 
 impl TraceLinkState {
     /// The trace and recipe a finished decode task was started for.
-    pub(super) fn take(
-        &mut self,
-        task: TaskId,
-    ) -> Option<(TraceId, Box<TraceRecipe>, TraceMode, Vec<CenterlineDecision>)> {
+    pub(super) fn take(&mut self, task: TaskId) -> Option<Reopening> {
         self.reopening.remove(&task)
     }
 }
@@ -136,7 +145,16 @@ impl AppController {
             };
             let update = submit(s, &tasks, request, cancel, document);
             if s.pending.contains_key(&id) {
-                s.trace_link.reopening.insert(id, (trace, Box::new(recipe), mode, decisions));
+                s.trace_link.reopening.insert(
+                    id,
+                    Reopening {
+                        trace,
+                        recipe: Box::new(recipe),
+                        mode,
+                        decisions,
+                        stored: definition.recipe.clone(),
+                    },
+                );
             }
             update
         })

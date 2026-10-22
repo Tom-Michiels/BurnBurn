@@ -23,6 +23,10 @@ pub enum PrepField {
     MaskY,
     MaskWidth,
     MaskHeight,
+    /// The gray level a corrected area is traced at (empty = the level of the trace).
+    RegionThreshold,
+    /// The list of anchor points of a correction, `x, y; x, y`.
+    Anchors,
 }
 
 /// Why a preparation was refused. The recipe stays as it was.
@@ -35,8 +39,12 @@ pub enum PrepIssue {
     DegenerateCorners,
     /// The mask lies (partly) outside the working image.
     MaskOutsideImage,
-    /// There is no mask with that number.
+    /// There is no mask (or correction) with that number.
     UnknownMask,
+    /// A correction needs a finished contour trace of the image as it is now.
+    NothingToCorrect,
+    /// The corrections stored with the trace could not be read; the trace starts without them.
+    StoredCorrectionsUnreadable,
 }
 
 /// What a mask does with the foreground inside it.
@@ -62,6 +70,11 @@ pub enum TracePrepIntent {
     ClearPerspective,
     AddMask { mode: MaskMode, x: String, y: String, width: String, height: String },
     RemoveMask { index: usize },
+    /// Trace the area again with its own gray level (empty: the level of the trace) and optional
+    /// anchors `x, y; x, y` the new outline must pass through. Everything outside the area stays.
+    RetraceRegion { x: String, y: String, width: String, height: String, threshold: String, anchors: String },
+    /// Drop correction number `index`; the trace is made again with the others.
+    RemoveCorrection { index: usize },
 }
 
 /// The local threshold in force.
@@ -109,7 +122,33 @@ pub struct TracePrepViewModel {
     pub threshold: PrepThreshold,
     pub perspective: PrepPerspective,
     pub masks: Vec<PrepMask>,
+    /// The local corrections in force, in the order they are applied.
+    pub corrections: Vec<PrepCorrection>,
     pub issue: Option<PrepIssue>,
     /// A trace of the prepared image is running.
     pub computing: bool,
+}
+
+/// Where a stored correction stands after the last trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CorrectionStatus {
+    Applied,
+    /// Not applied: the contours it was made on are no longer the same. `lost` contours it was bound
+    /// to have no match; `new_in_region` contours in its area it never saw.
+    NeedsRelink { lost: usize, new_in_region: usize },
+    /// The retrace itself was refused.
+    Failed,
+}
+
+/// One local correction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrepCorrection {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    /// The gray level the area was traced at, or the local threshold in words.
+    pub threshold: String,
+    pub anchors: usize,
+    pub status: CorrectionStatus,
 }

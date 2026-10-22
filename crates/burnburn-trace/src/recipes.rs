@@ -208,3 +208,50 @@ fn binding_matches(b: &ContourBinding, c: &TracedContour) -> bool {
     let union = area(&cb) + area(&b.bounds) - inter;
     c.kind == b.kind && area_ok && union > 0.0 && inter / union >= 0.8
 }
+
+/// A stored correction that was not applied because its contours are no longer the same.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnboundCorrection {
+    /// Position in the stored list.
+    pub index: usize,
+    /// Contours the correction was bound to that have no match any more.
+    pub lost: Vec<ContourId>,
+    /// Contours inside its region that it never saw.
+    pub new_in_region: Vec<ContourId>,
+}
+
+/// The result of applying stored corrections to a fresh base trace, in order.
+#[derive(Debug, Clone)]
+pub struct CorrectionReplay {
+    pub result: Arc<TraceResult>,
+    pub applied: usize,
+    pub unbound: Vec<UnboundCorrection>,
+    /// Corrections the retrace itself refused, with the reason.
+    pub failed: Vec<(usize, TraceError)>,
+}
+
+/// Applies `records` to `base` one after the other.
+pub fn replay_corrections(
+    base: &Arc<TraceResult>,
+    source: &Arc<SourceImage>,
+    records: &[CorrectionRecord],
+    task: TaskId,
+    cancel: &CancellationToken,
+) -> Result<CorrectionReplay, TraceError> {
+    let mut result = Arc::clone(base);
+    let (mut applied, mut unbound, mut failed) = (0, Vec::new(), Vec::new());
+    for (index, record) in records.iter().enumerate() {
+        match reapply_correction(record, &result, source, task, cancel) {
+            Ok(Reapplied::Applied(next)) => {
+                result = Arc::new(*next);
+                applied += 1;
+            }
+            Ok(Reapplied::NeedsRebind { lost, new_in_region }) => {
+                unbound.push(UnboundCorrection { index, lost, new_in_region });
+            }
+            Err(e @ TraceError::Cancelled(_)) => return Err(e),
+            Err(e) => failed.push((index, e)),
+        }
+    }
+    Ok(CorrectionReplay { result, applied, unbound, failed })
+}
