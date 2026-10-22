@@ -2,12 +2,11 @@
 //! masks. Every action edits the recipe in force and starts a new trace of it; the source pixels are
 //! never touched, and a refused action leaves the recipe as it was.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use burnburn_image::{
-    Homography, MAX_ADAPTIVE_RADIUS, Perspective, PixelRect, QuarterTurn, RegionMask, RegionMode, RegionShape,
-    Threshold,
+    Homography, LensDistortion, MAX_ADAPTIVE_RADIUS, Perspective, PixelRect, QuarterTurn, RegionMask, RegionMode,
+    RegionShape, Threshold,
 };
 use burnburn_trace::{Anchor, ContourKind, CorrectionReplay, CorrectionRequest, TraceRecipe, TraceResult};
 use burnburn_types::{CancellationSource, ContentHash, DocumentId, TaskId};
@@ -16,8 +15,9 @@ use crate::field::{format_mm, parse_number};
 use crate::image_panel::TraceMode;
 use crate::task::{TaskInput, TaskKind, TaskRequest, revision_key};
 use crate::trace_prep::{
-    CorrectionStatus, MaskMode, PrepCorrection, PrepDeviation, PrepField, PrepIssue, PrepMask, PrepPerspective,
-    PrepRemoved, PrepReport, PrepThreshold, PrepTransform, TracePrepIntent, TracePrepViewModel,
+    CorrectionStatus, MaskMode, PrepContour, PrepCorrection, PrepDeviation, PrepField, PrepIssue, PrepLens, PrepMask,
+    PrepNodeGoal, PrepNodeTarget, PrepPerspective, PrepRemoved, PrepReport, PrepThreshold, PrepTransform,
+    TracePrepIntent, TracePrepViewModel,
 };
 use crate::view_model::MessageKey;
 
@@ -46,7 +46,7 @@ fn whole(text: &str, field: PrepField, range: (u32, u32)) -> Result<u32, PrepIss
 }
 
 /// Size of the working image the masks and the correction refer to.
-fn working_size(t: &Tracer, recipe: &TraceRecipe) -> (u32, u32) {
+pub(super) fn working_size(t: &Tracer, recipe: &TraceRecipe) -> (u32, u32) {
     if let Some(p) = &recipe.image.perspective {
         return (p.width, p.height);
     }
@@ -73,7 +73,12 @@ fn parse_corners(corners: &[[String; 2]; 4]) -> Result<Corners, PrepIssue> {
 }
 
 fn perspective_from(corners: &[[String; 2]; 4], width: &str, height: &str) -> Result<Perspective, PrepIssue> {
-    let c = parse_corners(corners)?;
+    perspective_of(parse_corners(corners)?, width, height)
+}
+
+/// The plane correction of four corners (top-left, top-right, bottom-right, bottom-left) and the
+/// typed size of the corrected image.
+pub(super) fn perspective_of(c: Corners, width: &str, height: &str) -> Result<Perspective, PrepIssue> {
     // Empty sizes take the longer of each pair of opposite edges.
     let side = |text: &str, field: PrepField, derived: f64| match text.trim() {
         "" => Ok((derived.round() as u32).clamp(1, MAX_CORRECTED_SIDE)),
@@ -117,6 +122,18 @@ fn apply(t: &Tracer, intent: TracePrepIntent) -> Result<TraceRecipe, PrepIssue> 
             recipe.image.threshold = Threshold::Adaptive { radius, offset: offset as u8 };
         }
         TracePrepIntent::UseGlobalThreshold => recipe.image.threshold = Threshold::Otsu,
+        TracePrepIntent::UseLens { k1, k2 } => {
+            let lens = LensDistortion { k1: number(&k1, PrepField::LensK1)?, k2: number(&k2, PrepField::LensK2)? };
+            // The coefficients are separately in range; together they must still be a lens.
+            for (value, field) in [(lens.k1, PrepField::LensK1), (lens.k2, PrepField::LensK2)] {
+                if value.abs() > LensDistortion::MAX_COEFFICIENT {
+                    return Err(PrepIssue::OutOfRange(field));
+                }
+            }
+            lens.validate().map_err(|_| PrepIssue::OutOfRange(PrepField::LensK1))?;
+            recipe.image.lens = Some(lens);
+        }
+        TracePrepIntent::ClearLens => recipe.image.lens = None,
         TracePrepIntent::ApplyPerspective { corners, width, height } => {
             recipe.image.perspective = Some(perspective_from(&corners, &width, &height)?);
         }
@@ -125,7 +142,12 @@ fn apply(t: &Tracer, intent: TracePrepIntent) -> Result<TraceRecipe, PrepIssue> 
             let size = working_size(t, &recipe);
             recipe.image.regions.push(mask_from(mode, [&x, &y, &width, &height], size)?);
         }
-        TracePrepIntent::RetraceRegion { .. } | TracePrepIntent::RemoveCorrection { .. } => {
+        TracePrepIntent::RetraceRegion { .. }
+        | TracePrepIntent::RemoveCorrection { .. }
+        | TracePrepIntent::ProtectContour { .. }
+        | TracePrepIntent::SetNodeTarget { .. }
+        | TracePrepIntent::KeepContour { .. }
+        | TracePrepIntent::RestoreRemoved { .. } => {
             return Err(PrepIssue::NothingToCorrect); // handled before; never reached
         }
         TracePrepIntent::RemoveMask { index } => {
@@ -142,7 +164,7 @@ fn apply(t: &Tracer, intent: TracePrepIntent) -> Result<TraceRecipe, PrepIssue> 
 fn region_from(rect: [&str; 4], size: (u32, u32)) -> Result<PixelRect, PrepIssue> {
     match mask_from(MaskMode::Keep, rect, size)?.shape {
         RegionShape::Rect(r) => Ok(r),
-        RegionShape::Polygon(_) => Err(PrepIssue::MaskOutsideImage),
+        RegionShape::Polygon(_) | RegionShape::Stroke { .. } => Err(PrepIssue::MaskOutsideImage),
     }
 }
 
@@ -188,8 +210,8 @@ fn correction_request(
         region: RegionShape::Rect(region),
         recipe,
         anchors,
-        protected: BTreeSet::new(),
-        node_target: None,
+        protected: t.protect.clone(),
+        node_target: t.node_target,
     })
 }
 
@@ -230,6 +252,9 @@ pub(super) fn region_finished(
     if fresh {
         if let Some(record) = result.corrections.last() {
             t.corrections.push(record.clone());
+            // The protected contours and the goal were for this retrace only.
+            t.protect.clear();
+            t.node_target = None;
         }
         t.report = Some(report_of(&result, t.recipe.as_ref()));
         t.result = Some(result);
@@ -244,6 +269,12 @@ impl AppController {
                 self.retrace_region(document, [&x, &y, &width, &height], &threshold, &anchors)
             }
             TracePrepIntent::RemoveCorrection { index } => self.remove_correction(document, index),
+            TracePrepIntent::ProtectContour { id, on } => self.protect_contour(document, id, on),
+            TracePrepIntent::SetNodeTarget { max_nodes, max_tolerance_mm } => {
+                self.set_node_target(document, &max_nodes, &max_tolerance_mm)
+            }
+            TracePrepIntent::KeepContour { id, keep } => self.keep_contour(document, id, keep),
+            TracePrepIntent::RestoreRemoved { index } => self.restore_removed(document, index),
             other => self.prepare(document, other),
         }
     }
@@ -350,6 +381,44 @@ pub(super) fn report_of(result: &TraceResult, recipe: Option<&TraceRecipe>) -> P
     }
 }
 
+/// The pixel box around `points`, grown by `margin`.
+fn points_box(points: &[[f64; 2]], margin: f64) -> PixelRect {
+    let (x0, x1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
+    let (y0, y1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
+    PixelRect {
+        x: (x0 - margin).max(0.0) as u32,
+        y: (y0 - margin).max(0.0) as u32,
+        width: (x1 - x0 + 2.0 * margin).max(0.0).ceil() as u32,
+        height: (y1 - y0 + 2.0 * margin).max(0.0).ceil() as u32,
+    }
+}
+
+/// The contours of the contour result in force, with what can be done with each.
+fn contours_view(t: &Tracer) -> Vec<PrepContour> {
+    let Some(result) = t.result.as_ref().filter(|_| t.form.mode == TraceMode::Contour) else { return Vec::new() };
+    let keep = t.recipe.as_ref().map(|r| r.contour.keep.as_slice()).unwrap_or_default();
+    result
+        .contours
+        .iter()
+        .map(|c| {
+            let (mut lo, mut hi) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+            for p in &c.source_points {
+                lo = (lo.0.min(p.x), lo.1.min(p.y));
+                hi = (hi.0.max(p.x), hi.1.max(p.y));
+            }
+            PrepContour {
+                id: c.id.0,
+                hole: c.kind == ContourKind::Hole,
+                area_mm2: c.area_mm2,
+                x_mm: (lo.0 + hi.0) / 2.0,
+                y_mm: (lo.1 + hi.1) / 2.0,
+                protected: t.protect.contains(&c.id),
+                kept: result.contour_anchor_px(c.id).is_some_and(|a| super::trace_g7::names_same(keep, a)),
+            }
+        })
+        .collect()
+}
+
 fn corrections_view(t: &Tracer) -> Vec<PrepCorrection> {
     t.corrections
         .iter()
@@ -357,16 +426,8 @@ fn corrections_view(t: &Tracer) -> Vec<PrepCorrection> {
         .map(|(i, c)| {
             let rect = match &c.region {
                 RegionShape::Rect(r) => *r,
-                RegionShape::Polygon(points) => {
-                    let (x0, x1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
-                    let (y0, y1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
-                    PixelRect {
-                        x: x0.max(0.0) as u32,
-                        y: y0.max(0.0) as u32,
-                        width: (x1 - x0).max(0.0).ceil() as u32,
-                        height: (y1 - y0).max(0.0).ceil() as u32,
-                    }
-                }
+                RegionShape::Polygon(points) => points_box(points, 0.0),
+                RegionShape::Stroke { points, radius } => points_box(points, *radius),
             };
             let status = if let Some(u) = t.unbound.iter().find(|u| u.index == i) {
                 CorrectionStatus::NeedsRelink { lost: u.lost.len(), new_in_region: u.new_in_region.len() }
@@ -386,6 +447,13 @@ fn corrections_view(t: &Tracer) -> Vec<PrepCorrection> {
                     Threshold::Adaptive { radius, offset } => format!("{radius}/{offset}"),
                 },
                 anchors: c.anchors.len(),
+                protected: c.protected.len(),
+                node_goal: c.node_target.zip(c.node_outcome).map(|(target, outcome)| PrepNodeGoal {
+                    max_nodes: target.max_nodes,
+                    met: outcome.met,
+                    nodes: outcome.nodes,
+                    tolerance_mm: outcome.tolerance_mm,
+                }),
                 status,
             }
         })
@@ -436,18 +504,14 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         .map(|m| {
             let rect = match &m.shape {
                 RegionShape::Rect(r) => *r,
-                RegionShape::Polygon(points) => {
-                    let (x0, x1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
-                    let (y0, y1) = points.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
-                    PixelRect {
-                        x: x0.max(0.0) as u32,
-                        y: y0.max(0.0) as u32,
-                        width: (x1 - x0).max(0.0).ceil() as u32,
-                        height: (y1 - y0).max(0.0).ceil() as u32,
-                    }
-                }
+                RegionShape::Polygon(points) => points_box(points, 0.0),
+                RegionShape::Stroke { points, radius } => points_box(points, *radius),
             };
             PrepMask {
+                brush_px: match &m.shape {
+                    RegionShape::Stroke { radius, .. } => Some(*radius),
+                    _ => None,
+                },
                 mode: if m.mode == RegionMode::Include { MaskMode::Keep } else { MaskMode::Remove },
                 x: rect.x,
                 y: rect.y,
@@ -463,6 +527,15 @@ pub(super) fn view(s: &Session) -> Option<TracePrepViewModel> {
         masks,
         corrections: corrections_view(t),
         report: t.report.clone().filter(|_| t.form.mode == TraceMode::Contour && t.result.is_some()),
+        lens: match recipe.image.lens {
+            Some(l) => PrepLens { on: true, k1: text(l.k1), k2: text(l.k2) },
+            None => PrepLens { on: false, k1: "0".to_owned(), k2: "0".to_owned() },
+        },
+        contours: contours_view(t),
+        node_target: t
+            .node_target
+            .map(|n| PrepNodeTarget { max_nodes: n.max_nodes.to_string(), max_tolerance_mm: text(n.max_tolerance_mm) }),
+        pick: super::trace_g7::pick_view(t),
         issue: t.prep_issue,
         computing: s.pending.values().any(|(kind, _)| matches!(kind, TaskKind::Trace | TaskKind::Centerline)),
     })

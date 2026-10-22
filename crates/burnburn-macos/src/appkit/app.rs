@@ -439,6 +439,7 @@ impl HostApp {
             Reaction::ShowOpenPanel => self.show_open_panel(),
             Reaction::ShowImportPanel => self.show_import_panel(),
             Reaction::ShowReplaceImagePanel => self.show_image_file_panel(ImageFilePanel::Replace),
+            Reaction::ShowReplaceToFitPanel => self.show_image_file_panel(ImageFilePanel::ReplaceToFit),
             Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
@@ -1114,6 +1115,14 @@ impl HostApp {
                 "replace image panel completion",
                 move |path| NativeEvent::ReplaceImageFileChosen { document, path },
             ),
+            ImageFilePanel::ReplaceToFit => show_image_open_panel(
+                self.mtm,
+                &window,
+                self.me.clone(),
+                &BITMAP_TYPES,
+                "replace to fit panel completion",
+                move |path| NativeEvent::ReplaceToFitFileChosen { document, path },
+            ),
             ImageFilePanel::Trace => show_image_open_panel(
                 self.mtm,
                 &window,
@@ -1220,6 +1229,7 @@ impl HostApp {
             import_labels: [&w.import.labels[0], &w.import.labels[1], &w.import.labels[2], &w.import.labels[3]],
             import_units: &w.import.units,
             import_commit: &w.import.commit,
+            import_layers: &w.import.layers,
             image_import_sheet: w.image.import.shown.then_some(&*w.image.import.sheet),
             image_import_labels: w.image.import.labels.each_ref().map(|l| &**l),
             image_dpi: &w.image.import.dpi,
@@ -1331,6 +1341,7 @@ impl Drop for HostApp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ImageFilePanel {
     Replace,
+    ReplaceToFit,
     Trace,
 }
 
@@ -1375,6 +1386,8 @@ pub struct WindowParts<'a> {
     pub import_labels: [&'a objc2_app_kit::NSTextField; 4],
     pub import_units: &'a objc2_app_kit::NSPopUpButton,
     pub import_commit: &'a objc2_app_kit::NSButton,
+    /// The check that accepts the layers a PDF or plotter file proposes (G7-trace, P04).
+    pub import_layers: &'a objc2_app_kit::NSButton,
     /// Bitmap import sheet (W2-L1-beeld) while presentation shows an image import.
     pub image_import_sheet: Option<&'a objc2_app_kit::NSWindow>,
     /// File, pixels, DPI caption, proposal, size, issue.
@@ -1844,6 +1857,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::MaskImage), "", false),
             sep(),
             item(c(CommandKey::ReplaceImage), "", false),
+            item(c(CommandKey::ReplaceImageToFit), "", false),
             item(c(CommandKey::RefreshImage), "", false),
             item(c(CommandKey::SaveProcessedBitmap), "", false),
             sep(),

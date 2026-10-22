@@ -99,6 +99,8 @@ pub mod id {
         pub const REPORT: u16 = B + 38;
         pub const COMMIT: u16 = B + 39;
         pub const CANCEL: u16 = B + 40;
+        /// The check that accepts the proposed layers (G7-trace, P04).
+        pub const LAYERS: u16 = B + 41;
     }
 
     /// Export dialog: `B + 50 ..`.
@@ -362,6 +364,15 @@ fn import_spec(input: &FilesInput<'_>) -> PanelSpec {
             caption(i::PAGES_CAPTION, ft(FilesText::ImportPageLabel, locale)).hidden_if(p.pages.items.is_empty()),
             combo_of(i::PAGES, &p.pages, true).hidden_if(p.pages.items.is_empty()),
         ]),
+        Row::one(
+            ControlSpec::check(
+                i::LAYERS,
+                crate::panels_files::import_layers_check_text(locale),
+                p.layers.unwrap_or(false),
+                true,
+            )
+            .hidden_if(p.layers.is_none()),
+        ),
         Row::one(ControlSpec::label(i::SIZE, p.size.clone())),
         Row::one(ControlSpec::report(i::REPORT, 10, p.report.clone())),
         Row::of(vec![
@@ -663,6 +674,9 @@ fn on_import(input: &FilesInput<'_>, event: &PanelEvent) -> PanelReaction {
             import_unit(event.values.selected(i::UNIT)).map(|unit| UiIntent::SetImportUnit { document: doc, unit }),
         ),
         (i::PAGES, notify::CHANGED) => intent(import_pages_intent(doc, input.vm, event.values.selected(i::PAGES))),
+        (i::LAYERS, notify::CLICKED) => {
+            intent(crate::panels_files::import_layers_intent(doc, input.vm, event.values.checked(i::LAYERS)))
+        }
         _ => PanelReaction::Nothing,
     }
 }

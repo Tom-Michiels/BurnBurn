@@ -63,8 +63,11 @@ fn same_source_and_recipe_reproduce_identical_geometry_and_key() {
         TraceRecipe { fit: FitSettings { corner_angle_deg: 45.0, ..base.fit }, ..base.clone() },
         TraceRecipe { fit: FitSettings { corner_window_px: 3.0, ..base.fit }, ..base.clone() },
         TraceRecipe { fit: FitSettings { curves: false, ..base.fit }, ..base.clone() },
-        TraceRecipe { contour: ContourSettings { diagonal: DiagonalPolicy::Separate, ..base.contour }, ..base.clone() },
-        TraceRecipe { contour: ContourSettings { min_area_mm2: 0.5, ..base.contour }, ..base.clone() },
+        TraceRecipe {
+            contour: ContourSettings { diagonal: DiagonalPolicy::Separate, ..base.contour.clone() },
+            ..base.clone()
+        },
+        TraceRecipe { contour: ContourSettings { min_area_mm2: 0.5, ..base.contour.clone() }, ..base.clone() },
         TraceRecipe {
             image: ImageRecipe { morphology: vec![Morphology::Open(1)], ..base.image.clone() },
             ..base.clone()

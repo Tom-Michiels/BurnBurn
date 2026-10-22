@@ -23,7 +23,7 @@ fn value_to(v: &ParamValue) -> d::Value {
     }
 }
 
-fn recipe_to(r: &EngineRecipe) -> d::Recipe {
+pub(crate) fn recipe_to(r: &EngineRecipe) -> d::Recipe {
     d::Recipe { engine: r.engine.clone(), params: r.params.iter().map(|(k, v)| (k.clone(), value_to(v))).collect() }
 }
 
@@ -86,7 +86,7 @@ fn value_from(path: &dyn Fn() -> String, v: &d::Value) -> Result<ParamValue, Loa
     })
 }
 
-fn recipe_from(path: &dyn Fn() -> String, r: &d::Recipe) -> Result<EngineRecipe, LoadError> {
+pub(crate) fn recipe_from(path: &dyn Fn() -> String, r: &d::Recipe) -> Result<EngineRecipe, LoadError> {
     let mut out = EngineRecipe::new(r.engine.clone());
     for (k, v) in &r.params {
         out.params.insert(k.clone(), value_from(&|| format!("{}.params.{k}", path()), v)?);

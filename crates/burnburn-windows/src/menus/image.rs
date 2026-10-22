@@ -12,6 +12,7 @@ pub(super) fn items() -> Vec<MenuNode> {
         cmd(CommandKey::MaskImage),
         sep(),
         cmd(CommandKey::ReplaceImage),
+        cmd(CommandKey::ReplaceImageToFit),
         cmd(CommandKey::RefreshImage),
         cmd(CommandKey::SaveProcessedBitmap),
         sep(),

@@ -30,6 +30,8 @@ pub(crate) struct ImportSheet {
     /// PDF/AI: the pages to import, and their caption.
     pub(crate) pages: Retained<NSPopUpButton>,
     pub(crate) pages_caption: Retained<NSTextField>,
+    /// PDF/AI and plotter files: accept the proposed layers (G7-trace, P04).
+    pub(crate) layers: Retained<NSButton>,
     /// The full report: layers, values that were not taken over, warnings.
     pub(crate) report: Retained<NSTextView>,
     pub(crate) commit: Retained<NSButton>,
@@ -91,6 +93,19 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
     ))));
     content.addSubview(&pages);
     col.y -= 30.0;
+    // The check that accepts the proposed layers (wired to `FilesTarget`, like the pages pop-up).
+    // SAFETY: no target and no action yet; the files section wires them.
+    let layers = unsafe {
+        NSButton::checkboxWithTitle_target_action(
+            &NSString::from_str(crate::panels_files::import_layers_check_text(locale)),
+            None,
+            None,
+            mtm,
+        )
+    };
+    layers.setFrame(rect(12.0, col.y - 22.0, w - 24.0, 22.0));
+    content.addSubview(&layers);
+    col.y -= 26.0;
     let size = col.add_label("", 18.0);
     // The first line of the report stays a label (summary); the full report scrolls below.
     let report_summary = col.add_label("", 18.0);
@@ -122,6 +137,7 @@ pub(crate) fn import_sheet(mtm: MainThreadMarker, target: &AnyObject, locale: Lo
         units_caption,
         pages,
         pages_caption,
+        layers,
         report,
         commit,
         cancel,
@@ -153,6 +169,12 @@ impl DocWindow {
         self.import.pages.setHidden(!has_pages);
         self.import.pages_caption.setHidden(!has_pages);
         set_popup(&self.import.pages, &panel.pages, true);
+        self.import.layers.setHidden(panel.layers.is_none());
+        self.import.layers.setState(if panel.layers == Some(true) {
+            objc2_app_kit::NSControlStateValueOn
+        } else {
+            objc2_app_kit::NSControlStateValueOff
+        });
         let selected = panel.selected_unit.map_or(-1, |i| i as isize);
         if self.import.units.indexOfSelectedItem() != selected {
             self.import.units.selectItemAtIndex(selected);

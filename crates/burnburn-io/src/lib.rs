@@ -42,6 +42,7 @@ mod structure_map;
 pub mod template;
 pub mod text_dto;
 mod text_map;
+pub mod trace_recipe_library;
 
 pub use container::{SCHEMA_VERSION, container_schema, decode_container, encode_container};
 pub use error::{LoadError, SaveError};

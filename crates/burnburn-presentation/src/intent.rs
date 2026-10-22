@@ -320,6 +320,16 @@ pub enum UiIntent {
         document: DocumentId,
         intent: crate::trace_prep::TracePrepIntent,
     },
+    /// Own recipes, A/B comparison and batch tracing of the open tracer (G7-trace, T10).
+    TraceRecipe {
+        document: DocumentId,
+        intent: crate::trace_recipes::TraceRecipeIntent,
+    },
+    /// Pointing in the image of the open tracer: corners clicked, masks painted (G7-trace, T03).
+    TracePick {
+        document: DocumentId,
+        pick: crate::trace_pick::TracePick,
+    },
     /// A decision on the open centre-line result (T04, T08).
     CenterlineEdit {
         document: DocumentId,
@@ -431,6 +441,13 @@ pub enum UiIntent {
     /// File chosen for Replace Image: the pixels of the selected image operation are replaced,
     /// frame and placement stay (one history entry).
     ReplaceImage {
+        document: DocumentId,
+        path: PathBuf,
+    },
+    /// File chosen for Replace to Fit (G7-trace, T09): like `ReplaceImage`, and the frame is
+    /// resized to hold the new picture in its own aspect ratio, as large as the old frame allows
+    /// and in the middle of it (one history entry).
+    ReplaceImageToFit {
         document: DocumentId,
         path: PathBuf,
     },
@@ -871,6 +888,9 @@ pub enum CommandKey {
     /// Bitmap ▸ Replace Image… (the host asks for a file, then sends `UiIntent::ReplaceImage`);
     /// this key carries the enablement.
     ReplaceImage,
+    /// Bitmap ▸ Replace to Fit… (the host asks for a file, then sends `UiIntent::ReplaceImageToFit`);
+    /// this key carries the enablement.
+    ReplaceImageToFit,
     /// Bitmap ▸ Refresh Image: re-read the file the image came from (one history entry when the
     /// pixels changed).
     RefreshImage,
@@ -1116,6 +1136,7 @@ impl CommandKey {
         CommandKey::CancelImageAdjust,
         CommandKey::MaskImage,
         CommandKey::ReplaceImage,
+        CommandKey::ReplaceImageToFit,
         CommandKey::RefreshImage,
         CommandKey::SaveProcessedBitmap,
         CommandKey::SketchNew,

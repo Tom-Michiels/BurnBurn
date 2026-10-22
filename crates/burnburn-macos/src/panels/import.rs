@@ -38,6 +38,9 @@ pub struct ImportPanel {
     pub show_units: bool,
     /// PDF/AI: one item per page, then "all pages"; empty for every other format.
     pub pages: crate::panels_files::Popup,
+    /// PDF/AI and plotter files that propose layers: the check "create an operation for each" and
+    /// whether it is on; `None` for every other format (G7-trace, P04).
+    pub layers: Option<bool>,
 }
 
 fn unit_label(mm_per_unit: f64) -> Option<&'static str> {
@@ -136,5 +139,6 @@ pub fn import_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
             burnburn_presentation::ImportKind::Svg | burnburn_presentation::ImportKind::Dxf
         ),
         pages: crate::panels_files::import_pages_popup(import, locale),
+        layers: (!import.layers.is_empty()).then_some(import.layers_accepted),
     })
 }

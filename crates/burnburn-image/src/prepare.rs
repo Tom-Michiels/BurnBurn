@@ -3,6 +3,7 @@ use burnburn_types::{CancellationToken, CanonicalEncode, CanonicalWriter, Conten
 use crate::adjust::{Orientation, PixelRect, QuarterTurn};
 use crate::error::ImageError;
 use crate::gray::{AlphaPolicy, GrayImage, median_filter, to_gray};
+use crate::lens::{LensDistortion, undistort};
 use crate::mask::{BinaryMask, Morphology, RegionMask, apply_morphology, apply_regions};
 use crate::perspective::{Perspective, PerspectiveReport, warp};
 use crate::scale::{PixelScale, ScaleError};
@@ -31,6 +32,9 @@ pub struct ImageRecipe {
     /// Optional four(+)-point plane rectification after crop/rotation; regions, morphology and the
     /// traced result are then in rectified pixels.
     pub perspective: Option<Perspective>,
+    /// Radial lens correction of the photo, applied right after crop and rotation, before the plane
+    /// correction (whose corners are then in corrected photo pixels).
+    pub lens: Option<LensDistortion>,
 }
 
 /// The binarised working image handed to the tracer.
@@ -94,6 +98,9 @@ pub fn prepare(
         }
     }
     let mut gray = GrayImage { width: w, height: h, values };
+    if let Some(lens) = &recipe.lens {
+        gray = undistort(&gray, lens, cancel)?;
+    }
     let mut report = None;
     if let Some(p) = &recipe.perspective {
         let (warped, r) = warp(&gray, p, cancel)?;
@@ -155,6 +162,10 @@ impl CanonicalEncode for ImageRecipe {
         // Only written when present, so keys of recipes without perspective stay unchanged.
         if let Some(p) = &self.perspective {
             p.encode(out);
+        }
+        // Same rule for the lens: recipes without one keep their keys.
+        if let Some(l) = &self.lens {
+            l.encode(out);
         }
     }
 }

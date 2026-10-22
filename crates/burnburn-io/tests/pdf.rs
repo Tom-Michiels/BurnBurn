@@ -247,6 +247,24 @@ fn colours_name_the_items_by_stroke_or_fill() {
 }
 
 #[test]
+fn each_object_names_the_layer_it_proposes_by_its_stroke_or_fill_colour() {
+    use burnburn_io::import::ImportLayer;
+    let draft = import(&one_page("", "1 0 0 RG 0 0 m 10 0 l S 0 0 1 rg 0 5 10 10 re f 0.5 g 0 20 m 10 20 l S"));
+    let layers: Vec<_> = draft.items.iter().map(|i| i.layer).collect();
+    assert_eq!(
+        layers,
+        [
+            Some(ImportLayer::Stroke([255, 0, 0])),
+            Some(ImportLayer::Fill([0, 0, 255])),
+            Some(ImportLayer::Stroke([255, 0, 0])),
+        ]
+    );
+    // CMYK is converted the way the name says (cyan 1 = no red).
+    let cmyk = import(&one_page("", "1 0 0 0 K 0 0 m 10 0 l S"));
+    assert_eq!(cmyk.items[0].layer, Some(ImportLayer::Stroke([0, 255, 255])));
+}
+
+#[test]
 fn form_xobjects_apply_their_matrix_and_self_reference_is_bounded() {
     let bytes = pdf(&[
         b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),

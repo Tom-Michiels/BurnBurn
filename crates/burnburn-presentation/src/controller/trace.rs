@@ -82,6 +82,13 @@ pub(super) struct Tracer {
     pub(super) failed: Vec<usize>,
     /// What simplifying cost for the contour result in force (T06).
     pub(super) report: Option<crate::trace_prep::PrepReport>,
+    /// Contours the next area retrace leaves alone, and its node goal (G7-trace, T05).
+    pub(super) protect: std::collections::BTreeSet<burnburn_trace::ContourId>,
+    pub(super) node_target: Option<burnburn_trace::NodeTarget>,
+    /// Pointing in the image: corners being clicked or a brush in hand (G7-trace, T03).
+    pub(super) pick: Option<super::trace_g7::PickState>,
+    /// Own recipes, the A/B comparison and the batch (G7-trace, T10).
+    pub(super) study: super::trace_recipes::StudyState,
 }
 
 impl Tracer {
@@ -112,6 +119,10 @@ impl Tracer {
             unbound: Vec::new(),
             failed: Vec::new(),
             report: None,
+            protect: std::collections::BTreeSet::new(),
+            node_target: None,
+            pick: None,
+            study: super::trace_recipes::StudyState::default(),
         }
     }
 
@@ -213,7 +224,7 @@ fn recipe_from(form: &TraceFormInput, base: Option<&TraceRecipe>) -> Result<Trac
 }
 
 /// The recipe a built-in preset stands for, on the declared scale of the source.
-fn preset_recipe(preset: TracePreset, scale: Option<PixelScale>) -> (TraceRecipe, TraceMode) {
+pub(super) fn preset_recipe(preset: TracePreset, scale: Option<PixelScale>) -> (TraceRecipe, TraceMode) {
     let mut recipe = TraceRecipe::default();
     recipe.image.scale = scale;
     let mut mode = TraceMode::Contour;
@@ -331,6 +342,8 @@ impl AppController {
             cancel_traces(s);
             let Some(tracer) = s.tracer.as_mut() else { return AppUpdate::default() };
             tracer.latest = None;
+            // A new full trace numbers its contours afresh: protected ids of the old one mean nothing.
+            tracer.protect.clear();
             let Some(recipe) = tracer.recipe.clone() else {
                 return AppUpdate { view_changed: true, ..AppUpdate::default() };
             };

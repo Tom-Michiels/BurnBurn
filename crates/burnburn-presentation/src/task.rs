@@ -114,6 +114,8 @@ pub enum TaskInput {
     SaveBitmap { job: Box<BitmapJob>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Centre-line trace of a source image (T04).
     Centerline(Box<CenterlineRequest>),
+    /// Two recipes on one picture, or one recipe on a batch of files (G7-trace, T10).
+    TraceStudy(Box<crate::trace_study::StudyJob>),
     /// Autosave: the same atomic save as `Save`, to a recovery file (never the project file).
     SaveRecovery { project: Box<Project>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Recovery files (`*.burnburn`) in `dir`; a missing directory has none.
@@ -191,6 +193,7 @@ impl fmt::Debug for TaskInput {
             TaskInput::ImagePreview(_) => f.write_str("ImagePreview"),
             TaskInput::SaveBitmap { path, .. } => write!(f, "SaveBitmap({})", path.display()),
             TaskInput::Centerline(r) => write!(f, "Centerline(task {})", r.task),
+            TaskInput::TraceStudy(job) => write!(f, "TraceStudy({job:?})"),
             TaskInput::ParseImport { path, .. } => write!(f, "ParseImport({})", path.display()),
             TaskInput::ImportPages { pages, .. } => write!(f, "ImportPages({pages:?})"),
             TaskInput::Files(task) => write!(f, "Files({task:?})"),
@@ -227,6 +230,7 @@ impl TaskInput {
             TaskInput::ImagePreview(_) => TaskKind::ImagePreview,
             TaskInput::SaveBitmap { .. } => TaskKind::SaveBitmap,
             TaskInput::Centerline(_) => TaskKind::Centerline,
+            TaskInput::TraceStudy(_) => TaskKind::TraceStudy,
             TaskInput::ParseImport { .. } => TaskKind::ParseImport,
             TaskInput::ImportPages { .. } => TaskKind::ImportPages,
             TaskInput::Files(_) => TaskKind::Files,
@@ -271,6 +275,9 @@ pub enum TaskKind {
     SaveBitmap,
     /// Like `Trace`: freshness by task identity and input key.
     Centerline,
+    /// A comparison of two recipes or a batch of files (T10): only the newest of each counts, an
+    /// edit of the document does not matter.
+    TraceStudy,
     /// Writes a recovery file of one revision; like a save it finishes what it started.
     Autosave,
     /// Lists or removes recovery files; not tied to a document revision.
@@ -378,6 +385,8 @@ pub enum TaskOutput {
     /// A finished result with one more area traced again (T05).
     Corrected(Arc<TraceResult>),
     Centerlined(Arc<CenterlineResult>),
+    /// A finished comparison or batch (T10).
+    Studied(crate::trace_study::StudyOutput),
     /// The processed pixels of an image operation (live preview).
     ImagePreview {
         preview: ImagePreview,
@@ -734,6 +743,7 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
             write_atomically(fs.as_ref(), &path, &bytes).map_err(TaskError::Write)?;
             Ok(TaskOutput::BitmapSaved { path, width, height })
         }
+        TaskInput::TraceStudy(job) => crate::trace_study::run_study(&job, cancel).map(TaskOutput::Studied),
         TaskInput::Centerline(request) => match burnburn_trace::trace_centerline(&request, cancel) {
             Ok(result) => Ok(TaskOutput::Centerlined(Arc::new(result))),
             Err(TraceError::Cancelled(_)) => Err(TaskError::Cancelled),
@@ -977,6 +987,7 @@ pub(crate) fn revision_key(kind: TaskKind, document: DocumentId, source: Revisio
         TaskKind::ImagePreview => 14,
         TaskKind::SaveBitmap => 15,
         TaskKind::Centerline => 16,
+        TaskKind::TraceStudy => 62,
         TaskKind::TextExport => 17,
         TaskKind::TestJob => 18,
         TaskKind::Nest => 41,

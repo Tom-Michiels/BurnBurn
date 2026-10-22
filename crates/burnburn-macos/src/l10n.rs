@@ -871,6 +871,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::CancelImageAdjust => ("Annuleer beeldaanpassing", "Cancel Image Adjustment"),
         C::MaskImage => ("Masker op beeld", "Mask Image"),
         C::ReplaceImage => ("Beeld vervangen…", "Replace Image…"),
+        C::ReplaceImageToFit => ("Beeld vervangen en passen…", "Replace to Fit…"),
         C::RefreshImage => ("Beeld vernieuwen", "Refresh Image"),
         C::SaveProcessedBitmap => ("Verwerkte bitmap bewaren…", "Save Processed Bitmap…"),
         C::SketchNew => ("Nieuwe schets", "New Sketch"),
@@ -983,6 +984,8 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             CompoundLabel::ImportImage => ("Beeld importeren", "Import Image"),
             CompoundLabel::MaskImage => ("Beeld maskeren", "Mask Image"),
             CompoundLabel::ImportProject => ("Project importeren", "Import Project"),
+            CompoundLabel::ImportLayers => ("Importeren met lagen", "Import with Layers"),
+            CompoundLabel::ReplaceToFit => ("Beeld vervangen en passen", "Replace Image to Fit"),
             _ => return None,
         },
         UndoLabel::Arrange(a) => match a {
@@ -1764,7 +1767,14 @@ pub fn known_message_keys() -> Vec<MessageKey> {
     );
     undo.extend([ShapeLabel::Create, ShapeLabel::SetParams, ShapeLabel::ConvertToPath].map(UndoLabel::Shape));
     undo.extend(
-        [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
+        [
+            CompoundLabel::ImportImage,
+            CompoundLabel::MaskImage,
+            CompoundLabel::ImportProject,
+            CompoundLabel::ReplaceToFit,
+            CompoundLabel::ImportLayers,
+        ]
+        .map(UndoLabel::Compound),
     );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
     undo.extend([GeneratorLabel::Create, GeneratorLabel::Edit, GeneratorLabel::Delete].map(UndoLabel::Generator));

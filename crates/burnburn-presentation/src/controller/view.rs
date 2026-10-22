@@ -36,6 +36,7 @@ impl AppController {
                 let mut vm = document_view(*id, s, self.machine.as_ref(), self.app.prefs.units);
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
                 vm.operator.clone_from(&operator);
+                vm.trace_recipes = super::trace_recipes::view(s, &self.app);
                 vm.files = super::library::files_view(s, self.machine.as_ref(), &self.libs, &self.recent_templates);
                 vm.job = s.prepared.as_ref().map(|p| JobCardViewModel {
                     plan: p.job.plan,
@@ -120,6 +121,7 @@ impl AppController {
         layers::style_scene(s, &snapshot, &mut scene);
         scene.overlays.extend(self.camera_overlays());
         scene.overlays.extend(super::image::preview_overlay(s));
+        scene.overlays.extend(super::trace_overlay::overlays(s));
         Some(Arc::new(scene))
     }
 }
@@ -244,6 +246,7 @@ pub(super) fn document_view(
         structure: super::structure::view(s),
         centerline: super::trace::centerline_panel(s),
         trace_prep: super::trace_prep::view(s),
+        trace_recipes: None,
         operator: None,
         offset: super::offset_preview::view(s),
         repair_preview: super::repair_preview::view(s),
@@ -356,6 +359,7 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
             | CommandKey::CancelImageAdjust
             | CommandKey::MaskImage
             | CommandKey::ReplaceImage
+            | CommandKey::ReplaceImageToFit
             | CommandKey::RefreshImage
             | CommandKey::SaveProcessedBitmap,
             Some(s),

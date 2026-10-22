@@ -270,7 +270,15 @@ impl DocWindow {
             machine_buttons.push(b);
         }
         let import = import_sheet(mtm, target, locale);
-        let files = super::panels::files::files_section(mtm, &window, app.clone(), document, locale, &import.pages);
+        let files = super::panels::files::files_section(
+            mtm,
+            &window,
+            app.clone(),
+            document,
+            locale,
+            &import.pages,
+            &import.layers,
+        );
         let image = image_sheets(mtm, target, app.clone(), document, locale);
 
         centre.addSubview(&canvas_view);

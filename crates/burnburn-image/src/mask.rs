@@ -71,6 +71,12 @@ pub enum RegionShape {
     Rect(PixelRect),
     /// Closed polygon, even-odd rule, vertices `[x, y]` in pixels.
     Polygon(Vec<[f64; 2]>),
+    /// A pointer stroke (brush): every pixel whose centre is within `radius` pixels of the polyline
+    /// through `points`. A single point is a disc.
+    Stroke {
+        points: Vec<[f64; 2]>,
+        radius: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +103,14 @@ impl RegionShape {
             RegionShape::Rect(_) => Ok(()),
             RegionShape::Polygon(pts) => {
                 if pts.len() < 3 || pts.iter().any(|p| !(p[0].is_finite() && p[1].is_finite())) {
+                    Err(ImageError::BadRegion)
+                } else {
+                    Ok(())
+                }
+            }
+            RegionShape::Stroke { points, radius } => {
+                let finite = points.iter().all(|p| p[0].is_finite() && p[1].is_finite());
+                if points.is_empty() || !finite || !(radius.is_finite() && *radius > 0.0) {
                     Err(ImageError::BadRegion)
                 } else {
                     Ok(())
@@ -129,8 +143,25 @@ impl RegionShape {
                 }
                 inside
             }
+            RegionShape::Stroke { points, radius } => {
+                let limit = radius * radius;
+                match points.as_slice() {
+                    [] => false,
+                    [only] => dist2_to_segment((px, py), *only, *only) <= limit,
+                    _ => points.windows(2).any(|w| dist2_to_segment((px, py), w[0], w[1]) <= limit),
+                }
+            }
         }
     }
+}
+
+/// Squared distance from `p` to the segment `a`–`b`.
+fn dist2_to_segment(p: (f64, f64), a: [f64; 2], b: [f64; 2]) -> f64 {
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 { (((p.0 - a[0]) * dx + (p.1 - a[1]) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    let (qx, qy) = (a[0] + t * dx, a[1] + t * dy);
+    (p.0 - qx).powi(2) + (p.1 - qy).powi(2)
 }
 
 /// Applies region masks in order: includes (union) first, then excludes.
@@ -232,6 +263,15 @@ impl CanonicalEncode for RegionMask {
                 out.tag("polygon");
                 out.u64(pts.len() as u64);
                 for p in pts {
+                    out.f64(p[0]);
+                    out.f64(p[1]);
+                }
+            }
+            RegionShape::Stroke { points, radius } => {
+                out.tag("stroke");
+                out.f64(*radius);
+                out.u64(points.len() as u64);
+                for p in points {
                     out.f64(p[0]);
                     out.f64(p[1]);
                 }

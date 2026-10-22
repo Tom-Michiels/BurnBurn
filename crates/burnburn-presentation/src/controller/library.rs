@@ -165,6 +165,7 @@ impl AppController {
     pub(super) fn files(&mut self, intent: FilesIntent) -> AppUpdate {
         match intent {
             FilesIntent::SetImportPages { document, pages } => self.set_import_pages(document, pages),
+            FilesIntent::SetImportLayers { document, create } => self.set_import_layers(document, create),
             FilesIntent::SaveAsTemplate { document, path, scope } => self.save_as_template(document, path, scope),
             FilesIntent::NewFromTemplate { path } => self.new_from_template(path),
             FilesIntent::SetRecentTemplates { paths } => {

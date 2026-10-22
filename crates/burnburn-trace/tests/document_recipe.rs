@@ -13,8 +13,8 @@ use burnburn_document::trace::TraceCommand;
 use burnburn_document::{CommandPayload, DerivedOwner, DocumentCommand, DocumentSession, GeometrySource};
 use burnburn_geometry::{Affine, Vector};
 use burnburn_image::{
-    AlphaPolicy, ImageRecipe, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask, RegionMode,
-    RegionShape, Threshold,
+    AlphaPolicy, ImageRecipe, LensDistortion, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask,
+    RegionMode, RegionShape, Threshold,
 };
 use burnburn_trace::{
     ContourSettings, DiagonalPolicy, ENGINE_VERSION, FitSettings, TraceRecipe, TraceRequest, recipe_from_engine,
@@ -42,6 +42,10 @@ fn every_field() -> TraceRecipe {
                     mode: RegionMode::Include,
                     shape: RegionShape::Polygon(vec![[0.5, 0.25], [10.0, 0.0], [5.0, 1.0 / 7.0]]),
                 },
+                RegionMask {
+                    mode: RegionMode::Exclude,
+                    shape: RegionShape::Stroke { points: vec![[1.5, 2.5], [3.25, 4.0 / 3.0]], radius: 2.5 },
+                },
             ],
             morphology: vec![Morphology::Open(1), Morphology::Close(3)],
             perspective: Some(Perspective {
@@ -54,8 +58,13 @@ fn every_field() -> TraceRecipe {
                 width: 11,
                 height: 12,
             }),
+            lens: Some(LensDistortion { k1: -0.12, k2: 0.03 }),
         },
-        contour: ContourSettings { diagonal: DiagonalPolicy::Separate, min_area_mm2: 0.75 },
+        contour: ContourSettings {
+            diagonal: DiagonalPolicy::Separate,
+            min_area_mm2: 0.75,
+            keep: vec![[3.0, 4.5], [10.0, 1.0 / 3.0]],
+        },
         fit: FitSettings { tolerance_mm: 0.02, corner_angle_deg: 45.0, corner_window_px: 3.5, curves: false },
     }
 }
@@ -87,6 +96,20 @@ fn parameters_of_another_engine_or_with_a_bad_value_are_refused() {
     missing.params.remove("fit.curves");
     assert!(recipe_from_engine(&missing).is_err());
     assert!(recipe_from_engine(&EngineRecipe::new(ENGINE_VERSION)).is_err());
+}
+
+#[test]
+fn a_lens_that_is_not_a_lens_is_refused_when_the_recipe_is_read_and_when_it_is_traced() {
+    let mut engine = recipe_to_engine(&every_field());
+    engine
+        .params
+        .insert("image.lens".into(), ParamValue::List(vec![ParamValue::Number(-0.9), ParamValue::Number(0.0)]));
+    assert!(recipe_from_engine(&engine).is_err(), "k1 = -0.9 folds the image over itself");
+    let mut recipe = every_field();
+    recipe.image.lens = Some(LensDistortion { k1: f64::NAN, k2: 0.0 });
+    assert!(recipe.validate().is_err());
+    // A recipe without a lens has no `image.lens` parameter at all.
+    assert!(!recipe_to_engine(&TraceRecipe::default()).params.contains_key("image.lens"));
 }
 
 #[test]

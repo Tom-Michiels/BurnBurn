@@ -8,7 +8,7 @@ use burnburn_geometry::{Path, Point, Segment, Subpath};
 
 use super::file::{PdfFile, StreamError};
 use super::object::{Dict, Lexer, Obj, Tok};
-use crate::import::{ImportedPath, ParseError, ParseLimits, SkipReason, Skipped};
+use crate::import::{ImportLayer, ImportedPath, ParseError, ParseLimits, SkipReason, Skipped};
 
 pub(super) type Matrix = [f64; 6];
 
@@ -258,9 +258,15 @@ impl<'f, 'a> Interp<'f, 'a> {
                     }
                     let stroke = matches!(op, b"S" | b"s" | b"B" | b"B*" | b"b" | b"b*");
                     let (kind, rgb) = if stroke { ("stroke", gs.stroke) } else { ("fill", gs.fill) };
+                    let layer = if stroke { ImportLayer::Stroke(rgb) } else { ImportLayer::Fill(rgb) };
                     let name = format!("{kind} #{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
                     let entity = format!("p{}#{}", self.page, self.items.len() + 1);
-                    self.items.push(ImportedPath { name, entity, path: Path::from_subpaths(taken) });
+                    self.items.push(ImportedPath {
+                        name,
+                        entity,
+                        path: Path::from_subpaths(taken),
+                        layer: Some(layer),
+                    });
                 }
                 b"g" | b"G" => {
                     if let Some(v) = n(0) {

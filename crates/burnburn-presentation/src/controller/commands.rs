@@ -361,6 +361,9 @@ pub(super) fn invoke_in_session(
         }
         CommandKey::ApplyTraceLinked => super::trace_link::apply(s, document, request),
         CommandKey::CommitImport => {
+            if let Some(update) = super::import::commit_with_layers(s, document, request) {
+                return update;
+            }
             let Some(pending) = s.import.as_ref().filter(|i| i.ready()) else { return AppUpdate::default() };
             let Ok(draft) = pending.draft() else { return AppUpdate::default() };
             let asset = s.assets.add(pending.media, &pending.bytes);

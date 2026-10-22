@@ -21,6 +21,12 @@ pub enum FilesIntent {
         document: DocumentId,
         pages: ImportPages,
     },
+    /// PDF/AI and plotter import preview: accept (or take back) the proposed layers; accepted, the
+    /// import creates one operation per layer in the same undo step (G7-trace, P04).
+    SetImportLayers {
+        document: DocumentId,
+        create: bool,
+    },
     /// Archief ▸ Bewaar als template: the template file the user chose and what it holds.
     SaveAsTemplate {
         document: DocumentId,
@@ -414,6 +420,8 @@ pub struct ImportPage {
 pub struct ImportLayerRow {
     pub name: String,
     pub items: usize,
+    /// The colour or pen the layer stands for.
+    pub layer: Option<burnburn_io::import::ImportLayer>,
 }
 
 /// The report of a LightBurn project import: layer by layer what was taken over and what was not.

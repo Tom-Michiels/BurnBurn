@@ -211,7 +211,7 @@ pub(super) fn cut_settings_view(s: &Session, caps: Option<&MachineCapabilities>)
 /// A fresh request id per document command (several commands per click are possible).
 pub(super) type NextRequest<'a> = &'a mut dyn FnMut() -> Option<RequestId>;
 
-fn new_layer_draft(slot: u8) -> Option<OperationDraft> {
+pub(super) fn new_layer_draft(slot: u8) -> Option<OperationDraft> {
     let power = PowerPercent::new(NEW_LAYER_POWER_PCT).ok()?;
     Some(OperationDraft {
         name: format!("C{slot:02}"),

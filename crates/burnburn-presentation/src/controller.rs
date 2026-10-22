@@ -85,8 +85,11 @@ mod tasks;
 mod tests_gen;
 mod text;
 mod trace;
+mod trace_g7;
 mod trace_link;
+mod trace_overlay;
 mod trace_prep;
+mod trace_recipes;
 mod variable;
 mod view;
 
@@ -602,6 +605,8 @@ impl AppController {
                 self.with_session(document, |s| notes::set(s, document, text, request))
             }
             UiIntent::TracePrep { document, intent } => self.trace_prep_intent(document, intent),
+            UiIntent::TracePick { document, pick } => self.trace_pick(document, pick),
+            UiIntent::TraceRecipe { document, intent } => self.trace_recipe_intent(document, intent),
             UiIntent::CenterlineEdit { document, edit } => {
                 self.with_session(document, |s| trace::centerline_edit(s, document, edit))
             }
@@ -698,6 +703,7 @@ impl AppController {
             UiIntent::SetImageDpi { document, dpi } => self.set_image_dpi(document, &dpi),
             UiIntent::SetImageAdjust { document, input } => self.set_image_adjust(document, *input),
             UiIntent::ReplaceImage { document, path } => self.replace_image(document, path),
+            UiIntent::ReplaceImageToFit { document, path } => self.replace_image_to_fit(document, path),
             UiIntent::SaveProcessedBitmap { document, path } => self.save_processed_bitmap(document, path),
             UiIntent::SetTraceForm { document, input } => self.set_trace_form(document, *input),
             UiIntent::ApplyTracePreset { document, preset } => self.apply_trace_preset(document, preset),
@@ -1016,6 +1022,8 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::ChoosePlate { document, .. }
         | UiIntent::CenterlineEdit { document, .. }
         | UiIntent::TracePrep { document, .. }
+        | UiIntent::TracePick { document, .. }
+        | UiIntent::TraceRecipe { document, .. }
         | UiIntent::SetOffsetOptions { document, .. }
         | UiIntent::CloseNotes { document }
         | UiIntent::CommitField { document, .. }
@@ -1028,6 +1036,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetImageDpi { document, .. }
         | UiIntent::SetImageAdjust { document, .. }
         | UiIntent::ReplaceImage { document, .. }
+        | UiIntent::ReplaceImageToFit { document, .. }
         | UiIntent::SaveProcessedBitmap { document, .. }
         | UiIntent::SetTraceForm { document, .. }
         | UiIntent::ApplyTracePreset { document, .. }

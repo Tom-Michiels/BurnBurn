@@ -11,7 +11,7 @@ use crate::contour::{self, ContourKind, ContourSet, RawContour};
 use crate::correct::{CorrectionId, CorrectionRecord};
 use crate::error::{StaleTrace, TraceError};
 use crate::fit::{self, FitParams};
-use crate::recipe::{ENGINE_VERSION, TraceRecipe};
+use crate::recipe::{ContourSettings, ENGINE_VERSION, TraceRecipe};
 
 /// One trace submission: an immutable source snapshot, its document revision and the recipe.
 #[derive(Debug, Clone)]
@@ -72,6 +72,8 @@ pub struct RemovedFeature {
     pub kind: ContourKind,
     pub area_mm2: f64,
     pub bounds: Bounds,
+    /// A vertex of the feature's own outline, adjusted pixels (y down): what `contour.keep` names it by.
+    pub anchor_px: [f64; 2],
 }
 
 /// Summary numbers for the tracer panel.
@@ -85,6 +87,8 @@ pub struct TraceStats {
     /// Smallest kept contour area (mm²), `None` when nothing was traced.
     pub smallest_feature_mm2: Option<f64>,
     pub source_mm_per_pixel: (f64, f64),
+    /// Anchors of `contour.keep` that matched no outline of this trace.
+    pub keep_unmatched: usize,
 }
 
 /// A finished trace. It carries the identity it was computed for; the caller applies it only when
@@ -138,6 +142,13 @@ impl TraceResult {
         }
         // Paths hold only finite coordinates (checked when built), so `finish` cannot fail.
         ContentHash::of(HashDomain::TraceKey, &w.finish().unwrap_or_default())
+    }
+
+    /// The anchor `contour.keep` names the contour by: a vertex of its outline, adjusted pixels (y down).
+    pub fn contour_anchor_px(&self, id: ContourId) -> Option<[f64; 2]> {
+        let c = self.contour(id)?;
+        let first = c.source_points.first()?;
+        Some([first.x / self.scale.mm_per_pixel_x(), f64::from(self.height_px) - first.y / self.scale.mm_per_pixel_y()])
     }
 
     pub fn contour(&self, id: ContourId) -> Option<&TracedContour> {
@@ -212,7 +223,7 @@ pub fn trace_observed(
 
     let set = contour::extract(&prepared, recipe.contour.diagonal, cancel)?;
     cancel.check()?;
-    let outlines = Outlines::new(&set, &prepared, recipe.contour.min_area_mm2)?;
+    let outlines = Outlines::new(&set, &prepared, &recipe.contour)?;
     observer.stage(TraceStage::Contoured { contours: outlines.raws.len() });
     cancel.check()?;
 
@@ -239,7 +250,8 @@ pub fn trace_observed(
     }
     outlines.link_parents(&kept, &mut contours);
     cancel.check()?;
-    let (components, stats) = summarize(&contours, &prepared.scale);
+    let (components, mut stats) = summarize(&contours, &prepared.scale);
+    stats.keep_unmatched = outlines.keep_unmatched;
     Ok(TraceResult {
         task: request.task,
         source_revision: request.source_revision,
@@ -279,10 +291,20 @@ pub(crate) struct Outlines {
     pub tree: Vec<Node>,
     pub dropped: Vec<bool>,
     pub removed: Vec<RemovedFeature>,
+    /// Anchors of `contour.keep` that named no outline.
+    pub keep_unmatched: usize,
 }
 
+/// How near (pixels) a kept anchor has to be to a vertex of an outline to name it.
+const KEEP_MATCH_PX: f64 = 0.25;
+
 impl Outlines {
-    pub(crate) fn new(set: &ContourSet, prepared: &PreparedImage, min_area: f64) -> Result<Outlines, TraceError> {
+    pub(crate) fn new(
+        set: &ContourSet,
+        prepared: &PreparedImage,
+        settings: &ContourSettings,
+    ) -> Result<Outlines, TraceError> {
+        let min_area = settings.min_area_mm2;
         let (sx, sy) = (prepared.scale.mm_per_pixel_x(), prepared.scale.mm_per_pixel_y());
         let height = f64::from(prepared.height());
         let to_mm = |p: &[f64; 2]| Point::new(p[0] * sx, (height - p[1]) * sy);
@@ -296,6 +318,24 @@ impl Outlines {
             raws.push((pts, area));
         }
         let tree = build_tree(&raws, &set.contours, set.outside_label);
+        // Kept outlines (T06) are named by a vertex; the outlines around a kept one stay as well.
+        let mut protected = vec![false; raws.len()];
+        let mut keep_unmatched = 0;
+        for anchor in &settings.keep {
+            let hit =
+                |c: &RawContour| c.points.iter().any(|p| (p[0] - anchor[0]).hypot(p[1] - anchor[1]) <= KEEP_MATCH_PX);
+            let named: Vec<usize> = (0..raws.len()).filter(|&i| hit(&set.contours[i])).collect();
+            if named.is_empty() {
+                keep_unmatched += 1;
+            }
+            for first in named {
+                let mut at = Some(first);
+                while let Some(i) = at {
+                    protected[i] = true;
+                    at = tree[i].parent;
+                }
+            }
+        }
         // Drop parts/holes below the area threshold, with their whole subtree; report each dropped root.
         let mut dropped = vec![false; raws.len()];
         let mut removed = Vec::new();
@@ -303,16 +343,17 @@ impl Outlines {
             let parent_dropped = tree[i].parent.is_some_and(|p| dropped[p]);
             if parent_dropped {
                 dropped[i] = true;
-            } else if raws[i].1.abs() < min_area {
+            } else if raws[i].1.abs() < min_area && !protected[i] {
                 dropped[i] = true;
                 removed.push(RemovedFeature {
                     kind: tree[i].kind,
                     area_mm2: raws[i].1.abs(),
                     bounds: bounds_of(&raws[i].0),
+                    anchor_px: set.contours[i].points.first().copied().unwrap_or([0.0, 0.0]),
                 });
             }
         }
-        Ok(Outlines { raws, tree, dropped, removed })
+        Ok(Outlines { raws, tree, dropped, removed, keep_unmatched })
     }
 
     pub(crate) fn kept(&self) -> Vec<usize> {
@@ -359,6 +400,7 @@ pub(crate) fn summarize(contours: &[TracedContour], scale: &PixelScale) -> (Vec<
         nodes: contours.iter().map(|c| c.path.segments().len()).sum(),
         smallest_feature_mm2: contours.iter().map(|c| c.area_mm2).min_by(f64::total_cmp),
         source_mm_per_pixel: (scale.mm_per_pixel_x(), scale.mm_per_pixel_y()),
+        keep_unmatched: 0,
     };
     (components, stats)
 }

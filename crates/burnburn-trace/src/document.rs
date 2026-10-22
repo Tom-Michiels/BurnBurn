@@ -10,8 +10,8 @@ use burnburn_document::engine::{EngineRecipe, ParamValue};
 use burnburn_document::trace::{TraceCommand, TraceDefinition, TraceId, TraceOutput};
 use burnburn_geometry::{Affine, Bounds, Point};
 use burnburn_image::{
-    AlphaPolicy, ImageRecipe, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask, RegionMode,
-    RegionShape, Threshold,
+    AlphaPolicy, ImageRecipe, LensDistortion, Morphology, Perspective, PixelRect, PixelScale, QuarterTurn, RegionMask,
+    RegionMode, RegionShape, Threshold,
 };
 use burnburn_types::ContentHash;
 
@@ -38,9 +38,13 @@ fn pair(p: [f64; 2]) -> [ParamValue; 2] {
 /// The recipe as engine parameters (engine = [`ENGINE_VERSION`]).
 pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
     let r = image_to_params(EngineRecipe::new(ENGINE_VERSION), &recipe.image);
-    r.with("contour.diagonal", V::Text(diagonal_name(recipe.contour.diagonal).into()))
-        .with("contour.min_area_mm2", V::Number(recipe.contour.min_area_mm2))
-        .with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
+    let mut r = r
+        .with("contour.diagonal", V::Text(diagonal_name(recipe.contour.diagonal).into()))
+        .with("contour.min_area_mm2", V::Number(recipe.contour.min_area_mm2));
+    if !recipe.contour.keep.is_empty() {
+        r = r.with("contour.keep", V::List(recipe.contour.keep.iter().map(|a| V::List(pair(*a).into())).collect()));
+    }
+    r.with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
         .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))
         .with("fit.corner_window_px", V::Number(recipe.fit.corner_window_px))
         .with("fit.curves", V::Bool(recipe.fit.curves))
@@ -104,6 +108,11 @@ fn image_to_params(mut r: EngineRecipe, i: &ImageRecipe) -> EngineRecipe {
                     item.push(V::Text("polygon".into()));
                     item.extend(points.iter().flat_map(|p| pair(*p)));
                 }
+                RegionShape::Stroke { points, radius } => {
+                    item.push(V::Text("stroke".into()));
+                    item.push(V::Number(*radius));
+                    item.extend(points.iter().flat_map(|p| pair(*p)));
+                }
             }
             V::List(item)
         })
@@ -124,6 +133,9 @@ fn image_to_params(mut r: EngineRecipe, i: &ImageRecipe) -> EngineRecipe {
             item.push(V::List(pair(*from).into_iter().chain(pair(*to)).collect()));
         }
         r = r.with("image.perspective", V::List(item));
+    }
+    if let Some(l) = &i.lens {
+        r = r.with("image.lens", V::List(vec![V::Number(l.k1), V::Number(l.k2)]));
     }
     r
 }
@@ -211,9 +223,25 @@ fn region_from(item: &ParamValue) -> Result<RegionMask, TraceError> {
                 .map(|[x, y]| Ok([number(NAME, x)?, number(NAME, y)?]))
                 .collect::<Result<_, TraceError>>()?,
         ),
+        "stroke" => stroke_from(NAME, rest)?,
         _ => return Err(TraceError::InvalidRecipe(NAME)),
     };
     Ok(RegionMask { mode, shape })
+}
+
+/// A brush stroke: its radius, then the points of the polyline.
+fn stroke_from(name: &'static str, items: &[ParamValue]) -> Result<RegionShape, TraceError> {
+    let [radius, points @ ..] = items else { return Err(TraceError::InvalidRecipe(name)) };
+    if points.len() % 2 != 0 {
+        return Err(TraceError::InvalidRecipe(name));
+    }
+    let points = points
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[x, y]| Ok([number(name, x)?, number(name, y)?]))
+        .collect::<Result<_, TraceError>>()?;
+    Ok(RegionShape::Stroke { points, radius: number(name, radius)? })
 }
 
 fn perspective_from(items: &[ParamValue]) -> Result<Perspective, TraceError> {
@@ -242,9 +270,19 @@ pub fn recipe_from_engine(recipe: &EngineRecipe) -> Result<TraceRecipe, TraceErr
         "separate" => DiagonalPolicy::Separate,
         _ => return Err(TraceError::InvalidRecipe("contour.diagonal")),
     };
+    let keep = match r.optional_list("contour.keep")? {
+        None => Vec::new(),
+        Some(items) => items
+            .iter()
+            .map(|a| match list("contour.keep", a)? {
+                [x, y] => Ok([number("contour.keep", x)?, number("contour.keep", y)?]),
+                _ => Err(TraceError::InvalidRecipe("contour.keep")),
+            })
+            .collect::<Result<_, TraceError>>()?,
+    };
     let out = TraceRecipe {
         image,
-        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")? },
+        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")?, keep },
         fit: FitSettings {
             tolerance_mm: r.number("fit.tolerance_mm")?,
             corner_angle_deg: r.number("fit.corner_angle_deg")?,
@@ -298,6 +336,11 @@ fn image_from_params(r: &Reader<'_>) -> Result<ImageRecipe, TraceError> {
         })
         .collect::<Result<_, _>>()?;
     let perspective = r.optional_list("image.perspective")?.map(perspective_from).transpose()?;
+    let lens = match r.optional_list("image.lens")? {
+        None => None,
+        Some([k1, k2]) => Some(LensDistortion { k1: number("image.lens", k1)?, k2: number("image.lens", k2)? }),
+        Some(_) => return Err(TraceError::InvalidRecipe("image.lens")),
+    };
     Ok(ImageRecipe {
         scale,
         crop,
@@ -309,6 +352,7 @@ fn image_from_params(r: &Reader<'_>) -> Result<ImageRecipe, TraceError> {
         regions,
         morphology,
         perspective,
+        lens,
     })
 }
 
@@ -558,6 +602,11 @@ fn correction_to_param(c: &CorrectionRecord) -> ParamValue {
             item.extend(points.iter().flat_map(|p| pair(*p)));
             V::List(item)
         }
+        RegionShape::Stroke { points, radius } => {
+            let mut item = vec![V::Text("stroke".into()), V::Number(*radius)];
+            item.extend(points.iter().flat_map(|p| pair(*p)));
+            V::List(item)
+        }
     };
     let local = recipe_to_engine(&c.recipe).params.into_iter().map(|(k, v)| V::List(vec![V::Text(k), v])).collect();
     let target = match c.node_target {
@@ -617,6 +666,7 @@ pub fn corrections_from_engine(
                         .map(|[x, y]| Ok([number(CORRECTIONS, x)?, number(CORRECTIONS, y)?]))
                         .collect::<Result<_, TraceError>>()?,
                 ),
+                [V::Text(kind), rest @ ..] if kind == "stroke" => stroke_from(CORRECTIONS, rest)?,
                 _ => return Err(bad()),
             };
             let mut engine = EngineRecipe::new(ENGINE_VERSION);

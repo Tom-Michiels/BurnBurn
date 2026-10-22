@@ -36,7 +36,10 @@ mod structure_panel;
 mod task;
 mod text_panel;
 mod thumbnail;
+mod trace_pick;
 mod trace_prep;
+mod trace_recipes;
+mod trace_study;
 mod variable_panel;
 mod view_model;
 
@@ -156,7 +159,10 @@ pub use text_panel::{
     Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
+pub use trace_pick::*;
 pub use trace_prep::*;
+pub use trace_recipes::*;
+pub use trace_study::{FileOutcome, FileProblem, StudyJob, StudyOutput};
 pub use variable_panel::{
     AdvancePolicy, CsvViewModel, SerialField, SerialViewModel, TestLine, VariableEdit, VariableIssue,
     VariablePanelViewModel, VariableProblem,

@@ -194,7 +194,7 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
         perspective: local.perspective,
     };
     let set = contour::extract(&prepared, prev.recipe.contour.diagonal, cancel)?;
-    let outlines = Outlines::new(&set, &prepared, prev.recipe.contour.min_area_mm2)?;
+    let outlines = Outlines::new(&set, &prepared, &prev.recipe.contour)?;
     let kept = outlines.kept();
     cancel.check()?;
 
@@ -361,7 +361,8 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
     let mut corrections = prev.corrections.clone();
     corrections.push(record);
     let recipe_key = correction_chain_key(prev.base_key, &corrections).map_err(|_| TraceError::NonFinite)?;
-    let (components, stats) = summarize(&contours, &prev.scale);
+    let (components, mut stats) = summarize(&contours, &prev.scale);
+    stats.keep_unmatched = outlines.keep_unmatched;
     Ok(TraceResult {
         task: req.task,
         source_revision: prev.source_revision,

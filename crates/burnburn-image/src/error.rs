@@ -50,6 +50,8 @@ pub enum ImageError {
     },
     /// Perspective points are too few, collinear, non-finite, or the output size is zero.
     DegeneratePerspective,
+    /// Lens distortion coefficients that are not finite, too large, or fold the image over itself.
+    InvalidLens,
     /// Physical scale problem (missing scale is [`ScaleError::NeedsScale`]).
     Scale(ScaleError),
     Cancelled(Cancelled),
@@ -75,6 +77,7 @@ impl fmt::Display for ImageError {
             ImageError::BadRegion => f.write_str("region mask polygon is invalid"),
             ImageError::RadiusTooLarge { radius, max } => write!(f, "filter radius {radius} exceeds {max}"),
             ImageError::DegeneratePerspective => f.write_str("perspective correction points are degenerate"),
+            ImageError::InvalidLens => f.write_str("lens distortion coefficients are not a plausible lens"),
             ImageError::Scale(e) => e.fmt(f),
             ImageError::Cancelled(c) => c.fmt(f),
         }
