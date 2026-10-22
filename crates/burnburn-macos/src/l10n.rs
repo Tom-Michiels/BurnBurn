@@ -943,6 +943,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ImportBundle => ("Bundel importeren…", "Import Bundle…"),
         C::ShowMaterialLibrary => ("Materiaalbibliotheek", "Material Library"),
         C::ShowArtLibrary => ("Kunstbibliotheek", "Art Library"),
+        C::ShowNotes => ("Notities tonen", "Show Notes"),
         C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
         C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
         other => return l10n_schikken::command_pair(other),
