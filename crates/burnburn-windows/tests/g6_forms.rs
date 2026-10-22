@@ -5,8 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-macos/tests/g6_fixtures/mod.rs"]
-mod g6_fixtures;
+use burnburn_test_support::host::g6 as g6_fixtures;
 
 use burnburn_presentation::{
     CommandKey, FilesIntent, GeneratorEdit, GeneratorField, GeneratorKind, HeadlessEditorHarness, UiIntent,

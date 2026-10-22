@@ -17,8 +17,7 @@ use std::process::ExitCode;
 #[cfg(target_os = "macos")]
 mod common;
 #[cfg(target_os = "macos")]
-#[path = "common/grbl_fake.rs"]
-mod grbl_fake;
+use burnburn_test_support::host::grbl_fake;
 
 #[cfg(not(target_os = "macos"))]
 fn main() -> ExitCode {

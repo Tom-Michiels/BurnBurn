@@ -13,8 +13,7 @@ use std::process::ExitCode;
 mod common;
 
 #[cfg(target_os = "macos")]
-#[path = "../../../crates/burnburn-macos/tests/g5_fixtures/mod.rs"]
-mod g5_fixtures;
+use burnburn_test_support::host::g5 as g5_fixtures;
 
 #[cfg(not(target_os = "macos"))]
 fn main() -> ExitCode {

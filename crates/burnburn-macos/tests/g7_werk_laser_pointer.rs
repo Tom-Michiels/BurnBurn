@@ -4,8 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-presentation/tests/common/mod.rs"]
-mod common;
+use burnburn_test_support::host::rig as common;
 
 use burnburn_machine::{JobAnchor, LiveRequest, Reply, Request, StartFrom};
 use burnburn_macos::l10n::Locale;

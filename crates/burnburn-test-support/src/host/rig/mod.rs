@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::{FakeClock, PeerError, ScriptedPeer, Step};
 use burnburn_document::process::{
     Kerf, OperationDraft, OperationMode, Passes, PowerPercent, PowerRange, ProcessSettings, Speed,
 };
@@ -24,7 +25,6 @@ use burnburn_presentation::{
     StoredOrder, StoredOrders, UiIntent, UploadRecord,
 };
 use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
-use burnburn_test_support::{FakeClock, PeerError, ScriptedPeer, Step};
 use burnburn_types::DocumentId;
 
 pub type Peer = ScriptedPeer<Request, Reply>;

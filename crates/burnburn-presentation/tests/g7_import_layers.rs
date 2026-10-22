@@ -5,8 +5,6 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)] // test helpers
 
-mod common;
-
 use std::path::{Path as FsPath, PathBuf};
 
 use burnburn_document::process::OperationMode;

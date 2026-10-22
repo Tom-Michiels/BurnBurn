@@ -3,8 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-presentation/tests/common/mod.rs"]
-mod operator_rig;
+use burnburn_test_support::host::rig as operator_rig;
 
 use burnburn_presentation::{CommandKey, Role, UiIntent};
 use burnburn_windows::adapter::{Control, MenuItem, MessageContext, Reaction, command_id, msg, notify, on_message};

@@ -16,6 +16,8 @@
 
 mod clock;
 pub mod fixtures;
+#[cfg(feature = "host")]
+pub mod host;
 mod peer;
 
 pub use clock::FakeClock;

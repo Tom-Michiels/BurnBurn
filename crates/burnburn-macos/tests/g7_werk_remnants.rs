@@ -4,8 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, dead_code)]
 
-#[path = "../../burnburn-presentation/tests/common/mod.rs"]
-mod common;
+use burnburn_test_support::host::rig as common;
 
 use burnburn_macos::adapter::{
     MenuItem, NativeEvent, Reaction, menu_enabled, menu_item, menu_tag, menu_title, translate,

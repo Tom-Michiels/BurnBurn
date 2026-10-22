@@ -6,8 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-#[path = "../../burnburn-macos/tests/g5_fixtures/mod.rs"]
-mod g5_fixtures;
+use burnburn_test_support::host::g5 as g5_fixtures;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -51,7 +51,7 @@ burnburn-job = { workspace = true }
 burnburn-machine = { workspace = true }
 burnburn-ruida = { workspace = true }
 # Text panels: a font source with several faces and the OFL test fonts.
-burnburn-test-support = { workspace = true }
+burnburn-test-support = { workspace = true, features = ["host"] }
 burnburn-text = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
