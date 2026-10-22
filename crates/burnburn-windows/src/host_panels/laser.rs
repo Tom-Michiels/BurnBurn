@@ -95,6 +95,11 @@ pub mod id {
     pub const ANCHOR_HEADING: u16 = B + 83;
     pub const CAPTION_SPEED: u16 = B + 84;
     pub const CAPTION_RD_NAME: u16 = B + 85;
+    /// The measured values the compiled plan used, one line each (W09).
+    pub const PLAN_CALIBRATION: u16 = B + 86;
+    /// "Aim with the red dot" and the line that names the offset it uses (W09).
+    pub const POINTER_OFFSET: u16 = B + 87;
+    pub const POINTER_NOTE: u16 = B + 88;
 }
 
 /// What the laser window is built from.
@@ -202,6 +207,8 @@ pub fn laser_spec(input: &LaserInput<'_>) -> PanelSpec {
     let plan = plan_panel(input.vm, input.document, locale);
     rows.push(Row::one(ControlSpec::label(id::PLAN_STATE, format!("{} — {}", plan.title, plan.state))));
     rows.push(Row::one(ControlSpec::label(id::PLAN_FINDINGS, format!("{}  {}", plan.estimate, plan.findings))));
+    // The measured values the plan used and the proofs they come from (W09).
+    rows.push(Row::one(ControlSpec::label(id::PLAN_CALIBRATION, plan.calibration.join("; "))));
     let command_on = |key: CommandKey| input.vm.commands.get(&key).is_some_and(|c| c.enabled);
     let soft_stop_on = input.machine.and_then(|m| m.button(MachineAction::Cancel)).is_some_and(|b| b.enabled);
     rows.push(Row::of(vec![
@@ -258,6 +265,14 @@ pub fn laser_spec(input: &LaserInput<'_>) -> PanelSpec {
         )
         .tip(pl_why),
     ));
+    // The red dot (W09): the switch, and in words which measured offset it uses.
+    rows.push(Row::one(ControlSpec::check(
+        id::POINTER_OFFSET,
+        t(LaserText::PointerOffsetUse, locale),
+        model.use_pointer_offset,
+        model.can_use_pointer_offset,
+    )));
+    rows.push(Row::one(ControlSpec::label(id::POINTER_NOTE, model.pointer_offset.clone())));
 
     // Home and origins.
     rows.push(Row::of(vec![
@@ -449,6 +464,9 @@ pub fn on_laser_event(input: &LaserInput<'_>, event: &PanelEvent) -> PanelReacti
         id::CUT_SELECTED => setup(LaserSetup::CutSelected(event.values.checked(cid))),
         id::USE_SELECTION_ORIGIN => setup(LaserSetup::UseSelectionOrigin(event.values.checked(cid))),
         id::POSITION_LASER => setup(LaserSetup::PositionLaserMode(event.values.checked(cid))),
+        id::POINTER_OFFSET if model.can_use_pointer_offset => {
+            setup(LaserSetup::UsePointerOffset(event.values.checked(cid)))
+        }
         id::FILE_INFO | id::FILE_RUN | id::FILE_DELETE => {
             let Some(row) = event.values.selection.get(&id::FILES).copied().flatten() else {
                 return PanelReaction::Nothing;

@@ -24,6 +24,8 @@ pub struct PlanPanel {
     pub findings: String,
     /// What the GRBL backend refuses (empty on a Ruida machine); choosing a row goes to its object.
     pub grbl: Vec<GrblRefusalRow>,
+    /// The measured values this plan used, one line each, with the proof they came from (W09).
+    pub calibration: Vec<String>,
 }
 
 impl PlanPanel {
@@ -109,6 +111,7 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
             state: host_text(HostText::NoPlanHint, locale).to_owned(),
             findings: String::new(),
             grbl: Vec::new(),
+            calibration: Vec::new(),
         };
     };
     let state = if plan.stale { HostText::PlanStale } else { HostText::PlanCurrent };
@@ -123,7 +126,45 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
             .iter()
             .map(|f| GrblRefusalRow { text: grbl_refusal_text(&f.kind, locale), geometry: f.geometry })
             .collect(),
+        calibration: calibration_lines(&plan.calibration, locale),
     }
+}
+
+/// The measured values a plan used, one line each, with the proofs they came from (W09). Equal
+/// lines (the same value for several operations) are shown once.
+pub fn calibration_lines(applied: &[burnburn_presentation::AppliedCalibration], locale: Locale) -> Vec<String> {
+    use burnburn_presentation::AppliedKind;
+    let nl = locale == Locale::Nl;
+    let number = |v: f64| {
+        let text = format!("{v}");
+        if locale.decimal_sign() == ',' { text.replace('.', ",") } else { text }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    for a in applied {
+        let proofs = a.proofs.iter().map(|p| format!("{} {} {}", p.id, if nl { "van" } else { "of" }, p.date));
+        let proofs = proofs.collect::<Vec<_>>().join(", ");
+        let label = match (nl, a.proofs.len() == 1) {
+            (true, true) => "proef",
+            (true, false) => "proeven",
+            (false, true) => "proof",
+            (false, false) => "proofs",
+        };
+        let line = match &a.kind {
+            AppliedKind::Kerf { material } => {
+                let word = if nl { "voor" } else { "for" };
+                format!("Kerf {} mm {word} {material} ({label} {proofs})", number(a.value_mm))
+            }
+            AppliedKind::ScanOffset { speed_mm_s } => {
+                let word = if nl { "Scanoffset" } else { "Scan offset" };
+                let at = if nl { "bij" } else { "at" };
+                format!("{word} {} mm {at} {} mm/s ({label} {proofs})", number(a.value_mm), number(*speed_mm_s))
+            }
+        };
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    lines
 }
 
 fn findings_text(errors: usize, warnings: usize, locale: Locale) -> String {
