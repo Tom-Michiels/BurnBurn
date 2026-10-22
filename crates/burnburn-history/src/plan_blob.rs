@@ -87,6 +87,8 @@ enum EventDto {
     Operation { operation: u64, settings: usize, pass: u32 },
     Travel { to: [f64; 2] },
     Cut { to: [f64; 2], origin: Option<[u64; 2]> },
+    /// A cut at its own power, a fraction of the rated power (a tab, C04).
+    CutPower { to: [f64; 2], power: f64, origin: Option<[u64; 2]> },
     Scan { from: [f64; 2], to: [f64; 2], overscan_mm: f64, origin: Option<[u64; 2]> },
 }
 
@@ -138,6 +140,9 @@ pub fn encode_plan(plan: &JobPlan) -> Result<Vec<u8>, HistoryError> {
             }
             PlanEvent::Travel { to } => Ok(EventDto::Travel { to: pt(to) }),
             PlanEvent::Cut { to, origin } => Ok(EventDto::Cut { to: pt(to), origin: src(origin) }),
+            PlanEvent::CutPower { to, power, origin } => {
+                Ok(EventDto::CutPower { to: pt(to), power: power.get(), origin: src(origin) })
+            }
             PlanEvent::ScanRun { line, origin } => Ok(EventDto::Scan {
                 from: pt(line.from),
                 to: pt(line.to),
@@ -243,6 +248,11 @@ pub fn decode_plan(bytes: &[u8], expected: &ContentHash) -> Result<JobPlan, Hist
             },
             EventDto::Travel { to } => PlanEvent::Travel { to: p(to)? },
             EventDto::Cut { to, origin } => PlanEvent::Cut { to: p(to)?, origin: origin_of(origin) },
+            EventDto::CutPower { to, power, origin } => PlanEvent::CutPower {
+                to: p(to)?,
+                power: PowerRatio::new(power).map_err(|_| bad("power"))?,
+                origin: origin_of(origin),
+            },
             EventDto::Scan { from, to, overscan_mm, origin } => PlanEvent::ScanRun {
                 line: ScanLine { from: p(from)?, to: p(to)?, overscan_mm },
                 origin: origin_of(origin),
