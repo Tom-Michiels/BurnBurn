@@ -65,6 +65,7 @@ pub fn sample_project() -> Project {
         library_links: Vec::new(),
         production: None,
         layer_slots: Vec::new(),
+        part_name: None,
     }
 }
 
