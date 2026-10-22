@@ -39,7 +39,7 @@ fn plan(value_mm: f64) -> JobPlan {
     b.note_calibration(AppliedCalibration {
         operation: OperationId::from_raw(1),
         kind: AppliedKind::Kerf { material: "multiplex-3".into() },
-        value_mm: value_mm,
+        value_mm,
         proofs: vec![ProofRef { id: 4, date: "2026-10-01".into() }],
     });
     b.note_calibration(AppliedCalibration {
