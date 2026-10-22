@@ -1353,6 +1353,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             FieldError::NotPositive => ("De maat moet groter dan 0 zijn.", "The size must be greater than 0."),
         },
         M::CommandRejected => ("De wijziging is geweigerd.", "The change was rejected."),
+        M::BoundTextFollowsGuide => (
+            "Een tekst op een pad volgt zijn gids en kan niet los worden gedraaid, geschaald of geschuind. Verplaats hem langs of dwars op het pad, pas Start en Afstand aan, draai of schaal de gids met de tekst, of maak de tekst eerst los.",
+            "Text on a path follows its guide and cannot be turned, scaled or sheared on its own. Move it along or across the path, change Start and Distance, turn or scale the guide together with the text, or release the text first.",
+        ),
         M::InvalidCutField(f) => {
             let (nl, en) = (cut_caption(f, Locale::Nl), cut_caption(f, Locale::En));
             return Some(match locale {
@@ -1986,6 +1990,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
     keys.extend([IssueKind::OpenContour, IssueKind::SelfIntersection].map(MessageKey::Issue));
     keys.extend([
         MessageKey::CommandRejected,
+        MessageKey::BoundTextFollowsGuide,
         MessageKey::SaveFailed,
         MessageKey::OpenFailed,
         MessageKey::SaveNewerFileOnDisk,

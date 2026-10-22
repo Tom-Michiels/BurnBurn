@@ -102,3 +102,24 @@ fn the_buttons_send_the_typed_text_unparsed_and_the_result_shows_in_both_texts()
     let all = lines(&h, doc, Locale::En).unwrap();
     assert!(all.iter().any(|l| matches!(l, G5Line::Problem(t) if t.contains("Position"))), "{all:?}");
 }
+
+#[test]
+fn a_variable_text_shows_its_sample_beside_the_template_in_both_languages() {
+    use burnburn_presentation::{JobClock, SerialField, VariableEdit};
+    let (mut h, doc) = two_selected();
+    h.controller().attach_clock(Arc::new(|| Some(JobClock::new(1_781_751_845, -300).unwrap())));
+    h.send(UiIntent::Select { document: doc, ids: vec![], mode: SelectMode::Replace });
+    h.invoke(doc, CommandKey::ToolSelect);
+    h.send(UiIntent::InsertText { document: doc, text: "SN-{serial}".into() });
+    h.send(UiIntent::Variable { document: doc, edit: VariableEdit::SetVariable(true) });
+    for (field, text) in [(SerialField::Start, "7"), (SerialField::End, "95"), (SerialField::Digits, "3")] {
+        h.send(UiIntent::Variable { document: doc, edit: VariableEdit::Serial(field, text.into()) });
+    }
+    for locale in [Locale::En, Locale::Nl] {
+        let all = lines(&h, doc, locale).expect("the panel");
+        assert!(
+            all.iter().any(|l| matches!(l, G5Line::Text(t) if t.contains("SN-{serial}") && t.contains("SN-007"))),
+            "{locale:?}: {all:?}"
+        );
+    }
+}

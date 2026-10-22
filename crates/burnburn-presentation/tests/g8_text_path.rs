@@ -233,6 +233,123 @@ fn a_text_that_is_not_bound_is_not_moved_by_this() {
     assert!(moved || (after - x).abs() < 1e-9, "either it moved as a whole or nothing changed");
 }
 
+// --- G9-editor E08: across the guide, the true tangent, turning and scaling ---------------------------------------
+
+fn expected_bounds(w: &mut World, start: f64, offset: f64) -> (Point, Point) {
+    let (src, _) = fonts();
+    let params = PathTextParams { distort: Distort::Rigid, start, offset, reverse: false, tolerance: tol() };
+    let b = text_on_path(&w.source(), &*src, &w.circle_path(), &params).unwrap().path.bounds().unwrap();
+    (b.min(), b.max())
+}
+
+#[test]
+fn g9_moving_a_bound_text_across_the_guide_changes_its_distance_to_the_guide() {
+    let mut w = world("HIT");
+    w.bind();
+    w.select_text();
+    // The circle starts at (140, 100) heading up: its left normal points to the centre, so a move
+    // of 7 mm in +x (away from the centre) puts the baseline 7 mm to the right of the guide.
+    let x = w.field(FieldKey::X);
+    w.h.send(UiIntent::CommitField { document: w.doc, field: FieldKey::X, text: format!("{}", x + 7.0) });
+    assert_eq!(vm(&w.h, w.doc).problem, None);
+    let binding = w.source().path.unwrap();
+    // The inspector shows the position with a few decimals: the typed move is 7 mm to within 1e-3.
+    assert!((binding.offset_mm + 7.0).abs() < 1e-3, "offset {}", binding.offset_mm);
+    assert!(binding.start_mm.abs() < 1e-3, "start {}", binding.start_mm);
+    let want = expected_bounds(&mut w, binding.start_mm, binding.offset_mm);
+    let got = w.bounds_of(&w.text_outlines());
+    assert!(got.0.distance(want.0) < 1e-9 && got.1.distance(want.1) < 1e-9, "the outline is the text at that offset");
+    // One undo brings the offset back.
+    w.h.invoke(w.doc, CommandKey::Undo);
+    assert!(w.source().path.unwrap().offset_mm.abs() < 1e-9);
+}
+
+#[test]
+fn g9_a_diagonal_move_splits_into_along_and_across_in_one_undo_step() {
+    let mut w = world("HIT");
+    w.bind();
+    w.select_text();
+    let (x, y) = (w.field(FieldKey::X), w.field(FieldKey::Y));
+    let revision = vm(&w.h, w.doc).revision;
+    // 3 mm to the left (towards the centre: +3 across) and 4 mm up (along the direction of travel).
+    w.h.send(UiIntent::CommitField { document: w.doc, field: FieldKey::X, text: format!("{}", x - 3.0) });
+    w.h.send(UiIntent::CommitField { document: w.doc, field: FieldKey::Y, text: format!("{}", y + 4.0) });
+    let binding = w.source().path.unwrap();
+    // The inspector shows the bounds of the bent text, so the second move starts from the outline
+    // the first one made: the oracle is the text at the binding the window ended with.
+    assert!(binding.offset_mm > 0.0, "towards the centre is positive: {}", binding.offset_mm);
+    assert!(binding.start_mm > 0.0, "{}", binding.start_mm);
+    let want = expected_bounds(&mut w, binding.start_mm, binding.offset_mm);
+    let got = w.bounds_of(&w.text_outlines());
+    assert!(got.0.distance(want.0) < 1e-9 && got.1.distance(want.1) < 1e-9);
+    assert!(vm(&w.h, w.doc).revision > revision);
+}
+
+#[test]
+fn g9_the_start_follows_the_exact_tangent_not_the_first_chord() {
+    let mut w = world("HIT");
+    w.bind();
+    w.select_text();
+    let y = w.field(FieldKey::Y);
+    w.h.send(UiIntent::CommitField { document: w.doc, field: FieldKey::Y, text: format!("{}", y + 5.0) });
+    // The circle starts heading straight up: five millimetres up is exactly five along the guide.
+    let start = w.source().path.unwrap().start_mm;
+    // (The inspector rounds the shown position: 2e-4 is its resolution; the first chord is 1.2e-3 off.)
+    assert!((start - 5.0).abs() < 2e-4, "start {start}");
+}
+
+#[test]
+fn g9_turning_or_scaling_a_bound_text_alone_is_refused_in_words_and_changes_nothing() {
+    use burnburn_presentation::{HostEffect, MessageKey};
+    let mut w = world("HIT");
+    w.bind();
+    w.select_text();
+    let before = (vm(&w.h, w.doc).revision, w.source().path.unwrap(), w.source().size);
+    for field in [FieldKey::Rotation, FieldKey::ScaleX, FieldKey::ShearX] {
+        let text = if field == FieldKey::Rotation {
+            "30"
+        } else if field == FieldKey::ShearX {
+            "10"
+        } else {
+            "150"
+        };
+        let update = w.h.send(UiIntent::CommitField { document: w.doc, field, text: text.into() });
+        assert!(
+            update
+                .effects
+                .iter()
+                .any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::BoundTextFollowsGuide, .. })),
+            "{field:?}: {:?}",
+            update.effects
+        );
+    }
+    let update = w.h.invoke(w.doc, CommandKey::Rotate90Cw);
+    assert!(
+        update
+            .effects
+            .iter()
+            .any(|e| matches!(e, HostEffect::ShowError { message: MessageKey::BoundTextFollowsGuide, .. }))
+    );
+    assert_eq!(before, (vm(&w.h, w.doc).revision, w.source().path.unwrap(), w.source().size), "nothing changed");
+}
+
+#[test]
+fn g9_turning_the_text_together_with_its_guide_turns_both_and_the_text_follows() {
+    let mut w = world("HIT");
+    w.bind();
+    let mut both = w.text_outlines();
+    both.push(w.circle);
+    w.h.send(UiIntent::Select { document: w.doc, ids: both, mode: SelectMode::Replace });
+    let before = w.source().path.unwrap();
+    w.h.invoke(w.doc, CommandKey::Rotate90Cw);
+    assert_eq!(vm(&w.h, w.doc).problem, None);
+    let after = w.source().path.unwrap();
+    assert_eq!((after.start_mm, after.offset_mm), (before.start_mm, before.offset_mm), "the binding is unchanged");
+    let want = expected_bounds(&mut w, after.start_mm, after.offset_mm);
+    let got = w.bounds_of(&w.text_outlines());
+    assert!(got.0.distance(want.0) < 1e-9 && got.1.distance(want.1) < 1e-9, "the text follows the turned guide");
+}
+
 // --- Variable text on a path ----------------------------------------------------------------------
 
 mod variable {

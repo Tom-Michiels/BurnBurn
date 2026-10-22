@@ -486,6 +486,25 @@ pub(super) fn edit(
     }
 }
 
+/// For each selected text, in id order: what a variable text resolves to for the next job, or
+/// `None` for a text that is not variable or cannot be resolved now (no serial series, no clock for
+/// a date, a missing data row). The template stays the text's content (G9-editor, E08).
+pub(super) fn samples(s: &Session, clock: Option<JobClock>) -> Vec<Option<String>> {
+    let snapshot = s.doc.snapshot();
+    let ids = super::text::selected_texts(s, &snapshot);
+    let variable: Vec<(TextId, TextObject)> = ids
+        .iter()
+        .filter_map(|id| snapshot.text(*id).filter(|t| t.variable.is_some()).map(|t| (*id, t.clone())))
+        .collect();
+    let record = if variable.is_empty() { None } else { record(s, &snapshot, &variable, clock).ok() };
+    ids.iter()
+        .map(|id| {
+            let text = snapshot.text(*id).filter(|t| t.variable.is_some())?;
+            resolved(text, record.as_ref()?, 0).ok().map(|x| x.content)
+        })
+        .collect()
+}
+
 pub(super) fn panel_view(s: &Session, clock: Option<JobClock>) -> Option<VariablePanelViewModel> {
     let snapshot = s.doc.snapshot();
     let id = single_text(s, &snapshot)?;

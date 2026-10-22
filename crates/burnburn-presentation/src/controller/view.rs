@@ -41,6 +41,9 @@ impl AppController {
                     nest.orders = self.nest_order_rows(s);
                 }
                 vm.variable_panel = super::variable::panel_view(s, self.clock.as_ref().and_then(|c| c()));
+                if let Some(bar) = vm.text_toolbar.as_mut() {
+                    bar.samples = super::variable::samples(s, self.clock.as_ref().and_then(|c| c()));
+                }
                 vm.operator.clone_from(&operator);
                 vm.trace_recipes = super::trace_recipes::view(s, &self.app);
                 vm.start_confirm.clone_from(&start_confirm);

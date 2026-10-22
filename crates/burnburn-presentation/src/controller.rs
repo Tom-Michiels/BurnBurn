@@ -999,12 +999,26 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             image::sync(s);
             AppUpdate::redraw(document)
         }
-        Err(_) => {
-            s.messages.push(StatusMessage { key: MessageKey::CommandRejected });
-            let mut update = error(Some(document), MessageKey::CommandRejected);
+        Err(refusal) => {
+            let key = refusal_key(&s.doc.snapshot(), &refusal);
+            s.messages.push(StatusMessage { key });
+            let mut update = error(Some(document), key);
             update.view_changed = true;
             update
         }
+    }
+}
+
+/// The words for a refused command: a turn, scale or shear of a text that follows a guide says
+/// why it cannot be done (G9-editor, E08); everything else is the general refusal.
+fn refusal_key(snapshot: &burnburn_document::DocumentSnapshot, refusal: &CommandError) -> MessageKey {
+    match refusal {
+        CommandError::DerivedObject { owner: burnburn_document::DerivedOwner::Text(text) }
+            if snapshot.text(*text).is_some_and(|t| t.path.is_some()) =>
+        {
+            MessageKey::BoundTextFollowsGuide
+        }
+        _ => MessageKey::CommandRejected,
     }
 }
 

@@ -113,6 +113,10 @@ texts! {
     TextContentTitle => ("Tekst bewerken", "Edit text"),
     TextContentTexts => ("Geselecteerde teksten ({0}):", "Selected texts ({0}):"),
     TextContentRow => ("{0}: «{1}» ({2} tekens)", "{0}: \"{1}\" ({2} characters)"),
+    TextContentRowSample => (
+        "{0}: «{1}» wordt «{3}» ({2} tekens in de sjabloon)",
+        "{0}: \"{1}\" becomes \"{3}\" ({2} characters in the template)"
+    ),
     TextContentMore => ("… en {0} meer", "... and {0} more"),
     TextContentHint => (
         "Een positie telt tekens vanaf het begin van elke tekst; een negatieve telt vanaf het eind, leeg is het eind, en voorbij het eind van een kortere tekst is dat zijn eind. Alle teksten veranderen in één stap.",

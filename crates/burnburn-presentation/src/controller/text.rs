@@ -9,7 +9,7 @@ use burnburn_document::{
     CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, DocumentSnapshot, GeometryCommand,
     GeometrySource,
 };
-use burnburn_generators::{GenError, PathTextParams, guide_frame_at, text_on_path, text_room};
+use burnburn_generators::{GenError, PathTextParams, guide_tangent_at, text_on_path, text_room};
 use burnburn_types::{DocumentId, GeometryId, Length, RequestId};
 
 use burnburn_text::{FontData, FontError, FontRef, FontSize, FontSource, FontStyle, switch_style};
@@ -227,11 +227,14 @@ fn is_path_edit(edit: &TextEdit) -> bool {
     )
 }
 
-/// A move of text that follows a guide (G8-editor, E08). The outline of a bound text is derived,
-/// so the move is made on its definition: a pure translation of the text alone changes where it
-/// starts on the guide (the displacement along the guide's direction there, kept within the
-/// room the guide has for the text); a text whose guide moves with it simply follows. Anything
-/// else stays as it was and the document refuses it. One command, so one undo step.
+/// A move of text that follows a guide (G8-editor, G9-editor, E08). The outline of a bound text is
+/// derived, so the move is made on its definition: a pure translation of the text alone changes
+/// where it starts on the guide (the displacement along the tangent of the guide there, kept within
+/// the room the guide has for the text) and how far it lies from the guide (the displacement
+/// across it, along the left normal of the direction of travel); a text whose guide moves with
+/// it simply follows. A turn, scale or shear of the text alone stays as it was: the document
+/// refuses it and the window says why (`MessageKey::BoundTextFollowsGuide`). One command, so one
+/// undo step.
 pub(super) fn retarget_move(
     snapshot: &DocumentSnapshot,
     fonts: Option<&SharedFonts>,
@@ -268,16 +271,20 @@ pub(super) fn retarget_move(
         else {
             return payload;
         };
-        let Ok((_, direction)) = guide_frame_at(guide.path(), &tolerance, binding.reverse, binding.start_mm) else {
+        let Ok((_, direction)) = guide_tangent_at(guide.path(), &tolerance, binding.reverse, binding.start_mm) else {
             return payload;
         };
         let Ok(room) = text_room(&obj, fonts, guide.path(), &tolerance, binding.reverse) else { return payload };
+        // The move along the true tangent of the guide where the text starts is the new start; the
+        // move across it (towards the left normal of the direction of travel) is the new distance
+        // from the guide.
         let start = (binding.start_mm + e * direction.x + f * direction.y).clamp(0.0, room);
-        if (start - binding.start_mm).abs() < 1e-9 {
+        let offset = binding.offset_mm + (-e * direction.y + f * direction.x);
+        if (start - binding.start_mm).abs() < 1e-9 && (offset - binding.offset_mm).abs() < 1e-9 {
             continue;
         }
         let mut next = obj.clone();
-        next.path = Some(PathBinding { start_mm: start, ..binding });
+        next.path = Some(PathBinding { start_mm: start, offset_mm: offset, ..binding });
         sets.push((id, next));
     }
     let mut steps: Vec<CompoundStep> = Vec::new();
@@ -436,6 +443,7 @@ pub(super) fn toolbar_view(s: &Session) -> Option<TextToolbarViewModel> {
     out.single_line = views.iter().all(|v| v.single_line);
     out.mixed = m;
     out.contents = views.iter().flat_map(|v| v.contents.iter().cloned()).collect();
+    out.samples = views.iter().flat_map(|v| v.samples.iter().cloned()).collect();
     let mut families: Vec<String> = views.iter().flat_map(|v| v.families.iter().cloned()).collect();
     families.sort();
     families.dedup();
@@ -499,6 +507,7 @@ fn toolbar_of(s: &Session, snapshot: &DocumentSnapshot, id: TextId) -> Option<Te
         can_convert: !s.selection.is_empty(),
         variable: t.variable.is_some(),
         contents: vec![t.content.clone()],
+        samples: vec![None],
         issue: s.text.issue.filter(|(t, _)| *t == id).map(|(_, i)| i),
         path: t.path.map(|b| {
             let guide = snapshot.object(b.guide);

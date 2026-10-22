@@ -573,7 +573,12 @@ pub(super) fn text_content_lines(doc: &DocumentViewModel, locale: Locale) -> Opt
             preview.push('…');
         }
         let chars = content.chars().count().to_string();
-        lines.push(G5Line::Text(g7_fmt(G7Text::TextContentRow, locale, &[&(n + 1).to_string(), &preview, &chars])));
+        let number = (n + 1).to_string();
+        // A variable text: the sample it resolves to for the next job, beside the template.
+        lines.push(G5Line::Text(match bar.samples.get(n).and_then(Option::as_ref) {
+            Some(sample) => g7_fmt(G7Text::TextContentRowSample, locale, &[&number, &preview, &chars, sample]),
+            None => g7_fmt(G7Text::TextContentRow, locale, &[&number, &preview, &chars]),
+        }));
     }
     if bar.contents.len() > SHOWN {
         lines.push(G5Line::Text(g7_fmt(G7Text::TextContentMore, locale, &[&(bar.contents.len() - SHOWN).to_string()])));

@@ -126,6 +126,9 @@ pub struct TextToolbarViewModel {
     pub path: Option<TextPathView>,
     /// The content of every selected text, in id order (G9-editor, E07).
     pub contents: Vec<String>,
+    /// For each of those texts: what a variable text resolves to for the next job (the sample
+    /// next to the template); `None` for a text that is not variable or has no record yet.
+    pub samples: Vec<Option<String>>,
 }
 
 /// Whether a text bound to a path can follow it now.

@@ -30,7 +30,9 @@ pub use joints::{
     EdgeProfile, EdgeStart, FingerJoint, JointSegment, SegmentKind, TabSlot, TabSlotResult, tab_and_slot,
 };
 pub use output::{GeneratedPart, to_outputs};
-pub use path_text::{Distort, GlyphFrame, PathText, PathTextParams, guide_frame_at, text_on_path, text_room};
+pub use path_text::{
+    Distort, GlyphFrame, PathText, PathTextParams, guide_frame_at, guide_tangent_at, text_on_path, text_room,
+};
 pub use production::{
     AdvancePolicy, Commit, JobEvent, ProductionCounters, ProductionRecord, RecordBuilder, bake_command, resolve_text,
 };

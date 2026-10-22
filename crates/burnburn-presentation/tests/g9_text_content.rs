@@ -160,3 +160,31 @@ fn the_toolbar_lists_the_content_of_every_selected_text() {
     insert(&mut h, doc, "1", "x");
     assert_eq!(h.document(doc).unwrap().text_toolbar.unwrap().contents, ["exerste", "txweede"]);
 }
+
+#[test]
+fn a_variable_text_shows_its_resolved_sample_next_to_its_template() {
+    use burnburn_generators::JobClock;
+    use burnburn_presentation::{SerialField, VariableEdit};
+    let (mut h, doc) = texts(&["gewone tekst", "SN-{serial}"]);
+    h.controller().attach_clock(Arc::new(|| Some(JobClock::new(1_781_751_845, -300).unwrap())));
+    let second = h.document(doc).unwrap().objects[1].id;
+    h.send(UiIntent::Select { document: doc, ids: vec![second], mode: SelectMode::Replace });
+    h.send(UiIntent::Variable { document: doc, edit: VariableEdit::SetVariable(true) });
+    for (field, text) in [
+        (SerialField::Start, "10"),
+        (SerialField::End, "95"),
+        (SerialField::AdvanceBy, "5"),
+        (SerialField::Digits, "4"),
+    ] {
+        h.send(UiIntent::Variable { document: doc, edit: VariableEdit::Serial(field, text.into()) });
+    }
+    select_all(&mut h, doc);
+    let bar = h.document(doc).unwrap().text_toolbar.unwrap();
+    assert_eq!(bar.contents, ["gewone tekst", "SN-{serial}"], "the template stays what the text is");
+    assert_eq!(bar.samples, [None, Some("SN-0010".to_owned())], "the resolved sample is beside it");
+    // The next serial number changes the sample, not the template.
+    h.send(UiIntent::Variable { document: doc, edit: VariableEdit::Next });
+    let bar = h.document(doc).unwrap().text_toolbar.unwrap();
+    assert_eq!(bar.samples[1].as_deref(), Some("SN-0015"));
+    assert_eq!(bar.contents[1], "SN-{serial}");
+}
