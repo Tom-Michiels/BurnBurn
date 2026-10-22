@@ -165,7 +165,9 @@ pub fn preflight(snapshot: &DocumentSnapshot, plan: &JobPlan, profile: &MachineP
     let process = snapshot.process();
     let (min_power, max_power) = profile.power_range();
     let mut line_users: BTreeMap<GeometryId, Vec<OperationId>> = BTreeMap::new();
-    let mut used: BTreeSet<GeometryId> = BTreeSet::new();
+    // Guides and registration marks on a tool layer are on purpose in the document and off the job.
+    let mut used: BTreeSet<GeometryId> =
+        process.operations().filter(|o| o.tool().is_some()).flat_map(|o| o.targets().iter().copied()).collect();
     for op in process.operations().filter(|o| o.output_enabled()) {
         let id = op.id();
         let settings = op.settings();

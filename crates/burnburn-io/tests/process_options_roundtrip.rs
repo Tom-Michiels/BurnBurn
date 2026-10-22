@@ -55,6 +55,7 @@ fn every_option() -> AdvancedOptions {
             },
         ],
         shared_edges: SharedEdgePolicy::CutPerRegion,
+        ..Default::default()
     }
 }
 
