@@ -11,6 +11,7 @@
 //! by the same owner. The numeric solver is `sketch-solver` 0.1.0 (MIT OR Apache-2.0) behind
 //! [`solver::SketchSolverAdapter`].
 
+mod contact_seed;
 mod evaluate;
 mod evaluator;
 mod output;

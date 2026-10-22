@@ -417,13 +417,18 @@ impl Sketch {
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Point { .. }, .. }));
         let is_line =
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Line { .. }, .. }));
-        let is_circle =
-            |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Circle { .. }, .. }));
+        // A circle or an arc is a round curve an ellipse can touch (G9-editor).
+        let is_circle = |e: &EntityId| {
+            matches!(
+                self.entities.get(e),
+                Some(SketchEntity { entity: Entity::Circle { .. } | Entity::Arc { .. }, .. })
+            )
+        };
         if let SketchConstraint::Relation(r) = c {
             let bad = match *r {
                 Relation::PointOn { point, curve } if is_ellipse(&curve) && !is_point(&point) => Some(point),
                 Relation::Tangent(a, b) if is_ellipse(&a) || is_ellipse(&b) => match (is_ellipse(&a), is_ellipse(&b)) {
-                    // A line, a circle or another ellipse (G8-editor: the contact point is found by the solver).
+                    // A line, a circle, an arc or another ellipse (G8, G9-editor: the contact point is found by the solver).
                     (true, false) if is_line(&b) || is_circle(&b) => None,
                     (false, true) if is_line(&a) || is_circle(&a) => None,
                     (true, true) => None,
