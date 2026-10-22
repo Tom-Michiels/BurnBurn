@@ -8,6 +8,8 @@ use burnburn_document::process::{LeadStyle, LineOptions, SharedEdgePolicy, TabPl
 use burnburn_geometry::{Bounds, Point, SpatialIndex, Vector, math};
 use burnburn_types::{CancellationToken, GeometryId, OperationId};
 
+use burnburn_document::process::PathLock;
+
 use crate::CompileError;
 use crate::compile::Step;
 use crate::nearest::{NearestIndex, SearchStats};
@@ -19,6 +21,8 @@ pub(crate) struct Contour {
     /// Vertices; for a closed contour without the repeated start point.
     pub points: Vec<Point>,
     pub closed: bool,
+    /// What the planner may not change about where this contour starts and which way it runs.
+    pub lock: PathLock,
 }
 
 impl Contour {
@@ -26,7 +30,23 @@ impl Contour {
         if closed && points.len() > 1 && points.first() == points.last() {
             points.pop();
         }
-        Contour { geometry, points, closed }
+        Contour { geometry, points, closed, lock: PathLock::default() }
+    }
+
+    /// The same contour with the locks of its shape (C06).
+    pub fn locked(mut self, lock: PathLock) -> Self {
+        self.lock = lock;
+        self
+    }
+
+    /// The planner switches that count for this contour: a lock takes freedom away, it never adds
+    /// any. An open contour starts at one of its two ends, so a locked start also keeps its direction.
+    fn heuristics(&self, h: &Heuristics) -> Heuristics {
+        Heuristics {
+            best_start: h.best_start && !self.lock.start,
+            best_direction: h.best_direction && !self.lock.direction && !(self.lock.start && !self.closed),
+            ..*h
+        }
     }
 
     pub fn translate(&mut self, v: Vector) {
@@ -241,6 +261,7 @@ impl Chooser {
 
 /// A box around every point [`entry`] may choose for `c`.
 fn entry_bounds(c: &Contour, h: &Heuristics) -> Bounds {
+    let h = &c.heuristics(h);
     let candidates: Vec<Point> = if c.closed {
         if h.best_start { c.points.clone() } else { c.points.first().copied().into_iter().collect() }
     } else {
@@ -280,6 +301,7 @@ fn approach_cost(head: Point, at: Point, next: Option<Point>, h: &Heuristics) ->
 /// first vertex, the shape's own start point, when the best start is off) or the cheaper end of
 /// an open one (only its drawn start when the best direction is off). Ties keep the lowest index.
 fn entry(c: &Contour, head: Point, h: &Heuristics) -> Entry {
+    let h = &c.heuristics(h);
     let n = c.points.len();
     if c.closed {
         let candidates = if h.best_start { n } else { 1.min(n) };

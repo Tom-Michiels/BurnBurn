@@ -22,6 +22,7 @@ impl CanonicalEncode for ProcessLayer {
         out.seq(self.constraints.iter());
         out.seq(self.recipes.values().map(|r| r.as_ref()));
         self.encode_optimization(out);
+        self.encode_path_locks(out);
         // Notes only when present, so projects without notes keep their hash.
         if !self.notes.is_empty() {
             out.tag("notes");
@@ -39,6 +40,22 @@ impl ProcessLayer {
     /// Writes the optimization block (nothing when settings and priorities are the defaults).
     pub fn encode_optimization(&self, out: &mut CanonicalWriter) {
         encode_optimization(self, out);
+    }
+
+    /// Writes the start/direction locks (C06): `tag("path-locks")`, `u64` count, each `u64`
+    /// geometry, `bool` start, `bool` direction, in geometry id order. Nothing when no shape is
+    /// locked, so projects without locks keep their hash.
+    pub fn encode_path_locks(&self, out: &mut CanonicalWriter) {
+        if self.path_locks.is_empty() {
+            return;
+        }
+        out.tag("path-locks");
+        out.u64(self.path_locks.len() as u64);
+        for (g, lock) in &self.path_locks {
+            out.u64(g.raw());
+            out.bool(lock.start);
+            out.bool(lock.direction);
+        }
     }
 }
 

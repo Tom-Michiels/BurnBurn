@@ -93,6 +93,10 @@ pub mod v1 {
         /// Cut priorities (W2-L3): only shapes with a non-default priority. Omitted when empty.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         pub priorities: Vec<Priority>,
+        /// Start and direction locks (G6-machine, C06): only shapes with something locked. Omitted
+        /// when empty, so projects without locks keep their file form.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub path_locks: Vec<PathLock>,
         /// Project notes (G5-UI-gaten, P04). Omitted when empty; absent in older files.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         pub notes: String,
@@ -138,6 +142,14 @@ pub mod v1 {
         /// Overlap tolerance in mm; omitted when overlapping lines are kept.
         #[serde(default, deserialize_with = "present_num", skip_serializing_if = "Option::is_none")]
         pub remove_overlapping_mm: Option<Num>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    pub struct PathLock {
+        pub geometry: u64,
+        pub start: bool,
+        pub direction: bool,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

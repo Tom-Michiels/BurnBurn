@@ -22,6 +22,22 @@ pub enum OrderKey {
     Priority,
 }
 
+/// What the planner may not change about the way a shape is cut (C06): where it starts and
+/// which way it runs. Both are free until locked; the document's own start and direction stay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PathLock {
+    /// The shape is entered at its own start point, whatever "best start" would pick.
+    pub start: bool,
+    /// The shape runs in the direction it was drawn, whatever "best direction" would pick.
+    pub direction: bool,
+}
+
+impl PathLock {
+    pub fn is_none(self) -> bool {
+        !self.start && !self.direction
+    }
+}
+
 /// Cut order priority of one shape; lower numbers are cut first. `0` is the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CutPriority(i32);

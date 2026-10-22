@@ -23,6 +23,8 @@ pub struct ProcessLayer {
     pub(crate) optimization: OptimizationSettings,
     /// Cut priority per geometry; absent = the default priority 0.
     pub(crate) priorities: BTreeMap<GeometryId, CutPriority>,
+    /// What the planner may not change about a shape's start and direction; absent = nothing.
+    pub(crate) path_locks: BTreeMap<GeometryId, super::PathLock>,
     /// Free-text project notes (File > Show Notes); empty = none.
     pub(crate) notes: String,
 }
@@ -62,6 +64,7 @@ impl ProcessLayer {
             && self.recipes.is_empty()
             && self.optimization.is_default()
             && self.priorities.is_empty()
+            && self.path_locks.is_empty()
             && self.notes.is_empty()
     }
 
@@ -87,6 +90,22 @@ impl ProcessLayer {
     }
 
     /// Geometries with a non-default priority, in id order.
+    /// What may not change about how `geometry` is cut (default: nothing locked).
+    pub fn path_lock(&self, geometry: GeometryId) -> super::PathLock {
+        self.path_locks.get(&geometry).copied().unwrap_or_default()
+    }
+
+    /// The shapes with something locked, in id order.
+    pub fn path_locks(&self) -> impl Iterator<Item = (GeometryId, super::PathLock)> + '_ {
+        self.path_locks.iter().map(|(g, l)| (*g, *l))
+    }
+
+    /// The same layer with stored locks; a lock that locks nothing is not stored.
+    pub fn with_path_locks(mut self, locks: impl IntoIterator<Item = (GeometryId, super::PathLock)>) -> Self {
+        self.path_locks = locks.into_iter().filter(|(_, l)| !l.is_none()).collect();
+        self
+    }
+
     pub fn priorities(&self) -> impl Iterator<Item = (GeometryId, CutPriority)> + '_ {
         self.priorities.iter().map(|(g, p)| (*g, *p))
     }
@@ -109,6 +128,7 @@ impl ProcessLayer {
     pub(crate) fn inherit_settings(mut self, other: &ProcessLayer, keep: impl Fn(GeometryId) -> bool) -> Self {
         self.optimization = other.optimization.clone();
         self.priorities = other.priorities.iter().filter(|(g, _)| keep(**g)).map(|(g, p)| (*g, *p)).collect();
+        self.path_locks = other.path_locks.iter().filter(|(g, _)| keep(**g)).map(|(g, l)| (*g, *l)).collect();
         self
     }
 
@@ -141,6 +161,7 @@ impl ProcessLayer {
     /// Drops `geometry` from every operation's targets; returns the operations that changed.
     pub(crate) fn remove_geometry(&mut self, geometry: GeometryId) -> Vec<OperationId> {
         self.priorities.remove(&geometry);
+        self.path_locks.remove(&geometry);
         let mut changed = Vec::new();
         for op in &mut self.operations {
             if op.targets().contains(&geometry) {

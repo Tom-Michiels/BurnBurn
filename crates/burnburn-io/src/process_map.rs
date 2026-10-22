@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 use burnburn_document::DocumentSnapshot;
 use burnburn_document::process::{
-    AdvancedOptions, CutPriority, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
+    AdvancedOptions, CutPriority, PathLock, DitherMode, DotMode, FillGrouping, FillSettings, GrayMethod, ImageCrop, ImageRender,
     ImageSettings, ImageSharpen, Kerf, Lead, LeadStyle, LineOptions, MaterialRecipe, OffsetFillOrder,
     OffsetFillSettings, Operation, OperationDraft, OperationMode, OptimizationSettings, OrderConstraint, OrderKey,
     Overcut, Passes, Perforation, PowerPercent, PowerRange, ProcessLayer, ProcessSettings, RecipeDraft, RecipeId,
@@ -90,6 +90,14 @@ pub(crate) fn optimization_to_dto(doc: &DocumentSnapshot) -> (Option<v1::Optimiz
     });
     let priorities = layer.priorities().map(|(g, p)| v1::Priority { geometry: g.raw(), priority: p.get() }).collect();
     (optimization, priorities)
+}
+
+/// The start/direction locks as DTOs (only shapes with something locked).
+pub(crate) fn path_locks_to_dto(doc: &DocumentSnapshot) -> Vec<v1::PathLock> {
+    doc.process()
+        .path_locks()
+        .map(|(g, l)| v1::PathLock { geometry: g.raw(), start: l.start, direction: l.direction })
+        .collect()
 }
 
 fn optimization_from_dto(o: &v1::Optimization) -> Result<OptimizationSettings, LoadError> {
@@ -685,6 +693,23 @@ pub(crate) fn process_from_dto(
         priorities.push((geometry, priority));
     }
     let layer = layer.with_priorities(priorities);
+    let mut locks = Vec::with_capacity(dto.path_locks.len());
+    for (i, l) in dto.path_locks.iter().enumerate() {
+        let at = move || format!("path_locks[{i}]");
+        let geometry = GeometryId::from_raw(l.geometry);
+        if doc.object(geometry).is_none() {
+            return Err(invalid(&|| format!("{}.geometry", at()), "no such shape"));
+        }
+        if locks.iter().any(|(g, _)| *g == geometry) {
+            return Err(invalid(&|| format!("{}.geometry", at()), "shape locked twice"));
+        }
+        let lock = PathLock { start: l.start, direction: l.direction };
+        if lock.is_none() {
+            return Err(invalid(&|| at(), "an entry that locks nothing"));
+        }
+        locks.push((geometry, lock));
+    }
+    let layer = layer.with_path_locks(locks);
     if dto.notes.chars().count() > burnburn_document::process::ProcessCommand::MAX_NOTES_CHARS {
         return Err(invalid(&|| "notes".to_owned(), "too long"));
     }

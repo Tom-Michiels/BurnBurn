@@ -104,6 +104,7 @@ pub(crate) fn document_to_dto(doc: &DocumentSnapshot) -> Result<v1::Document, Sa
         recipes,
         optimization,
         priorities,
+        path_locks: crate::process_map::path_locks_to_dto(doc),
         notes: doc.process().notes().to_owned(),
         sketches: crate::sketch_map::sketches_to_dto(doc),
         texts: crate::text_map::texts_to_dto(doc),

@@ -343,8 +343,9 @@ fn contours_for(
             }
             _ => obj.path(),
         };
+        let lock = snapshot.process().path_lock(g);
         for pl in path.flatten(&options.tolerance) {
-            contours.push(Contour::new(g, pl.points, pl.closed));
+            contours.push(Contour::new(g, pl.points, pl.closed).locked(lock));
         }
     }
     Ok(contours)
