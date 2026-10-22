@@ -288,6 +288,9 @@ struct Builder<'a> {
     problem: Problem,
     index: Index,
     ellipses: BTreeMap<EntityId, EllipseAux>,
+    /// The other branch: which axis of an ellipse carries the foci is decided the other way round
+    /// (the retry of an evaluation that did not converge, G8-editor).
+    flip: bool,
 }
 
 impl Builder<'_> {
@@ -324,6 +327,50 @@ impl Builder<'_> {
         })
     }
 
+    /// The driving dimension of the semi-major radius of `ellipse`, when it has one (a radius or a
+    /// diameter): the length the major axis is going to have, which decides which axis is longer.
+    fn major_dimension(&self, ellipse: EntityId) -> Option<f64> {
+        self.sketch.constraints().find_map(|(_, c)| match c {
+            SketchConstraint::Dimension(d) if d.role == DimensionRole::Driving => match d.kind {
+                DimensionKind::Radius { curve } if curve == ellipse => dim_value(d.kind, &d.text, self.params).ok(),
+                DimensionKind::Diameter { curve } if curve == ellipse => {
+                    dim_value(d.kind, &d.text, self.params).ok().map(|v| v / 2.0)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+    }
+
+    /// The ellipse as it is now: centre, unit directions of its axes, semi-axes (drawn or last solved,
+    /// or as dimensioned for the semi-minor).
+    fn ellipse_geometry(&self, ellipse: EntityId) -> Option<(Point, (f64, f64), (f64, f64), f64, f64)> {
+        let DocEntity::Ellipse { center, major, minor } = self.sketch.entity(ellipse)?.entity else { return None };
+        let minor = self.sketch.solution().and_then(|s| s.minors.get(&ellipse).copied()).unwrap_or(minor);
+        let (pc, pm) = (self.at(self.e(center)?)?, self.at(self.e(major)?)?);
+        let a = pc.distance(pm);
+        if !(a > 0.0) {
+            return None;
+        }
+        let u = ((pm.x - pc.x) / a, (pm.y - pc.y) / a);
+        let b = self.minor_dimension(ellipse).filter(|b| *b > 0.0).unwrap_or(minor);
+        Some((pc, u, (-u.1, u.0), a, b))
+    }
+
+    /// `n` points on the ellipse in its current shape.
+    fn ellipse_samples(&self, ellipse: EntityId, n: usize) -> Option<Vec<Point>> {
+        let (c, u, v, a, b) = self.ellipse_geometry(ellipse)?;
+        Some(
+            (0..n)
+                .map(|i| {
+                    let t = std::f64::consts::TAU * i as f64 / n as f64;
+                    let (s, k) = (t.sin(), t.cos());
+                    Point::new(c.x + a * k * u.0 + b * s * v.0, c.y + a * k * u.1 + b * s * v.1)
+                })
+                .collect(),
+        )
+    }
+
     fn has_minor_dimension(&self, ellipse: EntityId) -> bool {
         self.sketch.constraints().any(|(_, c)| {
             matches!(c, SketchConstraint::Dimension(d)
@@ -351,9 +398,14 @@ impl Builder<'_> {
         let v = (-u.1, u.0);
         let b = self.minor_dimension(ellipse).filter(|b| *b > 0.0).unwrap_or(minor);
         // The foci lie on the longer axis. Normally that is the major axis; an ellipse whose
-        // "minor" radius is the larger one has them on the other axis, and the roles swap.
-        let swapped = b > a;
-        let (long, short) = if swapped { (b, a) } else { (a, b) };
+        // "minor" radius is the larger one has them on the other axis, and the roles swap. A
+        // dimension on the major axis says how long it is going to be, which is what counts: an
+        // edit that drives it through a = b changes the roles in one solve. Without one the
+        // current length is taken, and a solve that does not converge is tried again the other way
+        // round (`flip`).
+        let a_to_be = self.major_dimension(ellipse).filter(|v| *v > 0.0).unwrap_or(a);
+        let swapped = (b > a_to_be) != self.flip;
+        let (long, short) = if b > a_to_be { (b, a_to_be) } else { (a_to_be, b) };
         let focal = (long * long - short * short).max(0.0).sqrt().max(1e-3 * long);
         let direction = if swapped { v } else { u };
         let minor_end = self.point(Point::new(pc.x + b * v.0, pc.y + b * v.1));
@@ -391,8 +443,17 @@ impl Builder<'_> {
     /// lies on the ray from the first focus through the point, `2a` from that focus, so the point
     /// is as far from `q` as from the second focus exactly when the sum is `2a`.
     fn point_on_ellipse(&mut self, point: EntityId, ellipse: EntityId, out: &mut Vec<Constraint>) -> Option<()> {
-        let aux = self.ellipse_aux(ellipse, out)?;
         let p = self.e(point)?;
+        self.solver_point_on_ellipse(p, ellipse, out)
+    }
+
+    fn solver_point_on_ellipse(
+        &mut self,
+        p: solver::EntityId,
+        ellipse: EntityId,
+        out: &mut Vec<Constraint>,
+    ) -> Option<()> {
+        let aux = self.ellipse_aux(ellipse, out)?;
         let (pp, pf1) = (self.at(p)?, self.at(aux.f1)?);
         let two_a = match *self.problem.entities.get(aux.director.index())? {
             Entity::Line { start, end } => self.at(start)?.distance(self.at(end)?),
@@ -417,8 +478,17 @@ impl Builder<'_> {
     /// A line tangent to an ellipse: the mirror image of the first focus in the line is `2a` from
     /// the second focus.
     fn tangent_to_ellipse(&mut self, line: EntityId, ellipse: EntityId, out: &mut Vec<Constraint>) -> Option<()> {
-        let aux = self.ellipse_aux(ellipse, out)?;
         let l = self.e(line)?;
+        self.solver_tangent_to_ellipse(l, ellipse, out)
+    }
+
+    fn solver_tangent_to_ellipse(
+        &mut self,
+        l: solver::EntityId,
+        ellipse: EntityId,
+        out: &mut Vec<Constraint>,
+    ) -> Option<()> {
+        let aux = self.ellipse_aux(ellipse, out)?;
         let Entity::Line { start, end } = *self.problem.entities.get(l.index())? else { return None };
         let (ps, pe, pf1) = (self.at(start)?, self.at(end)?, self.at(aux.f1)?);
         let (dx, dy) = (pe.x - ps.x, pe.y - ps.y);
@@ -432,6 +502,122 @@ impl Builder<'_> {
         let mirror = self.point(Point::new(2.0 * foot.x - pf1.x, 2.0 * foot.y - pf1.y));
         let to_f2 = self.line(mirror, aux.f2);
         out.extend([Constraint::Symmetric { a: aux.f1, b: mirror, about: l }, Constraint::Equal(to_f2, aux.director)]);
+        Some(())
+    }
+}
+
+/// What an ellipse touches in the contact relation.
+#[derive(Clone, Copy)]
+enum Contact {
+    Circle(EntityId),
+    Ellipse(EntityId),
+}
+
+impl Builder<'_> {
+    /// Where two curves are closest now, as a starting point for their contact: a point near both
+    /// and the unit direction of `ellipse` there.
+    fn contact_guess(&self, ellipse: EntityId, other: Contact) -> Option<(Point, (f64, f64))> {
+        const N: usize = 360;
+        let own = self.ellipse_samples(ellipse, N)?;
+        let (at, index) = match other {
+            Contact::Circle(circle) => {
+                let DocEntity::Circle { center, radius } = self.sketch.entity(circle)?.entity else { return None };
+                let radius = self.sketch.solution().and_then(|s| s.radii.get(&circle).copied()).unwrap_or(radius);
+                let o = self.at(self.e(center)?)?;
+                // The sample whose distance from the circle's centre is nearest to the radius.
+                let (i, _) = own
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (i, (p.distance(o) - radius).abs()))
+                    .min_by(|x, y| x.1.total_cmp(&y.1))?;
+                let d = own[i].distance(o);
+                let dir = if d > 0.0 { ((own[i].x - o.x) / d, (own[i].y - o.y) / d) } else { (1.0, 0.0) };
+                (Point::new(o.x + dir.0 * radius, o.y + dir.1 * radius), i)
+            }
+            Contact::Ellipse(second) => {
+                let theirs = self.ellipse_samples(second, N)?;
+                let mut best = (f64::INFINITY, 0usize, 0usize);
+                for (i, p) in own.iter().enumerate() {
+                    for (j, q) in theirs.iter().enumerate() {
+                        let d = p.distance(*q);
+                        if d < best.0 {
+                            best = (d, i, j);
+                        }
+                    }
+                }
+                (own[best.1].lerp(theirs[best.2], 1.0), best.1)
+            }
+        };
+        let (prev, next) = (own[(index + N - 1) % N], own[(index + 1) % N]);
+        let (dx, dy) = (next.x - prev.x, next.y - prev.y);
+        let l = (dx * dx + dy * dy).sqrt();
+        (l > 0.0).then_some((at, (dx / l, dy / l)))
+    }
+
+    /// The normal of `ellipse` at the point `t` on it, as a line through `t`: it runs along the
+    /// sum of the unit vectors from `t` to the two foci (the reflection property). Unlike the
+    /// mirror-image construction of a free tangent line this is first order in the point, so it
+    /// stays well conditioned when the point is pinned to the ellipse.
+    fn ellipse_normal(
+        &mut self,
+        t: solver::EntityId,
+        ellipse: EntityId,
+        out: &mut Vec<Constraint>,
+    ) -> Option<solver::EntityId> {
+        let aux = self.ellipse_aux(ellipse, out)?;
+        let (pt, p1, p2) = (self.at(t)?, self.at(aux.f1)?, self.at(aux.f2)?);
+        let unit = |to: Point| {
+            let d = pt.distance(to);
+            if d > 0.0 { ((to.x - pt.x) / d, (to.y - pt.y) / d) } else { (1.0, 0.0) }
+        };
+        let (u1, u2) = (unit(p1), unit(p2));
+        let a1 = self.point(Point::new(pt.x + u1.0, pt.y + u1.1));
+        let a2 = self.point(Point::new(pt.x + u2.0, pt.y + u2.1));
+        // The fourth corner of the parallelogram on the two unit vectors: its diagonal from `t`
+        // is their sum, which is never of zero length (the foci are on one side of the point).
+        // Both diagonals share their midpoint, a linear condition without a second branch.
+        let k = self.point(Point::new(pt.x + u1.0 + u2.0, pt.y + u1.1 + u2.1));
+        let centre = self.point(Point::new(pt.x + (u1.0 + u2.0) / 2.0, pt.y + (u1.1 + u2.1) / 2.0));
+        let (ta1, tf1, ta2, tf2) = (self.line(t, a1), self.line(t, aux.f1), self.line(t, a2), self.line(t, aux.f2));
+        let a1a2 = self.line(a1, a2);
+        let normal = self.line(t, k);
+        out.extend([
+            Constraint::Parallel(ta1, tf1),
+            Constraint::Length { line: ta1, value: 1.0 },
+            Constraint::Parallel(ta2, tf2),
+            Constraint::Length { line: ta2, value: 1.0 },
+            Constraint::Midpoint { point: centre, line: a1a2 },
+            Constraint::Midpoint { point: centre, line: normal },
+        ]);
+        Some(normal)
+    }
+
+    /// An ellipse touching a circle or another ellipse: a contact point `t` on both and a unit-length
+    /// line from it that is perpendicular to the normals of both there. That line exists only when the
+    /// curves really touch, so the relation takes exactly one degree of freedom from them.
+    fn ellipse_contact(&mut self, ellipse: EntityId, other: Contact, out: &mut Vec<Constraint>) -> Option<()> {
+        let (start, direction) = self.contact_guess(ellipse, other)?;
+        let t = self.point(start);
+        let end = self.point(Point::new(start.x + direction.0, start.y + direction.1));
+        let l = self.line(t, end);
+        out.push(Constraint::Length { line: l, value: 1.0 });
+        self.solver_point_on_ellipse(t, ellipse, out)?;
+        let normal = self.ellipse_normal(t, ellipse, out)?;
+        out.push(Constraint::Perpendicular(l, normal));
+        match other {
+            Contact::Circle(circle) => {
+                let c = self.e(circle)?;
+                let DocEntity::Circle { center, .. } = self.sketch.entity(circle)?.entity else { return None };
+                let radius_line = self.line(self.e(center)?, t);
+                out.push(Constraint::PointOn { point: t, curve: c });
+                out.push(Constraint::Perpendicular(l, radius_line));
+            }
+            Contact::Ellipse(second) => {
+                self.solver_point_on_ellipse(t, second, out)?;
+                let second_normal = self.ellipse_normal(t, second, out)?;
+                out.push(Constraint::Perpendicular(l, second_normal));
+            }
+        }
         Some(())
     }
 }
@@ -455,6 +641,20 @@ fn relation(b: &mut Builder<'_>, r: Relation, out: &mut Vec<Constraint>) -> Opti
     let e = |id: EntityId| b.index.of.get(&id).copied();
     let is_ellipse =
         |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Ellipse { .. }, .. }));
+    let is_circle =
+        |id: EntityId| matches!(sketch.entity(id), Some(SketchEntity { entity: DocEntity::Circle { .. }, .. }));
+    match r {
+        Relation::Tangent(a, c) if is_ellipse(a) && is_ellipse(c) => {
+            return b.ellipse_contact(a, Contact::Ellipse(c), out);
+        }
+        Relation::Tangent(a, c) if is_ellipse(a) && is_circle(c) => {
+            return b.ellipse_contact(a, Contact::Circle(c), out);
+        }
+        Relation::Tangent(a, c) if is_ellipse(c) && is_circle(a) => {
+            return b.ellipse_contact(c, Contact::Circle(a), out);
+        }
+        _ => {}
+    }
     let one = match r {
         // The solver's concentricity wants round curves; an ellipse shares its centre point.
         Relation::Concentric(a, c) if is_ellipse(a) || is_ellipse(c) => {
@@ -516,6 +716,28 @@ pub fn evaluate_sketch(
     solver: &dyn Solver,
     cancel: &CancellationToken,
 ) -> Result<Evaluation, Cancelled> {
+    let first = evaluate_branch(sketch, solver, cancel, false)?;
+    let has_ellipse = sketch.entities().any(|(_, e)| matches!(e.entity, DocEntity::Ellipse { .. }));
+    if has_ellipse && matches!(first.health, Health::NotConverged | Health::Conflict) {
+        // Which axis of an ellipse is the longer one is a branch the solver cannot jump (G8-editor,
+        // S01): when this one failed, the same sketch with the roles decided the other way round
+        // gets a go, and is taken when it holds.
+        let second = evaluate_branch(sketch, solver, cancel, true)?;
+        if second.health.is_valid() {
+            return Ok(second);
+        }
+    }
+    Ok(first)
+}
+
+/// One attempt of [`evaluate_sketch`]; `flip` decides the roles of the axes of the ellipses the
+/// other way round.
+fn evaluate_branch(
+    sketch: &Sketch,
+    solver: &dyn Solver,
+    cancel: &CancellationToken,
+    flip: bool,
+) -> Result<Evaluation, Cancelled> {
     cancel.check()?;
     let mut diagnostics: BTreeMap<ConstraintId, Diagnosis> =
         sketch.constraints().map(|(id, _)| (id, Diagnosis::NotEvaluated)).collect();
@@ -547,7 +769,7 @@ pub fn evaluate_sketch(
     let Some((problem, index)) = lower(sketch) else {
         return Ok(failed(diagnostics, None, None));
     };
-    let mut builder = Builder { sketch, params: &params, problem, index, ellipses: BTreeMap::new() };
+    let mut builder = Builder { sketch, params: &params, problem, index, ellipses: BTreeMap::new(), flip };
     // The document constraint each solver constraint belongs to. One constraint of the document can
     // be several in the solver (an ellipse needs its auxiliary geometry tied down as well).
     let mut to_sketch: Vec<ConstraintId> = Vec::new();

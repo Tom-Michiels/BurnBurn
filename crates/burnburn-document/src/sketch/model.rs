@@ -408,8 +408,8 @@ impl Sketch {
         {
             return Err(SketchError::InvalidValue);
         }
-        // An ellipse is no circular curve: it is never equal to a circle and only a line can be
-        // tangent to it (G7-editor); a point can lie on it. Its major axis and centre take part in
+        // An ellipse is no circular curve: it is never equal to a circle; a line, a circle or another
+        // ellipse can be tangent to it (G7, G8-editor); a point can lie on it. Its major axis and centre take part in
         // the other relations.
         let is_ellipse =
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Ellipse { .. }, .. }));
@@ -417,12 +417,16 @@ impl Sketch {
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Point { .. }, .. }));
         let is_line =
             |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Line { .. }, .. }));
+        let is_circle =
+            |e: &EntityId| matches!(self.entities.get(e), Some(SketchEntity { entity: Entity::Circle { .. }, .. }));
         if let SketchConstraint::Relation(r) = c {
             let bad = match *r {
                 Relation::PointOn { point, curve } if is_ellipse(&curve) && !is_point(&point) => Some(point),
                 Relation::Tangent(a, b) if is_ellipse(&a) || is_ellipse(&b) => match (is_ellipse(&a), is_ellipse(&b)) {
-                    (true, false) if is_line(&b) => None,
-                    (false, true) if is_line(&a) => None,
+                    // A line, a circle or another ellipse (G8-editor: the contact point is found by the solver).
+                    (true, false) if is_line(&b) || is_circle(&b) => None,
+                    (false, true) if is_line(&a) || is_circle(&a) => None,
+                    (true, true) => None,
                     (true, false) => Some(b),
                     (false, true) => Some(a),
                     _ => Some(b),
