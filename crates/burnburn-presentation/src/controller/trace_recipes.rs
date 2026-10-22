@@ -122,21 +122,18 @@ impl AppController {
             TraceRecipeIntent::ClearCompare => self.with_study(document, |_, study| study.compare = None),
             TraceRecipeIntent::AdoptCompared => self.adopt_compared(document),
             TraceRecipeIntent::RunBatch { paths } => self.run_batch(document, paths),
-            TraceRecipeIntent::CancelBatch => {
-                let update = self.with_session(document, |s| {
-                    if let Some(batch) = s.tracer.as_mut().and_then(|t| t.study.batch.as_mut()) {
-                        let id = batch.latest;
-                        if std::mem::take(&mut batch.running) {
-                            batch.cancelled = true;
-                            if let Some((_, cancel)) = s.pending.get(&id) {
-                                cancel.cancel();
-                            }
+            TraceRecipeIntent::CancelBatch => self.with_session(document, |s| {
+                if let Some(batch) = s.tracer.as_mut().and_then(|t| t.study.batch.as_mut()) {
+                    let id = batch.latest;
+                    if std::mem::take(&mut batch.running) {
+                        batch.cancelled = true;
+                        if let Some((_, cancel)) = s.pending.get(&id) {
+                            cancel.cancel();
                         }
                     }
-                    AppUpdate::redraw(document)
-                });
-                update
-            }
+                }
+                AppUpdate::redraw(document)
+            }),
             TraceRecipeIntent::ClearBatch => self.with_study(document, |_, study| study.batch = None),
         }
     }

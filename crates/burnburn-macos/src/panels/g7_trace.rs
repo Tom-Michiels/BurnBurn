@@ -453,13 +453,15 @@ pub(super) fn intent(
             k1: typed(G5Control::LensK1, &p.lens.k1),
             k2: typed(G5Control::LensK2, &p.lens.k2),
         }),
-        G5Control::LensClear => p.lens.on.then(|| UiIntent::TracePrep { document, intent: TracePrepIntent::ClearLens }),
+        G5Control::LensClear => {
+            p.lens.on.then_some(UiIntent::TracePrep { document, intent: TracePrepIntent::ClearLens })
+        }
         G5Control::PickCorners => pick(TracePick::BeginCorners),
         G5Control::PickBrushKeep | G5Control::PickBrushRemove => pick(TracePick::BeginBrushTyped {
             mode: if control == G5Control::PickBrushKeep { MaskMode::Keep } else { MaskMode::Remove },
             radius: typed(G5Control::BrushRadius, DEFAULT_BRUSH_PX),
         }),
-        G5Control::PickEnd => p.pick.is_some().then(|| UiIntent::TracePick { document, pick: TracePick::End }),
+        G5Control::PickEnd => p.pick.is_some().then_some(UiIntent::TracePick { document, pick: TracePick::End }),
         G5Control::ContourProtect { id } => {
             let on = value_of(values, control).map(|v| v == "1")?;
             prep(TracePrepIntent::ProtectContour { id, on })

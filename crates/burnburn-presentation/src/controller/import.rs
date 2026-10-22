@@ -379,7 +379,7 @@ impl AppController {
         self.with_session(document, |s| {
             let Some(import) = s.import.as_mut() else { return AppUpdate::default() };
             // Only a file that proposes layers can have them accepted.
-            let proposes = import.draft().is_ok_and(|d| layer_groups(&d).len() > 0);
+            let proposes = import.draft().is_ok_and(|d| !layer_groups(&d).is_empty());
             import.layers = create && proposes;
             AppUpdate { view_changed: true, ..AppUpdate::default() }
         })

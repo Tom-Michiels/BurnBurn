@@ -73,7 +73,10 @@ pub enum RegionShape {
     Polygon(Vec<[f64; 2]>),
     /// A pointer stroke (brush): every pixel whose centre is within `radius` pixels of the polyline
     /// through `points`. A single point is a disc.
-    Stroke { points: Vec<[f64; 2]>, radius: f64 },
+    Stroke {
+        points: Vec<[f64; 2]>,
+        radius: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -6,7 +6,7 @@
 use burnburn_image::{
     ImageError, ImageRecipe, PixelScale, RegionMask, RegionMode, RegionShape, SourceImage, Threshold, prepare,
 };
-use burnburn_types::{CanonicalEncode, CanonicalWriter, CancellationToken};
+use burnburn_types::{CancellationToken, CanonicalEncode, CanonicalWriter};
 
 fn stroke(points: &[[f64; 2]], radius: f64) -> RegionShape {
     RegionShape::Stroke { points: points.to_vec(), radius }
@@ -63,10 +63,8 @@ fn an_exclude_stroke_removes_foreground_and_a_keep_stroke_keeps_only_its_paint()
         ..ImageRecipe::default()
     };
     let paint = stroke(&[[1.5, 2.5], [8.5, 2.5]], 0.5);
-    let removed = ImageRecipe {
-        regions: vec![RegionMask { mode: RegionMode::Exclude, shape: paint.clone() }],
-        ..base.clone()
-    };
+    let removed =
+        ImageRecipe { regions: vec![RegionMask { mode: RegionMode::Exclude, shape: paint.clone() }], ..base.clone() };
     let p = prepare(&img, &removed, &CancellationToken::never()).unwrap();
     assert_eq!(p.mask.count(), 60 - 8, "the row of 8 pixels under the paint is background");
     let kept = ImageRecipe { regions: vec![RegionMask { mode: RegionMode::Include, shape: paint }], ..base };

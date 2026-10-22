@@ -1229,6 +1229,7 @@ impl HostApp {
             import_labels: [&w.import.labels[0], &w.import.labels[1], &w.import.labels[2], &w.import.labels[3]],
             import_units: &w.import.units,
             import_commit: &w.import.commit,
+            import_layers: &w.import.layers,
             image_import_sheet: w.image.import.shown.then_some(&*w.image.import.sheet),
             image_import_labels: w.image.import.labels.each_ref().map(|l| &**l),
             image_dpi: &w.image.import.dpi,
@@ -1385,6 +1386,8 @@ pub struct WindowParts<'a> {
     pub import_labels: [&'a objc2_app_kit::NSTextField; 4],
     pub import_units: &'a objc2_app_kit::NSPopUpButton,
     pub import_commit: &'a objc2_app_kit::NSButton,
+    /// The check that accepts the layers a PDF or plotter file proposes (G7-trace, P04).
+    pub import_layers: &'a objc2_app_kit::NSButton,
     /// Bitmap import sheet (W2-L1-beeld) while presentation shows an image import.
     pub image_import_sheet: Option<&'a objc2_app_kit::NSWindow>,
     /// File, pixels, DPI caption, proposal, size, issue.
