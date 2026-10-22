@@ -81,6 +81,11 @@ pub(super) fn export(s: &Session) -> Vec<(u64, u8)> {
 }
 
 impl LayerState {
+    /// The colour of each operation, to set by a caller that has just created operations (P04).
+    pub(super) fn slots_mut(&mut self) -> &mut BTreeMap<OperationId, u8> {
+        &mut self.slots
+    }
+
     /// The colours stored in a project file; entries for unknown layers were refused on load.
     pub(super) fn restore(&mut self, stored: &[(u64, u8)]) {
         self.slots.extend(stored.iter().map(|(op, slot)| (OperationId::from_raw(*op), *slot)));
