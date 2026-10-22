@@ -4,6 +4,7 @@ mod bundle;
 mod dist;
 mod layers;
 mod msix;
+mod path_attrs;
 mod trace_corpus;
 mod workflows;
 mod workspace_deps;
@@ -11,12 +12,13 @@ mod workspace_deps;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|bundle|msix-layout|gen-trace-corpus|help>
+const USAGE: &str = "usage: cargo xtask <verify|layers|workspace-deps|path-attrs|bundle|msix-layout|gen-trace-corpus|help>
 
   verify            cargo fmt --check, layers, workspace-deps, clippy -D warnings, tests, the 100k performance guard (work counts, no clock) and doc tests (all --locked);
                     native macOS tests run quietly (transparent windows, no focus taken) unless --native
   layers            check crate layering and forbidden dependencies against docs/design/layers.toml
   workspace-deps    every crate dependency must be `{ workspace = true, ... }`
+  path-attrs        no crate may compile another crate's files through #[path] (ADR 0009)
   bundle            macOS: build BurnBurn.app [--release] [--zip] [--dmg] [--sign-adhoc] (dist files in <target>/<profile>/dist/)
   msix-layout       Windows: write the MSIX package directory [--exe <burnburn-win.exe>] [--out <dir>] [--publisher CN=...]
   gen-trace-corpus  (re)write test-data/trace/ from the vector references in xtask/src/trace_corpus.rs";
@@ -29,6 +31,7 @@ fn main() -> ExitCode {
         Some("bundle") => bundle::run(&root(), args.get(1..).unwrap_or_default()),
         Some("msix-layout") => msix::run(&root(), args.get(1..).unwrap_or_default()),
         Some("workspace-deps") => check_workspace_deps(),
+        Some("path-attrs") => check_path_attrs(),
         Some("gen-trace-corpus") => gen_trace_corpus(),
         Some("help" | "-h" | "--help") | None => {
             println!("{USAGE}");
@@ -79,6 +82,8 @@ fn verify(args: &[String]) -> Result<(), String> {
             check_layers()?;
             println!("$ cargo xtask workspace-deps");
             check_workspace_deps()?;
+            println!("$ cargo xtask path-attrs");
+            check_path_attrs()?;
         }
     }
     Ok(())
@@ -153,6 +158,52 @@ fn check_workspace_deps() -> Result<(), String> {
         eprintln!("  {v}");
     }
     Err(format!("{} dependency/ies without `workspace = true`", violations.len()))
+}
+
+/// ADR 0009: no `#[path]` attribute in the production sources (`src/`) leaves the directory of its own
+/// crate. Test binaries sharing fixtures across crates are a separate, listed follow-up.
+fn check_path_attrs() -> Result<(), String> {
+    let meta = cargo_json(&["metadata", "--format-version", "1", "--no-deps", "--locked"])?;
+    let packages = meta["packages"].as_array().ok_or("cargo metadata: no packages")?;
+    let root = root();
+    let mut violations = Vec::new();
+    let mut files = 0;
+    for p in packages {
+        let manifest = p["manifest_path"].as_str().ok_or("cargo metadata: package without manifest_path")?;
+        let Some(dir) = Path::new(manifest).parent().and_then(|d| d.strip_prefix(&root).ok()) else { continue };
+        let dir_rel = dir.to_string_lossy().replace('\\', "/");
+        let mut sources = Vec::new();
+        collect_rs(&root.join(dir).join("src"), &mut sources)?;
+        for file in sources {
+            let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let rel = file.strip_prefix(&root).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+            files += 1;
+            violations.extend(path_attrs::check_source(&dir_rel, &rel, &text));
+        }
+    }
+    if violations.is_empty() {
+        println!("path-attrs: {} crates, {files} source files, no #[path] leaves its own crate", packages.len());
+        return Ok(());
+    }
+    for v in &violations {
+        eprintln!("  {v}");
+    }
+    Err(format!("{} #[path] attribute(s) leave their own crate", violations.len()))
+}
+
+fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    for entry in entries {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|n| n != "target" && n != ".git") {
+                collect_rs(&path, out)?;
+            }
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
 }
 
 fn gen_trace_corpus() -> Result<(), String> {
