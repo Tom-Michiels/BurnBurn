@@ -16,6 +16,12 @@ pub enum FormulaError {
     /// A name that is not a parameter of the part.
     UnknownName(String),
     DivisionByZero,
+    /// A call of a function that does not exist.
+    UnknownFunction(String),
+    /// A function with the wrong number of arguments.
+    Arity(String),
+    /// An argument outside what the function accepts (the square root of a negative number).
+    Domain(String),
 }
 
 impl fmt::Display for FormulaError {
@@ -24,6 +30,9 @@ impl fmt::Display for FormulaError {
             FormulaError::Syntax => f.write_str("not a formula"),
             FormulaError::UnknownName(n) => write!(f, "no parameter {n}"),
             FormulaError::DivisionByZero => f.write_str("division by zero"),
+            FormulaError::UnknownFunction(n) => write!(f, "no function {n}"),
+            FormulaError::Arity(n) => write!(f, "wrong number of arguments for {n}"),
+            FormulaError::Domain(n) => write!(f, "argument outside the domain of {n}"),
         }
     }
 }
@@ -42,6 +51,101 @@ enum Node {
     Name(String),
     Neg(Box<Node>),
     Binary(Box<Node>, char, Box<Node>),
+    /// A call of a known function with a valid number of arguments (checked while parsing).
+    Call(Function, Vec<Node>),
+}
+
+/// The functions a formula knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Function {
+    Min,
+    Max,
+    Abs,
+    Round,
+    Floor,
+    Ceil,
+    Sqrt,
+    Pow,
+    Clamp,
+}
+
+impl Function {
+    fn lookup(name: &str) -> Option<Function> {
+        Some(match name.to_ascii_lowercase().as_str() {
+            "min" => Function::Min,
+            "max" => Function::Max,
+            "abs" => Function::Abs,
+            "round" => Function::Round,
+            "floor" => Function::Floor,
+            "ceil" => Function::Ceil,
+            "sqrt" => Function::Sqrt,
+            "pow" => Function::Pow,
+            "clamp" => Function::Clamp,
+            _ => return None,
+        })
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Function::Min => "min",
+            Function::Max => "max",
+            Function::Abs => "abs",
+            Function::Round => "round",
+            Function::Floor => "floor",
+            Function::Ceil => "ceil",
+            Function::Sqrt => "sqrt",
+            Function::Pow => "pow",
+            Function::Clamp => "clamp",
+        }
+    }
+
+    fn accepts(self, args: usize) -> bool {
+        match self {
+            Function::Min | Function::Max => args >= 1,
+            Function::Abs | Function::Floor | Function::Ceil | Function::Sqrt => args == 1,
+            Function::Round => args == 1 || args == 2,
+            Function::Pow => args == 2,
+            Function::Clamp => args == 3,
+        }
+    }
+
+    fn apply(self, a: &[f64]) -> Result<f64, FormulaError> {
+        let domain = || FormulaError::Domain(self.name().to_owned());
+        Ok(match self {
+            Function::Min => a.iter().copied().fold(f64::INFINITY, f64::min),
+            Function::Max => a.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            Function::Abs => a[0].abs(),
+            Function::Floor => a[0].floor(),
+            Function::Ceil => a[0].ceil(),
+            Function::Sqrt => {
+                if a[0] < 0.0 {
+                    return Err(domain());
+                }
+                a[0].sqrt()
+            }
+            Function::Round => {
+                let digits = a.get(1).copied().unwrap_or(0.0);
+                if !(0.0..=12.0).contains(&digits) {
+                    return Err(domain());
+                }
+                let scale = 10f64.powi(digits.round() as i32);
+                (a[0] * scale).round() / scale
+            }
+            Function::Pow => {
+                let v = a[0].powf(a[1]);
+                if !v.is_finite() {
+                    return Err(domain());
+                }
+                v
+            }
+            Function::Clamp => {
+                if a[1] > a[2] {
+                    return Err(domain());
+                }
+                a[0].clamp(a[1], a[2])
+            }
+        })
+    }
 }
 
 impl Formula {
@@ -51,7 +155,9 @@ impl Formula {
             match n {
                 Node::Number(_) => {}
                 Node::Name(name) => {
-                    if !out.contains(name) {
+                    // `pi` is a constant unless the part has a parameter of that name; it is not
+                    // required to exist, so it does not count as a name.
+                    if name != "pi" && !out.contains(name) {
                         out.push(name.clone());
                     }
                 }
@@ -60,6 +166,7 @@ impl Formula {
                     walk(l, out);
                     walk(r, out);
                 }
+                Node::Call(_, args) => args.iter().for_each(|a| walk(a, out)),
             }
         }
         let mut out = Vec::new();
@@ -72,8 +179,16 @@ impl Formula {
         fn go(n: &Node, values: &BTreeMap<String, Length>) -> Result<f64, FormulaError> {
             Ok(match n {
                 Node::Number(v) => *v,
-                Node::Name(name) => values.get(name).ok_or_else(|| FormulaError::UnknownName(name.clone()))?.mm(),
+                Node::Name(name) => match values.get(name) {
+                    Some(v) => v.mm(),
+                    None if name == "pi" => std::f64::consts::PI,
+                    None => return Err(FormulaError::UnknownName(name.clone())),
+                },
                 Node::Neg(inner) => -go(inner, values)?,
+                Node::Call(function, args) => {
+                    let values = args.iter().map(|a| go(a, values)).collect::<Result<Vec<_>, _>>()?;
+                    function.apply(&values)?
+                }
                 Node::Binary(l, op, r) => {
                     let (a, b) = (go(l, values)?, go(r, values)?);
                     match op {
@@ -168,10 +283,37 @@ impl Parser {
                 while self.chars.get(self.at).is_some_and(|c| c.is_alphanumeric() || *c == '_') {
                     self.at += 1;
                 }
-                Ok(Node::Name(self.chars[start..self.at].iter().collect()))
+                let name: String = self.chars[start..self.at].iter().collect();
+                if self.peek() == Some('(') { self.call(name) } else { Ok(Node::Name(name)) }
             }
             _ => Err(FormulaError::Syntax),
         }
+    }
+
+    /// `name(` has been read up to the bracket: the arguments and the closing bracket.
+    fn call(&mut self, name: String) -> Result<Node, FormulaError> {
+        self.at += 1; // the bracket
+        let mut args = Vec::new();
+        if self.peek() == Some(')') {
+            self.at += 1;
+        } else {
+            loop {
+                args.push(self.expression()?);
+                match self.peek() {
+                    Some(',' | ';') => self.at += 1,
+                    Some(')') => {
+                        self.at += 1;
+                        break;
+                    }
+                    _ => return Err(FormulaError::Syntax),
+                }
+            }
+        }
+        let function = Function::lookup(&name).ok_or(FormulaError::UnknownFunction(name))?;
+        if !function.accepts(args.len()) {
+            return Err(FormulaError::Arity(function.name().to_owned()));
+        }
+        Ok(Node::Call(function, args))
     }
 
     fn number(&mut self) -> Result<Node, FormulaError> {
@@ -180,7 +322,9 @@ impl Parser {
         while let Some(c) = self.chars.get(self.at).copied() {
             if c.is_ascii_digit() {
                 self.at += 1;
-            } else if c == '.' || c == ',' {
+            } else if c == '.' || (c == ',' && self.chars.get(self.at + 1).is_some_and(char::is_ascii_digit)) {
+                // A comma is a decimal comma only directly before a digit; `max(1, 5)` and
+                // `max(1;5)` separate arguments, `max(1,5)` is the single number 1,5.
                 dots += 1;
                 self.at += 1;
             } else if (c == 'e' || c == 'E')

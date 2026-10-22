@@ -111,8 +111,8 @@ texts! {
     DistributeGap => ("Tussenruimte (mm)", "Space between parts (mm)"),
     DistributeButton => ("Verdeel exemplaren zonder plaat", "Distribute instances without a plate"),
     ProblemBadFormula => (
-        "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel.",
-        "That is no number, parameter name or formula over the parameters of the part."
+        "Dat is geen getal, parameternaam of formule over de parameters van het onderdeel (+ - * /, haakjes en min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; scheid argumenten met ; of ,).",
+        "That is no number, parameter name or formula over the parameters of the part (+ - * /, brackets and min, max, abs, round, floor, ceil, sqrt, pow, clamp, pi; separate arguments with ; or ,)."
     ),
     ProblemNoPlates => ("Er zijn nog geen platen om over te verdelen.", "There are no plates to distribute over yet."),
     ProblemNothingToDistribute => (

@@ -206,6 +206,22 @@ fn a_text_that_is_no_formula_is_refused_and_changes_nothing() {
     assert!(status.contains("breedte"), "{status}");
 }
 
+#[test]
+fn g9_a_function_formula_follows_the_parameters_and_unknown_functions_are_refused() {
+    let mut w = world();
+    w.field(1, ShapeField::Width, "min(breedte; 30) / 2");
+    assert_eq!(w.problem(), None);
+    // klein (25): 12,5 wide; the default (40) is capped at 30: 15 wide.
+    let (first, second) = (w.outline("omtrek", 0), w.outline("omtrek", 1));
+    assert!(near(first.2 - first.0, 12.5) && near(second.2 - second.0, 15.0), "{first:?} {second:?}");
+    let undo = w.vm().undo;
+    for bad in ["foo(breedte)", "abs(1, 2)", "sqrt(breedte"] {
+        w.field(1, ShapeField::Width, bad);
+        assert_eq!(w.problem(), Some(MessageKey::Structure(StructureProblem::BadFormula)), "{bad}");
+    }
+    assert_eq!(w.vm().undo, undo, "a refusal changes nothing");
+}
+
 // --- fixed shapes --------------------------------------------------------------------------------------------
 
 #[test]
