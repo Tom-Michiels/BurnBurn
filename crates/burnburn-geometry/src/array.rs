@@ -108,3 +108,78 @@ pub fn circular_array(a: &CircularArray) -> Result<Vec<Affine>, ArrayError> {
     }
     Ok(out)
 }
+
+/// Copies along a path: copy `k` carries the source from the start of `along` to the `k`-th of
+/// `count` points spaced evenly by arc length (a closed path divides its whole length by `count`,
+/// an open one includes both ends). With `orient` each copy also turns with the path's direction
+/// there, relative to the direction at the start. Copy 0 is the source itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PathArray {
+    pub count: u32,
+    pub orient: bool,
+}
+
+/// Transforms of a path array (identity first). The source is expected to sit at the start of
+/// `along`; the copies move it rigidly along the path, so a source elsewhere keeps its offset.
+pub fn path_array(
+    along: &crate::Path,
+    a: &PathArray,
+    tolerance: &crate::ProductionTolerance,
+) -> Result<Vec<Affine>, ArrayError> {
+    if a.count == 0 || u64::from(a.count) > MAX_COPIES {
+        return Err(ArrayError::OutOfRange { field: "count" });
+    }
+    let bad = ArrayError::OutOfRange { field: "path" };
+    // The first subpath that has a length; a closed one gets its closing chord.
+    let (points, closed) = along
+        .flatten(tolerance)
+        .into_iter()
+        .filter_map(|pl| {
+            let mut pts = pl.points;
+            if pl.closed && pts.first() != pts.last() {
+                pts.extend(pts.first().copied());
+            }
+            let len: f64 = pts.windows(2).map(|w| w[0].distance(w[1])).sum();
+            (pts.len() >= 2 && len > 0.0 && len.is_finite()).then_some((pts, pl.closed))
+        })
+        .next()
+        .ok_or(bad)?;
+    let mut cumulative = vec![0.0];
+    for w in points.windows(2) {
+        cumulative.push(cumulative.last().copied().unwrap_or(0.0) + w[0].distance(w[1]));
+    }
+    let total = cumulative.last().copied().unwrap_or(0.0);
+    let divisions = if closed { f64::from(a.count) } else { f64::from(a.count.saturating_sub(1).max(1)) };
+
+    // Position and unit direction at arc length `s`: the segment that starts there, or the last
+    // segment at the very end.
+    let at = |s: f64| -> (Point, Vector) {
+        let last = points.len() - 2;
+        let i = cumulative.partition_point(|c| *c <= s).saturating_sub(1).min(last);
+        let (p, q) = (points[i], points[i + 1]);
+        let d = q - p;
+        let len = math::hypot(d.x, d.y);
+        let span = cumulative[i + 1] - cumulative[i];
+        let t = if span > 0.0 { ((s - cumulative[i]) / span).clamp(0.0, 1.0) } else { 0.0 };
+        let dir = if len > 0.0 { Vector::new(d.x / len, d.y / len) } else { Vector::new(1.0, 0.0) };
+        (p.lerp(q, t), dir)
+    };
+
+    let (s0, d0) = at(0.0);
+    let bad_transform = |_| ArrayError::OutOfRange { field: "path" };
+    let mut out = Vec::with_capacity(a.count as usize);
+    for k in 0..a.count {
+        let (sk, dk) = at(total * f64::from(k) / divisions);
+        if !a.orient {
+            out.push(Affine::translate(sk - s0).map_err(bad_transform)?);
+            continue;
+        }
+        // Rotation taking the start direction to this one: cos = d0·dk, sin = d0×dk.
+        let (c, s) = (d0.x * dk.x + d0.y * dk.y, d0.x * dk.y - d0.y * dk.x);
+        // p' = R (p − s0) + sk
+        let e = sk.x - (c * s0.x - s * s0.y);
+        let f = sk.y - (s * s0.x + c * s0.y);
+        out.push(Affine::new([c, s, -s, c, e, f]).map_err(bad_transform)?);
+    }
+    Ok(out)
+}
