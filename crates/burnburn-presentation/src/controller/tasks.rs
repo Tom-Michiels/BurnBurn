@@ -39,7 +39,7 @@ impl AppController {
             return self.files_finished(job, outcome);
         }
         let saved_path = match &outcome.result {
-            Ok(TaskOutput::Saved { path }) => Some(path.clone()),
+            Ok(TaskOutput::Saved { path } | TaskOutput::SavedWithBackup { path, .. }) => Some(path.clone()),
             _ => None,
         };
         let recent = saved_path.map(|p| self.note_recent(&p)).unwrap_or_default();
@@ -86,7 +86,16 @@ impl AppController {
                 });
                 update.effects.push(HostEffect::Redraw { document });
             }
-            Ok(TaskOutput::Saved { path }) => {
+            Ok(saved @ (TaskOutput::Saved { .. } | TaskOutput::SavedWithBackup { .. })) => {
+                let (path, backup) = match saved {
+                    TaskOutput::SavedWithBackup { path, backup } => (path, Some(backup)),
+                    TaskOutput::Saved { path } => (path, None),
+                    _ => return update,
+                };
+                if let Some(backup) = backup {
+                    s.previous_version = Some(backup);
+                    s.messages.push(StatusMessage { key: MessageKey::PreviousVersionKept });
+                }
                 s.doc.mark_saved(outcome.source);
                 s.variable.mark_saved();
                 if let Some(recovery) = s.recovery_path.take().filter(|_| !s.unsaved()) {
@@ -165,13 +174,13 @@ impl AppController {
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
                 s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
-                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record });
+                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, outdated: false, record });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
                 s.plan_plate = s.compile_plates.remove(&outcome.id).flatten();
-                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record });
+                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, outdated: false, record });
                 update.scenes_changed.push(document);
             }
             Err(TaskError::Placement(why)) => {
@@ -273,12 +282,14 @@ impl AppController {
                     return self.close_session(document);
                 }
             }
-            Err(TaskError::Save(_)) => {
+            Err(TaskError::Save(e)) => {
                 s.close_after_save = false;
-                s.messages.push(StatusMessage { key: MessageKey::SaveFailed });
-                update
-                    .effects
-                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::SaveFailed });
+                let key = match e {
+                    SaveError::NewerFileOnDisk { .. } => MessageKey::SaveNewerFileOnDisk,
+                    _ => MessageKey::SaveFailed,
+                };
+                s.messages.push(StatusMessage { key });
+                update.effects.push(HostEffect::ShowError { document: Some(document), message: key });
             }
             Err(TaskError::Open(_)) => {}
         }

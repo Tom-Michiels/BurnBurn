@@ -42,6 +42,8 @@ pub(super) struct Compiled {
     pub(super) placement: Option<crate::laser::AppliedPlacement>,
     /// Setup the plan was compiled with (0: plain). A different current key makes it stale.
     pub(super) setup_key: u64,
+    /// The calibration changed after this plan was compiled (W09): it is not the current plan.
+    pub(super) outdated: bool,
     /// The production record the plan's variable text was resolved against (W3-UI-tekst).
     pub(super) record: Option<burnburn_generators::ProductionRecord>,
 }
@@ -317,7 +319,7 @@ pub(super) fn plan_view(c: &Compiled, s: &Session, machine: Option<&Machine>) ->
     PlanViewModel {
         id: c.plan.id(),
         revision: source.document_revision,
-        stale: source.document_revision != s.doc.revision() || profile_changed,
+        stale: source.document_revision != s.doc.revision() || profile_changed || c.outdated,
         preview: Arc::clone(&c.preview),
         findings: c.report.findings.clone(),
         errors,

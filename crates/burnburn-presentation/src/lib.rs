@@ -21,6 +21,7 @@ mod image_panel;
 mod image_task;
 mod intent;
 mod laser;
+mod machine_hub;
 mod nest_task;
 mod notes;
 mod offset;
@@ -65,7 +66,7 @@ pub use catalog::{
     Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
-pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
+pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect, MachineActivity};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
 pub use centerline_panel::{
     CenterlineEdit, CenterlineEditViewModel, ChainRow, JunctionRow, JunctionState, PrimitiveKind, PrimitiveRow,
@@ -102,6 +103,11 @@ pub use intent::{
 pub use laser::{
     AppliedPlacement, ControllerFileRow, LaserCommand, LaserCompile, LaserControl, LaserControlKind, LaserPosition,
     LaserSetup, LaserSetupView, LaserViewModel, LaserWhy, PlacementView, StepDirection,
+};
+pub use machine_hub::{
+    DeviceRow, HistoryEntry, MachineHubViewModel, ProofField, ProofInput, ProofKind, ProofProblem, ProofRow, ProofView,
+    QueueCounts, QueueRow, QueueStage, QueueView, RecipeChange, RecipeField, RepeatRefusal, RepeatView, UploadFailure,
+    UploadStage, UploadStatusView,
 };
 pub use notes::NotesViewModel;
 pub use offset::{OffsetJoin, OffsetOptions, OffsetPreviewViewModel, OffsetViewModel, RepairPreviewViewModel};

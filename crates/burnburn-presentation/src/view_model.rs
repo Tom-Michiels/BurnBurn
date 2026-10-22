@@ -721,6 +721,18 @@ pub enum MessageKey {
     InvalidLength(FieldError),
     CommandRejected,
     SaveFailed,
+    /// The file on disk was written by a newer BurnBurn: not overwritten, nothing was saved (X07).
+    SaveNewerFileOnDisk,
+    /// Saved; the previous version of the file was kept next to it (X07).
+    PreviousVersionKept,
+    /// The undo history hit its memory budget: this many of the oldest steps can no longer be undone (X04).
+    HistoryTrimmed(usize),
+    /// A machine profile was chosen that this app does not know; nothing changed.
+    UnknownMachineProfile,
+    /// A repeat cannot be set up: the machine profile is not the one the job was frozen for.
+    RepeatRefused,
+    /// Machine hub: the control that stops an upload that is under way.
+    StopUpload,
     OpenFailed,
     /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
     OpenNewerSchema,

@@ -21,6 +21,8 @@ pub enum AppAction {
     Preferences,
     Shortcuts,
     History,
+    /// Venster ▸ Machine en productie…: the machine hub (G5-machine-rest).
+    MachineHub,
     Preview,
     InspectRd,
     Manual,
@@ -33,11 +35,12 @@ pub enum AppAction {
 const TAG_BASE: isize = 3000;
 
 impl AppAction {
-    pub const ALL: [AppAction; 9] = [
+    pub const ALL: [AppAction; 10] = [
         AppAction::About,
         AppAction::Preferences,
         AppAction::Shortcuts,
         AppAction::History,
+        AppAction::MachineHub,
         AppAction::Preview,
         AppAction::InspectRd,
         AppAction::Manual,
@@ -59,6 +62,7 @@ impl AppAction {
             AppAction::Preferences => AppText::Preferences,
             AppAction::Shortcuts => AppText::Shortcuts,
             AppAction::History => AppText::UndoHistory,
+            AppAction::MachineHub => AppText::MachineHub,
             AppAction::Preview => AppText::Preview,
             AppAction::InspectRd => AppText::InspectRd,
             AppAction::Manual => AppText::Manual,
@@ -78,6 +82,7 @@ impl AppAction {
             AppAction::About
             | AppAction::Preferences
             | AppAction::Shortcuts
+            | AppAction::MachineHub
             | AppAction::SupportData
             | AppAction::DebugLog => true,
         }
@@ -90,6 +95,7 @@ impl AppAction {
             AppAction::Preferences => "host.preferences",
             AppAction::Shortcuts => "host.shortcuts",
             AppAction::History => "host.history",
+            AppAction::MachineHub => "host.machine_hub",
             AppAction::Preview => "host.preview",
             AppAction::InspectRd => "host.inspect_rd",
             AppAction::Manual => "host.manual",

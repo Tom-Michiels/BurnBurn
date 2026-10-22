@@ -13,7 +13,9 @@ use burnburn_io::import::{
     Analysis, AnalyzeError, DxfDocument, ImportDraft, ImportFormat, Lbrn2Draft, ParseError, PdfDocument, PdfPages,
     analyze,
 };
-use burnburn_io::{AssetStore, LoadError, Project, SaveError, load_project, save_project};
+use burnburn_io::{
+    AssetStore, LoadError, Project, SaveError, load_project, save_project, save_project_keeping_previous,
+};
 use burnburn_job::{JobPlan, JobPlanId, MachineProfile, PlanPreview, preview};
 use burnburn_ruida::{EncodeError, LowerError, RuidaProfile, lower};
 use burnburn_trace::{CenterlineRequest, CenterlineResult, TraceError, TraceRequest, TraceResult, trace};
@@ -285,6 +287,11 @@ pub enum TaskOutput {
     Saved {
         path: PathBuf,
     },
+    /// Saved over a file the current build could not reproduce: that file was kept at `backup` (X07).
+    SavedWithBackup {
+        path: PathBuf,
+        backup: PathBuf,
+    },
     Opened {
         project: Box<Project>,
         path: PathBuf,
@@ -525,8 +532,11 @@ pub fn run_task(input: TaskInput, cancel: &CancellationToken) -> Result<TaskOutp
         TaskInput::Save { project, path, fs } => {
             // Checked once before writing; an atomic save is never abandoned half-way.
             cancel.check().map_err(|_| TaskError::Cancelled)?;
-            save_project(fs.as_ref(), &path, &project).map_err(TaskError::Save)?;
-            Ok(TaskOutput::Saved { path })
+            let outcome = save_project_keeping_previous(fs.as_ref(), &path, &project).map_err(TaskError::Save)?;
+            Ok(match outcome.backup {
+                Some(backup) => TaskOutput::SavedWithBackup { path, backup },
+                None => TaskOutput::Saved { path },
+            })
         }
         TaskInput::Open { path, fs } => {
             cancel.check().map_err(|_| TaskError::Cancelled)?;
