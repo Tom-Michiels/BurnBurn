@@ -29,6 +29,7 @@ mod notes;
 mod offset;
 mod production;
 mod schikken;
+mod trace_prep;
 mod structure_panel;
 mod task;
 mod text_panel;
@@ -135,6 +136,7 @@ pub use production::{
     StoredOrders, UploadRecord,
 };
 pub use schikken::*;
+pub use trace_prep::*;
 pub use structure_panel::{
     BrokenReason, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
     ReferenceStatus, StructureEdit, StructureViewModel,

@@ -309,6 +309,11 @@ pub enum UiIntent {
         issue: usize,
         tolerance: String,
     },
+    /// A preparation of the open tracer's image: local threshold, four-point correction, masks (T03).
+    TracePrep {
+        document: DocumentId,
+        intent: crate::trace_prep::TracePrepIntent,
+    },
     /// A decision on the open centre-line result (T04, T08).
     CenterlineEdit {
         document: DocumentId,

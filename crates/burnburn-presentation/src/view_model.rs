@@ -125,6 +125,8 @@ pub struct DocumentViewModel {
     pub repair_preview: Option<crate::offset::RepairPreviewViewModel>,
     /// Junctions and primitive candidates of the open centre-line result, in centre-line mode (T04, T08).
     pub centerline: Option<crate::centerline_panel::CenterlineEditViewModel>,
+    /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
+    pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
     /// Parts, variants, plates and references (S06, S07, P06).
     pub structure: crate::structure_panel::StructureViewModel,
     /// The project notes panel while it is open (P04).

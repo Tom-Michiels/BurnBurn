@@ -72,6 +72,8 @@ pub(super) struct Tracer {
     /// A fresh centre-line trace applies them again; the ones that no longer fit are counted.
     pub(super) decisions: Vec<CenterlineDecision>,
     pub(super) dropped: usize,
+    /// Why the last preparation (local threshold, correction, mask) was refused.
+    pub(super) prep_issue: Option<crate::trace_prep::PrepIssue>,
 }
 
 impl Tracer {
@@ -97,6 +99,7 @@ impl Tracer {
             editing: None,
             decisions: Vec::new(),
             dropped: 0,
+            prep_issue: None,
         }
     }
 
@@ -141,7 +144,7 @@ fn dpi_text(recipe: &TraceRecipe) -> String {
     recipe.image.scale.map_or_else(String::new, |s| format_mm(25.4 / s.mm_per_pixel_x()))
 }
 
-fn form_of(recipe: &TraceRecipe, mode: TraceMode) -> TraceFormInput {
+pub(super) fn form_of(recipe: &TraceRecipe, mode: TraceMode) -> TraceFormInput {
     let (threshold_choice, threshold) = match recipe.image.threshold {
         Threshold::Otsu => (ThresholdChoice::Otsu, "128".to_owned()),
         Threshold::Fixed(v) => (ThresholdChoice::Fixed, v.to_string()),
