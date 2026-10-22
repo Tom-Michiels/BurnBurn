@@ -318,3 +318,9 @@ harness = false
 name = "gui_snapshots"
 path = "../../tests/native/macos/gui_snapshots.rs"
 harness = false
+
+# Layout invariants of every window/panel/sheet (LF1): no clipped, overlapping or cut-off controls.
+[[test]]
+name = "layout_invariants"
+path = "../../tests/native/macos/layout_invariants.rs"
+harness = false
