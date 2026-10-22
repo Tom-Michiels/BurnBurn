@@ -17,6 +17,7 @@ pub mod camera;
 pub mod l10n;
 pub mod l10n_files;
 pub mod lifecycle;
+pub mod quit_guard;
 pub mod panels;
 pub mod panels_files;
 pub mod panels_image;

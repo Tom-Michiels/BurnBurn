@@ -61,7 +61,7 @@ pub use catalog::{
     Action, ActiveTool, DisabledReason, Enablement, GroupViewModel, PanelId, PanelViewModel, ToolButton, ToolCatalog,
     ToolContext, ToolSpec, ToolState, ToolbarViewModel, VariantMemory, enablement,
 };
-pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect};
+pub use controller::{AppController, AppPorts, AppUpdate, CameraSpawner, HostEffect, MachineActivity};
 // App panels (W3-UI-app): preferences, shortcuts, undo history, preview, support.
 pub use controller::{
     AppIntent, DEBUG_LOG_LINES, DebugLogViewModel, DisplayQuality, HelpInfo, HistoryRow, HistoryViewModel, KeyBinding,

@@ -50,6 +50,7 @@ mod laser;
 mod layers;
 mod library;
 mod machine;
+mod machine_rest;
 mod nest;
 mod prefs;
 mod preview;
@@ -76,6 +77,7 @@ mod view;
 pub use app_panels::{AppIntent, NudgeDirection, NudgeStep};
 pub use camera::CameraSpawner;
 pub use history_panel::{HistoryRow, HistoryViewModel};
+pub use machine_rest::MachineActivity;
 pub use prefs::{
     DisplayQuality, LanguageChoice, LengthUnit, PrefError, PrefKey, PrefProblem, PrefRow, PrefUnit, PrefValue,
     Preferences, PrefsViewModel,
@@ -810,6 +812,9 @@ fn after_change(s: &mut Session, document: DocumentId, result: Result<CommandOut
             s.issues = geometry_issues(&snapshot);
             s.cycle = None;
             s.messages.clear();
+            if let Some(dropped) = machine_rest::trimmed_steps(&outcome.warnings) {
+                s.messages.push(StatusMessage { key: MessageKey::HistoryTrimmed(dropped) });
+            }
             s.problem = None;
             layers::sync(s);
             sketch::sync(s);

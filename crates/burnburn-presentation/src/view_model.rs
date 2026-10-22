@@ -715,6 +715,8 @@ pub enum MessageKey {
     SaveNewerFileOnDisk,
     /// Saved; the previous version of the file was kept next to it (X07).
     PreviousVersionKept,
+    /// The undo history hit its memory budget: this many of the oldest steps can no longer be undone (X04).
+    HistoryTrimmed(usize),
     OpenFailed,
     /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
     OpenNewerSchema,

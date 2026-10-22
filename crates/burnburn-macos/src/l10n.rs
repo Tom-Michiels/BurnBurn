@@ -1250,6 +1250,14 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
     match key {
         M::LaserRefused(why) => return Some(laser_why_text(why, locale)),
         M::Schikken(m) => return Some(l10n_schikken::message(m, locale)),
+        M::HistoryTrimmed(n) => {
+            return Some(match (n, locale) {
+                (1, Locale::Nl) => "De oudste stap is niet meer ongedaan te maken (geheugen).".to_owned(),
+                (_, Locale::Nl) => format!("De oudste {n} stappen zijn niet meer ongedaan te maken (geheugen)."),
+                (1, Locale::En) => "The oldest step can no longer be undone (memory).".to_owned(),
+                (_, Locale::En) => format!("The oldest {n} steps can no longer be undone (memory)."),
+            });
+        }
         M::DiagnosticsFailed => {
             return Some(pick(
                 (
@@ -1658,6 +1666,7 @@ fn feature_pair(feature: Feature) -> Option<(&'static str, &'static str)> {
 pub fn known_message_keys() -> Vec<MessageKey> {
     let mut keys: Vec<MessageKey> = CommandKey::ALL.iter().map(|k| MessageKey::Command(*k)).collect();
     keys.push(MessageKey::DiagnosticsFailed);
+    keys.push(MessageKey::HistoryTrimmed(1));
     keys.extend(l10n_schikken::known_keys());
     keys.extend(burnburn_presentation::FilesMessage::ALL.iter().map(|m| MessageKey::Files(*m)));
     keys.extend(all_laser_whys().into_iter().map(MessageKey::LaserRefused));
