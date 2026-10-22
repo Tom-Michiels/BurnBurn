@@ -79,7 +79,7 @@ fn without_a_correction_a_barrel_distorted_line_is_bowed() {
 #[test]
 fn the_matching_coefficients_make_barrel_distorted_lines_straight_again() {
     let img = photo(&[40.5, 160.5], -0.15, 0.0);
-    let lens = Some(LensDistortion { k1: -0.15, k2: 0.0 });
+    let lens = Some(LensDistortion { k1: -0.15, k2: 0.0, p1: 0.0, p2: 0.0 });
     for near in [40.0, 160.0] {
         let xs = line_positions(&img, lens, near, 5..145);
         assert!(spread(&xs) < 1.5, "line near {near} still bowed by {}", spread(&xs));
@@ -89,7 +89,7 @@ fn the_matching_coefficients_make_barrel_distorted_lines_straight_again() {
 #[test]
 fn pincushion_and_the_second_coefficient_are_corrected_too() {
     let img = photo(&[40.5], 0.12, -0.05);
-    let xs = line_positions(&img, Some(LensDistortion { k1: 0.12, k2: -0.05 }), 40.0, 5..145);
+    let xs = line_positions(&img, Some(LensDistortion { k1: 0.12, k2: -0.05, p1: 0.0, p2: 0.0 }), 40.0, 5..145);
     assert!(spread(&xs) < 1.5, "bowed by {}", spread(&xs));
 }
 
@@ -97,7 +97,12 @@ fn pincushion_and_the_second_coefficient_are_corrected_too() {
 fn zero_coefficients_leave_the_image_as_it_is() {
     let img = photo(&[40.5, 100.5], -0.15, 0.0);
     let plain = prepare(&img, &recipe(None), &CancellationToken::never()).unwrap();
-    let zero = prepare(&img, &recipe(Some(LensDistortion { k1: 0.0, k2: 0.0 })), &CancellationToken::never()).unwrap();
+    let zero = prepare(
+        &img,
+        &recipe(Some(LensDistortion { k1: 0.0, k2: 0.0, p1: 0.0, p2: 0.0 })),
+        &CancellationToken::never(),
+    )
+    .unwrap();
     assert_eq!(plain.mask, zero.mask);
 }
 
@@ -108,7 +113,7 @@ fn the_correction_is_part_of_the_recipe_key() {
         recipe(lens).encode(&mut w);
         w.finish().unwrap()
     };
-    assert_ne!(key(None), key(Some(LensDistortion { k1: -0.1, k2: 0.0 })));
+    assert_ne!(key(None), key(Some(LensDistortion { k1: -0.1, k2: 0.0, p1: 0.0, p2: 0.0 })));
     assert_eq!(key(None), key(None));
 }
 
@@ -116,10 +121,10 @@ fn the_correction_is_part_of_the_recipe_key() {
 fn coefficients_that_are_not_a_lens_are_refused() {
     let img = photo(&[40.5], 0.0, 0.0);
     for lens in [
-        LensDistortion { k1: f64::NAN, k2: 0.0 },
-        LensDistortion { k1: 2.0, k2: 0.0 },
+        LensDistortion { k1: f64::NAN, k2: 0.0, p1: 0.0, p2: 0.0 },
+        LensDistortion { k1: 2.0, k2: 0.0, p1: 0.0, p2: 0.0 },
         // d r_d / d r_u = 1 + 3 k1 r² turns negative inside the image: the mapping folds over.
-        LensDistortion { k1: -0.5, k2: 0.0 },
+        LensDistortion { k1: -0.5, k2: 0.0, p1: 0.0, p2: 0.0 },
     ] {
         let err = prepare(&img, &recipe(Some(lens)), &CancellationToken::never()).unwrap_err();
         assert_eq!(err, ImageError::InvalidLens, "{lens:?}");

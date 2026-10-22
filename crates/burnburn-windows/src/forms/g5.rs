@@ -88,6 +88,24 @@ pub fn forms(ctx: &FormContext<'_>, state: &PanelState, values: &FormValues) -> 
 /// The intent (or follow-up) of a control event of panel `panel`.
 pub fn react(panel: G5Panel, id: &ControlId, values: &FormValues, ctx: &FormContext<'_>) -> FormOutcome {
     let ControlId::G5(control) = id else { return FormOutcome::Nothing };
+    // Choosing the files of a batch is the host's dialog; a batch that runs cannot be joined by another.
+    if panel == G5Panel::TracePrep && *control == G5Control::BatchChoose {
+        let running = ctx
+            .vm
+            .document(ctx.document)
+            .and_then(|d| d.trace_recipes.as_ref())
+            .and_then(|r| r.batch.as_ref())
+            .is_some_and(|b| b.running);
+        return if running { FormOutcome::Nothing } else { FormOutcome::PickFile(super::FilePick::TraceBatch) };
+    }
     g5_intent(ctx.vm, ctx.document, panel, *control, &panel_values(values))
         .map_or(FormOutcome::Nothing, FormOutcome::Intent)
+}
+
+/// The files a multiple-selection dialog returned (empty on Cancel): one batch of traces.
+pub fn batch_files_chosen(paths: Vec<std::path::PathBuf>, ctx: &FormContext<'_>) -> FormOutcome {
+    if ctx.vm.document(ctx.document).is_none() {
+        return FormOutcome::Nothing;
+    }
+    crate::panels::batch_files_intent(ctx.document, paths).map_or(FormOutcome::Nothing, FormOutcome::Intent)
 }

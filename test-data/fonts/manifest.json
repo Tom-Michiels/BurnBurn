@@ -58,6 +58,24 @@
       "content": "Licence text for DejaVuSans.ttf."
     },
     {
+      "path": "MuktaMahee.ttc",
+      "role": "font",
+      "bytes": 846728,
+      "sha256": "dad1e665e849ac5542a5d511928704c30f8f6f3993db696c3275f89141b2107d",
+      "licence": "SIL Open Font License 1.1 (MuktaMahee-OFL.txt)",
+      "origin": "Copied 2026-10-22 (G8-trace), unchanged, from /System/Library/Fonts/MuktaMahee.ttc on this machine (macOS ships the Ek Type font; its name table says OFL 1.1, copyright 2017 Ek Type). Not downloaded. A font collection of 7 weights; the first face is MuktaMahee Regular.",
+      "content": "Indic test font: Devanagari and Gurmukhi (Mukta covers Devanagari plus its own script), with the Indic GSUB/GPOS rules: pre-base matra reordering, conjuncts, reph. Also the only font collection (.ttc) among the fixtures."
+    },
+    {
+      "path": "MuktaMahee-OFL.txt",
+      "role": "licence",
+      "bytes": 4608,
+      "sha256": "160e65525abc5a366f7efe04d42468d9c76a5a419677fbf72375b3bd462433b0",
+      "licence": "SIL Open Font License 1.1",
+      "origin": "Composed 2026-10-22: copyright and licence statement from the font's name table, the standard OFL 1.1 text as in LiberationSans-OFL.txt (the original OFL.txt of Ek Type is not on this machine).",
+      "content": "Licence text for MuktaMahee.ttc."
+    },
+    {
       "path": "reference_metrics.py",
       "role": "reference-tool",
       "bytes": 3019,

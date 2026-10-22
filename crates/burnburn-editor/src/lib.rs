@@ -21,6 +21,7 @@ mod sketch;
 mod snap;
 mod tool;
 mod view;
+mod work;
 
 pub use arrange::{ArrangeError, boolean_operands};
 pub use bed_image::{BedPicture, BedQuad};
@@ -35,7 +36,8 @@ pub use place::{
 };
 pub use registration::{CenterFinderSession, RegistrationFlowError, RegistrationSession};
 pub use scene::{
-    MIN_GRID_SPACING_PT, Overlay, SceneItem, SceneRequest, SceneSnapshot, StyleRole, build_scene, grid_spacing_mm,
+    CompareSide, MIN_GRID_SPACING_PT, Overlay, SceneItem, SceneRequest, SceneSnapshot, StyleRole, build_scene,
+    grid_spacing_mm,
 };
 pub use selection::{Selection, SelectionChange, hit_test, next_in_cycle, objects_inside};
 pub use sketch::{
@@ -55,3 +57,4 @@ pub use tool::{
 pub use tool::{ConstraintKind, constraint_relations};
 pub use tool::{Measurement, ModifyParam, ModifyTool, Rejection, Unavailable, modify_tool_kind};
 pub use view::{Camera, ViewError, Viewport};
+pub use work::{EditorWork, editor_work, reset_editor_work};

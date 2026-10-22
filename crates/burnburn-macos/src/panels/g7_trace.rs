@@ -56,6 +56,8 @@ pub(super) fn field_name(field: PrepField, locale: Locale) -> String {
     match field {
         PrepField::LensK1 => t(G7Text::FieldLensK1, locale),
         PrepField::LensK2 => t(G7Text::FieldLensK2, locale),
+        PrepField::LensP1 => t(G7Text::FieldLensP1, locale),
+        PrepField::LensP2 => t(G7Text::FieldLensP2, locale),
         PrepField::NodeLimit => t(G7Text::FieldNodeLimit, locale),
         PrepField::NodeTolerance => t(G7Text::FieldNodeTolerance, locale),
         PrepField::BrushRadius => t(G7Text::FieldBrushRadius, locale),
@@ -72,6 +74,8 @@ pub(super) fn issue_text(issue: PrepIssue, locale: Locale) -> Option<String> {
             PrepIssue::PickNotStarted => G7Text::IssuePickNotStarted,
             PrepIssue::InvalidStroke => G7Text::IssueInvalidStroke,
             PrepIssue::CornersTooClose => G7Text::IssueCornersTooClose,
+            PrepIssue::NothingToProtect => G7Text::IssueNothingToProtect,
+            PrepIssue::UnknownCorner => G7Text::IssueUnknownCorner,
             _ => return None,
         },
         locale,
@@ -111,13 +115,17 @@ pub(super) fn lines(doc: &DocumentViewModel, p: &TracePrepViewModel, locale: Loc
 fn lens_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(G5Line::Heading(t(G7Text::LensHeading, locale)));
     out.push(G5Line::Text(t(G7Text::LensHint, locale)));
-    out.push(G5Line::Text(if p.lens.on {
+    out.push(G5Line::Text(if p.lens.on && (p.lens.p1 != "0" || p.lens.p2 != "0") {
+        g7_fmt(G7Text::LensOnTangential, locale, &[&p.lens.k1, &p.lens.k2, &p.lens.p1, &p.lens.p2])
+    } else if p.lens.on {
         g7_fmt(G7Text::LensOn, locale, &[&p.lens.k1, &p.lens.k2])
     } else {
         t(G7Text::LensOff, locale)
     }));
     out.push(field(G5Control::LensK1, t(G7Text::LensK1Caption, locale), p.lens.k1.clone()));
     out.push(field(G5Control::LensK2, t(G7Text::LensK2Caption, locale), p.lens.k2.clone()));
+    out.push(field(G5Control::LensP1, t(G7Text::LensP1Caption, locale), p.lens.p1.clone()));
+    out.push(field(G5Control::LensP2, t(G7Text::LensP2Caption, locale), p.lens.p2.clone()));
     out.push(button(G5Control::LensApply, t(G7Text::LensApply, locale), true));
     out.push(button(G5Control::LensClear, t(G7Text::LensClear, locale), p.lens.on));
 }
@@ -128,6 +136,8 @@ fn pick_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(G5Line::Text(match p.pick.as_ref().map(|k| &k.kind) {
         None => t(G7Text::PickNone, locale),
         Some(PickKind::Corners { picked }) => g7_fmt(G7Text::PickCorners, locale, &[&picked.len().to_string()]),
+        Some(PickKind::ProtectContours) => t(G7Text::PickProtectContours, locale),
+        Some(PickKind::ProtectCorners) => t(G7Text::PickProtectCorners, locale),
         Some(PickKind::Brush { mode, radius_px }) => g7_fmt(
             if *mode == MaskMode::Keep { G7Text::PickBrushKeep } else { G7Text::PickBrushRemove },
             locale,
@@ -138,6 +148,19 @@ fn pick_lines(p: &TracePrepViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     out.push(field(G5Control::BrushRadius, t(G7Text::BrushRadiusCaption, locale), DEFAULT_BRUSH_PX.to_owned()));
     out.push(button(G5Control::PickBrushKeep, t(G7Text::PickBrushKeepButton, locale), true));
     out.push(button(G5Control::PickBrushRemove, t(G7Text::PickBrushRemoveButton, locale), true));
+    // Protecting works on the contours of the result in force.
+    let protectable = !p.contours.is_empty();
+    out.push(button(G5Control::PickProtectContours, t(G7Text::PickProtectContoursButton, locale), protectable));
+    out.push(button(G5Control::PickProtectCorners, t(G7Text::PickProtectCornersButton, locale), protectable));
+    for (i, c) in p.corners.iter().enumerate() {
+        let n = (i + 1).to_string();
+        out.push(G5Line::Text(g7_fmt(
+            G7Text::CornerLine,
+            locale,
+            &[&n, &num(c.x_mm, 2, locale), &num(c.y_mm, 2, locale)],
+        )));
+        out.push(button(G5Control::CornerRemove { index: i }, g7_fmt(G7Text::CornerRemoveButton, locale, &[&n]), true));
+    }
     out.push(button(G5Control::PickEnd, t(G7Text::PickEndButton, locale), p.pick.is_some()));
 }
 
@@ -281,6 +304,7 @@ fn recipe_lines(r: &TraceRecipesViewModel, locale: Locale, out: &mut Vec<G5Line>
     out.push(G5Line::Text(t(G7Text::BatchHint, locale)));
     out.push(G5Line::Memo { control: G5Control::BatchFiles, text: String::new(), max_chars: 20_000 });
     let running = r.batch.as_ref().is_some_and(|b| b.running);
+    out.push(button(G5Control::BatchChoose, t(G7Text::BatchChoose, locale), !running));
     out.push(button(G5Control::BatchRun, t(G7Text::BatchRun, locale), !running));
     out.push(button(G5Control::BatchCancel, t(G7Text::BatchCancel, locale), running));
     if let Some(b) = &r.batch {
@@ -338,6 +362,16 @@ fn compare_lines(c: &CompareViewModel, locale: Locale, out: &mut Vec<G5Line>) {
     }
     if c.a.is_some() {
         out.push(G5Line::Text(t(if c.same_geometry { G7Text::CompareSame } else { G7Text::CompareDiffer }, locale)));
+    }
+    if let Some(k) = &c.corrections {
+        out.push(G5Line::Text(g7_fmt(
+            G7Text::CompareCorrections,
+            locale,
+            &[&k.stored.to_string(), &k.a_applied.to_string(), &k.b_applied.to_string()],
+        )));
+    }
+    if c.a_outline.is_some() && c.b_outline.is_some() {
+        out.push(G5Line::Text(t(G7Text::CompareOnSheet, locale)));
     }
     if let (Some(a), Some(b)) = (&c.a_outline, &c.b_outline)
         && let Some(image) = compare_bitmap(a, b, COMPARE_PX)
@@ -452,6 +486,8 @@ pub(super) fn intent(
         G5Control::LensApply => prep(TracePrepIntent::UseLens {
             k1: typed(G5Control::LensK1, &p.lens.k1),
             k2: typed(G5Control::LensK2, &p.lens.k2),
+            p1: typed(G5Control::LensP1, &p.lens.p1),
+            p2: typed(G5Control::LensP2, &p.lens.p2),
         }),
         G5Control::LensClear => {
             p.lens.on.then_some(UiIntent::TracePrep { document, intent: TracePrepIntent::ClearLens })
@@ -461,6 +497,9 @@ pub(super) fn intent(
             mode: if control == G5Control::PickBrushKeep { MaskMode::Keep } else { MaskMode::Remove },
             radius: typed(G5Control::BrushRadius, DEFAULT_BRUSH_PX),
         }),
+        G5Control::PickProtectContours => pick(TracePick::BeginProtectContours),
+        G5Control::PickProtectCorners => pick(TracePick::BeginProtectCorners),
+        G5Control::CornerRemove { index } => prep(TracePrepIntent::RemoveProtectedCorner { index }),
         G5Control::PickEnd => p.pick.is_some().then_some(UiIntent::TracePick { document, pick: TracePick::End }),
         G5Control::ContourProtect { id } => {
             let on = value_of(values, control).map(|v| v == "1")?;
@@ -497,8 +536,23 @@ pub(super) fn intent(
                 .collect();
             recipe(TraceRecipeIntent::RunBatch { paths })
         }
+        // Choosing files is the host's: it shows the panel and sends `batch_files_intent`.
+        G5Control::BatchChoose => None,
         G5Control::BatchCancel => recipe(TraceRecipeIntent::CancelBatch),
         G5Control::BatchClear => recipe(TraceRecipeIntent::ClearBatch),
         _ => None,
     }
+}
+
+/// The batch that the files chosen in the host's panel are: each file once (its first place), in the
+/// order given. `None` when nothing was chosen (Cancel).
+pub fn batch_files_intent(document: DocumentId, paths: Vec<PathBuf>) -> Option<UiIntent> {
+    let mut unique: Vec<PathBuf> = Vec::with_capacity(paths.len());
+    for path in paths {
+        if !unique.contains(&path) {
+            unique.push(path);
+        }
+    }
+    (!unique.is_empty())
+        .then_some(UiIntent::TraceRecipe { document, intent: TraceRecipeIntent::RunBatch { paths: unique } })
 }

@@ -1,5 +1,6 @@
 //! The import preview (P03): parsed file, unit decision, page choice and commit.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use burnburn_geometry::Bounds;
 use burnburn_io::import::{
     DxfScale, ImportDraft, ImportError, ImportLayer, ParseError, PdfDocument, PdfKind, PdfPages,
 };
-use burnburn_types::{CancellationSource, DocumentId, RequestId, TaskId};
+use burnburn_types::{CancellationSource, DocumentId, OperationId, RequestId, TaskId};
 
 use super::{AppController, AppUpdate, Session, after_change, apply_command, apply_edit, error, submit};
 use crate::files::{
@@ -22,7 +23,7 @@ use crate::files::{
 use crate::image_task::BitmapInput;
 use crate::intent::ImportUnit;
 use crate::task::{Lbrn2Import, ParsedImport, TaskInput, TaskKind, TaskRequest, revision_key};
-use crate::view_model::{ImportViewModel, MessageKey};
+use crate::view_model::{ImportViewModel, LAYER_SLOTS, MessageKey};
 
 /// A parsed import waiting for its unit decision and commit (P03).
 #[derive(Clone)]
@@ -177,6 +178,7 @@ pub(super) fn commit_with_layers(
     s: &mut Session,
     document: DocumentId,
     request: Option<RequestId>,
+    palette: &[[u8; 3]],
 ) -> Option<AppUpdate> {
     let pending = s.import.as_ref().filter(|i| i.layers && i.ready())?;
     let draft = pending.draft().ok()?;
@@ -186,6 +188,11 @@ pub(super) fn commit_with_layers(
     }
     let asset = s.assets.add(pending.media, &pending.bytes);
     let Ok(geometry) = draft.into_command(asset) else { return Some(error(Some(document), MessageKey::ImportFailed)) };
+    super::layers::sync(s);
+    let before_snapshot = s.doc.snapshot();
+    let before: BTreeSet<OperationId> = before_snapshot.process().operations().map(|o| o.id()).collect();
+    let taken: BTreeSet<u8> = super::layers::slots(&s.layers, &before_snapshot).into_values().collect();
+    let chosen = palette_slots(&groups.iter().map(|g| g.0).collect::<Vec<_>>(), palette, &taken);
     let mut steps = vec![CompoundStep::Run(CommandPayload::Edit(geometry))];
     for (layer, name, items) in groups {
         let Some(operation) = layer_operation(layer, name) else {
@@ -197,8 +204,54 @@ pub(super) fn commit_with_layers(
     let update = apply_edit(s, document, CommandPayload::Compound(compound), request);
     if s.doc.undo_label() == Some(UndoLabel::Compound(CompoundLabel::ImportLayers)) {
         s.import = None;
+        // The new operations, in the order of the layers, take the colours chosen for them.
+        let created: Vec<OperationId> =
+            s.doc.snapshot().process().operations().map(|o| o.id()).filter(|id| !before.contains(id)).collect();
+        if created.len() == chosen.len() {
+            for (operation, slot) in created.into_iter().zip(chosen) {
+                s.layers.slots_mut().insert(operation, slot);
+            }
+        }
     }
     Some(update)
+}
+
+/// The palette slot of each proposed layer, in order: the palette colour nearest to the layer's own
+/// colour (squared distance in sRGB; a tie goes to the lower slot) among the slots no layer has yet,
+/// so two similar colours stay two layers. A pen has no colour: it takes the slot of its number
+/// (pen 1 = slot 0) or the next free one after it. Only the first [`LAYER_SLOTS`] palette colours
+/// count. When every slot is taken the nearest one is shared. An empty palette (a host that has not
+/// set one) gives an empty answer and the layers keep the lowest free slots.
+fn palette_slots(layers: &[ImportLayer], palette: &[[u8; 3]], taken: &BTreeSet<u8>) -> Vec<u8> {
+    let count = palette.len().min(usize::from(LAYER_SLOTS));
+    if count == 0 {
+        return Vec::new();
+    }
+    let mut used = taken.clone();
+    let mut out = Vec::with_capacity(layers.len());
+    for layer in layers {
+        let distance = |slot: usize| -> u64 {
+            match layer {
+                ImportLayer::Stroke(c) | ImportLayer::Fill(c) => {
+                    c.iter().zip(palette[slot]).map(|(a, b)| u64::from(a.abs_diff(b)).pow(2)).sum()
+                }
+                // Cyclic distance from the slot of the pen's number, forwards first.
+                ImportLayer::Pen(n) => {
+                    let wanted = (n.saturating_sub(1) as usize) % count;
+                    ((slot + count - wanted) % count) as u64
+                }
+            }
+        };
+        let pick = |only_free: bool| {
+            (0..count)
+                .filter(|slot| !only_free || !used.contains(&(*slot as u8)))
+                .min_by_key(|slot| (distance(*slot), *slot))
+        };
+        let slot = pick(true).or_else(|| pick(false)).unwrap_or(0) as u8;
+        used.insert(slot);
+        out.push(slot);
+    }
+    out
 }
 
 fn union(a: Option<Bounds>, b: Option<Bounds>) -> Option<Bounds> {

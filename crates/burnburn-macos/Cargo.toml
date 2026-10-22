@@ -234,6 +234,11 @@ path = "../../tests/native/macos/import_layers.rs"
 harness = false
 
 [[test]]
+name = "trace_batch_panel_native"
+path = "../../tests/native/macos/trace_batch_panel.rs"
+harness = false
+
+[[test]]
 name = "file_panels_native"
 path = "../../tests/native/macos/file_panels.rs"
 harness = false

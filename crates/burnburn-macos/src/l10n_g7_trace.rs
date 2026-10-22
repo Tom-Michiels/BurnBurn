@@ -33,9 +33,15 @@ texts! {
         "Radial distortion of the camera: negative is barrel. Corrected before the plane correction."
     ),
     LensOn => ("Lenscorrectie in gebruik: k1 {0}, k2 {1}.", "Lens correction in use: k1 {0}, k2 {1}."),
+    LensOnTangential => (
+        "Lenscorrectie in gebruik: k1 {0}, k2 {1}, p1 {2}, p2 {3}.",
+        "Lens correction in use: k1 {0}, k2 {1}, p1 {2}, p2 {3}."
+    ),
     LensOff => ("Geen lenscorrectie.", "No lens correction."),
     LensK1Caption => ("k1 (negatief = tonvormig)", "k1 (negative = barrel)"),
     LensK2Caption => ("k2", "k2"),
+    LensP1Caption => ("p1 (tangentieel, lens uit het midden)", "p1 (tangential, lens off-centre)"),
+    LensP2Caption => ("p2 (tangentieel)", "p2 (tangential)"),
     LensApply => ("Pas lenscorrectie toe", "Apply lens correction"),
     LensClear => ("Verwijder lenscorrectie", "Remove lens correction"),
     // --- Pointing (T03).
@@ -52,6 +58,20 @@ texts! {
     PickCornersButton => ("Hoeken aanklikken", "Click the corners"),
     PickBrushKeepButton => ("Kwast: behouden", "Brush: keep"),
     PickBrushRemoveButton => ("Kwast: verwijderen", "Brush: remove"),
+    PickProtectContours => (
+        "Beschermen: klik op een contour om hem te beschermen of weer los te laten.",
+        "Protecting: click a contour to protect it or take it back."
+    ),
+    PickProtectCorners => (
+        "Beschermen: klik bij een hoek om er een knooppunt op te houden; nog een klik laat hem los.",
+        "Protecting: click near a corner to keep a node on it; another click releases it."
+    ),
+    PickProtectContoursButton => ("Contouren aanklikken om te beschermen", "Click contours to protect"),
+    PickProtectCornersButton => ("Hoeken aanklikken om te beschermen", "Click corners to protect"),
+    CornerLine => ("Beschermde hoek {0}: op ({1}, {2}) mm", "Protected corner {0}: at ({1}, {2}) mm"),
+    CornerRemoveButton => ("Laat hoek {0} los", "Release corner {0}"),
+    IssueNothingToProtect => ("Op de aangeklikte plek zit geen contour.", "There is no contour at the place you clicked."),
+    IssueUnknownCorner => ("Deze beschermde hoek staat niet in de lijst.", "This protected corner is not in the list."),
     PickEndButton => ("Stop met aanwijzen", "Stop pointing"),
     BrushMask => (
         "Masker {0}: {1} met kwast, straal {2} px, rond ({3}, {4}) px",
@@ -128,6 +148,14 @@ texts! {
     ),
     CompareSame => ("A en B geven precies dezelfde geometrie.", "A and B give exactly the same geometry."),
     CompareDiffer => ("A en B geven verschillende geometrie (zwart = A, rood = B, zelfde schaal).", "A and B give different geometry (black = A, red = B, same scale)."),
+    CompareOnSheet => (
+        "De omtrekken van A en B liggen ook op het blad, waar toepassen ze zou zetten.",
+        "The outlines of A and B are also on the sheet, where applying would put them."
+    ),
+    CompareCorrections => (
+        "Lokale correcties: {0} bewaard; A past er {1} toe, B past er {2} toe (een correctie die op de contouren van B niet meer past, wordt daar niet toegepast).",
+        "Local corrections: {0} kept; A applies {1}, B applies {2} (a correction that no longer fits the contours of B is not applied there)."
+    ),
     CompareAdopt => ("Neem B over als huidig recept", "Take B as the current recipe"),
     CompareClear => ("Sluit de vergelijking", "Close the comparison"),
     // --- Batch (T10).
@@ -137,6 +165,7 @@ texts! {
         "One path per line. Every file is traced with the current settings; you get a report per file."
     ),
     BatchFilesCaption => ("Bestanden", "Files"),
+    BatchChoose => ("Kies bestanden…", "Choose files…"),
     BatchRun => ("Trace deze bestanden", "Trace these files"),
     BatchCancel => ("Annuleer de batch", "Cancel the batch"),
     BatchClear => ("Sluit het batchrapport", "Close the batch report"),
@@ -156,6 +185,8 @@ texts! {
     // --- Problems of the new fields and actions.
     FieldLensK1 => ("Lens k1", "Lens k1"),
     FieldLensK2 => ("Lens k2", "Lens k2"),
+    FieldLensP1 => ("Lens p1", "Lens p1"),
+    FieldLensP2 => ("Lens p2", "Lens p2"),
     FieldNodeLimit => ("Hoogstens knooppunten", "At most nodes"),
     FieldNodeTolerance => ("Grofste tolerantie", "Coarsest tolerance"),
     FieldBrushRadius => ("Straal van de kwast", "Radius of the brush"),

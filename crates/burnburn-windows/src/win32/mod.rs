@@ -28,7 +28,7 @@ mod strip;
 pub(crate) mod tips;
 mod util;
 
-use dialogs::{FileKind, open_dialog, open_dialog_of, save_dialog, save_dialog_of};
+use dialogs::{FileKind, open_dialog, open_dialog_of, open_many_dialog_of, save_dialog, save_dialog_of};
 use forms::{FORM_CLASS, FormWin, close_command};
 use menu::{build_menu, refresh_popup};
 use strip::{STRIP_BASE, StripWin, choose_variant};
@@ -78,7 +78,7 @@ use crate::adapter::{
 use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
 use crate::forms::{
     ControlId, ControlValue, FilePick, FormAux, FormContext, FormKind, FormOutcome, PanelState, Placement,
-    cam as cam_forms, cut_settings as cut_forms, react as react_form, text as text_forms,
+    cam as cam_forms, cut_settings as cut_forms, g5 as g5_forms, react as react_form, text as text_forms,
 };
 use crate::tasks::{TaskInbox, task_channel};
 
@@ -852,6 +852,12 @@ fn perform(outcome: FormOutcome, ev: &FormEvent, ctx: &FormContext<'_>, aux: &Fo
                 if let FormOutcome::Intent(intent) = cam_forms::file_chosen(dialog, model, path, ctx) {
                     dispatch(intent);
                 }
+            }
+        }
+        FormOutcome::PickFile(FilePick::TraceBatch) => {
+            let paths = open_many_dialog_of(FileKind::Image);
+            if let FormOutcome::Intent(intent) = g5_forms::batch_files_chosen(paths, ctx) {
+                dispatch(intent);
             }
         }
         FormOutcome::PickFile(FilePick::Csv) => {

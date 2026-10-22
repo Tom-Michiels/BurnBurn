@@ -54,12 +54,12 @@ impl fmt::Debug for FontData {
 }
 
 impl FontData {
-    /// Parses font bytes (TrueType/OpenType, first face of a collection).
+    /// Parses font bytes (TrueType/OpenType; the first face of a collection, `.ttc`).
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, FontError> {
         let hash = ContentHash::of(HashDomain::Asset, &bytes);
         let bytes = Arc::new(bytes);
         let units_per_em = {
-            let font = skrifa::FontRef::new(&bytes).map_err(|_| FontError::Unreadable)?;
+            let font = first_face(&bytes).map_err(|_| FontError::Unreadable)?;
             if font.outline_glyphs().format().is_none() {
                 return Err(FontError::Unreadable);
             }
@@ -89,7 +89,7 @@ impl FontData {
 
     /// Whether the face maps `ch` to a real glyph (not `.notdef`).
     pub fn has_glyph(&self, ch: char) -> bool {
-        match skrifa::FontRef::new(&self.bytes) {
+        match first_face(&self.bytes) {
             Ok(font) => font.charmap().map(ch).is_some_and(|g| g.to_u32() != 0),
             Err(_) => false,
         }
@@ -97,7 +97,7 @@ impl FontData {
 
     /// Typographic ascent and descent (positive, hhea) in font units.
     pub fn ascent_descent_units(&self) -> (f64, f64) {
-        match skrifa::FontRef::new(&self.bytes) {
+        match first_face(&self.bytes) {
             Ok(font) => {
                 let m = font.metrics(skrifa::instance::Size::unscaled(), skrifa::instance::LocationRef::default());
                 (f64::from(m.ascent), f64::from(-m.descent))
@@ -111,8 +111,13 @@ impl FontData {
     }
 
     pub(crate) fn outline_font(&self) -> Result<skrifa::FontRef<'_>, FontError> {
-        skrifa::FontRef::new(&self.bytes).map_err(|_| FontError::Unreadable)
+        first_face(&self.bytes).map_err(|_| FontError::Unreadable)
     }
+}
+
+/// The font of a single-font file, or the first face of a font collection.
+fn first_face(bytes: &[u8]) -> Result<skrifa::FontRef<'_>, skrifa::raw::ReadError> {
+    skrifa::FontRef::from_index(bytes, 0)
 }
 
 /// Resolves a [`FontRef`] to font bytes. Implementations look at embedded project assets first;
@@ -139,7 +144,7 @@ pub trait FontSource {
 pub fn font_names(bytes: &[u8]) -> Option<(String, FontStyle)> {
     use skrifa::raw::tables::head::MacStyle;
     use skrifa::string::StringId;
-    let font = skrifa::FontRef::new(bytes).ok()?;
+    let font = first_face(bytes).ok()?;
     let family = font.localized_strings(StringId::FAMILY_NAME).english_or_first()?.to_string();
     if family.trim().is_empty() {
         return None;

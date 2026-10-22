@@ -129,6 +129,8 @@ pub struct HostApp {
     recent_templates_menu: Retained<NSMenu>,
     pasteboard: Retained<objc2_app_kit::NSPasteboard>,
     open_panel: RefCell<Option<Retained<NSOpenPanel>>>,
+    /// The file sheet of the tracer's batch while it is open (G8-trace, T10).
+    trace_batch_panel: RefCell<Option<Retained<NSOpenPanel>>>,
     options: HostOptions,
     locale: Locale,
     /// A quit waiting for the user's answers (`NSTerminateLater`).
@@ -235,6 +237,7 @@ impl HostApp {
                     super::clipboard::general_pasteboard()
                 },
                 open_panel: RefCell::new(None),
+                trace_batch_panel: RefCell::new(None),
                 options,
                 locale,
                 quit: RefCell::new(None),
@@ -442,6 +445,7 @@ impl HostApp {
             Reaction::ShowReplaceToFitPanel => self.show_image_file_panel(ImageFilePanel::ReplaceToFit),
             Reaction::ShowBitmapSavePanel => self.show_bitmap_save_panel(),
             Reaction::ShowTracePanel => self.show_image_file_panel(ImageFilePanel::Trace),
+            Reaction::ShowTraceBatchPanel => self.show_trace_batch_panel(),
             Reaction::ToggleLaserPanel => self.toggle_laser_panel(),
             Reaction::ToggleSchikkenPanel => self.toggle_schikken_panel(),
             Reaction::ToggleG5Panel(panel) => self.toggle_g5_panel(panel),
@@ -1134,6 +1138,32 @@ impl HostApp {
         }
     }
 
+    /// Tracer ▸ Choose files…: several pictures for one batch, as a sheet (G8-trace, T10).
+    fn show_trace_batch_panel(&self) {
+        use super::panels::image::{TRACE_TYPES, show_image_open_panel_multiple};
+        let Some(document) = self.view().active else { return };
+        let Some(window) = self.window(document) else { return };
+        let me = self.me.clone();
+        let panel = show_image_open_panel_multiple(
+            self.mtm,
+            &window,
+            self.me.clone(),
+            &TRACE_TYPES,
+            "trace batch panel completion",
+            move |paths| {
+                if let Some(app) = me.upgrade()
+                    && let Ok(mut p) = app.trace_batch_panel.try_borrow_mut()
+                {
+                    *p = None;
+                }
+                NativeEvent::TraceBatchFilesChosen { document, paths }
+            },
+        );
+        if let Ok(mut p) = self.trace_batch_panel.try_borrow_mut() {
+            *p = panel;
+        }
+    }
+
     /// Beeld ▸ Verwerkte bitmap bewaren…: a PNG name for the active document.
     fn show_bitmap_save_panel(&self) {
         let Some(document) = self.view().active else { return };
@@ -1310,6 +1340,11 @@ impl HostApp {
 
     pub fn open_panel(&self) -> Option<Retained<NSOpenPanel>> {
         self.open_panel.try_borrow().ok()?.clone()
+    }
+
+    /// The file sheet of the tracer's batch, while it is open (G8-trace, T10).
+    pub fn trace_batch_panel(&self) -> Option<Retained<NSOpenPanel>> {
+        self.trace_batch_panel.try_borrow().ok()?.clone()
     }
 
     /// Take the canvas surface away as the OS would on surface loss, then redraw.

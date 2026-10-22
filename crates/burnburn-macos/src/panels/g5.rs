@@ -121,6 +121,8 @@ pub enum G5Control {
     // --- Trace, golf 7 (G7-trace): lens, pointing, protect/keep, node goal, recipes, A/B, batch.
     LensK1,
     LensK2,
+    LensP1,
+    LensP2,
     LensApply,
     LensClear,
     PickCorners,
@@ -140,6 +142,13 @@ pub enum G5Control {
     RestoreRemoved {
         index: usize,
     },
+    /// Click contours / corners of the result on the sheet to protect them (G8-trace, T05, T06).
+    PickProtectContours,
+    PickProtectCorners,
+    /// Take protected corner `index` back.
+    CornerRemove {
+        index: usize,
+    },
     RecipeName,
     RecipeSave,
     RecipeApply {
@@ -157,6 +166,8 @@ pub enum G5Control {
     CompareClear,
     BatchFiles,
     BatchRun,
+    /// Choose the files of the batch in the host's file panel (G8-trace, T10).
+    BatchChoose,
     BatchCancel,
     BatchClear,
     // --- Prepare image (G6-werk, T03, T05, T06).
@@ -806,6 +817,9 @@ pub fn g5_intent(
         | G5Control::ContourKeep { .. }
         | G5Control::NodeApply
         | G5Control::RestoreRemoved { .. }
+        | G5Control::PickProtectContours
+        | G5Control::PickProtectCorners
+        | G5Control::CornerRemove { .. }
         | G5Control::RecipeSave
         | G5Control::RecipeApply { .. }
         | G5Control::RecipeCompare { .. }
@@ -814,10 +828,13 @@ pub fn g5_intent(
         | G5Control::CompareAdopt
         | G5Control::CompareClear
         | G5Control::BatchRun
+        | G5Control::BatchChoose
         | G5Control::BatchCancel
         | G5Control::BatchClear => super::g7_trace::intent(doc, document, control, values),
         G5Control::LensK1
         | G5Control::LensK2
+        | G5Control::LensP1
+        | G5Control::LensP2
         | G5Control::BrushRadius
         | G5Control::NodeLimit
         | G5Control::NodeTolerance

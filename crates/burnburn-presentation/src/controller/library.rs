@@ -177,6 +177,11 @@ pub(super) struct Libraries {
 }
 
 impl Libraries {
+    /// The colours of the layer palette, slot by slot (empty until the host sets them).
+    pub(in crate::controller) fn layer_palette(&self) -> &[[u8; 3]] {
+        &self.palette
+    }
+
     /// Have the library files been read (or is there no folder to read them from)?
     pub(in crate::controller) fn is_ready(&self) -> bool {
         self.state == LoadState::Ready

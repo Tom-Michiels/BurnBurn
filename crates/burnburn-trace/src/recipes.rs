@@ -27,6 +27,17 @@ pub struct RecipeSummary {
     pub max_deviation_mm: f64,
 }
 
+/// How many of the stored local corrections each variant of a comparison carries (G8-trace, T10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CompareCorrections {
+    /// Corrections handed to the comparison.
+    pub stored: usize,
+    /// Applied to variant A / variant B. A correction that no longer binds on a variant's contours
+    /// (another recipe changed them) is not applied there, never to something else.
+    pub a_applied: usize,
+    pub b_applied: usize,
+}
+
 /// Two variants of the same source in one frame (same zoom/position in the UI).
 #[derive(Debug, Clone)]
 pub struct RecipeComparison {
@@ -34,6 +45,7 @@ pub struct RecipeComparison {
     pub b: RecipeSummary,
     pub a_result: Arc<TraceResult>,
     pub b_result: Arc<TraceResult>,
+    pub corrections: CompareCorrections,
 }
 
 pub fn compare_recipes(
@@ -49,7 +61,41 @@ pub fn compare_recipes(
         Ok(Arc::new(trace(&req, cancel)?))
     };
     let (a_result, b_result) = (run(a)?, run(b)?);
-    Ok(RecipeComparison { a: summary(&a_result)?, b: summary(&b_result)?, a_result, b_result })
+    Ok(RecipeComparison {
+        a: summary(&a_result)?,
+        b: summary(&b_result)?,
+        a_result,
+        b_result,
+        corrections: CompareCorrections::default(),
+    })
+}
+
+/// As [`compare_recipes`], with the stored local corrections applied to both variants after their
+/// base trace, the way the tracer shows variant A. A correction that does not bind on a variant is
+/// left out of that variant and counted in [`RecipeComparison::corrections`].
+pub fn compare_recipes_corrected(
+    source: &Arc<SourceImage>,
+    a: &TraceRecipe,
+    b: &TraceRecipe,
+    records: &[CorrectionRecord],
+    task: TaskId,
+    cancel: &CancellationToken,
+) -> Result<RecipeComparison, TraceError> {
+    let run = |recipe: &TraceRecipe| -> Result<(Arc<TraceResult>, usize), TraceError> {
+        let req =
+            TraceRequest { task, source_revision: RevisionId::INITIAL, source: source.clone(), recipe: recipe.clone() };
+        let base = Arc::new(trace(&req, cancel)?);
+        let replay = replay_corrections(&base, source, records, task, cancel)?;
+        Ok((replay.result, replay.applied))
+    };
+    let ((a_result, a_applied), (b_result, b_applied)) = (run(a)?, run(b)?);
+    Ok(RecipeComparison {
+        a: summary(&a_result)?,
+        b: summary(&b_result)?,
+        a_result,
+        b_result,
+        corrections: CompareCorrections { stored: records.len(), a_applied, b_applied },
+    })
 }
 
 pub(crate) fn summary(r: &TraceResult) -> Result<RecipeSummary, TraceError> {

@@ -23,11 +23,18 @@ pub struct ContourSettings {
     /// [`crate::TraceResult::contour_anchor_px`]. Keeping a hole or part inside another keeps the
     /// outlines around it too.
     pub keep: Vec<[f64; 2]>,
+    /// Corners the fit must keep (G8-trace, T06): each a position in adjusted pixels (y down); the
+    /// nearest vertex of an outline within [`CORNER_REACH_PX`] becomes a corner node even where the
+    /// turn is milder than `fit.corner_angle_deg` or the tolerance would round it off.
+    pub corners: Vec<[f64; 2]>,
 }
+
+/// How near (pixels) a protected corner has to be to a vertex of an outline to name it.
+pub const CORNER_REACH_PX: f64 = 3.0;
 
 impl Default for ContourSettings {
     fn default() -> Self {
-        ContourSettings { diagonal: DiagonalPolicy::Connect, min_area_mm2: 0.0, keep: Vec::new() }
+        ContourSettings { diagonal: DiagonalPolicy::Connect, min_area_mm2: 0.0, keep: Vec::new(), corners: Vec::new() }
     }
 }
 
@@ -81,6 +88,9 @@ impl TraceRecipe {
         if self.contour.keep.iter().any(|a| !(a[0].is_finite() && a[1].is_finite())) {
             return Err(TraceError::InvalidRecipe("contour.keep"));
         }
+        if self.contour.corners.iter().any(|a| !(a[0].is_finite() && a[1].is_finite())) {
+            return Err(TraceError::InvalidRecipe("contour.corners"));
+        }
         Ok(())
     }
 
@@ -115,6 +125,15 @@ impl CanonicalEncode for TraceRecipe {
             out.tag("contour-keep");
             out.u64(self.contour.keep.len() as u64);
             for a in &self.contour.keep {
+                out.f64(a[0]);
+                out.f64(a[1]);
+            }
+        }
+        // The same for protected corners (G8-trace, T06).
+        if !self.contour.corners.is_empty() {
+            out.tag("contour-corners");
+            out.u64(self.contour.corners.len() as u64);
+            for a in &self.contour.corners {
                 out.f64(a[0]);
                 out.f64(a[1]);
             }

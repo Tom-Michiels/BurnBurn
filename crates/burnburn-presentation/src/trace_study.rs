@@ -9,7 +9,8 @@ use std::sync::Arc;
 use burnburn_image::{DecodeLimits, PixelScale, SourceImage, decode};
 use burnburn_io::fs::FileSystem;
 use burnburn_trace::{
-    BatchItem, BatchProblem, RecipeComparison, RecipeSummary, TraceError, TraceRecipe, compare_recipes, trace_batch,
+    BatchItem, BatchProblem, CorrectionRecord, RecipeComparison, RecipeSummary, TraceError, TraceRecipe,
+    compare_recipes_corrected, trace_batch,
 };
 use burnburn_types::{CancellationToken, RevisionId, TaskId};
 
@@ -21,8 +22,15 @@ const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// One study job.
 #[derive(Clone)]
 pub enum StudyJob {
-    /// The recipe in force (A) and another (B) on the same picture.
-    Compare { task: TaskId, source: Arc<SourceImage>, a: Box<TraceRecipe>, b: Box<TraceRecipe> },
+    /// The recipe in force (A) and another (B) on the same picture, both with the tracer's local
+    /// corrections where they bind.
+    Compare {
+        task: TaskId,
+        source: Arc<SourceImage>,
+        a: Box<TraceRecipe>,
+        b: Box<TraceRecipe>,
+        corrections: Vec<CorrectionRecord>,
+    },
     /// One recipe on every file, in order.
     Batch { task: TaskId, revision: RevisionId, paths: Vec<PathBuf>, recipe: Box<TraceRecipe>, fs: Arc<dyn FileSystem> },
 }
@@ -70,9 +78,11 @@ pub enum StudyOutput {
 
 pub fn run_study(job: &StudyJob, cancel: &CancellationToken) -> Result<StudyOutput, TaskError> {
     match job {
-        StudyJob::Compare { task, source, a, b } => compare_recipes(source, a, b, *task, cancel)
-            .map(|c| StudyOutput::Compared(Arc::new(c)))
-            .map_err(trace_error),
+        StudyJob::Compare { task, source, a, b, corrections } => {
+            compare_recipes_corrected(source, a, b, corrections, *task, cancel)
+                .map(|c| StudyOutput::Compared(Arc::new(c)))
+                .map_err(trace_error)
+        }
         StudyJob::Batch { task, revision, paths, recipe, fs } => {
             let mut files = Vec::with_capacity(paths.len());
             for path in paths {

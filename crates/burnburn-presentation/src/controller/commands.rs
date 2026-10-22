@@ -214,7 +214,10 @@ impl AppController {
             CommandKey::BooleanIntersection => self.submit_boolean(document, BooleanOp::Intersection),
             _ => {
                 let request = self.next_id::<RequestId>();
-                self.with_session(document, |s| invoke_in_session(s, document, command, request))
+                // Only a committed import ties its layers to palette colours (P04).
+                let palette =
+                    if command == CommandKey::CommitImport { self.libs.layer_palette().to_vec() } else { Vec::new() };
+                self.with_session(document, |s| invoke_in_session(s, document, command, request, &palette))
             }
         }
     }
@@ -225,6 +228,7 @@ pub(super) fn invoke_in_session(
     document: DocumentId,
     command: CommandKey,
     request: Option<RequestId>,
+    palette: &[[u8; 3]],
 ) -> AppUpdate {
     let align_edge = match command {
         CommandKey::AlignLeft => Some(AlignEdge::Left),
@@ -361,7 +365,7 @@ pub(super) fn invoke_in_session(
         }
         CommandKey::ApplyTraceLinked => super::trace_link::apply(s, document, request),
         CommandKey::CommitImport => {
-            if let Some(update) = super::import::commit_with_layers(s, document, request) {
+            if let Some(update) = super::import::commit_with_layers(s, document, request, palette) {
                 return update;
             }
             let Some(pending) = s.import.as_ref().filter(|i| i.ready()) else { return AppUpdate::default() };

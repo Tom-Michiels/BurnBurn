@@ -86,6 +86,8 @@ fn the_form_has_the_controls_of_the_new_sections() {
     for c in [
         C::LensK1,
         C::LensK2,
+        C::LensP1,
+        C::LensP2,
         C::LensApply,
         C::PickCorners,
         C::BrushRadius,
@@ -125,7 +127,10 @@ fn lens_pointing_and_a_check_send_their_intents_and_the_form_follows() {
     );
     assert_eq!(
         intent,
-        UiIntent::TracePrep { document: doc, intent: TracePrepIntent::UseLens { k1: "-0.1".into(), k2: "0".into() } }
+        UiIntent::TracePrep {
+            document: doc,
+            intent: TracePrepIntent::UseLens { k1: "-0.1".into(), k2: "0".into(), p1: "0".into(), p2: "0".into() }
+        }
     );
     assert!(text_of(&form(&h, doc), "Lens correction in use: k1 -0.1, k2 0."));
 

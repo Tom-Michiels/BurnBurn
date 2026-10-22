@@ -715,6 +715,55 @@ impl DocWindow {
 // File panels of the Beeld menu.
 // ---------------------------------------------------------------------------------------------
 
+/// The open panel for pictures of these types: files only, one or (`multiple`, G8-trace T10) several.
+pub(crate) fn image_open_panel(mtm: MainThreadMarker, types: &[&str], multiple: bool) -> Retained<NSOpenPanel> {
+    let panel = NSOpenPanel::openPanel(mtm);
+    panel.setCanChooseFiles(true);
+    panel.setCanChooseDirectories(false);
+    panel.setAllowsMultipleSelection(multiple);
+    let names: Vec<Retained<NSString>> = types.iter().map(|t| NSString::from_str(t)).collect();
+    #[allow(deprecated)]
+    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&names)));
+    panel
+}
+
+/// The panel that asks for the files of a batch of traces: several pictures of the tracer's types.
+pub fn trace_batch_open_panel(mtm: MainThreadMarker) -> Retained<NSOpenPanel> {
+    image_open_panel(mtm, &TRACE_TYPES, true)
+}
+
+/// An open sheet for several pictures (the files of a batch); `event` turns the chosen paths, in the
+/// order the panel lists them (empty on cancel), into the event.
+pub(crate) fn show_image_open_panel_multiple(
+    mtm: MainThreadMarker,
+    window: &NSWindow,
+    app: Weak<HostApp>,
+    types: &[&str],
+    what: &'static str,
+    event: impl Fn(Vec<PathBuf>) -> NativeEvent + 'static,
+) -> Option<Retained<NSOpenPanel>> {
+    let panel = image_open_panel(mtm, types, true);
+    let reader = panel.clone();
+    let handler = RcBlock::new(move |response: NSModalResponse| {
+        ffi_guard(what, (), || {
+            let paths: Vec<PathBuf> = if response == crate::adapter::response::OK {
+                reader.URLs().iter().filter_map(|u| u.to_file_path()).collect()
+            } else {
+                Vec::new()
+            };
+            if let Some(app) = app.upgrade() {
+                app.native(event(paths));
+            }
+        });
+    });
+    if let Err(e) = crate::appkit::objc_try(what, || panel.beginSheetModalForWindow_completionHandler(window, &handler))
+    {
+        eprintln!("burnburn: {e}");
+        return None;
+    }
+    Some(panel)
+}
+
 /// An open sheet for one picture; `event` turns the chosen path (`None` on cancel) into the event.
 pub(crate) fn show_image_open_panel(
     mtm: MainThreadMarker,
@@ -724,13 +773,7 @@ pub(crate) fn show_image_open_panel(
     what: &'static str,
     event: impl Fn(Option<PathBuf>) -> NativeEvent + 'static,
 ) {
-    let panel = NSOpenPanel::openPanel(mtm);
-    panel.setCanChooseFiles(true);
-    panel.setCanChooseDirectories(false);
-    panel.setAllowsMultipleSelection(false);
-    let names: Vec<Retained<NSString>> = types.iter().map(|t| NSString::from_str(t)).collect();
-    #[allow(deprecated)]
-    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&names)));
+    let panel = image_open_panel(mtm, types, false);
     let reader = panel.clone();
     let handler = RcBlock::new(move |response: NSModalResponse| {
         ffi_guard(what, (), || {

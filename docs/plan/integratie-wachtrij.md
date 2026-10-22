@@ -59,19 +59,27 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
   raakt een ellips niet, en een schets met een ellips die niet convergeert wordt één keer opnieuw opgelost met omgekeerde
   asrol.
   CAM weigert een geblokkeerd afgeleid object sinds de golf-7-integratie (`cam/tests/blocked_geometry.rs`).
-- **Trace** (G7-trace: gebouwd, zie `docs/dev-notes/G7-trace.md`; wat blijft): T03 radiaal lensmodel zonder tangentiële termen
-  en het wijzen werkt via de canvas-aanwijzer (foto op het blad), het uiterlijk en het gevoel van de kwast zijn niet bekeken;
-  T05 beschermen kiest uit een lijst, niet door op een contour te klikken; T06 beschermde *hoeken* (alleen gaten en
-  stukken zijn gedaan); T10 batch krijgt de paden uit een tekstvak (geen NSOpenPanel-/Win32-meervoudskeuze), A/B vergelijkt
-  zonder lokale correcties en toont de twee omtrekken in het paneel, niet op het canvas; T04 tekent de strepen maar geen
-  knooppuntmarkeringen; P04 maakt Line-/Fill-operaties met standaardsnelheid en -vermogen (geen koppeling aan palet-
-  kleuren).
+- **Trace** (G7-trace en G8-trace: gebouwd, zie `docs/dev-notes/G7-trace.md` en `docs/dev-notes/G8-trace.md`; wat blijft): het
+  uiterlijk en het gevoel van de aanwijsstanden (foto op het blad, kwast, beschermen van contouren en hoeken, de omtrekken van A/B,
+  knoopmarkeringen) zijn niet bekeken; de OK-knop van het meervoudige bestandspaneel (macOS) en de Windows-dialoog
+  (`IFileOpenDialog` met `FOS_ALLOWMULTISELECT`) zijn nooit gedraaid; een correctie die op B niet bindt kan vanuit de vergelijking niet
+  opnieuw gelinkt worden; een beschermde hoek bij een lokale hertrace met een andere drempel werkt alleen binnen 3 px van een
+  hoekpunt van die drempel; Replace to Fit voor een gedraaid kader wordt geweigerd. Gebouwd in G8: tangentiële lenstermen (T03), beschermen
+  door te klikken en beschermde hoeken (T05/T06), knoopmarkeringen (T04), meervoudige bestandskeuze en A/B met correcties en omtrekken op het
+  canvas (T10), paletkoppeling bij PDF/HPGL-lagen (P04).
 - **Machine**: UI voor controllerinstellingen schrijven/herstellen (M09, wacht op hardwarebewijs); plugin-loader en -paneel
   (X06, wacht op B-5). Het bevestigingspaneel voor Start (M06) en het bewaren van het actieve apparaat (M01) bestaan sinds golf 7;
   het paneel zegt eerlijk dat Start op geen enkele controller is bewezen.
-- **Prestaties/CI**: de 100k-benchmarks zijn `#[ignore]` en geen regressiedrempel in `verify` (X04); de GitHub-workflows
+- **Prestaties/CI**: de 100k-wandklokbenchmarks blijven `#[ignore]`; sinds G8-trace bewaakt `cargo xtask verify` de 100k-route met
+  deterministische tellingen, zonder klok (klik, select all, scene, compile-schaal: `scenarios/tests/perf_guard_100k.rs`, eigen stap
+  in `verify`). De compile-schaal is lineariteit van het plan plus de tellertests in `burnburn-cam`; de CPU-tijd van `compile` bij 100k
+  contouren is niet opnieuw gemeten (W4-prestaties noemt 90 s; G5-cam maakte de planning sub-kwadratisch). De GitHub-workflows
   (`ci.yml`, `release.yml`) zijn nooit gedraaid; fuzz-doelen (o.a. `grbl_status`) zijn gebouwd maar niet gedraaid (B-10).
-- **Tekst**: Arabisch (isol/init/medi/fina, lam-alef, tekenreeks in RTL) is getest met DejaVu Sans en gaf geen fout (G7-trace); marktekens (GPOS), kashida en Indische scripts niet; geen SHX-parser (geen permissieve Rust-crate).
+- **Tekst**: getest met permissieve fonts (`test-data/fonts/README.md`): Arabisch (G7), GPOS-marktekens (fatha/kasra/shadda, Latijnse
+  accenten), kashida (tatweel) en Gurmukhi (Mukta Mahee, OFL) in G8-trace; drie fouten gefixt (`.ttc`-collecties onleesbaar, letterafstand
+  scheurde verbonden Arabische woorden, onzichtbare opmaaktekens als "ontbrekend"). Open: Devanagari zelf (geen permissief font op deze
+  machine), uitvullen met kashida (er is geen uitvulling), de systeemfontlijst in `burnburn-runtime` neemt `.ttc` nog niet mee, weergave
+  van RTL- en Indische tekst in canvas en tekstpaneel is niet bekeken; geen SHX-parser (geen permissieve Rust-crate).
 
 ### Handmatig (macOS-uiterlijk en OS-dialogen; niet bekeken)
 
@@ -366,6 +374,20 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | G7-trace | T04 strepen van de centerline op het canvas | – | scene-overlay `Overlay::ResultPreview` | `presentation/tests/g7_trace_overlay.rs::*` | klaar |
 | G7-trace | P04 lagen per kleur/pen bij PDF/HPGL | `ImportedPath.layer`, `ImportLayer` | `FilesIntent::SetImportLayers`, `ImportViewModel.layers_accepted`, `CompoundLabel::ImportLayers` | `io/tests/{pdf, hpgl}.rs`, `presentation/tests/g7_import_layers.rs::*`, `macos/tests/g7_import_layers_panel.rs`, `windows/tests/g7_import_layers_form.rs`, native `import_layers_native` | klaar |
 | G7-trace | Tekst: Arabische contextvormen | – (geen codefout gevonden) | – | `text/tests/arabic.rs::*` | klaar |
+
+## G8-trace
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| G8-trace | T03 tangentiële lenstermen p1, p2 (Brown-Conrady) | `image::LensDistortion{p1,p2}`, `LensDistortion::radial`, param `image.lens` (2 of 4 getallen) | `TracePrepIntent::UseLens{p1,p2}`, `PrepLens.{p1,p2}`, `G5Control::{LensP1,LensP2}` | `image/tests/lens_tangential.rs`, `trace/tests/document_recipe.rs::tangential_*`, `presentation/tests/g8_trace_lens.rs`, `macos/tests/g7_trace_panels.rs::the_lens_panel_has_tangential_*` | klaar |
+| G8-trace | T05 beschermen door op een contour te klikken | `TraceResult::contour_at_px` | `TracePick::{BeginProtectContours, ProtectAt}`, `PickKind::ProtectContours`, `Overlay::ProtectedOutline`, `PrepIssue::NothingToProtect`, `G5Control::PickProtectContours` | `trace/tests/protected_corners.rs::a_click_means_*`, `presentation/tests/g8_trace_protect_click.rs::*`, `macos/tests/g8_trace_protect_panel.rs`, `windows/tests/g8_trace_protect_forms.rs`, `render/tests/trace_overlays.rs` | klaar; uiterlijk handmatig |
+| G8-trace | T06 beschermde hoeken | `ContourSettings.corners`, `CORNER_REACH_PX`, `TraceResult::corner_near_px`, param `contour.corners` | `TracePick::{BeginProtectCorners, ProtectAt}`, `TracePrepIntent::RemoveProtectedCorner`, `TracePrepViewModel.corners`, `G5Control::{PickProtectCorners, CornerRemove}` | `trace/tests/protected_corners.rs::*`, `presentation/tests/g8_trace_protect_click.rs::*` | klaar |
+| G8-trace | T04 knooppuntmarkeringen bij de centerline-overlay | – | `Overlay::Node` bij elke knoop van de strepen (open uiteinden `selected`) | `presentation/tests/g8_trace_nodes.rs` | klaar |
+| G8-trace | T10 meervoudige bestandskeuze voor de batch | – | `G5Control::BatchChoose`, `panels::batch_files_intent`, macOS `NativeEvent::TraceBatchFilesChosen` + `Reaction::ShowTraceBatchPanel` (`NSOpenPanel.allowsMultipleSelection`), Windows `FilePick::TraceBatch` (`IFileOpenDialog` + `FOS_ALLOWMULTISELECT`) | `macos/tests/g8_trace_batch_files.rs`, `windows/tests/g8_trace_batch_files.rs`, native `trace_batch_panel_native` | klaar; OK-knop van het paneel en Windows-dialoog handmatig |
+| G8-trace | T10 A/B met lokale correcties en beide omtrekken op het canvas | `trace::{compare_recipes_corrected, CompareCorrections}` | `CompareViewModel.corrections` (`CompareCorrectionsView`), `Overlay::CompareOutline{side}` (`CompareSide`), `Theme.{compare_a, compare_b}` | `trace/tests/compare_corrected.rs`, `presentation/tests/g8_trace_compare.rs`, `macos/tests/g8_trace_compare_panel.rs`, `render/tests/trace_overlays.rs` | klaar |
+| G8-trace | **bugfix render:** `Overlay::ResultPreview` werd nooit getekend (centerline-strepen van G7, boolean-preview) | `render::build_packet` | – | `render/tests/trace_overlays.rs::a_result_preview_*` | klaar |
+| G8-trace | P04 importlagen aan de dichtstbijzijnde vrije paletkleur | – (`controller/import.rs::palette_slots`, `Libraries::layer_palette`) | – (de slots staan in de bestaande `OperationRow.slot`) | `presentation/tests/g8_import_palette.rs` | klaar |
+| G8-trace | Tekst: `.ttc`-collecties, letterafstand in verbonden Arabisch, onzichtbare opmaaktekens | `FontData::from_bytes` (eerste gezicht), `shape` | – | `text/tests/marks_and_scripts.rs` (13) | klaar; open: `burnburn-runtime` fontlijst kent geen `.ttc` (regel voor de lane die `runtime` bezit) |
+| G8-trace | X04 deterministische prestatiebewaking in `verify` | `burnburn_editor::{editor_work, reset_editor_work, EditorWork}` | – | `scenarios/tests/perf_guard_100k.rs`, `xtask tests::verify_*` | klaar |
 
 ## G7-werk
 | Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |

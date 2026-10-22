@@ -110,3 +110,11 @@ bewerking `stale` (`presentation/tests/gate_b.rs`, `app_preview.rs`). Toegevoegd
 - De pick-cache houdt per thread de laatst geïndexeerde objectmap vast (een extra kopie van de Arc-kaart tot de volgende klik).
 - Alleen macOS arm64, enkele machine, hoge achtergrondbelasting; geen Windows, geen debug-build, geen GPU-tijden.
 - Handmatig: voelbare reactie in de echte app met een 100k-bestand is niet beoordeeld.
+
+## Update G8-trace: regressiedrempel in `verify`
+
+De wandklokbenchmarks hierboven blijven `#[ignore]` (machine- en belastingafhankelijk). Sinds G8-trace draait `cargo xtask verify` een
+eigen stap `cargo test -p burnburn-scenarios --test perf_guard_100k` met deterministische tellingen zonder klok op de 100k-route (klik,
+select all, scene, compile-schaal); opzet, waarden en wat hij niet bewaakt: `docs/dev-notes/G8-trace.md`. De open regel over
+kwadratische planning in `cam::line` is sinds G5-cam achterhaald (ruimtelijke index, tellertests in `burnburn-cam`); de 90 s voor
+F100K-C hierboven is niet opnieuw gemeten.

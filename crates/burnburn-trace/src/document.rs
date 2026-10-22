@@ -44,6 +44,12 @@ pub fn recipe_to_engine(recipe: &TraceRecipe) -> EngineRecipe {
     if !recipe.contour.keep.is_empty() {
         r = r.with("contour.keep", V::List(recipe.contour.keep.iter().map(|a| V::List(pair(*a).into())).collect()));
     }
+    if !recipe.contour.corners.is_empty() {
+        r = r.with(
+            "contour.corners",
+            V::List(recipe.contour.corners.iter().map(|a| V::List(pair(*a).into())).collect()),
+        );
+    }
     r.with("fit.tolerance_mm", V::Number(recipe.fit.tolerance_mm))
         .with("fit.corner_angle_deg", V::Number(recipe.fit.corner_angle_deg))
         .with("fit.corner_window_px", V::Number(recipe.fit.corner_window_px))
@@ -135,7 +141,11 @@ fn image_to_params(mut r: EngineRecipe, i: &ImageRecipe) -> EngineRecipe {
         r = r.with("image.perspective", V::List(item));
     }
     if let Some(l) = &i.lens {
-        r = r.with("image.lens", V::List(vec![V::Number(l.k1), V::Number(l.k2)]));
+        let mut numbers = vec![V::Number(l.k1), V::Number(l.k2)];
+        if l.has_tangential() {
+            numbers.extend([V::Number(l.p1), V::Number(l.p2)]);
+        }
+        r = r.with("image.lens", V::List(numbers));
     }
     r
 }
@@ -280,9 +290,19 @@ pub fn recipe_from_engine(recipe: &EngineRecipe) -> Result<TraceRecipe, TraceErr
             })
             .collect::<Result<_, TraceError>>()?,
     };
+    let corners = match r.optional_list("contour.corners")? {
+        None => Vec::new(),
+        Some(items) => items
+            .iter()
+            .map(|a| match list("contour.corners", a)? {
+                [x, y] => Ok([number("contour.corners", x)?, number("contour.corners", y)?]),
+                _ => Err(TraceError::InvalidRecipe("contour.corners")),
+            })
+            .collect::<Result<_, TraceError>>()?,
+    };
     let out = TraceRecipe {
         image,
-        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")?, keep },
+        contour: ContourSettings { diagonal, min_area_mm2: r.number("contour.min_area_mm2")?, keep, corners },
         fit: FitSettings {
             tolerance_mm: r.number("fit.tolerance_mm")?,
             corner_angle_deg: r.number("fit.corner_angle_deg")?,
@@ -338,7 +358,13 @@ fn image_from_params(r: &Reader<'_>) -> Result<ImageRecipe, TraceError> {
     let perspective = r.optional_list("image.perspective")?.map(perspective_from).transpose()?;
     let lens = match r.optional_list("image.lens")? {
         None => None,
-        Some([k1, k2]) => Some(LensDistortion { k1: number("image.lens", k1)?, k2: number("image.lens", k2)? }),
+        Some([k1, k2]) => Some(LensDistortion::radial(number("image.lens", k1)?, number("image.lens", k2)?)),
+        Some([k1, k2, p1, p2]) => Some(LensDistortion {
+            k1: number("image.lens", k1)?,
+            k2: number("image.lens", k2)?,
+            p1: number("image.lens", p1)?,
+            p2: number("image.lens", p2)?,
+        }),
         Some(_) => return Err(TraceError::InvalidRecipe("image.lens")),
     };
     Ok(ImageRecipe {

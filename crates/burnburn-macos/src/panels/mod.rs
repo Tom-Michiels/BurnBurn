@@ -40,7 +40,7 @@ pub use camera_workspace::*;
 pub use cut_settings::*;
 pub use g5::*;
 pub use g7_editor::EditorControl;
-pub use g7_trace::compare_bitmap;
+pub use g7_trace::{batch_files_intent, compare_bitmap};
 pub use grbl::*;
 pub use import::*;
 pub use inspector::*;

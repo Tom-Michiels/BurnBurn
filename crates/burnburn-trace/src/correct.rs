@@ -242,7 +242,15 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
     }
 
     let correction = CorrectionId(prev.corrections.last().map_or(1, |r| r.id.0 + 1));
-    let anchors_mm: Vec<Point> = req.anchors.iter().map(|a| frame.to_mm(a.at_px)).collect();
+    // Protected corners of the recipe keep their node in the area too: they are anchors, placed
+    // exactly on the vertex of the outline that they name.
+    let anchors_mm: Vec<Point> = req
+        .anchors
+        .iter()
+        .map(|a| a.at_px)
+        .chain(req.recipe.contour.corners.iter().copied())
+        .map(|p| frame.to_mm(p))
+        .collect();
     let anchor_reach = frame.mm_per_px();
     let base_params = fit_params(&req.recipe, &prev.scale);
     let fixed_nodes: usize = plan
@@ -363,6 +371,7 @@ pub fn retrace_region(req: &CorrectionRequest, cancel: &CancellationToken) -> Re
     let recipe_key = correction_chain_key(prev.base_key, &corrections).map_err(|_| TraceError::NonFinite)?;
     let (components, mut stats) = summarize(&contours, &prev.scale);
     stats.keep_unmatched = outlines.keep_unmatched;
+    stats.corners_unmatched = outlines.corners_unmatched;
     Ok(TraceResult {
         task: req.task,
         source_revision: prev.source_revision,

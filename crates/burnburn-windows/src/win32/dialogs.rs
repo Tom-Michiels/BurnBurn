@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree};
 use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
-use windows::Win32::UI::Shell::{FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog, SIGDN_FILESYSPATH};
+use windows::Win32::UI::Shell::{
+    FOS_ALLOWMULTISELECT, FileOpenDialog, FileSaveDialog, IFileOpenDialog, IFileSaveDialog, IShellItem,
+    SIGDN_FILESYSPATH,
+};
 use windows::core::{HSTRING, w};
 
 /// Which kind of file a dialog asks for.
@@ -17,6 +20,8 @@ pub(super) enum FileKind {
     Rd,
     /// A CSV table (variable text).
     Csv,
+    /// Pictures the tracer reads (the files of a batch).
+    Image,
 }
 
 fn file_filter(kind: FileKind) -> [COMDLG_FILTERSPEC; 1] {
@@ -24,6 +29,10 @@ fn file_filter(kind: FileKind) -> [COMDLG_FILTERSPEC; 1] {
         FileKind::Project => [COMDLG_FILTERSPEC { pszName: w!("BurnBurn-project"), pszSpec: w!("*.burnburn") }],
         FileKind::Rd => [COMDLG_FILTERSPEC { pszName: w!("Ruida (RD)"), pszSpec: w!("*.rd") }],
         FileKind::Csv => [COMDLG_FILTERSPEC { pszName: w!("CSV"), pszSpec: w!("*.csv;*.txt") }],
+        FileKind::Image => [COMDLG_FILTERSPEC {
+            pszName: w!("Afbeeldingen / Images"),
+            pszSpec: w!("*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff"),
+        }],
     }
 }
 
@@ -31,7 +40,12 @@ fn file_filter(kind: FileKind) -> [COMDLG_FILTERSPEC; 1] {
 fn dialog_path(dialog: &windows::Win32::UI::Shell::IFileDialog) -> Option<PathBuf> {
     // SAFETY: COM call on the STA UI thread on a live dialog.
     let item = unsafe { dialog.GetResult() }.ok()?;
-    // SAFETY: as above, on the returned shell item.
+    item_path(&item)
+}
+
+/// The file system path of one shell item.
+fn item_path(item: &IShellItem) -> Option<PathBuf> {
+    // SAFETY: COM call on the STA UI thread, on a shell item we hold.
     let name = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH) }.ok()?;
     // SAFETY: `name` is a valid NUL-terminated string owned by us until freed below.
     let path = unsafe { name.to_string() }.ok().map(PathBuf::from);
@@ -55,6 +69,37 @@ pub(super) fn open_dialog_of(kind: FileKind) -> Option<PathBuf> {
     dialog_path(&dialog)
 }
 
+/// Several files of one kind (`FOS_ALLOWMULTISELECT`), in the order the dialog lists them; empty when
+/// the user cancelled or the dialog could not be shown. Items without a file system path are left out.
+pub(super) fn open_many_dialog_of(kind: FileKind) -> Vec<PathBuf> {
+    pick_many(kind).unwrap_or_default()
+}
+
+fn pick_many(kind: FileKind) -> Option<Vec<PathBuf>> {
+    // SAFETY: COM on the STA UI thread (CoInitializeEx in run_app); released on drop.
+    let dialog: IFileOpenDialog = unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER) }.ok()?;
+    let filter = file_filter(kind);
+    // SAFETY: the filter specs point to static strings and live for the call.
+    unsafe { dialog.SetFileTypes(&filter) }.ok()?;
+    // SAFETY: COM calls on a live dialog; the options only gain the multiple-selection flag.
+    let options = unsafe { dialog.GetOptions() }.ok()?;
+    // SAFETY: as above.
+    unsafe { dialog.SetOptions(options | FOS_ALLOWMULTISELECT) }.ok()?;
+    // SAFETY: modal dialog on the UI thread; Cancel returns an error (→ None).
+    unsafe { dialog.Show(None) }.ok()?;
+    // SAFETY: COM calls on the closed dialog's result array and its items.
+    let items = unsafe { dialog.GetResults() }.ok()?;
+    // SAFETY: as above.
+    let count = unsafe { items.GetCount() }.ok()?;
+    Some(
+        (0..count)
+            // SAFETY: `i < count` on the array we hold.
+            .filter_map(|i| unsafe { items.GetItemAt(i) }.ok())
+            .filter_map(|item| item_path(&item))
+            .collect(),
+    )
+}
+
 pub(super) fn save_dialog(owner: HWND, suggested: &str) -> Option<PathBuf> {
     save_dialog_of(owner, suggested, FileKind::Project)
 }
@@ -69,6 +114,7 @@ pub(super) fn save_dialog_of(owner: HWND, suggested: &str, kind: FileKind) -> Op
         FileKind::Project => w!("burnburn"),
         FileKind::Rd => w!("rd"),
         FileKind::Csv => w!("csv"),
+        FileKind::Image => w!("png"),
     };
     // SAFETY: static string.
     unsafe { dialog.SetDefaultExtension(extension) }.ok()?;

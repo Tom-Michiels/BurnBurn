@@ -84,9 +84,20 @@ pub struct VariantSummary {
     pub max_deviation_mm: f64,
 }
 
+/// How many of the tracer's local corrections each variant of a comparison carries (G8-trace, T10).
+/// A correction that no longer binds on a variant's contours is not applied there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompareCorrectionsView {
+    pub stored: usize,
+    pub a_applied: usize,
+    pub b_applied: usize,
+}
+
 /// Recipe in force (A) against another (B) on the same picture.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompareViewModel {
+    /// The local corrections of the tracer, when it has any (applied to both variants).
+    pub corrections: Option<CompareCorrectionsView>,
     /// Where B comes from: the saved recipe or the built-in.
     pub b_choice: RecipeChoice,
     pub computing: bool,
