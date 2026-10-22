@@ -88,6 +88,7 @@ mod invariants {
         }
         s.pump(0.3);
         check_document(&s, doc, "document (selection)", &mut found)?;
+        check_transform_fields_in_view(&s, doc, &mut found);
         if s.menu(MenuItem::Command(CommandKey::Compile)).is_ok() {
             let _ = s.wait(5.0, "the plan", || s.doc(doc).is_some_and(|d| d.plan.is_some()));
             check_document(&s, doc, "document (compiled)", &mut found)?;
@@ -122,6 +123,38 @@ mod invariants {
             found[..shown].join("\n    "),
             if found.len() > shown { format!("\n    ... and {} more", found.len() - shown) } else { String::new() }
         ))
+    }
+
+    /// Regression (look-and-feel Q1): X, Y, Width and Height of the inspector lay above the visible
+    /// part of the column, because the column was shifted twice. They are in view when the
+    /// window opens.
+    fn check_transform_fields_in_view(s: &Session, doc: DocumentId, found: &mut Vec<String>) {
+        use burnburn_presentation::FieldKey;
+        s.app.with_window(doc, |w| {
+            for key in [FieldKey::X, FieldKey::Y, FieldKey::Width, FieldKey::Height] {
+                let Some(field) = w.field(key) else {
+                    found.push(format!("inspector: no field for {key:?}"));
+                    continue;
+                };
+                let Some(scroll) = field.enclosingScrollView() else {
+                    found.push(format!("inspector: {key:?} is not in a scroll view"));
+                    continue;
+                };
+                let visible = scroll.documentVisibleRect();
+                let f = field.frame();
+                let in_view = f.origin.y >= visible.origin.y - TOLERANCE
+                    && f.origin.y + f.size.height <= visible.origin.y + visible.size.height + TOLERANCE;
+                if !in_view {
+                    found.push(format!(
+                        "inspector: the {key:?} field is out of view: it lies at {:.0}..{:.0}, the column shows {:.0}..{:.0}",
+                        f.origin.y,
+                        f.origin.y + f.size.height,
+                        visible.origin.y,
+                        visible.origin.y + visible.size.height
+                    ));
+                }
+            }
+        });
     }
 
     fn check_document(s: &Session, doc: DocumentId, name: &str, found: &mut Vec<String>) -> Result<(), String> {

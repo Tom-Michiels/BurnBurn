@@ -26,8 +26,10 @@ pub(super) type CamPanels = BTreeMap<(DocumentId, CamDialog), CamPanelUi>;
 pub struct CamPanelParts<'a> {
     pub title: String,
     pub visible: bool,
-    /// Each field with its control and the note beside it (the error, or why it is greyed).
+    /// Each field with its control and the note beside it (the error of that field).
     pub rows: Vec<(DialogField, &'a NSControl, &'a NSTextField)>,
+    /// Why fields are greyed: said once above the fields, not beside each of them.
+    pub reasons: &'a NSTextField,
     pub notes: &'a NSTextField,
     pub result: &'a NSTextField,
     pub capabilities: &'a NSTextField,
@@ -168,6 +170,7 @@ impl HostApp {
             title: ui.panel.title().to_string(),
             visible: ui.panel.isVisible(),
             rows: ui.rows.iter().map(|r| (r.field, r.control_ref(), &*r.note)).collect(),
+            reasons: &ui.reasons,
             notes: &ui.notes,
             result: &ui.result,
             capabilities: &ui.capabilities,
