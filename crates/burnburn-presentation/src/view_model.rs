@@ -719,6 +719,10 @@ pub enum MessageKey {
     HistoryTrimmed(usize),
     /// A machine profile was chosen that this app does not know; nothing changed.
     UnknownMachineProfile,
+    /// A repeat cannot be set up: the machine profile is not the one the job was frozen for.
+    RepeatRefused,
+    /// Machine hub: the control that stops an upload that is under way.
+    StopUpload,
     OpenFailed,
     /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
     OpenNewerSchema,

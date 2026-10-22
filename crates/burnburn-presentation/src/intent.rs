@@ -94,6 +94,24 @@ pub enum UiIntent {
     ChooseMachineProfile {
         id: String,
     },
+    /// Machine hub (W03): prepare a repeat of an earlier execution from its frozen job. Lists the
+    /// differences with the document's recipes; nothing is sent or changed yet.
+    RepeatExecution {
+        execution: burnburn_machine::ExecutionId,
+    },
+    /// Machine hub: make the repeat's frozen job the window's prepared job (upload is a separate,
+    /// explicit step and creates a new execution).
+    ConfirmRepeat {
+        document: DocumentId,
+    },
+    CancelRepeat,
+    /// Machine hub (W09): record one calibration proof.
+    RecordCalibration {
+        input: crate::machine_hub::ProofInput,
+    },
+    RemoveCalibration {
+        id: u64,
+    },
     /// Process-layer panel (B10, C01): a new operation for the selected objects.
     AddOperation {
         document: DocumentId,
