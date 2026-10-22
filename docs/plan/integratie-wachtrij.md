@@ -202,3 +202,12 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | W4-UI-gaten | T04: centerline als `TraceCommand` | `burnburn-trace`: `centerline_command(&CenterlineResult, …) -> TraceCommand` + `TraceDefinition` met centerline-recept (open paden) | `ApplyTraceLinked` ook in centerline-modus | `trace/tests/document_recipe::a_centerline_result_becomes_one_trace_command` (ontbreekt) | open (beeld/trace) |
 | W4-UI-gaten | S01: ellips in een schets | schets-entity `Ellipse` (center, rx, ry, rotatie) + solver-ondersteuning | `plan_commit` voor `Shape::Ellipse` | `editor::sketch::draw::an_ellipse_…` | open (sketch-domein) |
 | W4-UI-gaten | P07: bewaard profiel als actief apparaat kiezen (host) | – | host leest `AppController::known_profiles()` na het laden van de bibliotheken en laat de gebruiker het actieve apparaat kiezen (`SetMachineProfile`) | native keuzelijst (handmatig) | open (host) |
+
+## G5-cam
+
+| Pakket | Feature | Domein-API (crate::pad) | Gewenste intent / viewmodel | Story/test | Status |
+|---|---|---|---|---|---|
+| G5-cam | Productienesting in het Schikken-paneel: spiegel-optie (standaard verboden), restoppervlak per plaat, orderstatus per onderdeel, complete sets | `cam::nest::{nest_with, NestOptions{mirror: MirrorPolicy}, Placement::mirrored, NestResult::stock_use: Vec<StockUse>, order_status, complete_sets}` | `NestInput` een vlag "spiegelen toegestaan"; `NestReportViewModel` krijgt per plaat gebruikt/vrij en per onderdeel besteld/geplaatst; knop voor meer exemplaren/platen (W07) | `cam/tests/nest_production.rs::{a_part_that_fits_only_mirrored_stays_unplaced_until_mirroring_is_allowed, better_score_never_violates_forbidden_mirroring, every_sheet_says_how_much_is_used_and_how_much_is_left, orders_and_complete_sets_are_counted_from_what_was_placed}` | open (UI: lane G5-UI-gaten, W07) |
+| G5-cam | Tab Cut Power (vermogen op de tabs) | – (vraagt vermogen per beweging in `PlanEvent` en een bewezen RD-vorm) | veld in de Cut Settings-sheet | – | open (domein + bewijs) |
+| G5-cam | Feeder naar RD/GRBL | `PlanEvent::{Feed, Pause}`, `cam::plan_feeder` (planning klaar); `ruida::lower`/`gcode::check` weigeren getypeerd | zodra de draadvorm bewezen is: lowering + `RdRefusal::Feeder` laten vervallen | `scenarios/tests/g5_cam_feeder.rs` pint de weigering | open (hardwarebewijs) |
+| G5-cam | Per-vorm start/richting vergrendelen (C06) | – (alleen globale `OptimizationSettings`) | veld in Shape Properties | – | open (domein) |
