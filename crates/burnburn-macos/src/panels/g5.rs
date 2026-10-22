@@ -34,10 +34,12 @@ pub enum G5Panel {
     TracePrep,
     /// Venster ▸ Operatorweergave: machine, approved jobs and orders in one place (G6-werk, W08).
     Operator,
+    /// The binding of the selected text to its guide path; opens by itself (G7-editor, E08).
+    TextPath,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 8] = [
+    pub const ALL: [G5Panel; 9] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -46,6 +48,7 @@ impl G5Panel {
         G5Panel::Search,
         G5Panel::TracePrep,
         G5Panel::Operator,
+        G5Panel::TextPath,
     ];
 }
 
@@ -258,7 +261,7 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search)
+    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search | G5Panel::TextPath)
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -329,6 +332,11 @@ pub fn g5_panel(
         G5Panel::TracePrep => {
             let lines = super::g6_werk::trace_prep_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::TracePrepTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::TextPath => {
+            let lines = super::g7_editor::text_path_lines(doc, locale)?;
+            let title = crate::l10n_g7_editor::g7_text(crate::l10n_g7_editor::G7Text::TextPathTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
         G5Panel::Operator => {

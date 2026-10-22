@@ -792,7 +792,12 @@ impl Txn {
     }
 
     /// Evaluates one text again (not when it is gone): its outlines follow in this transaction.
-    fn evaluate_text(&mut self, id: crate::text::TextId, revision: RevisionId, evaluators: &[&dyn Evaluator]) -> Result<(), CommandError> {
+    fn evaluate_text(
+        &mut self,
+        id: crate::text::TextId,
+        revision: RevisionId,
+        evaluators: &[&dyn Evaluator],
+    ) -> Result<(), CommandError> {
         let owner = DerivedOwner::Text(id);
         if self.texts.text(id).is_none() {
             return Ok(()); // deleted in this transaction
@@ -811,7 +816,12 @@ impl Txn {
     }
 
     /// The texts bound to a guide that appears in any of the three lists (G7-editor, E08).
-    fn texts_following(&self, created: &[GeometryId], modified: &[GeometryId], deleted: &[GeometryId]) -> Vec<crate::text::TextId> {
+    fn texts_following(
+        &self,
+        created: &[GeometryId],
+        modified: &[GeometryId],
+        deleted: &[GeometryId],
+    ) -> Vec<crate::text::TextId> {
         let touched = |g: GeometryId| created.contains(&g) || modified.contains(&g) || deleted.contains(&g);
         self.texts.texts().filter(|(_, t)| t.path.is_some_and(|p| touched(p.guide))).map(|(id, _)| id).collect()
     }

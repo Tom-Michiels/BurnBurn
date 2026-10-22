@@ -95,6 +95,7 @@ fn path(p: &PathPanel, locale: Locale) -> Form {
         field(Slot::PathStart, t(TextText::PathStart), &p.start),
         field(Slot::PathOffset, t(TextText::PathOffset), &p.offset),
         check(Slot::PathReverse, t(TextText::PathReverse), p.reverse, true),
+        check(Slot::PathLive, t(TextText::PathLive), p.live, true),
     ];
     if !p.note.is_empty() {
         lines.push(FormLine::Problem(p.note.clone()));

@@ -489,3 +489,149 @@ mod several_texts {
         assert!(matches!(sent, UiIntent::Text { edit: TextEdit::Family(ref f), .. } if f == &bar.families[first]));
     }
 }
+
+// --- E08: text on a path as a live binding ---------------------------------------------------------------
+
+mod text_on_path {
+    use std::sync::Arc;
+
+    use burnburn_macos::adapter::{NativeEvent, Reaction, translate};
+    use burnburn_macos::l10n::Locale;
+    use burnburn_macos::panels::{
+        EditorControl as E, G5Control as C, G5Line, G5Panel, Slot, SlotValue, g5_intent, g5_opens_by_itself, g5_panel,
+        text_panels,
+    };
+    use burnburn_presentation::{
+        CommandKey, Distort, HeadlessEditorHarness, SelectMode, TextEdit, TextPathEdit, UiIntent,
+    };
+    use burnburn_test_support::fixtures::read_fixture;
+    use burnburn_text::{FontData, FontRef, FontStyle, MemoryFontSource};
+    use burnburn_types::DocumentId;
+
+    fn fonts() -> (Arc<MemoryFontSource>, FontRef) {
+        let mut src = MemoryFontSource::new();
+        let data =
+            Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
+        let regular = src.insert("Liberation Sans", FontStyle::Regular, data);
+        (Arc::new(src), regular)
+    }
+
+    /// A text and a circle selected; the dialog is open.
+    fn dialog() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        let (src, font) = fonts();
+        h.controller().attach_fonts(src, font);
+        h.send(UiIntent::InsertText { document: doc, text: "HIT".into() });
+        let outlines: Vec<_> = h.document(doc).unwrap().objects.iter().map(|o| o.id).collect();
+        h.invoke(doc, CommandKey::ToolCircle);
+        h.drag(doc, (100.0, 100.0), (140.0, 100.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        let circle = h.document(doc).unwrap().objects.iter().map(|o| o.id).find(|i| !outlines.contains(i)).unwrap();
+        let mut both = outlines;
+        both.push(circle);
+        h.send(UiIntent::Select { document: doc, ids: both, mode: SelectMode::Replace });
+        h.invoke(doc, CommandKey::TextOnPath);
+        (h, doc)
+    }
+
+    fn slot_intent(h: &HeadlessEditorHarness, doc: DocumentId, slot: Slot, value: SlotValue) -> Option<UiIntent> {
+        match translate(NativeEvent::TextPanel { document: doc, slot, value }, &h.view()) {
+            Reaction::Intent(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn the_sheet_has_a_live_check_that_is_on_and_turns_it_off() {
+        let (h, doc) = dialog();
+        let sheet = text_panels(&h.view(), doc, Locale::En).path.expect("the sheet");
+        assert!(sheet.live);
+        assert_eq!(
+            slot_intent(&h, doc, Slot::PathLive, SlotValue::Toggle(false)),
+            Some(UiIntent::TextPath { document: doc, edit: TextPathEdit::Live(false) })
+        );
+        assert_eq!(slot_intent(&h, doc, Slot::PathLive, SlotValue::Toggle(true)), None, "already on");
+    }
+
+    /// A bound text selected, with its panel.
+    fn bound() -> (HeadlessEditorHarness, DocumentId) {
+        let (mut h, doc) = dialog();
+        h.send(UiIntent::TextPath { document: doc, edit: TextPathEdit::Apply });
+        let ids: Vec<_> = h.document(doc).unwrap().objects.iter().take(1).map(|o| o.id).collect();
+        h.send(UiIntent::Select { document: doc, ids, mode: SelectMode::Replace });
+        (h, doc)
+    }
+
+    fn path_lines(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Option<Vec<G5Line>> {
+        g5_panel(&h.view(), doc, G5Panel::TextPath, locale, &[]).map(|m| m.lines)
+    }
+
+    #[test]
+    fn the_path_panel_opens_by_itself_for_a_bound_text_only() {
+        assert!(g5_opens_by_itself(G5Panel::TextPath));
+        let (h, doc) = bound();
+        assert!(path_lines(&h, doc, Locale::En).is_some());
+        // A plain text, a rectangle or nothing: no panel.
+        let (src, font) = fonts();
+        let mut plain = HeadlessEditorHarness::new();
+        let d = plain.new_document().unwrap();
+        plain.controller().attach_fonts(src, font);
+        plain.send(UiIntent::InsertText { document: d, text: "x".into() });
+        assert!(path_lines(&plain, d, Locale::En).is_none());
+    }
+
+    #[test]
+    fn the_path_panel_shows_the_binding_and_its_controls_send_text_edits() {
+        let (mut h, doc) = bound();
+        let lines = path_lines(&h, doc, Locale::En).unwrap();
+        assert!(lines.iter().any(
+            |l| matches!(l, G5Line::Text(t) if t.contains("follows") && t.contains("Pad") || t.contains("follows"))
+        ));
+        let field = |c: E| lines.iter().find(|l| l.control() == Some(C::Editor(c)));
+        assert!(matches!(field(E::TextPathStart), Some(G5Line::Field { text, .. }) if text == "0"));
+        assert!(matches!(field(E::TextPathOffset), Some(G5Line::Field { text, .. }) if text == "0"));
+        assert!(matches!(field(E::TextPathReverse), Some(G5Line::Check { on: false, .. })));
+        assert!(matches!(field(E::TextPathDistort), Some(G5Line::Choice { selected: 0, .. })));
+        assert!(matches!(field(E::TextPathUnbind), Some(G5Line::Button { enabled: true, .. })));
+
+        let send = |h: &mut HeadlessEditorHarness, c: E, v: &str| {
+            let intent = g5_intent(&h.view(), doc, G5Panel::TextPath, C::Editor(c), &[(C::Editor(c), v.to_owned())]);
+            if let Some(i) = &intent {
+                h.send(i.clone());
+            }
+            intent
+        };
+        assert_eq!(send(&mut h, E::TextPathStart, "0"), None, "the shown text again is no edit");
+        assert_eq!(
+            send(&mut h, E::TextPathStart, "12,5 mm"),
+            Some(UiIntent::Text { document: doc, edit: TextEdit::PathStart("12,5 mm".into()) })
+        );
+        assert_eq!(
+            send(&mut h, E::TextPathReverse, "1"),
+            Some(UiIntent::Text { document: doc, edit: TextEdit::PathReverse(true) })
+        );
+        assert_eq!(
+            send(&mut h, E::TextPathDistort, "1"),
+            Some(UiIntent::Text { document: doc, edit: TextEdit::PathDistort(Distort::Warp) })
+        );
+        assert_eq!(send(&mut h, E::TextPathDistort, "1"), None, "warp is already chosen");
+        let b = h.controller().text_sources(doc)[0].path.unwrap();
+        assert_eq!((b.start_mm, b.reverse, b.warp), (12.5, true, true));
+
+        assert_eq!(
+            send(&mut h, E::TextPathUnbind, ""),
+            Some(UiIntent::Text { document: doc, edit: TextEdit::UnbindPath })
+        );
+        assert!(path_lines(&h, doc, Locale::En).is_none(), "unbound: the panel goes");
+    }
+
+    #[test]
+    fn the_panel_speaks_dutch_and_names_a_lost_guide() {
+        let (h, doc) = bound();
+        let nl = path_lines(&h, doc, Locale::Nl).unwrap();
+        assert!(nl.iter().any(|l| matches!(l, G5Line::Text(t) if t.contains("volgt"))));
+        let model = g5_panel(&h.view(), doc, G5Panel::TextPath, Locale::Nl, &[]).unwrap();
+        assert_eq!(model.title, "Tekst op pad");
+    }
+}

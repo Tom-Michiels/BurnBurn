@@ -356,3 +356,117 @@ mod several_texts {
         );
     }
 }
+
+// --- E08: text on a path as a live binding ----------------------------------------------------------------
+
+mod text_on_path {
+    use std::sync::Arc;
+
+    use burnburn_presentation::{
+        CommandKey, Distort, HeadlessEditorHarness, SelectMode, TextEdit, TextPathEdit, UiIntent,
+    };
+    use burnburn_test_support::fixtures::read_fixture;
+    use burnburn_text::{FontData, FontRef, FontStyle, MemoryFontSource};
+    use burnburn_types::DocumentId;
+    use burnburn_windows::forms::g5;
+    use burnburn_windows::forms::{
+        ControlId, ControlValue, Form, FormContext, FormKind, FormLine, FormOutcome, PanelState, text,
+    };
+    use burnburn_windows::l10n::Locale;
+    use burnburn_windows::panels::{EditorControl as E, G5Control as C, G5Panel as P, Slot};
+
+    fn fonts() -> (Arc<MemoryFontSource>, FontRef) {
+        let mut src = MemoryFontSource::new();
+        let data =
+            Arc::new(FontData::from_bytes(read_fixture("fonts", "LiberationSans-Regular.ttf").unwrap()).unwrap());
+        let regular = src.insert("Liberation Sans", FontStyle::Regular, data);
+        (Arc::new(src), regular)
+    }
+
+    /// A text and a circle selected, the Text on a Path dialog open.
+    fn dialog() -> (HeadlessEditorHarness, DocumentId) {
+        let mut h = HeadlessEditorHarness::new();
+        let doc = h.new_document().unwrap();
+        let (src, font) = fonts();
+        h.controller().attach_fonts(src, font);
+        h.send(UiIntent::InsertText { document: doc, text: "HIT".into() });
+        let outlines: Vec<_> = h.document(doc).unwrap().objects.iter().map(|o| o.id).collect();
+        h.invoke(doc, CommandKey::ToolCircle);
+        h.drag(doc, (100.0, 100.0), (140.0, 100.0));
+        h.invoke(doc, CommandKey::ToolSelect);
+        let circle = h.document(doc).unwrap().objects.iter().map(|o| o.id).find(|i| !outlines.contains(i)).unwrap();
+        let mut both = outlines;
+        both.push(circle);
+        h.send(UiIntent::Select { document: doc, ids: both, mode: SelectMode::Replace });
+        h.invoke(doc, CommandKey::TextOnPath);
+        (h, doc)
+    }
+
+    fn bound() -> (HeadlessEditorHarness, DocumentId) {
+        let (mut h, doc) = dialog();
+        h.send(UiIntent::TextPath { document: doc, edit: TextPathEdit::Apply });
+        let first: Vec<_> = h.document(doc).unwrap().objects.iter().take(1).map(|o| o.id).collect();
+        h.send(UiIntent::Select { document: doc, ids: first, mode: SelectMode::Replace });
+        (h, doc)
+    }
+
+    fn forms(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Vec<Form> {
+        let vm = h.view();
+        g5::forms(&FormContext { vm: &vm, document: doc, locale }, &PanelState::default(), &Vec::new())
+    }
+
+    #[test]
+    fn the_sheet_has_the_live_check_on_by_default() {
+        let (h, doc) = dialog();
+        let vm = h.view();
+        let sheet = text::forms(&FormContext { vm: &vm, document: doc, locale: Locale::En })
+            .into_iter()
+            .find(|f| f.kind == FormKind::TextPath)
+            .expect("the sheet");
+        assert!(matches!(sheet.find(&ControlId::Text(Slot::PathLive)), Some(FormLine::Check { on: true, .. })));
+        let off = text::react(
+            &ControlId::Text(Slot::PathLive),
+            &ControlValue::Toggle(false),
+            &FormContext { vm: &vm, document: doc, locale: Locale::En },
+        );
+        assert_eq!(off, FormOutcome::Intent(UiIntent::TextPath { document: doc, edit: TextPathEdit::Live(false) }));
+    }
+
+    #[test]
+    fn the_path_form_opens_by_itself_for_a_bound_text_and_edits_the_binding() {
+        let (h, doc) = bound();
+        let form = forms(&h, doc, Locale::En)
+            .into_iter()
+            .find(|f| f.kind == FormKind::G5(P::TextPath))
+            .expect("the path form");
+        let id = |c: E| ControlId::G5(C::Editor(c));
+        assert!(matches!(form.find(&id(E::TextPathStart)), Some(FormLine::Field { text, .. }) if text == "0"));
+        assert!(matches!(form.find(&id(E::TextPathReverse)), Some(FormLine::Check { on: false, .. })));
+        assert!(matches!(
+            form.find(&id(E::TextPathDistort)),
+            Some(FormLine::Choice { items, selected: 0, .. }) if items.len() == 2 && items[0].enabled
+        ));
+        let vm = h.view();
+        let ctx = FormContext { vm: &vm, document: doc, locale: Locale::En };
+        let values = vec![(id(E::TextPathStart), ControlValue::Text("12,5".into()))];
+        assert_eq!(
+            g5::react(P::TextPath, &id(E::TextPathStart), &values, &ctx),
+            FormOutcome::Intent(UiIntent::Text { document: doc, edit: TextEdit::PathStart("12,5".into()) })
+        );
+        let values = vec![(id(E::TextPathDistort), ControlValue::Choice(1))];
+        assert_eq!(
+            g5::react(P::TextPath, &id(E::TextPathDistort), &values, &ctx),
+            FormOutcome::Intent(UiIntent::Text { document: doc, edit: TextEdit::PathDistort(Distort::Warp) })
+        );
+        assert_eq!(
+            g5::react(P::TextPath, &id(E::TextPathUnbind), &Vec::new(), &ctx),
+            FormOutcome::Intent(UiIntent::Text { document: doc, edit: TextEdit::UnbindPath })
+        );
+    }
+
+    #[test]
+    fn a_text_without_a_binding_has_no_path_form() {
+        let (h, doc) = dialog();
+        assert!(forms(&h, doc, Locale::En).iter().all(|f| f.kind != FormKind::G5(P::TextPath)));
+    }
+}

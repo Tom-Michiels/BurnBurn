@@ -197,10 +197,7 @@ fn several_lines_and_a_missing_font_are_failures_not_panics() {
     let mut s = DocumentSession::new(DocumentId::from_raw(1));
     let g = guide(&mut s, &ev, Path::line(Point::new(0.0, 0.0), Point::new(300.0, 0.0)).unwrap());
     let t = create(&mut s, &ev, obj, Some(bound(g, 0.0, 0.0, false)));
-    assert!(matches!(
-        s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().status,
-        EvalStatus::Failed { .. }
-    ));
+    assert!(matches!(s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().status, EvalStatus::Failed { .. }));
     assert!(outputs(&s, t).is_empty(), "nothing was ever valid");
 
     let (src, mut obj) = text("x");
@@ -244,7 +241,11 @@ fn the_evaluation_record_sees_the_guide() {
     let t = create(&mut s, &ev, obj, Some(bound(g, 0.0, 0.0, true)));
     let first = s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().inputs;
     assert!(first.is_some() && first != own, "bound text hashes differently from the same text unbound");
-    run(&mut s, &ev, CommandPayload::Transform { targets: vec![g], transform: Affine::translate(Vector::new(1.0, 0.0)).unwrap() });
+    run(
+        &mut s,
+        &ev,
+        CommandPayload::Transform { targets: vec![g], transform: Affine::translate(Vector::new(1.0, 0.0)).unwrap() },
+    );
     let second = s.snapshot().derived_record(DerivedOwner::Text(t)).unwrap().inputs;
     assert_ne!(first, second, "the guide's geometry is part of the inputs");
 }

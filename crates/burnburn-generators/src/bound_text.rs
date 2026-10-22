@@ -52,7 +52,8 @@ impl<F: FontSource> BoundTextEvaluator<F> {
         let Some(guide) = guide else {
             return failed(EvalDiagnosis::MissingSources { objects: vec![binding.guide] });
         };
-        let Ok(tolerance) = Length::from_mm(TOLERANCE_MM).map_err(|_| ()).and_then(|l| ProductionTolerance::new(l).map_err(|_| ()))
+        let Ok(tolerance) =
+            Length::from_mm(TOLERANCE_MM).map_err(|_| ()).and_then(|l| ProductionTolerance::new(l).map_err(|_| ()))
         else {
             return failed(EvalDiagnosis::InvalidDefinition);
         };

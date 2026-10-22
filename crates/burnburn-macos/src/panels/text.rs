@@ -68,10 +68,12 @@ pub enum Slot {
     BcWidth,
     BcCreate,
     BcCancel,
+    /// The text-on-path sheet: keep the text bound to the guide (G7-editor, E08).
+    PathLive,
 }
 
 impl Slot {
-    pub const ALL: [Slot; 47] = [
+    pub const ALL: [Slot; 48] = [
         Slot::Family,
         Slot::Bold,
         Slot::Italic,
@@ -119,6 +121,7 @@ impl Slot {
         Slot::BcWidth,
         Slot::BcCreate,
         Slot::BcCancel,
+        Slot::PathLive,
     ];
 
     /// How the control reports itself.
@@ -128,7 +131,7 @@ impl Slot {
             Height | HSpace | VSpace | PathStart | PathOffset | VarOffset | SerialCurrent | SerialStart | SerialEnd
             | SerialBy | SerialDigits | VarRow | BcPayload | BcModule | BcMinModule | BcQuiet | BcHeight
             | BcColumns | BcWidth => SlotKind::Text,
-            Bold | Italic | Uppercase | Welded | SingleLine | PathReverse | SerialWrap => SlotKind::Toggle,
+            Bold | Italic | Uppercase | Welded | SingleLine | PathReverse | PathLive | SerialWrap => SlotKind::Toggle,
             Family | Align | VAlign | PathDistort | VarKind | VarPolicy | BcType | BcEcc | BcInputMode => {
                 SlotKind::Choice
             }
@@ -214,6 +217,8 @@ pub struct PathPanel {
     pub start: String,
     pub offset: String,
     pub reverse: bool,
+    /// Keep the text bound to the guide (E08).
+    pub live: bool,
     pub apply_enabled: bool,
     /// "Select one text and one path" while the selection does not fit, else the last refusal.
     pub note: String,
@@ -325,6 +330,7 @@ pub enum TextText {
     PathStart,
     PathOffset,
     PathReverse,
+    PathLive,
     Apply,
     Cancel,
     VariableTitle,
@@ -396,6 +402,7 @@ fn pair(text: TextText) -> (&'static str, &'static str) {
         T::PathStart => ("Start op pad (mm)", "Start on the path (mm)"),
         T::PathOffset => ("Afstand tot pad (mm)", "Distance from the path (mm)"),
         T::PathReverse => ("Pad omkeren", "Reverse the path"),
+        T::PathLive => ("Tekst blijft het pad volgen", "Keep the text following the path"),
         T::Apply => ("Toepassen", "Apply"),
         T::Cancel => ("Annuleer", "Cancel"),
         T::VariableTitle => ("Variabele tekst", "Variable text"),
@@ -492,6 +499,7 @@ pub fn text_issue_text(issue: TextIssue, locale: Locale) -> String {
         TextIssue::PathEmptyGuide => tr("Het pad heeft geen lengte", "The path has no length", locale),
         TextIssue::PathFailed => tr("Tekst op pad is mislukt", "Text on a path failed", locale),
         TextIssue::NoFonts => tr("Geen lettertype beschikbaar", "No font available", locale),
+        TextIssue::NotOnPath => tr("Deze tekst volgt geen pad", "This text does not follow a path", locale),
         _ => tr("Niet mogelijk", "Not possible", locale),
     }
 }
@@ -600,6 +608,7 @@ fn path_panel(p: &TextOnPathViewModel, locale: Locale) -> PathPanel {
         start: p.start.clone(),
         offset: p.offset.clone(),
         reverse: p.reverse,
+        live: p.live,
         apply_enabled: p.ready,
         note,
     }
@@ -969,6 +978,9 @@ pub fn text_panel_intent(vm: &AppViewModel, document: DocumentId, slot: Slot, va
         }
         (Slot::PathReverse, SlotValue::Toggle(on)) => {
             (on != doc.text_on_path.as_ref()?.reverse).then(|| path(TextPathEdit::Reverse(on)))
+        }
+        (Slot::PathLive, SlotValue::Toggle(on)) => {
+            (on != doc.text_on_path.as_ref()?.live).then(|| path(TextPathEdit::Live(on)))
         }
         (Slot::PathApply, SlotValue::Press) => doc.text_on_path.as_ref().map(|_| path(TextPathEdit::Apply)),
         (Slot::PathCancel, SlotValue::Press) => doc.text_on_path.as_ref().map(|_| path(TextPathEdit::Cancel)),

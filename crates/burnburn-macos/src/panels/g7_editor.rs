@@ -5,8 +5,8 @@
 //! sends nothing.
 
 use burnburn_presentation::{
-    DocumentViewModel, ModifierKind, ModifierRow, ModifierStatus, ModifierValueKind, PartShapeKind, PlateField,
-    ShapeField, StructureEdit, StructureViewModel, UiIntent,
+    Distort, DocumentViewModel, ModifierKind, ModifierRow, ModifierStatus, ModifierValueKind, PartShapeKind,
+    PathBindingStatus, PlateField, ShapeField, StructureEdit, StructureViewModel, TextEdit, UiIntent,
 };
 use burnburn_types::DocumentId;
 
@@ -100,6 +100,13 @@ pub enum EditorControl {
         part: u64,
         kind: PartShapeKind,
     },
+    // --- Text that follows a path (E08).
+    TextPathStart,
+    TextPathOffset,
+    TextPathReverse,
+    /// A choice: rigid, then warp.
+    TextPathDistort,
+    TextPathUnbind,
 }
 
 fn t(text: G7Text, locale: Locale) -> String {
@@ -377,6 +384,38 @@ fn chain_lines(chain: &ModifierRow, locale: Locale) -> Vec<G5Line> {
     lines
 }
 
+/// The panel of a text that follows a guide path: where it starts, how far from the path, which
+/// way, how it bends, and the way to release it. `None` when the selection is no such text.
+pub(super) fn text_path_lines(doc: &DocumentViewModel, locale: Locale) -> Option<Vec<G5Line>> {
+    let p = doc.text_toolbar.as_ref()?.path.as_ref()?;
+    let mut lines = Vec::new();
+    match p.status {
+        PathBindingStatus::Following => {
+            lines.push(G5Line::Text(g7_fmt(G7Text::TextPathFollows, locale, &[p.guide.as_deref().unwrap_or_default()])))
+        }
+        PathBindingStatus::GuideMissing => lines.push(G5Line::Problem(t(G7Text::TextPathGuideMissing, locale))),
+        _ => lines.push(G5Line::Problem(t(G7Text::TextPathDoesNotFit, locale))),
+    }
+    lines.push(field(EditorControl::TextPathStart, t(G7Text::TextPathStart, locale), p.start.clone()));
+    lines.push(field(EditorControl::TextPathOffset, t(G7Text::TextPathOffset, locale), p.offset.clone()));
+    lines.push(G5Line::Check {
+        control: G5Control::Editor(EditorControl::TextPathReverse),
+        caption: t(G7Text::TextPathReverse, locale),
+        on: p.reverse,
+    });
+    lines.push(G5Line::Choice {
+        control: G5Control::Editor(EditorControl::TextPathDistort),
+        caption: t(G7Text::TextPathDistort, locale),
+        options: vec![t(G7Text::TextPathRigid, locale), t(G7Text::TextPathWarp, locale)],
+        selected: usize::from(p.distort == Distort::Warp),
+    });
+    lines.push(button(EditorControl::TextPathUnbind, t(G7Text::TextPathUnbind, locale), true));
+    if let Some(issue) = doc.text_toolbar.as_ref().and_then(|b| b.issue) {
+        lines.push(G5Line::Problem(super::text::text_issue_text(issue, locale)));
+    }
+    Some(lines)
+}
+
 fn structure(document: DocumentId, edit: StructureEdit) -> Option<UiIntent> {
     Some(UiIntent::Structure { document, edit })
 }
@@ -503,6 +542,34 @@ pub(super) fn editor_intent(
                 name: typed(EditorControl::ShapeAddName { part }).unwrap_or_default(),
             },
         ),
+        EditorControl::TextPathStart | EditorControl::TextPathOffset => {
+            let p = doc.text_toolbar.as_ref()?.path.as_ref()?;
+            let text = typed(control)?;
+            let (shown, edit): (&str, fn(String) -> TextEdit) = if control == EditorControl::TextPathStart {
+                (p.start.as_str(), TextEdit::PathStart)
+            } else {
+                (p.offset.as_str(), TextEdit::PathOffset)
+            };
+            (text.trim() != shown).then(|| UiIntent::Text { document, edit: edit(text) })
+        }
+        EditorControl::TextPathReverse => {
+            let on = flag_of(values, G5Control::Editor(control))?;
+            (on != doc.text_toolbar.as_ref()?.path.as_ref()?.reverse)
+                .then(|| UiIntent::Text { document, edit: TextEdit::PathReverse(on) })
+        }
+        EditorControl::TextPathDistort => {
+            let chosen = if super::g5::index_of(values, G5Control::Editor(control))? == 1 {
+                Distort::Warp
+            } else {
+                Distort::Rigid
+            };
+            (chosen != doc.text_toolbar.as_ref()?.path.as_ref()?.distort)
+                .then(|| UiIntent::Text { document, edit: TextEdit::PathDistort(chosen) })
+        }
+        EditorControl::TextPathUnbind => {
+            doc.text_toolbar.as_ref()?.path.as_ref()?;
+            Some(UiIntent::Text { document, edit: TextEdit::UnbindPath })
+        }
         EditorControl::ModOffsetDistance => None,
         EditorControl::ModOffsetMake => structure(
             document,

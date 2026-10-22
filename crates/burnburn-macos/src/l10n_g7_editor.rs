@@ -68,6 +68,24 @@ texts! {
     MakeOffsetHeading => ("Offsetketen op de selectie", "Offset chain on the selection"),
     MakeOffsetDistance => ("Afstand (mm, positief vergroot)", "Distance (mm, positive grows)"),
     MakeOffsetButton => ("Offsetketen maken", "Make offset chain"),
+    // --- Text that follows a path (E08).
+    TextPathTitle => ("Tekst op pad", "Text on a path"),
+    TextPathFollows => ("De tekst volgt het pad {0}.", "The text follows the path {0}."),
+    TextPathGuideMissing => (
+        "Het pad is verwijderd: de laatste omtrekken blijven staan en productie is geblokkeerd. Herstel het pad (ongedaan maken) of maak de tekst los.",
+        "The path is gone: the last outlines stay and production is blocked. Bring the path back (undo) or release the text."
+    ),
+    TextPathDoesNotFit => (
+        "De tekst past niet meer op het pad: de laatste omtrekken blijven staan en productie is geblokkeerd.",
+        "The text no longer fits on the path: the last outlines stay and production is blocked."
+    ),
+    TextPathStart => ("Start op pad (mm)", "Start on the path (mm)"),
+    TextPathOffset => ("Afstand tot pad (mm)", "Distance from the path (mm)"),
+    TextPathReverse => ("Pad omkeren", "Reverse the path"),
+    TextPathDistort => ("Vervormen", "Distort"),
+    TextPathRigid => ("Star: letters houden hun vorm", "Rigid: letters keep their shape"),
+    TextPathWarp => ("Buigen: contouren buigen mee", "Warp: outlines bend along"),
+    TextPathUnbind => ("Tekst losmaken van het pad", "Release the text from the path"),
     // --- Plates (P06).
     PlatesManageHeading => ("Platen beheren", "Manage plates"),
     PlateEditHeading => ("Plaat {0}", "Plate {0}"),

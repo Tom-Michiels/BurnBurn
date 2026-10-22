@@ -276,6 +276,11 @@ fn scenario() -> Result<(), String> {
         || "Warp is chosen in the dialog".into(),
         s.doc(doc).and_then(|d| d.text_on_path).is_some_and(|d| d.distort == burnburn_presentation::Distort::Warp),
     )?;
+    let live = s
+        .app
+        .with_text_widgets(doc, |p| p.text.path_live.state() == objc2_app_kit::NSControlStateValueOn)
+        .unwrap_or(false);
+    expect(|| "the sheet keeps the text following the path by default".into(), live)?;
     let count = s.doc(doc).ok_or("no document")?.objects.len();
     let apply = s.app.with_text_widgets(doc, |p| p.text.path_apply.retain()).ok_or("no apply button")?;
     // SAFETY: clicking our own button.
@@ -284,7 +289,7 @@ fn scenario() -> Result<(), String> {
     let after = s.doc(doc).ok_or("no document")?;
     expect(
         || format!("{} objects (was {count}), dialog {:?}", after.objects.len(), after.text_on_path),
-        after.objects.len() == count + 1 && after.text_on_path.is_none(),
+        after.objects.len() == count && after.text_on_path.is_none(),
     )?;
     let closed = s.app.with_text_widgets(doc, |p| !p.path_sheet_shown).unwrap_or(false);
     expect(|| "the sheet is closed".into(), closed)?;

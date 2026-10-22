@@ -157,6 +157,7 @@ pub(crate) struct TextSection {
     path_start: Retained<NSTextField>,
     path_offset: Retained<NSTextField>,
     path_reverse: Retained<NSButton>,
+    path_live: Retained<NSButton>,
     path_note: Retained<NSTextField>,
     path_apply: Retained<NSButton>,
     path_cancel: Retained<NSButton>,
@@ -232,6 +233,7 @@ pub(crate) fn text_section(
     let path_start = text_field(mtm, &target, Slot::PathStart, t(TextText::PathStart));
     let path_offset = text_field(mtm, &target, Slot::PathOffset, t(TextText::PathOffset));
     let path_reverse = check(mtm, &target, Slot::PathReverse, t(TextText::PathReverse));
+    let path_live = check(mtm, &target, Slot::PathLive, t(TextText::PathLive));
     let path_note = message_line(mtm, true);
     let path_cancel = push(mtm, &target, Slot::PathCancel, t(TextText::Cancel));
     let path_apply = push(mtm, &target, Slot::PathApply, t(TextText::Apply));
@@ -242,6 +244,7 @@ pub(crate) fn text_section(
         labelled(TextText::PathStart, &path_start, 24.0),
         labelled(TextText::PathOffset, &path_offset, 24.0),
         FormRow::new(Cells::Full(view!(path_reverse)), 22.0),
+        FormRow::new(Cells::Full(view!(path_live)), 22.0),
         FormRow::new(Cells::Full(view!(path_note)), 32.0),
         FormRow::new(Cells::Side(vec![view!(path_cancel), view!(path_apply)]), 28.0),
     ];
@@ -266,6 +269,7 @@ pub(crate) fn text_section(
         &path_start,
         &path_offset,
         &path_reverse,
+        &path_live,
         &path_cancel,
         &path_apply,
     ]);
@@ -293,6 +297,7 @@ pub(crate) fn text_section(
         path_start,
         path_offset,
         path_reverse,
+        path_live,
         path_note,
         path_apply,
         path_cancel,
@@ -342,6 +347,7 @@ impl TextSection {
             path_start: &self.path_start,
             path_offset: &self.path_offset,
             path_reverse: &self.path_reverse,
+            path_live: &self.path_live,
             path_note: &self.path_note,
             path_apply: &self.path_apply,
             path_cancel: &self.path_cancel,
@@ -370,6 +376,7 @@ pub struct TextWidgets<'a> {
     pub path_start: &'a NSTextField,
     pub path_offset: &'a NSTextField,
     pub path_reverse: &'a NSButton,
+    pub path_live: &'a NSButton,
     pub path_note: &'a NSTextField,
     pub path_apply: &'a NSButton,
     pub path_cancel: &'a NSButton,
@@ -418,6 +425,7 @@ impl DocWindow {
                 set_field(&s.path_start, &p.start, keep);
                 set_field(&s.path_offset, &p.offset, keep);
                 set_check(&s.path_reverse, p.reverse, true, "");
+                set_check(&s.path_live, p.live, true, "");
                 set_text(&s.path_note, &p.note);
                 s.path_apply.setEnabled(p.apply_enabled);
                 let height = s.path_form.lay_out();

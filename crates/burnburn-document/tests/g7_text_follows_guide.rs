@@ -68,11 +68,7 @@ impl Evaluator for Follower {
     }
 }
 
-fn run(
-    s: &mut DocumentSession,
-    ev: &Follower,
-    payload: CommandPayload,
-) -> Result<CommandOutcome, CommandError> {
+fn run(s: &mut DocumentSession, ev: &Follower, payload: CommandPayload) -> Result<CommandOutcome, CommandError> {
     let cmd = DocumentCommand { document: s.id(), expected: s.revision(), request: RequestId::from_raw(1), payload };
     s.apply_with(cmd, &[ev])
 }

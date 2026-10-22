@@ -3,20 +3,21 @@
 use burnburn_geometry::{Affine, Path, ProductionTolerance, Vector};
 use std::sync::Arc;
 
+use burnburn_document::text::PathBinding;
 use burnburn_document::text::{TextCommand, TextId, TextMode, TextObject};
 use burnburn_document::{
     CommandPayload, CompoundCommand, CompoundLabel, CompoundStep, DerivedOwner, DocumentSnapshot, GeometryCommand,
     GeometrySource,
 };
 use burnburn_generators::{GenError, PathTextParams, text_on_path};
-use burnburn_types::{DocumentId, Length, RequestId};
+use burnburn_types::{DocumentId, GeometryId, Length, RequestId};
 
 use burnburn_text::{FontData, FontError, FontRef, FontSize, FontSource, FontStyle, switch_style};
 
 use crate::field::{FieldError, format_mm, parse_length, parse_position};
 use crate::text_panel::{
-    Distort, TextEdit, TextField, TextIssue, TextMixed, TextOnPathViewModel, TextPathEdit, TextToggle,
-    TextToolbarViewModel,
+    Distort, PathBindingStatus, TextEdit, TextField, TextIssue, TextMixed, TextOnPathViewModel, TextPathEdit,
+    TextPathView, TextToggle, TextToolbarViewModel,
 };
 use crate::view_model::MessageKey;
 
@@ -40,12 +41,21 @@ struct PathDialog {
     start: String,
     offset: String,
     reverse: bool,
+    /// Keep the text bound to the guide (E08) instead of making ordinary paths.
+    live: bool,
     issue: Option<TextIssue>,
 }
 
 impl Default for PathDialog {
     fn default() -> Self {
-        PathDialog { distort: Distort::Rigid, start: "0".into(), offset: "0".into(), reverse: false, issue: None }
+        PathDialog {
+            distort: Distort::Rigid,
+            start: "0".into(),
+            offset: "0".into(),
+            reverse: false,
+            live: true,
+            issue: None,
+        }
     }
 }
 
@@ -148,6 +158,22 @@ fn apply(next: &mut TextObject, fonts: Option<&SharedFonts>, edit: TextEdit) -> 
                 next.layout.welded = false;
             }
         }
+        TextEdit::PathStart(text) => {
+            let start = number(&text, TextField::PathStart, true)?;
+            if start < 0.0 {
+                return Err(invalid(TextField::PathStart));
+            }
+            next.path.as_mut().ok_or(TextIssue::NotOnPath)?.start_mm = start;
+        }
+        TextEdit::PathOffset(text) => {
+            let offset = number(&text, TextField::PathOffset, true)?;
+            next.path.as_mut().ok_or(TextIssue::NotOnPath)?.offset_mm = offset;
+        }
+        TextEdit::PathReverse(on) => next.path.as_mut().ok_or(TextIssue::NotOnPath)?.reverse = on,
+        TextEdit::PathDistort(d) => next.path.as_mut().ok_or(TextIssue::NotOnPath)?.warp = d == Distort::Warp,
+        TextEdit::UnbindPath => {
+            next.path.take().ok_or(TextIssue::NotOnPath)?;
+        }
     }
     Ok(())
 }
@@ -164,6 +190,32 @@ fn set_style(next: &mut TextObject, fonts: Option<&SharedFonts>, style: FontStyl
     }
     next.font = switch_style(&next.font, style.is_bold(), style.is_italic());
     Ok(())
+}
+
+fn is_path_edit(edit: &TextEdit) -> bool {
+    matches!(
+        edit,
+        TextEdit::PathStart(_) | TextEdit::PathOffset(_) | TextEdit::PathReverse(_) | TextEdit::PathDistort(_)
+    )
+}
+
+/// Whether `obj` (bound to a guide) can be bent along its guide now, or why not.
+fn check_fit(snapshot: &DocumentSnapshot, fonts: Option<&SharedFonts>, obj: &TextObject) -> Result<(), TextIssue> {
+    let fonts = fonts.ok_or(TextIssue::NoFonts)?;
+    let binding = obj.path.ok_or(TextIssue::NotOnPath)?;
+    let guide = snapshot.object(binding.guide).ok_or(TextIssue::PathFailed)?;
+    let tolerance = Length::from_mm(PATH_TEXT_TOLERANCE_MM)
+        .ok()
+        .and_then(|l| ProductionTolerance::new(l).ok())
+        .ok_or(TextIssue::PathFailed)?;
+    let params = PathTextParams {
+        distort: if binding.warp { Distort::Warp } else { Distort::Rigid },
+        start: binding.start_mm,
+        offset: binding.offset_mm,
+        reverse: binding.reverse,
+        tolerance,
+    };
+    text_on_path(obj, fonts, guide.path(), &params).map(|_| ()).map_err(|e| path_issue(&e))
 }
 
 /// One toolbar edit of the selected text(s): one `TextCommand::Set` for one text that changes, one
@@ -183,7 +235,11 @@ pub(super) fn edit(
     for id in &ids {
         let Some(current) = snapshot.text(*id) else { return AppUpdate::default() };
         let mut next = current.clone();
-        if let Err(issue) = apply(&mut next, fonts, edit.clone()) {
+        let fitted = apply(&mut next, fonts, edit.clone()).and_then(|()| {
+            // A changed binding must still carry the text: the guide is looked at before the command.
+            if is_path_edit(&edit) && next.path.is_some() { check_fit(&snapshot, fonts, &next) } else { Ok(()) }
+        });
+        if let Err(issue) = fitted {
             s.text.issue = Some((first, issue));
             return AppUpdate { view_changed: true, ..AppUpdate::default() };
         }
@@ -331,6 +387,25 @@ fn toolbar_of(s: &Session, snapshot: &DocumentSnapshot, id: TextId) -> Option<Te
         can_convert: !s.selection.is_empty(),
         variable: t.variable.is_some(),
         issue: s.text.issue.filter(|(t, _)| *t == id).map(|(_, i)| i),
+        path: t.path.map(|b| {
+            let guide = snapshot.object(b.guide);
+            let failed = matches!(
+                snapshot.derived_record(DerivedOwner::Text(id)).map(|r| &r.status),
+                Some(burnburn_document::EvalStatus::Failed { .. })
+            );
+            TextPathView {
+                guide: guide.map(|g| g.name().to_owned()),
+                start: format_mm(b.start_mm),
+                offset: format_mm(b.offset_mm),
+                reverse: b.reverse,
+                distort: if b.warp { Distort::Warp } else { Distort::Rigid },
+                status: match (guide, failed) {
+                    (None, _) => PathBindingStatus::GuideMissing,
+                    (Some(_), true) => PathBindingStatus::DoesNotFit,
+                    (Some(_), false) => PathBindingStatus::Following,
+                },
+            }
+        }),
     })
 }
 
@@ -340,18 +415,19 @@ fn toolbar_of(s: &Session, snapshot: &DocumentSnapshot, id: TextId) -> Option<Te
 
 /// The text and the guide of the selection: exactly one text (with all its outlines) and one
 /// other object, whose path is the guide.
-fn text_and_guide(s: &Session, snapshot: &DocumentSnapshot) -> Option<(TextId, Arc<Path>)> {
+fn text_and_guide(s: &Session, snapshot: &DocumentSnapshot) -> Option<(TextId, GeometryId, Arc<Path>)> {
     let mut text = None;
     let mut guide = None;
     for id in s.selection.ids() {
         match text_of(snapshot, *id) {
             Some(t) if text.is_none_or(|f| f == t) => text = Some(t),
             Some(_) => return None,
-            None if guide.is_none() => guide = Some(Arc::clone(snapshot.object(*id)?.path())),
+            None if guide.is_none() => guide = Some((*id, Arc::clone(snapshot.object(*id)?.path()))),
             None => return None,
         }
     }
-    Some((text?, guide?))
+    let (guide_id, path) = guide?;
+    Some((text?, guide_id, path))
 }
 
 /// Whether Tekst op pad can act on the selection.
@@ -374,6 +450,7 @@ pub(super) fn path_view(s: &Session) -> Option<TextOnPathViewModel> {
         start: d.start.clone(),
         offset: d.offset.clone(),
         reverse: d.reverse,
+        live: d.live,
         ready: path_ready(s),
         issue: d.issue,
     })
@@ -402,6 +479,7 @@ pub(super) fn path_edit(
         TextPathEdit::Start(t) => dialog.start = t,
         TextPathEdit::Offset(t) => dialog.offset = t,
         TextPathEdit::Reverse(r) => dialog.reverse = r,
+        TextPathEdit::Live(on) => dialog.live = on,
         TextPathEdit::Cancel => {
             s.text.path = None;
             return AppUpdate::redraw(document);
@@ -427,7 +505,9 @@ fn apply_path(
     };
     let Some(fonts) = fonts else { return refuse(s, TextIssue::NoFonts) };
     let snapshot = s.doc.snapshot();
-    let Some((id, guide)) = text_and_guide(s, &snapshot) else { return refuse(s, TextIssue::PathNeedsTextAndGuide) };
+    let Some((id, guide_id, guide)) = text_and_guide(s, &snapshot) else {
+        return refuse(s, TextIssue::PathNeedsTextAndGuide);
+    };
     let Some(source) = snapshot.text(id) else { return refuse(s, TextIssue::PathNeedsTextAndGuide) };
     let start = match number(&dialog.start, TextField::PathStart, true) {
         Ok(v) if v >= 0.0 => v,
@@ -446,10 +526,23 @@ fn apply_path(
         Ok(p) => p,
         Err(e) => return refuse(s, path_issue(&e)),
     };
-    let name = format!("Tekst op pad: {}", source.content.lines().next().unwrap_or_default());
     let before = s.doc.revision();
-    let update =
-        apply_edit(s, document, CommandPayload::Edit(GeometryCommand::CreatePath { path: placed.path, name }), request);
+    let payload = if dialog.live {
+        // The text keeps following the guide: its outlines are the bent text from now on.
+        let mut bound = source.clone();
+        bound.path = Some(PathBinding {
+            guide: guide_id,
+            start_mm: start,
+            offset_mm: offset,
+            reverse: dialog.reverse,
+            warp: dialog.distort == Distort::Warp,
+        });
+        CommandPayload::Text(TextCommand::Set { text: id, source: Box::new(bound) })
+    } else {
+        let name = format!("Tekst op pad: {}", source.content.lines().next().unwrap_or_default());
+        CommandPayload::Edit(GeometryCommand::CreatePath { path: placed.path, name })
+    };
+    let update = apply_edit(s, document, payload, request);
     if s.doc.revision() == before {
         return refuse(s, TextIssue::Refused);
     }
