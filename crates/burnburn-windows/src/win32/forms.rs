@@ -671,6 +671,8 @@ pub(super) fn close_command(kind: FormKind) -> Option<ControlId> {
         FormKind::Schikken => None,
         // The notes close like their button; the others close with the menu item or the trace.
         FormKind::G5(crate::panels::G5Panel::Notes) => Some(ControlId::G5(crate::panels::G5Control::NotesClose)),
+        // The generator dialog closes like its Cancel button (G6-editor).
+        FormKind::G5(crate::panels::G5Panel::Generator) => Some(ControlId::G5(crate::panels::G5Control::GeneratorCancel)),
         FormKind::G5(_) => None,
         FormKind::Inspector | FormKind::Layers | FormKind::TextToolbar | FormKind::Variable | FormKind::Sketch => None,
     }

@@ -7,6 +7,7 @@
 //! `match` over its own `#[non_exhaustive]` enums can be exhaustive). Until User-flow moves it
 //! there, the Windows host compiles this same file (`#[path]`), so both hosts share one source.
 
+use burnburn_document::generator::GeneratorLabel;
 use burnburn_document::process::ProcessLabel;
 use burnburn_document::sketch::SketchLabel;
 use burnburn_document::structure::StructureLabel;
@@ -951,6 +952,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::ShowNotes => ("Notities tonen", "Show Notes"),
         C::TextOnPath => ("Tekst op pad…", "Text on a Path…"),
         C::BarcodeNew => ("Streepjescode…", "Bar Code…"),
+        C::GeneratorNew => ("Doos of scharnier…", "Box or Hinge…"),
+        C::GeneratorEdit => ("Bewerk generator…", "Edit Generator…"),
         other => return l10n_schikken::command_pair(other),
     })
 }
@@ -1020,6 +1023,12 @@ fn undo_pair(label: UndoLabel) -> Option<(&'static str, &'static str)> {
             _ => return None,
         },
         UndoLabel::Structure(StructureLabel::CreateModifier) => ("Patroon maken", "Create Pattern"),
+        UndoLabel::Generator(l) => match l {
+            GeneratorLabel::Create => ("Generator maken", "Create Generator"),
+            GeneratorLabel::Edit => ("Generator wijzigen", "Edit Generator"),
+            GeneratorLabel::Delete => ("Generator verwijderen", "Delete Generator"),
+            _ => return None,
+        },
         UndoLabel::Process(p) => match p {
             ProcessLabel::AddOperation => ("Bewerking toevoegen", "Add Operation"),
             ProcessLabel::UpdateOperation => ("Bewerking wijzigen", "Change Operation"),
@@ -1740,6 +1749,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         [CompoundLabel::ImportImage, CompoundLabel::MaskImage, CompoundLabel::ImportProject].map(UndoLabel::Compound),
     );
     undo.push(UndoLabel::Structure(StructureLabel::CreateModifier));
+    undo.extend([GeneratorLabel::Create, GeneratorLabel::Edit, GeneratorLabel::Delete].map(UndoLabel::Generator));
     undo.extend(
         [
             ArrangeLabel::DrawOrder,

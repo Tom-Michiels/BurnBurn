@@ -194,6 +194,11 @@ path = "../../tests/native/macos/g5_panels.rs"
 harness = false
 
 [[test]]
+name = "g6_panels_native"
+path = "../../tests/native/macos/g6_panels.rs"
+harness = false
+
+[[test]]
 name = "automation_native"
 path = "../../tests/native/macos/automation.rs"
 harness = false

@@ -1804,6 +1804,8 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::ShapesConvertToPath),
             sep(),
             plain(CommandKey::BarcodeNew),
+            plain(CommandKey::GeneratorNew),
+            plain(CommandKey::GeneratorEdit),
         ],
     ));
     main.addItem(&submenu(
