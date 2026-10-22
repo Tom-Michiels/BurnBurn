@@ -15,6 +15,7 @@ mod cut_options;
 mod field;
 mod files;
 mod files_task;
+mod grbl;
 mod harness;
 mod image_panel;
 mod image_task;
@@ -82,6 +83,7 @@ pub use files::{
     Lbrn2Warning, MaterialFilter, MaterialLinkStatus, MaterialOperationRow, MaterialOrigin, MaterialPanelViewModel,
     MaterialRow, TemplateScope,
 };
+pub use grbl::{GcodeExportViewModel, GrblFinding};
 pub use harness::{HeadlessEditorHarness, QueuedTaskPort};
 pub use image_panel::{
     ImageAdjustInput, ImageAdjustViewModel, ImageField, ImageImportViewModel, ImageIssue, ImagePreview, ImageViewModel,

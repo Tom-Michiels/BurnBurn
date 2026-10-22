@@ -198,6 +198,7 @@ pub(super) fn document_view(
         sketches: sketch_rows(&snapshot),
         plan: s.compiled.as_ref().map(|c| plan_view(c, s, machine)),
         export: s.export.clone(),
+        gcode_export: s.gcode_export.clone(),
         tracer: s.tracer.as_ref().map(|t| tracer_view(t, s)),
         job: None,
         problem: s.problem.clone(),
@@ -231,6 +232,7 @@ pub(super) fn document_view(
 
 pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Option<&Machine>) -> CommandState {
     let has_machine = machine.is_some();
+    let is_grbl = machine.is_some_and(|m| m.grbl.is_some());
     let label = match (key, s) {
         (CommandKey::Undo, Some(s)) => s.doc.undo_label().map_or(MessageKey::Command(key), MessageKey::UndoAction),
         (CommandKey::Redo, Some(s)) => s.doc.redo_label().map_or(MessageKey::Command(key), MessageKey::RedoAction),
@@ -263,7 +265,9 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         }
         (CommandKey::ApplyPreview, Some(s)) => (current_boolean_preview(s).is_some(), false),
         (CommandKey::Compile, Some(s)) => (has_machine && !s.doc.snapshot().process().is_empty(), false),
-        (CommandKey::ExportRd, Some(s)) => (has_machine && s.compiled.is_some(), false),
+        (CommandKey::ExportRd, Some(s)) => (has_machine && !is_grbl && s.compiled.is_some(), false),
+        // Only a plan compiled for this GRBL machine (a Ruida plan carries no GRBL findings).
+        (CommandKey::ExportGcode, Some(s)) => (s.compiled.as_ref().is_some_and(|c| c.grbl.is_some()), false),
         (CommandKey::ApplyTrace, Some(s)) => (s.tracer.as_ref().is_some_and(|t| t.has_result()), false),
         (CommandKey::ApplyTraceLinked, Some(s)) => (super::trace_link::apply_enabled(s), false),
         (CommandKey::TraceEdit, Some(s)) => (super::trace_link::selected_trace(s).is_some(), false),

@@ -49,6 +49,7 @@ impl AppController {
         if self.app_tasks.remove(&outcome.id).is_some() {
             return self.app_task_finished(outcome);
         }
+        let machine = self.machine.clone();
         let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
         let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
         let document = outcome.document;
@@ -154,12 +155,15 @@ impl AppController {
             }
             Err(TaskError::Trace(_)) => s.messages.push(StatusMessage { key: MessageKey::TraceFailed }),
             Ok(TaskOutput::Compiled { plan, preview, report }) => {
-                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record });
+                let grbl = Compiled::grbl_for(&plan, machine.as_ref());
+                s.compiled = Some(Compiled { plan, preview, report, placement: None, setup_key: 0, record, grbl });
                 update.scenes_changed.push(document);
             }
             Ok(TaskOutput::CompiledPlaced { plan, preview, report, placement }) => {
                 let setup_key = placement.setup_key;
-                s.compiled = Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record });
+                let grbl = Compiled::grbl_for(&plan, machine.as_ref());
+                s.compiled =
+                    Some(Compiled { plan, preview, report, placement: Some(placement), setup_key, record, grbl });
                 update.scenes_changed.push(document);
             }
             Err(TaskError::Placement(why)) => {
@@ -176,6 +180,20 @@ impl AppController {
                     .filter(|c| c.plan.id() == plan)
                     .map_or(outcome.source, |c| c.plan.source().document_revision);
                 s.export = Some(ExportViewModel { plan, plan_revision, path, rd_hash, bytes });
+            }
+            Ok(TaskOutput::ExportedGcode { plan, path, bytes, lines }) => {
+                let plan_revision = s
+                    .compiled
+                    .as_ref()
+                    .filter(|c| c.plan.id() == plan)
+                    .map_or(outcome.source, |c| c.plan.source().document_revision);
+                s.gcode_export = Some(crate::GcodeExportViewModel { plan, plan_revision, path, bytes, lines });
+            }
+            Err(TaskError::GcodeLower(_)) => {
+                s.messages.push(StatusMessage { key: MessageKey::GcodeRefused });
+                update
+                    .effects
+                    .push(HostEffect::ShowError { document: Some(document), message: MessageKey::GcodeRefused });
             }
             Err(e @ (TaskError::Lower(_) | TaskError::Encode(_) | TaskError::Write(_))) => {
                 // A feature without a proven RD form is said in words (cross-hatch, dot, ramp, Z).

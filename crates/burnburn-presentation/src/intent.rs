@@ -105,6 +105,11 @@ pub enum UiIntent {
         document: DocumentId,
         path: PathBuf,
     },
+    /// Location chosen in the G-code save panel (G5-grbl-ui).
+    ExportGcode {
+        document: DocumentId,
+        path: PathBuf,
+    },
     /// Tracer (B9): an image file to trace; it is read and decoded off the UI thread.
     OpenTraceSource {
         document: DocumentId,
@@ -751,6 +756,8 @@ pub enum CommandKey {
     Compile,
     /// Write the current plan as an RD file (asks for a location first).
     ExportRd,
+    /// Write the current plan as G-code for a GRBL machine (asks for a location first).
+    ExportGcode,
     /// Apply the current trace result (one history entry).
     ApplyTrace,
     /// Apply the current contour trace as a *trace* of the document (T02): source, recipe and
@@ -992,6 +999,7 @@ impl CommandKey {
         CommandKey::Measure,
         CommandKey::Compile,
         CommandKey::ExportRd,
+        CommandKey::ExportGcode,
         CommandKey::ApplyTrace,
         CommandKey::ApplyTraceLinked,
         CommandKey::TraceEdit,

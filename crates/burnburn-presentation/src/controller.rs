@@ -151,6 +151,12 @@ pub enum HostEffect {
         document: DocumentId,
         suggested_name: String,
     },
+    /// Save panel for a G-code export (never the project file). The host answers with
+    /// `UiIntent::ExportGcode`.
+    ShowGcodeExportPanel {
+        document: DocumentId,
+        suggested_name: String,
+    },
     /// Start editing a sketch dimension's text in the constraint list (double-click on its label,
     /// or right after "Maat" added it). The host answers with `SetSketchDimension`.
     EditSketchDimension {
@@ -238,6 +244,7 @@ struct Session {
     /// Machine artefacts: never document data, never part of undo (AGENTS.md).
     compiled: Option<Compiled>,
     export: Option<ExportViewModel>,
+    gcode_export: Option<crate::GcodeExportViewModel>,
     tracer: Option<Tracer>,
     /// The plan a PrepareJob task is lowering, and the frozen job of this document (C1).
     preparing: Option<Arc<JobPlan>>,
@@ -318,6 +325,7 @@ impl Session {
             boolean_preview: None,
             compiled: None,
             export: None,
+            gcode_export: None,
             tracer: None,
             preparing: None,
             prepared: None,
@@ -561,6 +569,7 @@ impl AppController {
             }
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
             UiIntent::ExportRd { document, path } => self.export_rd(document, path),
+            UiIntent::ExportGcode { document, path } => self.export_gcode(document, path),
             UiIntent::OpenTraceSource { document, path } => self.open_trace_source(document, path),
             UiIntent::SetTraceRecipe { document, recipe } => self.set_trace_recipe(document, *recipe),
             UiIntent::Machine { document, action, seen } => self.machine_action(document, action, seen, None).0,
@@ -876,6 +885,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }
         | UiIntent::ExportRd { document, .. }
+        | UiIntent::ExportGcode { document, .. }
         | UiIntent::OpenTraceSource { document, .. }
         | UiIntent::SetTraceRecipe { document, .. }
         | UiIntent::SetImageDpi { document, .. }
