@@ -119,12 +119,13 @@ impl AppController {
             Err(TaskError::Boolean(_) | TaskError::UnknownObject(_)) => {
                 s.messages.push(StatusMessage { key: MessageKey::BooleanFailed });
             }
-            Ok(TaskOutput::ImageLoaded { source, bytes, path }) => {
-                let media = match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
-                    Some("jpg" | "jpeg") => "image/jpeg",
-                    _ => "image/png",
-                };
-                s.tracer = Some(Tracer::new(source, bytes, media));
+            Ok(TaskOutput::ImageLoaded { source, bytes, .. }) => {
+                let media = super::image::media_of(&bytes);
+                let mut tracer = Tracer::new(source, bytes, media);
+                if let Some((trace, recipe)) = s.trace_link.take(outcome.id) {
+                    tracer.reopen(trace, *recipe);
+                }
+                s.tracer = Some(tracer);
             }
             Ok(TaskOutput::Traced(result)) => {
                 if let Some(t) = s.tracer.as_mut() {

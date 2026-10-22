@@ -19,11 +19,11 @@ impl Default for DecodeLimits {
     }
 }
 
-/// Decodes PNG or JPEG bytes. Other formats are rejected even if the decoder could read them.
-/// The decoded samples are stored unchanged (no colour conversion, no EXIF rotation).
+/// Decodes PNG, JPEG, BMP or TIFF bytes. Other formats are rejected even if the decoder could
+/// read them. The decoded samples are stored unchanged (no colour conversion, no EXIF rotation).
 pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<SourceImage, DecodeError> {
     let format = match image::guess_format(bytes) {
-        Ok(f @ (ImageFormat::Png | ImageFormat::Jpeg)) => f,
+        Ok(f @ (ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Bmp | ImageFormat::Tiff)) => f,
         _ => return Err(DecodeError::UnsupportedFormat),
     };
     let malformed = |e: image::ImageError| DecodeError::Malformed(e.to_string());
@@ -64,6 +64,8 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<SourceImage, DecodeE
     let dpi = match format_of(bytes) {
         Some(ImageFormat::Png) => png_dpi(bytes),
         Some(ImageFormat::Jpeg) => jfif_dpi(bytes),
+        Some(ImageFormat::Bmp) => bmp_dpi(bytes),
+        Some(ImageFormat::Tiff) => tiff_dpi(bytes),
         _ => None,
     };
     Ok(image.with_metadata(SourceMetadata { dpi_suggestion: dpi }))
@@ -107,6 +109,73 @@ fn png_dpi(bytes: &[u8]) -> Option<(f64, f64)> {
         }
         at = at.checked_add(len)?.checked_add(12)?;
     }
+}
+
+/// BMP info header `biXPelsPerMeter`/`biYPelsPerMeter` (offsets 38 and 42); zero means "not set".
+fn bmp_dpi(bytes: &[u8]) -> Option<(f64, f64)> {
+    let le_u32 = |at: usize| -> Option<u32> {
+        let s = bytes.get(at..at.checked_add(4)?)?;
+        Some(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    };
+    // The 12-byte OS/2 core header has no resolution fields.
+    if bytes.get(0..2)? != b"BM" || le_u32(14)? < 40 {
+        return None;
+    }
+    let x = i32::from_le_bytes(le_u32(38)?.to_le_bytes());
+    let y = i32::from_le_bytes(le_u32(42)?.to_le_bytes());
+    if x <= 0 || y <= 0 {
+        return None;
+    }
+    Some((f64::from(x) * 0.0254, f64::from(y) * 0.0254))
+}
+
+/// Most IFD entries read before giving up (a real directory has a few dozen).
+const TIFF_MAX_ENTRIES: usize = 512;
+
+/// TIFF `XResolution`/`YResolution` (tags 282/283) with `ResolutionUnit` (296): inch (2, the
+/// default) or centimetre (3); "no unit" (1) gives no suggestion. Only the first directory is read.
+fn tiff_dpi(bytes: &[u8]) -> Option<(f64, f64)> {
+    let little = match bytes.get(0..2)? {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    let u16_at = |at: usize| -> Option<u16> {
+        let s = bytes.get(at..at.checked_add(2)?)?;
+        Some(if little { u16::from_le_bytes([s[0], s[1]]) } else { u16::from_be_bytes([s[0], s[1]]) })
+    };
+    let u32_at = |at: usize| -> Option<u32> {
+        let s = bytes.get(at..at.checked_add(4)?)?;
+        let a = [s[0], s[1], s[2], s[3]];
+        Some(if little { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
+    };
+    let ifd = usize::try_from(u32_at(4)?).ok()?;
+    let count = usize::from(u16_at(ifd)?).min(TIFF_MAX_ENTRIES);
+    let (mut x, mut y, mut unit) = (None, None, 2u16);
+    for i in 0..count {
+        let at = ifd.checked_add(2)?.checked_add(i.checked_mul(12)?)?;
+        let (tag, kind) = (u16_at(at)?, u16_at(at + 2)?);
+        let rational = || -> Option<f64> {
+            if kind != 5 {
+                return None;
+            }
+            let offset = usize::try_from(u32_at(at + 8)?).ok()?;
+            let (num, den) = (f64::from(u32_at(offset)?), f64::from(u32_at(offset.checked_add(4)?)?));
+            (den > 0.0 && num > 0.0).then(|| num / den)
+        };
+        match tag {
+            282 => x = rational(),
+            283 => y = rational(),
+            296 if kind == 3 => unit = u16_at(at + 8)?,
+            _ => {}
+        }
+    }
+    let per_inch = match unit {
+        2 => 1.0,
+        3 => 2.54,
+        _ => return None,
+    };
+    Some((x? * per_inch, y? * per_inch))
 }
 
 /// JPEG `APP0` JFIF density with units 1 (DPI) or 2 (dots per cm). Only the first segment is read.

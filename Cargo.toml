@@ -40,7 +40,7 @@ crc32fast = "1.5.2"
 dispatch2 = "0.3.1"
 harfrust = { version = "0.14.0", default-features = false, features = ["std"] }
 i_overlay = { version = "9.1.0", default-features = false }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25.10", default-features = false, features = ["bmp", "png", "jpeg", "tiff"] }
 libm = "0.2.16"
 lyon_tessellation = "1.0.22"
 objc2 = "0.6.5"

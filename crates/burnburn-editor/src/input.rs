@@ -73,6 +73,9 @@ pub enum CanvasKey {
     Return,
     /// Remove the last placed point of a polyline or pen path.
     Backspace,
+    /// Tab: step to the next snap candidate under the pointer (E04). The tools ignore it; the
+    /// window state keeps the choice in [`crate::SnapSettings::cycle`].
+    Tab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

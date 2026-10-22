@@ -61,11 +61,15 @@ mod reshape;
 mod shapes;
 mod shortcuts;
 mod sketch;
+mod sketch_param;
+
+pub(crate) use sketch_param::normalise_decimal_commas;
 mod support;
 mod tasks;
 mod tests_gen;
 mod text;
 mod trace;
+mod trace_link;
 mod variable;
 mod view;
 
@@ -224,6 +228,8 @@ struct Session {
     /// Default-name counters per created kind ("Rechthoek 2", "Cirkel 1").
     created: BTreeMap<NameKind, u64>,
     snap: SnapSettings,
+    /// The last canvas pointer event: Tab replays it to show the next snap candidate (E04).
+    last_pointer: Option<burnburn_editor::PointerEvent>,
     cycle: Option<SelectionCycle>,
     tool_size_error: Option<MessageKey>,
     /// Problems of the current revision (recomputed on every revision change).
@@ -254,6 +260,8 @@ struct Session {
     options: shapes::ToolOptions,
     /// Bitmap import sheet, Adjust Image panel and decoded sources (window state).
     image: image::ImageState,
+    /// Tracers being re-opened from a stored trace (window state).
+    trace_link: trace_link::TraceLinkState,
     /// Inspector reference point, aspect lock and wireframe view (window state).
     arrange: arrange::ArrangeState,
     /// The open CAM dialogs of this window: Optimization Settings and the test generators.
@@ -301,6 +309,7 @@ impl Session {
             pending: BTreeMap::new(),
             created: BTreeMap::new(),
             snap: SnapSettings::default(),
+            last_pointer: None,
             cycle: None,
             tool_size_error: None,
             issues,
@@ -324,6 +333,7 @@ impl Session {
             geometry_dialog: None,
             options: shapes::ToolOptions::default(),
             image: image::ImageState::default(),
+            trace_link: trace_link::TraceLinkState::default(),
             arrange: arrange::ArrangeState::default(),
             cam: process::CamState::default(),
             nest: nest::NestState::default(),
@@ -501,6 +511,9 @@ impl AppController {
                 }
                 AppUpdate::default()
             }
+            UiIntent::SelectByKind { document, kind, mode } => {
+                self.with_session(document, |s| arrange::select_by_kind(s, document, kind, mode))
+            }
             UiIntent::Select { document, ids, mode } => {
                 let change = match mode {
                     SelectMode::Replace => SelectionChange::Replace(ids),
@@ -544,6 +557,7 @@ impl AppController {
                 self.sketch_edit(document, SketchCommand::RemoveConstraint { sketch, constraint })
             }
             UiIntent::SetSketchDimension { document, sketch, constraint, text } => {
+                let text = sketch_param::normalise_decimal_commas(&text);
                 self.sketch_edit(document, SketchCommand::SetDimensionValue { sketch, constraint, text })
             }
             UiIntent::Import { document, path } => self.parse_import(document, path),
@@ -669,8 +683,13 @@ impl AppController {
                 self.sketch_edit(document, SketchCommand::SetDimensionRole { sketch, constraint, role })
             }
             UiIntent::SelectSketchProblem { document } => self.select_sketch_problem(document),
+            UiIntent::RestoreLastValidSketch { document, sketch } => self.restore_last_valid_sketch(document, sketch),
             UiIntent::SetSketchParameter { document, sketch, name, text } => {
-                self.sketch_edit(document, SketchCommand::SetParameter { sketch, name, text })
+                let text = sketch_param::normalise_decimal_commas(&text);
+                self.set_sketch_parameter(document, sketch, name, text)
+            }
+            UiIntent::RemoveSketchParameter { document, sketch, name } => {
+                self.remove_sketch_parameter(document, sketch, name)
             }
             UiIntent::ApplyGeometryDialog { document, text } => {
                 let request = self.next_id::<RequestId>();
@@ -834,6 +853,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::ConfirmClose { document, .. }
         | UiIntent::DialogCancelled { document, .. }
         | UiIntent::Select { document, .. }
+        | UiIntent::SelectByKind { document, .. }
         | UiIntent::CommitField { document, .. }
         | UiIntent::CommitToolSize { document, .. }
         | UiIntent::AddOperation { document, .. }
@@ -847,10 +867,12 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::SetTraceForm { document, .. }
         | UiIntent::ApplyTracePreset { document, .. }
         | UiIntent::SetSketchParameter { document, .. }
+        | UiIntent::RemoveSketchParameter { document, .. }
         | UiIntent::SketchSelect { document, .. }
         | UiIntent::AddSketchDimension { document, .. }
         | UiIntent::SetSketchDimensionRole { document, .. }
         | UiIntent::SelectSketchProblem { document }
+        | UiIntent::RestoreLastValidSketch { document, .. }
         | UiIntent::ApplyGeometryDialog { document, .. }
         | UiIntent::CancelGeometryDialog { document }
         | UiIntent::SetToolOption { document, .. }

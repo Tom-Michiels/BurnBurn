@@ -1591,6 +1591,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::SelectContained),
             plain(CommandKey::SelectSmaller),
             plain(CommandKey::SelectCircles),
+            plain(CommandKey::SelectSameType),
             sep(),
             plain(CommandKey::DeleteDuplicates),
             sep(),
@@ -1654,6 +1655,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             plain(CommandKey::UnlockSelected),
             plain(CommandKey::UnlockAll),
             plain(CommandKey::HideSelected),
+            plain(CommandKey::IsolateSelection),
             plain(CommandKey::ShowAll),
         ],
     ));
@@ -1760,6 +1762,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
             item(c(CommandKey::SaveProcessedBitmap), "", false),
             sep(),
             item(MenuItem::TraceImage, "", false),
+            item(c(CommandKey::TraceEdit), "", false),
         ],
     ));
     main.addItem(&submenu(

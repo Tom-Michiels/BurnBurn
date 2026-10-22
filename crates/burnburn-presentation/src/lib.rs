@@ -109,7 +109,7 @@ pub use task::{
     TaskRequest, run_task,
 };
 pub use text_panel::{
-    Align, Distort, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
+    Align, Distort, MissingFontChoice, TextEdit, TextField, TextIssue, TextOnPathViewModel, TextPathEdit, TextToggle,
     TextToolbarViewModel, VAlign,
 };
 pub use variable_panel::{

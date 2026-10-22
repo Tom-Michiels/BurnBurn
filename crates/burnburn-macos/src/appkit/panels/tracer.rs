@@ -45,6 +45,8 @@ pub(crate) struct TracerSheet {
     pub(crate) suggestion: Retained<NSButton>,
     pub(crate) preview: Retained<NSImageView>,
     pub(crate) apply: Retained<NSButton>,
+    /// "Pas toe als trace" (T02): the result stays a re-editable trace of the project.
+    pub(crate) apply_linked: Retained<NSButton>,
     pub(crate) close: Retained<NSButton>,
     pub(crate) shown: bool,
     /// What the view model's form had at the last refresh; a widget is written when its value changed.
@@ -135,6 +137,12 @@ pub(crate) fn tracer_sheet(mtm: MainThreadMarker, locale: Locale, command_button
     close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
     let apply =
         command_button(&content, t(HostText::TracerApply), CommandKey::ApplyTrace, rect(w - 124.0, 12.0, 112.0, 28.0));
+    let apply_linked = command_button(
+        &content,
+        t(HostText::TracerApplyLinked),
+        CommandKey::ApplyTraceLinked,
+        rect(w - 232.0 - 12.0 - 160.0, 12.0, 160.0, 28.0),
+    );
     sheet.setContentView(Some(&content));
     TracerSheet {
         sheet,
@@ -148,6 +156,7 @@ pub(crate) fn tracer_sheet(mtm: MainThreadMarker, locale: Locale, command_button
         suggestion,
         preview,
         apply,
+        apply_linked,
         close,
         shown: false,
         last: None,
@@ -234,6 +243,9 @@ impl DocWindow {
         show_bitmap(&s.preview, &mut s.last_preview, preview.as_ref());
         s.apply.setEnabled(
             vm.active == Some(document) && vm.commands.get(&CommandKey::ApplyTrace).is_some_and(|c| c.enabled),
+        );
+        s.apply_linked.setEnabled(
+            vm.active == Some(document) && vm.commands.get(&CommandKey::ApplyTraceLinked).is_some_and(|c| c.enabled),
         );
         if !s.shown {
             s.shown = begin_sheet(&self.window, &s.sheet, "showing the tracer sheet");

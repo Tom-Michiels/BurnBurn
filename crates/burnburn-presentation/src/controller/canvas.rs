@@ -39,6 +39,11 @@ impl AppController {
                 time: event.time,
             };
             let Some(request) = request else { return error(Some(document), MessageKey::CommandRejected) };
+            // A new pointer position starts the Tab list over (E04); a finished gesture does too.
+            if s.last_pointer.is_none_or(|last| last.position != ev.position) {
+                s.snap.cycle = 0;
+            }
+            s.last_pointer = Some(ev);
             if let Some(update) = super::registration::pick(s, document, position, &event) {
                 return update;
             }
@@ -53,6 +58,9 @@ impl AppController {
                 s.cycle = None; // any other press ends the "2 van 3" display
             }
             let update = run_tool(s, document, &CanvasInput::Pointer(ev), request);
+            if ev.phase == PointerPhase::Up {
+                s.snap.cycle = 0;
+            }
             if alt_press {
                 // "2 van 3": where the Alt-click cycle stands among the candidates under the pointer.
                 let hits = hit_test(&s.doc.snapshot(), position, s.camera.mm_per_point() * CLICK_TOLERANCE_PT);
@@ -80,6 +88,16 @@ impl AppController {
             CanvasKey::Delete => return self.invoke(Some(document), CommandKey::Delete),
             other => other,
         };
+        if key == CanvasKey::Tab {
+            let request = self.next_id::<RequestId>();
+            return self.with_session(document, |s| {
+                let (Some(last), Some(request)) = (s.last_pointer, request) else { return AppUpdate::default() };
+                s.snap.cycle = s.snap.cycle.wrapping_add(1);
+                // The same position again, as a hover: the tool shows the next candidate.
+                let hover = PointerEvent { phase: PointerPhase::Move, ..last };
+                run_tool(s, document, &CanvasInput::Pointer(hover), request)
+            });
+        }
         if key == CanvasKey::Escape
             && let Some(s) = self.sessions.get_mut(&document)
             && s.trim_mode
@@ -168,6 +186,7 @@ fn rejection_kind(r: &Rejection) -> ToolRejection {
         Rejection::NeedsSelection => ToolRejection::NeedsSelection,
         Rejection::InvalidSelection => ToolRejection::InvalidSelection,
         Rejection::NothingToConstrain => ToolRejection::NothingToConstrain,
+        Rejection::AmbiguousRelations => ToolRejection::AmbiguousRelations,
         Rejection::InvalidValue => ToolRejection::InvalidValue,
         Rejection::Corner(_) => ToolRejection::Corner,
         Rejection::Trim(_) => ToolRejection::Trim,

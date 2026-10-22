@@ -12,6 +12,10 @@ use crate::input::PointerEvent;
 /// A line within this angle (degrees) of an axis counts as horizontal or vertical for
 /// auto-constrain; two distinct points within [`COINCIDENT_MM`] count as one.
 const AXIS_ANGLE_DEG: f64 = 1.0;
+/// A line between [`AXIS_ANGLE_DEG`] and this many degrees off an axis is *ambiguous*: too far to
+/// be sure it was meant straight, too close to be sure it was meant sloped (S08). Auto-constrain
+/// then applies nothing and says so; the operator decides.
+const AMBIGUOUS_ANGLE_DEG: f64 = 3.0;
 const COINCIDENT_MM: f64 = 0.05;
 
 /// Which relation a constraint tool or a constraint panel button adds. One table
@@ -229,9 +233,11 @@ fn already(sketch: &Sketch, wanted: Relation) -> bool {
 
 /// Horizontal/vertical for near-axis lines, coincident for distinct points that sit together,
 /// skipping what the sketch already states.
-fn obvious_relations(sketch: &Sketch) -> Vec<Relation> {
+fn obvious_relations(sketch: &Sketch) -> Obvious {
     let tolerance = AXIS_ANGLE_DEG.to_radians().sin();
+    let grey = AMBIGUOUS_ANGLE_DEG.to_radians().sin();
     let mut out = Vec::new();
+    let mut ambiguous = false;
     for (id, e) in sketch.entities() {
         let Entity::Line { start, end } = e.entity else { continue };
         let Some((a, b)) = point_of(sketch, start).zip(point_of(sketch, end)) else { continue };
@@ -243,6 +249,8 @@ fn obvious_relations(sketch: &Sketch) -> Vec<Relation> {
             out.push(Relation::Horizontal(id));
         } else if (b.x - a.x).abs() / len <= tolerance {
             out.push(Relation::Vertical(id));
+        } else if (b.y - a.y).abs() / len <= grey || (b.x - a.x).abs() / len <= grey {
+            ambiguous = true;
         }
     }
     let points: Vec<(EntityId, Point)> = sketch
@@ -258,7 +266,17 @@ fn obvious_relations(sketch: &Sketch) -> Vec<Relation> {
             }
         }
     }
-    out
+    // Three points on one spot: which two to join is the operator's call.
+    let crowded = points
+        .iter()
+        .any(|(a, pa)| points.iter().filter(|(b, pb)| b != a && pa.distance(*pb) <= COINCIDENT_MM).count() >= 2);
+    Obvious { relations: out, ambiguous: ambiguous || crowded }
+}
+
+/// What auto-constrain found: the clear relations, and whether anything was unclear.
+struct Obvious {
+    relations: Vec<Relation>,
+    ambiguous: bool,
 }
 
 impl Action for AutoAction {
@@ -267,7 +285,10 @@ impl Action for AutoAction {
             return rejected(Rejection::NothingPicked);
         };
         let Some(sketch) = ctx.document.sketch(pick.sketch) else { return rejected(Rejection::NothingPicked) };
-        let relations = obvious_relations(sketch);
+        let Obvious { relations, ambiguous } = obvious_relations(sketch);
+        if ambiguous {
+            return rejected(Rejection::AmbiguousRelations);
+        }
         if relations.is_empty() {
             return rejected(Rejection::NothingToConstrain);
         }

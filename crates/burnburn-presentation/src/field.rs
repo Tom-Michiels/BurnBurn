@@ -41,7 +41,28 @@ pub fn parse_position(text: &str) -> Result<Length, FieldError> {
     parse_signed(text)
 }
 
+/// A plain number or length, or - when that is not a number - an arithmetic expression over
+/// numbers and units (`100/4 + 5`, `(2+3)*10 mm`, `1 in + 5 mm`). A number without unit is
+/// millimetres. No parameters exist in a field, so a name is never valid here.
 fn parse_signed(text: &str) -> Result<Length, FieldError> {
+    match parse_plain(text) {
+        Err(FieldError::NotANumber) => parse_expression(text),
+        other => other,
+    }
+}
+
+fn parse_expression(text: &str) -> Result<Length, FieldError> {
+    use burnburn_sketch::param::{Dim, Expression};
+    let normalised = crate::controller::normalise_decimal_commas(text.trim());
+    let expression = Expression::parse(&normalised).map_err(|_| FieldError::NotANumber)?;
+    let quantity = expression.evaluate(&|_| None).map_err(|_| FieldError::NotANumber)?;
+    if quantity.dim != Dim::LENGTH && quantity.dim != Dim::NONE {
+        return Err(FieldError::NotANumber);
+    }
+    Length::from_mm(if quantity.value == 0.0 { 0.0 } else { quantity.value }).map_err(|_| FieldError::NotFinite)
+}
+
+fn parse_plain(text: &str) -> Result<Length, FieldError> {
     let t = text.trim();
     if t.is_empty() {
         return Err(FieldError::Empty);

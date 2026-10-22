@@ -17,6 +17,7 @@ use burnburn_io::export::{
 use burnburn_io::fs::{FileSystem, FsError};
 use burnburn_io::import::DxfScale;
 use burnburn_io::material_library::{MaterialLibrary, load_material_library, save_material_library};
+use burnburn_io::profile_library::{load_profile_library, save_profile_library};
 use burnburn_io::template::{TemplateContent, TemplateError, new_from_template, save_template};
 use burnburn_io::{Project, ProjectUuid};
 use burnburn_job::MachineProfile;
@@ -36,6 +37,8 @@ pub enum FilesTask {
     LoadLibraries { dir: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the whole material library atomically.
     SaveMaterialLibrary { library: Box<MaterialLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
+    /// Write the machine profiles a bundle brought in atomically (P07).
+    SaveProfileLibrary { profiles: Vec<burnburn_job::MachineProfile>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Write the whole art library atomically.
     SaveArtLibrary { library: Box<ArtLibrary>, path: PathBuf, fs: Arc<dyn FileSystem> },
     /// Add a drawing to a copy of the art library (the file is read and proven to import here);
@@ -164,6 +167,8 @@ pub fn art_format_of(path: &std::path::Path) -> Option<ArtFormat> {
 
 /// File name of the material library inside the user's folder.
 pub const MATERIAL_LIBRARY_FILE: &str = "material-library.json";
+/// File name of the profile library (machine profiles a bundle brought in, P07).
+pub const PROFILE_LIBRARY_FILE: &str = "profiles.json";
 
 impl fmt::Debug for FilesTask {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -174,6 +179,9 @@ impl fmt::Debug for FilesTask {
             FilesTask::OpenTemplate { path, .. } => write!(f, "OpenTemplate({})", path.display()),
             FilesTask::LoadLibraries { dir, .. } => write!(f, "LoadLibraries({})", dir.display()),
             FilesTask::SaveMaterialLibrary { path, .. } => write!(f, "SaveMaterialLibrary({})", path.display()),
+            FilesTask::SaveProfileLibrary { profiles, path, .. } => {
+                write!(f, "SaveProfileLibrary({} to {})", profiles.len(), path.display())
+            }
             FilesTask::SaveArtLibrary { path, .. } => write!(f, "SaveArtLibrary({})", path.display()),
             FilesTask::AddArt(add) => write!(f, "AddArt({:?} to {:?})", add.name, add.group),
             FilesTask::PlaceArt { item, .. } => write!(f, "PlaceArt({item})"),
@@ -202,11 +210,13 @@ pub enum FilesOutput {
         path: PathBuf,
     },
     LibrariesLoaded {
+        profiles: Loaded<Vec<burnburn_job::MachineProfile>>,
         materials: Loaded<MaterialLibrary>,
         art: Loaded<ArtLibrary>,
         thumbnails: Vec<(u64, ArtThumbnail)>,
     },
     MaterialLibrarySaved,
+    ProfileLibrarySaved,
     ArtLibrarySaved,
     ArtAdded {
         library: Box<ArtLibrary>,
@@ -314,12 +324,18 @@ pub(crate) fn run(task: FilesTask, cancel: &CancellationToken) -> Result<FilesOu
                     }
                 }
             }
-            Ok(FilesOutput::LibrariesLoaded { materials, art, thumbnails })
+            let profiles = read_library(fs.as_ref(), &dir.join(PROFILE_LIBRARY_FILE), load_profile_library);
+            Ok(FilesOutput::LibrariesLoaded { profiles, materials, art, thumbnails })
         }
         FilesTask::SaveMaterialLibrary { library, path, fs } => {
             save_material_library(fs.as_ref(), &path, &library)
                 .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
             Ok(FilesOutput::MaterialLibrarySaved)
+        }
+        FilesTask::SaveProfileLibrary { profiles, path, fs } => {
+            save_profile_library(fs.as_ref(), &path, &profiles)
+                .map_err(|e| TaskError::Files(FilesError::LibraryWrite(e.to_string())))?;
+            Ok(FilesOutput::ProfileLibrarySaved)
         }
         FilesTask::SaveArtLibrary { library, path, fs } => {
             save_art_library(fs.as_ref(), &path, &library)

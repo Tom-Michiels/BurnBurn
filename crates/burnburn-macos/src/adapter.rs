@@ -381,6 +381,15 @@ pub enum NativeEvent {
     SketchProblemClicked {
         document: DocumentId,
     },
+    /// The sketch panel's "Herstel laatste geldige" button.
+    SketchRestoreRequested {
+        document: DocumentId,
+    },
+    /// The sketch panel's "Verwijder parameter" button with the selected parameter row.
+    SketchParameterRemoveRequested {
+        document: DocumentId,
+        row: usize,
+    },
     /// A parameter set in the sketch panel: name and expression as typed.
     SketchParameterCommitted {
         document: DocumentId,
@@ -532,6 +541,7 @@ pub mod key_code {
     pub const DELETE: u16 = 51;
     pub const FORWARD_DELETE: u16 = 117;
     pub const RETURN: u16 = 36;
+    pub const TAB: u16 = 48;
 }
 
 /// Points per line for non-precise (mouse wheel) scroll deltas.
@@ -682,6 +692,7 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
                 key_code::DELETE => CanvasKey::Backspace,
                 key_code::FORWARD_DELETE => CanvasKey::Delete,
                 key_code::RETURN => CanvasKey::Return,
+                key_code::TAB => CanvasKey::Tab,
                 _ => return Reaction::Nothing,
             };
             UiIntent::Key { document, key, modifiers: modifiers(raw) }
@@ -817,6 +828,16 @@ pub fn translate(event: NativeEvent, vm: &AppViewModel) -> Reaction {
             Some(i) => i,
             None => return Reaction::Nothing,
         },
+        E::SketchRestoreRequested { document } => match crate::panels::sketch_restore_intent(vm, document) {
+            Some(i) => i,
+            None => return Reaction::Nothing,
+        },
+        E::SketchParameterRemoveRequested { document, row } => {
+            match crate::panels::sketch_parameter_remove_intent(vm, document, row) {
+                Some(i) => i,
+                None => return Reaction::Nothing,
+            }
+        }
         E::SketchParameterCommitted { document, name, text } => {
             match crate::panels::sketch_parameter_intent(vm, document, &name, &text) {
                 Some(i) => i,

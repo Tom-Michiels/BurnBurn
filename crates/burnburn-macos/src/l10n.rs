@@ -160,6 +160,10 @@ pub enum HostText {
     SketchParameterName,
     SketchParameterValue,
     SketchParameterSet,
+    /// Sketch panel: "Herstel laatste geldige" (S04).
+    SketchRestoreLast,
+    /// Sketch panel: remove the selected parameter (S02).
+    SketchParameterDelete,
     SketchProblemHint,
     SketchHint,
     SketchPending,
@@ -255,6 +259,8 @@ pub enum HostText {
     TracerSummary,
     TracerNeedsScale,
     TracerApply,
+    /// Tracer sheet: apply as a re-editable trace (T02).
+    TracerApplyLinked,
     TracerClose,
     MenuView,
     RecentProjects,
@@ -379,6 +385,8 @@ impl HostText {
         HostText::SketchParameterName,
         HostText::SketchParameterValue,
         HostText::SketchParameterSet,
+        HostText::SketchRestoreLast,
+        HostText::SketchParameterDelete,
         HostText::SketchProblemHint,
         HostText::SketchHint,
         HostText::SketchPending,
@@ -474,6 +482,7 @@ impl HostText {
         HostText::TracerSummary,
         HostText::TracerNeedsScale,
         HostText::TracerApply,
+        HostText::TracerApplyLinked,
         HostText::TracerClose,
         HostText::MenuView,
         HostText::RecentProjects,
@@ -620,6 +629,8 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
         T::SketchFullyConstrained => ("Volledig bepaald", "Fully constrained"),
         T::SketchRemove => ("Verwijder relatie", "Remove Constraint"),
         T::SketchToggleRole => ("Meten/Sturen", "Measure/Drive"),
+        T::SketchRestoreLast => ("Herstel laatste geldige", "Restore last valid"),
+        T::SketchParameterDelete => ("Verwijder parameter", "Remove parameter"),
         T::SketchParametersTitle => ("Parameters", "Parameters"),
         T::SketchParameterName => ("Naam", "Name"),
         T::SketchParameterValue => (
@@ -742,6 +753,7 @@ fn host_pair(text: HostText) -> (&'static str, &'static str) {
             "No scale yet: enter the resolution (dpi) of the image.",
         ),
         T::TracerApply => ("Pas trace toe", "Apply Trace"),
+        T::TracerApplyLinked => ("Pas toe als trace", "Apply as Trace"),
         T::TracerClose => ("Sluit", "Close"),
         T::MenuView => ("Weergave", "View"),
         T::RecentProjects => ("Recente projecten", "Open Recent"),
@@ -840,6 +852,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::Compile => ("Compileer plan", "Compile Plan"),
         C::ExportRd => ("Exporteer RD…", "Export RD…"),
         C::ApplyTrace => ("Pas trace toe", "Apply Trace"),
+        C::ApplyTraceLinked => ("Pas toe als trace", "Apply as Trace"),
+        C::TraceEdit => ("Bewerk trace…", "Edit Trace…"),
         C::CloseTracer => ("Sluit tracer", "Close Tracer"),
         C::PrepareJob => ("Bereid job voor", "Prepare Job"),
         C::ApproveJob => ("Geef job vrij", "Approve Job"),
@@ -914,6 +928,8 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::SelectContained => ("Selecteer omsloten vormen", "Select Contained Shapes"),
         C::SelectSmaller => ("Selecteer kleinere vormen", "Select Smaller Shapes"),
         C::SelectCircles => ("Selecteer cirkels", "Select Circles"),
+        C::SelectSameType => ("Selecteer zelfde type", "Select Same Type"),
+        C::IsolateSelection => ("Isoleer selectie", "Isolate Selection"),
         C::ZoomPage => ("Zoom naar werkblad", "Zoom to Page"),
         C::ZoomSelection => ("Zoom naar selectie", "Zoom to Selection"),
         C::ZoomIn => ("Zoom in", "Zoom In"),
@@ -1291,6 +1307,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
         }
         M::SaveFailed => ("Bewaren is mislukt.", "Saving failed."),
         M::OpenFailed => ("Openen is mislukt.", "Opening failed."),
+        M::OpenNewerSchema => (
+            "Dit project is gemaakt met een nieuwere versie van BurnBurn en wordt niet geopend; het bestand is niet gewijzigd.",
+            "This project was made with a newer version of BurnBurn and is not opened; the file was not changed.",
+        ),
         M::Snap(s) => match s {
             SnapKind::Endpoint => ("Eindpunt", "Endpoint"),
             SnapKind::Intersection => ("Snijpunt", "Intersection"),
@@ -1394,6 +1414,10 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
                 ("Deze selectie past niet bij dit gereedschap.", "This selection does not fit the tool.")
             }
             ToolRejection::NothingToConstrain => ("Er is niets om te beperken.", "Nothing to constrain."),
+            ToolRejection::AmbiguousRelations => (
+                "Niet eenduidig: er is niets toegepast. Maak de lijn recht of beperk handmatig.",
+                "Ambiguous: nothing was applied. Straighten the line or constrain it by hand.",
+            ),
             ToolRejection::InvalidValue => ("Ongeldige waarde.", "Invalid value."),
             ToolRejection::Corner => ("Deze hoek kan niet worden bewerkt.", "This corner cannot be modified."),
             ToolRejection::Trim => ("Inkorten is hier niet mogelijk.", "Trimming is not possible here."),
@@ -1501,6 +1525,18 @@ pub fn message(key: MessageKey, locale: Locale) -> Option<String> {
             "This selection does not fit this constraint or dimension.",
         ),
         M::SketchNothingSelected => ("Selecteer eerst elementen van de schets.", "Select sketch elements first."),
+        M::SketchParameterInUse => (
+            "Deze parameter wordt nog gebruikt door een maat of een andere parameter.",
+            "A dimension or another parameter still uses this parameter.",
+        ),
+        M::TraceSourceMissing => (
+            "De bronafbeelding van deze trace zit niet meer in het project.",
+            "The source image of this trace is no longer in the project.",
+        ),
+        M::SketchNothingToRestore => (
+            "Geen eerdere stand van deze schets was geldig; er is niets hersteld.",
+            "No earlier state of this sketch was valid; nothing was restored.",
+        ),
         M::SketchShapeUnsupported => (
             "Dit kan nog niet in een schets getekend worden (alleen lijn, polylijn, rechthoek en cirkel).",
             "This cannot be drawn into a sketch yet (only line, polyline, rectangle and circle).",
@@ -1783,6 +1819,9 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::SketchInvalidDefinition,
         MessageKey::SketchSelectionDoesNotFit,
         MessageKey::SketchNothingSelected,
+        MessageKey::SketchNothingToRestore,
+        MessageKey::TraceSourceMissing,
+        MessageKey::SketchParameterInUse,
         MessageKey::SketchShapeUnsupported,
         MessageKey::SketchConversionImpossible,
         MessageKey::SketchEditRefused,
@@ -1818,6 +1857,7 @@ pub fn known_message_keys() -> Vec<MessageKey> {
         MessageKey::CommandRejected,
         MessageKey::SaveFailed,
         MessageKey::OpenFailed,
+        MessageKey::OpenNewerSchema,
         MessageKey::BooleanFailed,
         MessageKey::NoMachineProfile,
         MessageKey::CompileFailed,

@@ -86,12 +86,24 @@ pub struct TextToolbarViewModel {
     pub missing_glyphs: usize,
     /// The font of the text is not available: the outlines are the last valid ones.
     pub font_missing: bool,
+    /// The font is missing: which one, and the installed families to choose from instead (E07).
+    /// Choosing is `TextEdit::Family`; until then the stored outlines stay.
+    pub missing_font: Option<MissingFontChoice>,
     /// Convert to Path is possible (the text has outlines).
     pub can_convert: bool,
     /// The text is variable text (see the variable-text panel).
     pub variable: bool,
     /// Why the last input was refused.
     pub issue: Option<TextIssue>,
+}
+
+/// The replacement choice shown while the font of a text is not installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingFontChoice {
+    /// The family the project asks for.
+    pub requested: String,
+    /// Installed families, sorted.
+    pub replacements: Vec<String>,
 }
 
 /// One edit of the toolbar. Each accepted edit is one `TextCommand::Set` (one undo step).

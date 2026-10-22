@@ -51,11 +51,13 @@ pub struct SnapSettings {
     pub grid_mm: Option<f64>,
     /// Capture radius in logical screen points (independent of zoom).
     pub radius_pt: f64,
+    /// Which of the candidates under the pointer is used: 0 = best, Tab steps on and wraps (E04).
+    pub cycle: usize,
 }
 
 impl Default for SnapSettings {
     fn default() -> Self {
-        SnapSettings { objects: true, grid_mm: None, radius_pt: 8.0 }
+        SnapSettings { objects: true, grid_mm: None, radius_pt: 8.0, cycle: 0 }
     }
 }
 
@@ -110,8 +112,10 @@ pub fn snap_point(
     if suppress {
         return None;
     }
-    if let Some(best) = snap_candidates(snapshot, settings, mm_per_point, at, exclude).into_iter().next() {
-        return Some(best);
+    let all = snap_candidates(snapshot, settings, mm_per_point, at, exclude);
+    if !all.is_empty() {
+        // Tab steps through the candidates (E04); the list is never empty here, so `%` is safe.
+        return all.get(settings.cycle % all.len()).copied();
     }
     let g = settings.grid_mm.filter(|g| g.is_finite() && *g > 0.0)?;
     let p = Point::new((at.x / g).round() * g, (at.y / g).round() * g);
@@ -195,6 +199,22 @@ mod tests {
         assert_eq!(kinds.first(), Some(&(Point::new(20.0, 20.0), SnapKind::Midpoint)), "{kinds:?}");
         assert!(kinds.contains(&(Point::new(21.0, 20.0), SnapKind::Nearest)), "{kinds:?}");
         assert!(all.windows(2).all(|w| w[0].kind <= w[1].kind));
+    }
+
+    /// Tab (E04): the candidate used is `cycle` places down the list, wrapping around.
+    #[test]
+    fn the_cycle_picks_a_later_candidate_and_wraps() {
+        let at = Point::new(21.0, 19.0);
+        let all = snap_candidates(&doc(), &SnapSettings::default(), MM_PER_PT, at, &[]);
+        assert!(all.len() >= 2, "{all:?}");
+        for cycle in 0..=all.len() + 1 {
+            let s = SnapSettings { cycle, ..SnapSettings::default() };
+            let got = snap_point(&doc(), &s, MM_PER_PT, at, false, &[]).unwrap();
+            assert_eq!(got, all[cycle % all.len()], "cycle {cycle}");
+        }
+        // Without object targets the cycle changes nothing (the grid is a single candidate).
+        let grid = SnapSettings { objects: false, grid_mm: Some(5.0), cycle: 3, ..SnapSettings::default() };
+        assert_eq!(snap_point(&doc(), &grid, MM_PER_PT, at, false, &[]).map(|c| c.kind), Some(SnapKind::Grid));
     }
 
     #[test]

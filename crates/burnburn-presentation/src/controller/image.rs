@@ -206,8 +206,17 @@ fn input_of(settings: &ImageSettings) -> ImageAdjustInput {
     }
 }
 
-fn media_of(bytes: &[u8]) -> &'static str {
-    if bytes.starts_with(&[0xff, 0xd8]) { "image/jpeg" } else { "image/png" }
+/// The media type of decodable bitmap bytes, from their signature (never from a file name).
+pub(super) fn media_of(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0xff, 0xd8]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"BM") {
+        "image/bmp"
+    } else if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+        "image/tiff"
+    } else {
+        "image/png"
+    }
 }
 
 /// Files the bitmap flow takes over from the generic import (the decoder refuses what it cannot read).

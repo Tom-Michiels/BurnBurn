@@ -26,6 +26,7 @@ pub mod material_library;
 pub mod memory;
 mod process_map;
 mod profile;
+pub mod profile_library;
 mod project;
 pub mod recent;
 pub mod search;

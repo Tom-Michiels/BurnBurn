@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use burnburn_document::trace::TraceId;
 use burnburn_geometry::Path;
 use burnburn_image::{PixelScale, SourceImage, Threshold};
 use burnburn_trace::{CenterlineRequest, CenterlineResult, CenterlineSettings, TraceRecipe, TraceRequest, TraceResult};
@@ -59,6 +60,8 @@ pub(super) struct Tracer {
     pub(super) centerline: Option<CenterlineOutcome>,
     /// The file's own resolution makes a recipe at once: the first trace starts without input.
     pub(super) autostart: bool,
+    /// The trace of the document this tracer edits: applying as a trace replaces its outputs.
+    pub(super) editing: Option<TraceId>,
 }
 
 impl Tracer {
@@ -81,7 +84,16 @@ impl Tracer {
             result: None,
             centerline: None,
             autostart,
+            editing: None,
         }
+    }
+
+    /// The tracer of an existing trace: its stored recipe is in force and the first trace starts.
+    pub(super) fn reopen(&mut self, trace: TraceId, recipe: TraceRecipe) {
+        self.form = form_of(&recipe, TraceMode::Contour);
+        self.recipe = Some(recipe);
+        self.editing = Some(trace);
+        self.autostart = true;
     }
 
     /// There is something to apply for the mode in force.

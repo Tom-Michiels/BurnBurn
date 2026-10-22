@@ -97,6 +97,8 @@ pub struct SketchPanel {
     pub remove_enabled: bool,
     /// Measure/Drive applies (a dimension is selected).
     pub role_enabled: bool,
+    /// "Herstel laatste geldige" applies (the sketch failed and there is history to go back in).
+    pub restore_enabled: bool,
 }
 
 fn mode_of(vm: &AppViewModel, document: DocumentId) -> Option<&SketchModeViewModel> {
@@ -161,6 +163,7 @@ pub fn sketch_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> 
         hint: host_text(HostText::SketchHint, locale).to_owned(),
         remove_enabled: !m.selected_constraints.is_empty(),
         role_enabled: m.rows.iter().any(|r| r.selected && r.role.is_some()),
+        restore_enabled: m.can_restore,
     })
 }
 
@@ -206,6 +209,19 @@ pub fn sketch_role_intent(vm: &AppViewModel, document: DocumentId) -> Option<UiI
 pub fn sketch_problem_intent(vm: &AppViewModel, document: DocumentId) -> Option<UiIntent> {
     mode_of(vm, document)?.problem?;
     Some(UiIntent::SelectSketchProblem { document })
+}
+
+/// "Herstel laatste geldige": only for a failed sketch with history to go back in.
+pub fn sketch_restore_intent(vm: &AppViewModel, document: DocumentId) -> Option<UiIntent> {
+    let m = mode_of(vm, document)?;
+    m.can_restore.then_some(UiIntent::RestoreLastValidSketch { document, sketch: m.sketch })
+}
+
+/// "Verwijder parameter" with the selected row of the parameter table.
+pub fn sketch_parameter_remove_intent(vm: &AppViewModel, document: DocumentId, row: usize) -> Option<UiIntent> {
+    let m = mode_of(vm, document)?;
+    let (name, _) = m.parameters.get(row)?;
+    Some(UiIntent::RemoveSketchParameter { document, sketch: m.sketch, name: name.clone() })
 }
 
 /// A parameter cell edited or added: name and expression as typed.

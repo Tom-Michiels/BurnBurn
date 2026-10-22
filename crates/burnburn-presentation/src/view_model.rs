@@ -530,6 +530,8 @@ pub struct SketchModeViewModel {
     pub selected_constraints: Vec<ConstraintId>,
     /// Why the last sketch input did nothing (selection does not fit, shape unsupported, …).
     pub refused: Option<MessageKey>,
+    /// "Herstel laatste geldige" applies: the sketch failed and there is history to go back in.
+    pub can_restore: bool,
 }
 
 /// Evaluation state shown with symbol and text (not colour only, X03).
@@ -620,6 +622,8 @@ pub enum ToolRejection {
     NeedsSelection,
     InvalidSelection,
     NothingToConstrain,
+    /// Auto-constrain found only unclear relations and applied none (S08).
+    AmbiguousRelations,
     InvalidValue,
     Corner,
     Trim,
@@ -639,12 +643,13 @@ pub enum ToolRejection {
 }
 
 impl ToolRejection {
-    pub const ALL: [ToolRejection; 16] = [
+    pub const ALL: [ToolRejection; 17] = [
         ToolRejection::NothingPicked,
         ToolRejection::DerivedGeometry,
         ToolRejection::NeedsSelection,
         ToolRejection::InvalidSelection,
         ToolRejection::NothingToConstrain,
+        ToolRejection::AmbiguousRelations,
         ToolRejection::InvalidValue,
         ToolRejection::Corner,
         ToolRejection::Trim,
@@ -707,6 +712,8 @@ pub enum MessageKey {
     CommandRejected,
     SaveFailed,
     OpenFailed,
+    /// The project was written by a newer BurnBurn: refused, the file is left untouched (P01).
+    OpenNewerSchema,
     /// Cursor label of a snap target.
     Snap(SnapKind),
     Issue(IssueKind),
@@ -782,6 +789,12 @@ pub enum MessageKey {
     SketchSelectionDoesNotFit,
     /// Nothing is selected to relate.
     SketchNothingSelected,
+    /// "Herstel laatste geldige": no earlier state of this sketch solved.
+    SketchNothingToRestore,
+    /// The source image of a trace is not in the project any more.
+    TraceSourceMissing,
+    /// A parameter that is still used by a dimension or another parameter is not removed.
+    SketchParameterInUse,
     /// Ellipses, free curves and the like cannot be drawn into a sketch yet.
     SketchShapeUnsupported,
     /// The selected objects contain curves other than full circles.

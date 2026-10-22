@@ -117,6 +117,13 @@ pub enum UiIntent {
         name: String,
         text: String,
     },
+    /// Remove a parameter of the sketch (S02, one history entry). A parameter that a dimension or
+    /// another parameter still uses is not removed; the panel says so.
+    RemoveSketchParameter {
+        document: DocumentId,
+        sketch: SketchId,
+        name: String,
+    },
     /// Constraint panel (S01/S03): add a relation or dimension (one history entry).
     AddSketchConstraint {
         document: DocumentId,
@@ -161,6 +168,19 @@ pub enum UiIntent {
     /// The conflict message was clicked: select the constraints involved (S04).
     SelectSketchProblem {
         document: DocumentId,
+    },
+    /// "Herstel laatste geldige" (S04): undo the failed edits of this sketch until it solves
+    /// again. They stay available as redo. Refused (with a message) when no earlier state solved.
+    RestoreLastValidSketch {
+        document: DocumentId,
+        sketch: SketchId,
+    },
+    /// Type filter (E03): select every visible, unlocked object of `kind` (Replace), or add them
+    /// to the selection (Toggle).
+    SelectByKind {
+        document: DocumentId,
+        kind: burnburn_document::ObjectKind,
+        mode: SelectMode,
     },
     /// Canvas pointer input in logical canvas points (DR-04); presentation applies the camera.
     Pointer {
@@ -727,6 +747,13 @@ pub enum CommandKey {
     ExportRd,
     /// Apply the current trace result (one history entry).
     ApplyTrace,
+    /// Apply the current contour trace as a *trace* of the document (T02): source, recipe and
+    /// engine version are kept, the result objects stay linked to it (one history entry). When the
+    /// tracer was opened with `TraceEdit`, the outputs of that trace are replaced in place.
+    ApplyTraceLinked,
+    /// Bitmap ▸ Bewerk trace: open the tracer on the stored source and recipe of the trace the
+    /// selected object belongs to.
+    TraceEdit,
     CloseTracer,
     /// Freeze the current (fresh, error-free) plan with its RD bytes as the job of this document (C1).
     PrepareJob,
@@ -859,6 +886,10 @@ pub enum CommandKey {
     SelectSmaller,
     /// Edit ▸ Kies alle cirkels.
     SelectCircles,
+    /// Edit ▸ Kies alle vormen van hetzelfde type als de selectie (typefilter, E03).
+    SelectSameType,
+    /// Arrange ▸ Isoleer selectie: verberg al het andere (één stap; Toon alles herstelt, E03).
+    IsolateSelection,
     /// Weergave ▸ Zoom naar het werkblad (bed van de machine, anders alle objecten).
     ZoomPage,
     /// Weergave ▸ Zoom naar de selectie.
@@ -956,6 +987,8 @@ impl CommandKey {
         CommandKey::Compile,
         CommandKey::ExportRd,
         CommandKey::ApplyTrace,
+        CommandKey::ApplyTraceLinked,
+        CommandKey::TraceEdit,
         CommandKey::CloseTracer,
         CommandKey::PrepareJob,
         CommandKey::ApproveJob,
@@ -1030,6 +1063,8 @@ impl CommandKey {
         CommandKey::SelectContained,
         CommandKey::SelectSmaller,
         CommandKey::SelectCircles,
+        CommandKey::SelectSameType,
+        CommandKey::IsolateSelection,
         CommandKey::ZoomPage,
         CommandKey::ZoomSelection,
         CommandKey::ZoomIn,

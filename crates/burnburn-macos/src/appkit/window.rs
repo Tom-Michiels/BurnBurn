@@ -337,6 +337,8 @@ impl DocWindow {
         for (b, action) in [
             (&sketch.problem, sel!(sketchProblemClicked:)),
             (&sketch.role, sel!(sketchRoleClicked:)),
+            (&sketch.restore, sel!(sketchRestoreClicked:)),
+            (&sketch.param_delete, sel!(sketchParameterDelete:)),
             (&sketch.param_set, sel!(sketchParameterSet:)),
         ] {
             // SAFETY: as above.
@@ -613,7 +615,13 @@ impl Drop for DocWindow {
             // SAFETY: as above.
             unsafe { b.setTarget(None) };
         }
-        for b in [&self.sketch.problem, &self.sketch.role, &self.sketch.param_set] {
+        for b in [
+            &self.sketch.problem,
+            &self.sketch.role,
+            &self.sketch.restore,
+            &self.sketch.param_delete,
+            &self.sketch.param_set,
+        ] {
             // SAFETY: as above.
             unsafe { b.setTarget(None) };
         }

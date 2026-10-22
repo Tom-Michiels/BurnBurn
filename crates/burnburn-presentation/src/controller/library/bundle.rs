@@ -386,8 +386,12 @@ impl AppController {
             profiles_pending: outcome.profiles_pending.clone(),
             skipped: outcome.skipped,
         };
+        let profiles_changed = !outcome.profiles_to_add.is_empty();
         for p in outcome.profiles_to_add {
             self.libs.profiles.push(Arc::new(p));
+        }
+        if profiles_changed {
+            self.flush_profiles();
         }
         for p in outcome.profiles_to_replace {
             let id = p.revision().id.clone();

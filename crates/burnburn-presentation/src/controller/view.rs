@@ -265,6 +265,8 @@ pub(super) fn command_state(key: CommandKey, s: Option<&Session>, machine: Optio
         (CommandKey::Compile, Some(s)) => (has_machine && !s.doc.snapshot().process().is_empty(), false),
         (CommandKey::ExportRd, Some(s)) => (has_machine && s.compiled.is_some(), false),
         (CommandKey::ApplyTrace, Some(s)) => (s.tracer.as_ref().is_some_and(|t| t.has_result()), false),
+        (CommandKey::ApplyTraceLinked, Some(s)) => (super::trace_link::apply_enabled(s), false),
+        (CommandKey::TraceEdit, Some(s)) => (super::trace_link::selected_trace(s).is_some(), false),
         (CommandKey::CloseTracer, Some(s)) => (s.tracer.is_some(), false),
         (CommandKey::PrepareJob, Some(s)) => (preparable(s, machine), false),
         (CommandKey::ApproveJob, Some(s)) => (s.prepared.as_ref().is_some_and(|p| !p.approved), false),
