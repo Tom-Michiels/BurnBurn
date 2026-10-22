@@ -182,7 +182,10 @@ fn scenario() -> Result<(), String> {
         .app
         .with_laser(doc, |p| (p.pointer_check.isEnabled(), p.pointer_note.stringValue().to_string()))
         .ok_or("no panel")?;
-    expect(|| format!("without proof: switch {switch_on}, note {note:?}"), !switch_on && note.contains("Geen pointeroffset"))?;
+    expect(
+        || format!("without proof: switch {switch_on}, note {note:?}"),
+        !switch_on && note.contains("Geen pointeroffset"),
+    )?;
     s.app.dispatch(UiIntent::RecordCalibration {
         input: burnburn_presentation::ProofInput {
             kind: burnburn_presentation::ProofKind::PointerOffset,

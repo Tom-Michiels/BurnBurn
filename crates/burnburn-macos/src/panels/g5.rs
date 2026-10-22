@@ -34,10 +34,12 @@ pub enum G5Panel {
     TracePrep,
     /// Venster ▸ Operatorweergave: machine, approved jobs and orders in one place (G6-werk, W08).
     Operator,
+    /// The confirmation before a start: opens by itself while the view model has one (G7-werk, M06).
+    StartConfirm,
 }
 
 impl G5Panel {
-    pub const ALL: [G5Panel; 8] = [
+    pub const ALL: [G5Panel; 9] = [
         G5Panel::Notes,
         G5Panel::Offset,
         G5Panel::Centerline,
@@ -46,6 +48,7 @@ impl G5Panel {
         G5Panel::Search,
         G5Panel::TracePrep,
         G5Panel::Operator,
+        G5Panel::StartConfirm,
     ];
 }
 
@@ -192,6 +195,9 @@ pub enum G5Control {
     OperatorOrderUpload {
         index: usize,
     },
+    // --- The confirmation before a start (G7-werk, M06).
+    StartConfirm,
+    StartCancel,
 }
 
 /// One line of a panel.
@@ -256,7 +262,7 @@ pub struct G5PanelModel {
 /// The panels that open and close by themselves with the view model (the notes while they are
 /// open, the decisions while a centre-line trace is open); the others wait for their menu item.
 pub fn g5_opens_by_itself(panel: G5Panel) -> bool {
-    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search)
+    matches!(panel, G5Panel::Notes | G5Panel::Centerline | G5Panel::Generator | G5Panel::Search | G5Panel::StartConfirm)
 }
 
 /// A number with up to `decimals` decimals, without trailing zeros, in the window language.
@@ -332,6 +338,11 @@ pub fn g5_panel(
         G5Panel::Operator => {
             let lines = super::g6_werk::operator_lines(doc, locale)?;
             let title = crate::l10n_g6_werk::g6_text(crate::l10n_g6_werk::G6Text::OperatorTitle, locale);
+            return Some(G5PanelModel { panel, title: title.to_owned(), lines });
+        }
+        G5Panel::StartConfirm => {
+            let lines = super::g7_werk::start_confirm_lines(doc, locale)?;
+            let title = crate::l10n_g7_werk::g7_text(crate::l10n_g7_werk::G7Text::StartConfirmTitle, locale);
             return Some(G5PanelModel { panel, title: title.to_owned(), lines });
         }
     };
@@ -652,6 +663,9 @@ pub fn g5_intent(
         G5Control::OperatorMachine { .. }
         | G5Control::OperatorUpload { .. }
         | G5Control::OperatorOrderUpload { .. } => super::g6_werk::operator_intent(doc, document, control),
+        G5Control::StartConfirm | G5Control::StartCancel => {
+            super::g7_werk::start_confirm_intent(doc, document, control)
+        }
         G5Control::StructDefineName
         | G5Control::StructDefine
         | G5Control::PartPlaceX { .. }

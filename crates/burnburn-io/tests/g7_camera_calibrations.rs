@@ -74,7 +74,11 @@ fn filled() -> CalibrationStore {
     store.insert_lens(lens(cam_b(), -0.2));
     store.insert_alignment(alignment(cam_a(), 0.0, true));
     store.insert_alignment(alignment(cam_a(), 12.5, true));
-    store.insert_alignment(alignment(config("cam-B", 1280, 720, CameraPixelFormat::Other(0x7975_7673), "wide"), 3.0, false));
+    store.insert_alignment(alignment(
+        config("cam-B", 1280, 720, CameraPixelFormat::Other(0x7975_7673), "wide"),
+        3.0,
+        false,
+    ));
     store
 }
 

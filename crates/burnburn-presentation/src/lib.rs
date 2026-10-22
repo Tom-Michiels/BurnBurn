@@ -32,6 +32,7 @@ mod production;
 pub mod profile_file;
 mod schikken;
 mod search_panel;
+mod start_confirm;
 mod structure_panel;
 mod task;
 mod text_panel;
@@ -48,10 +49,10 @@ pub use barcode_panel::{
 pub use burnburn_generators::JobClock;
 /// Named by [`MessageKey::MissingCapability`]; hosts translate it.
 pub use burnburn_job::Feature;
-/// What the preview window draws and picks (hosts need no job dependency of their own).
-pub use burnburn_job::{MachinePoint, MoveKind, PlanPreview, PreviewMove, SourceRef};
 /// The measured values a plan used (the plan panel names them and their proofs; W09).
 pub use burnburn_job::{AppliedCalibration, AppliedKind, ProofRef};
+/// What the preview window draws and picks (hosts need no job dependency of their own).
+pub use burnburn_job::{MachinePoint, MoveKind, PlanPreview, PreviewMove, SourceRef};
 /// The machine vocabulary the laser window speaks, so hosts need no machine dependency of their own.
 pub use burnburn_machine::{
     ControllerFileName, FrameShape, HomeTarget, JobAnchor, JogKey, LaserAction, LiveFeature, OriginTarget, StartFrom,
@@ -146,6 +147,7 @@ pub use production::{
 };
 pub use schikken::*;
 pub use search_panel::{SearchField, SearchIssueRow, SearchPanelViewModel, SearchResultRow, SearchRevisionRow};
+pub use start_confirm::{START_NEEDS, StartConfirmViewModel, StartEvidence};
 pub use structure_panel::{
     BrokenReason, EdgeRow, InstanceRow, InstanceStatus, PartRow, PartValue, PlateIssueRow, PlateRow, ReferenceRow,
     ReferenceStatus, StructureEdit, StructureProblem, StructureViewModel, VariantRow,

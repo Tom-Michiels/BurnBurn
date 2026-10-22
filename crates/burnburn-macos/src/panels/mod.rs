@@ -19,6 +19,7 @@ mod cut_settings;
 mod g5;
 mod g6;
 mod g6_werk;
+mod g7_werk;
 mod grbl;
 mod import;
 mod inspector;

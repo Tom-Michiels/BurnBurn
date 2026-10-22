@@ -26,7 +26,8 @@ fn rectangle_plan() -> JobPlan {
         },
         compiler_version: "test".into(),
     };
-    let mut b = JobPlanBuilder::new(source, MachineFrame::new(300.0, 200.0, OriginCorner::BottomLeft).unwrap(), p(0.0, 0.0));
+    let mut b =
+        JobPlanBuilder::new(source, MachineFrame::new(300.0, 200.0, OriginCorner::BottomLeft).unwrap(), p(0.0, 0.0));
     let cut = OperationSettings {
         mode: PlanMode::Line,
         speed_mm_s: 20.0,
@@ -85,7 +86,13 @@ fn the_rubber_band_is_shifted_too_and_the_frame_stays_laser_off() {
     }
     let frame = frame_plan_aimed(&plan, &OPTIONS, FrameShape::RubberBand, Some((2.0, -1.0))).unwrap();
     assert!(frame.plan().settings().iter().all(|s| (s.min_power.get(), s.max_power.get()) == (0.0, 0.0)));
-    assert!(frame.plan().events().iter().all(|e| matches!(e, PlanEvent::Travel { .. } | PlanEvent::OperationBoundary { .. })));
+    assert!(
+        frame
+            .plan()
+            .events()
+            .iter()
+            .all(|e| matches!(e, PlanEvent::Travel { .. } | PlanEvent::OperationBoundary { .. }))
+    );
 }
 
 #[test]

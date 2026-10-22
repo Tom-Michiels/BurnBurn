@@ -79,6 +79,7 @@ mod sketch_param;
 mod structure;
 
 pub(crate) use sketch_param::normalise_decimal_commas;
+mod start_confirm;
 mod sublayers_dialog;
 mod support;
 mod tasks;
@@ -441,6 +442,8 @@ pub struct AppController {
     machine_port: Option<Arc<dyn MachinePort>>,
     /// A declared model/firmware was handed to the machine port (so clearing it must reach the port too).
     declared_pushed: bool,
+    /// The start the user asked for and has not confirmed yet (M06).
+    pending_start: Option<start_confirm::PendingStart>,
     /// Plans the designer released (W01), as the history keeps them: a prepared job whose plan is
     /// in here is approved. A changed plan has another id, so it is not.
     approved_plans: std::collections::BTreeSet<burnburn_types::ContentHash>,
@@ -512,6 +515,7 @@ impl AppController {
             machine: None,
             machine_port: None,
             declared_pushed: false,
+            pending_start: None,
             approved_plans: std::collections::BTreeSet::new(),
             released_jobs: Vec::new(),
             hub: machine_hub::HubState::default(),
@@ -673,6 +677,9 @@ impl AppController {
             UiIntent::RepeatExecution { execution } => self.hub_repeat(execution),
             UiIntent::ConfirmRepeat { document } => self.hub_confirm_repeat(document),
             UiIntent::CancelRepeat => self.hub_cancel_repeat(),
+            UiIntent::RequestStart { document } => self.request_start(document),
+            UiIntent::ConfirmStart { document, action, seen } => self.confirm_start(document, action, seen),
+            UiIntent::CancelStart => self.cancel_start(),
             UiIntent::RecordCalibration { input } => self.hub_record_calibration(input),
             UiIntent::RemoveCalibration { id } => self.hub_remove_calibration(id),
             UiIntent::AddOperation { document, draft } => self.add_operation(document, draft),
@@ -994,6 +1001,9 @@ fn operator_may(intent: &UiIntent) -> bool {
         | UiIntent::DialogCancelled { .. }
         | UiIntent::Camera { .. }
         | UiIntent::Machine { .. }
+        | UiIntent::RequestStart { .. }
+        | UiIntent::ConfirmStart { .. }
+        | UiIntent::CancelStart
         | UiIntent::AddOrder { .. }
         | UiIntent::ChooseOrderJob { .. }
         | UiIntent::UploadForOrder { .. } => true,

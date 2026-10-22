@@ -25,8 +25,8 @@ use super::machine::Machine;
 use super::{AppController, AppUpdate, HostEffect, Session};
 use crate::files::{ArtThumbnail, FilesIntent, FilesMessage, FilesViewModel};
 use crate::files_task::{
-    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask, Loaded,
-    MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
+    ACTIVE_MACHINE_FILE, ART_LIBRARY_FILE, CALIBRATION_LIBRARY_FILE, CAMERA_CALIBRATION_FILE, FilesOutput, FilesTask,
+    Loaded, MATERIAL_LIBRARY_FILE, PROFILE_LIBRARY_FILE,
 };
 use crate::task::{TaskError, TaskInput, TaskKind, TaskOutcome, TaskOutput, TaskRequest, revision_key};
 use crate::view_model::MessageKey;

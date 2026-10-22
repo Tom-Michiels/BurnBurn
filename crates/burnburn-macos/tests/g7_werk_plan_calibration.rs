@@ -12,7 +12,9 @@ use std::sync::Arc;
 use burnburn_io::memory::MemoryFileSystem;
 use burnburn_macos::l10n::Locale;
 use burnburn_macos::panels::plan_panel;
-use burnburn_presentation::{CommandKey, FilesIntent, HeadlessEditorHarness, ProofInput, ProofKind, SelectMode, UiIntent};
+use burnburn_presentation::{
+    CommandKey, FilesIntent, HeadlessEditorHarness, ProofInput, ProofKind, SelectMode, UiIntent,
+};
 use burnburn_types::DocumentId;
 use common::*;
 

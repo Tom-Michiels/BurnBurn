@@ -438,7 +438,7 @@ pub(super) fn machine_view_of(status: &MachineStatus) -> MachineViewModel {
 
 /// The material of the plates of a project when there is one and they all agree; a mix of
 /// materials (or none named) says nothing.
-fn plate_material(document: &burnburn_document::DocumentSnapshot) -> Option<String> {
+pub(super) fn plate_material(document: &burnburn_document::DocumentSnapshot) -> Option<String> {
     let mut materials =
         document.structure().plates().map(|(_, p)| p.material.trim().to_owned()).filter(|m| !m.is_empty());
     let first = materials.next()?;

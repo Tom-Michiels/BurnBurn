@@ -538,9 +538,8 @@ pub(super) fn operator_lines(doc: &DocumentViewModel, locale: Locale) -> Option<
 /// The intent of an operator control: the machine button exactly as the service offered it.
 pub(super) fn operator_intent(doc: &DocumentViewModel, document: DocumentId, control: G5Control) -> Option<UiIntent> {
     let o = doc.operator.as_ref()?;
-    let machine = |b: &burnburn_presentation::MachineButton, document: Option<DocumentId>| {
-        b.enabled.then(|| UiIntent::Machine { document, action: b.action, seen: b.seen.clone() })
-    };
+    let machine =
+        |b: &burnburn_presentation::MachineButton, document: Option<DocumentId>| super::machine_intent(document, b);
     match control {
         G5Control::OperatorMachine { index } => machine(o.machine.as_ref()?.buttons.get(index)?, None),
         G5Control::OperatorUpload { index } => {

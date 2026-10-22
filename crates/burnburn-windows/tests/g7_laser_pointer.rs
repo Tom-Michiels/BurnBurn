@@ -9,7 +9,7 @@ mod common;
 
 use burnburn_presentation::{LaserSetup, ProofInput, ProofKind, UiIntent};
 use burnburn_windows::host_panels::laser::{LaserInput, id, laser_spec, on_laser_event};
-use burnburn_windows::host_panels::{ControlKind, PanelReaction, PanelValues, PanelSpec};
+use burnburn_windows::host_panels::{ControlKind, PanelReaction, PanelSpec, PanelValues};
 use burnburn_windows::l10n::Locale;
 use common::{Rig, click, laser_view, rig};
 
@@ -62,14 +62,12 @@ fn with_a_measured_offset_the_note_names_it_and_the_switch_sends_the_setup() {
 
     let vm = r.h.view();
     let laser = laser_view(&mut r);
-    let input = LaserInput { document: r.doc, vm: &vm, laser: Some(&laser), machine: None, locale: Locale::Nl, file_row: None };
+    let input =
+        LaserInput { document: r.doc, vm: &vm, laser: Some(&laser), machine: None, locale: Locale::Nl, file_row: None };
     let mut values = PanelValues::default();
     values.checks.insert(id::POINTER_OFFSET, false);
     let reaction = on_laser_event(&input, &click(id::POINTER_OFFSET, values));
-    assert_eq!(
-        reaction,
-        PanelReaction::Intent(UiIntent::LaserSetup { setup: LaserSetup::UsePointerOffset(false) })
-    );
+    assert_eq!(reaction, PanelReaction::Intent(UiIntent::LaserSetup { setup: LaserSetup::UsePointerOffset(false) }));
 }
 
 #[test]

@@ -128,6 +128,8 @@ pub struct DocumentViewModel {
     /// The compact operator view (W08), on every window while there is a machine service, an order
     /// or an approved job.
     pub operator: Option<OperatorViewModel>,
+    /// The confirmation before a start while one is open (M06).
+    pub start_confirm: Option<crate::start_confirm::StartConfirmViewModel>,
     /// Preparing the image of the open tracer: local threshold, plane correction, masks (T03).
     pub trace_prep: Option<crate::trace_prep::TracePrepViewModel>,
     /// Parts, variants, plates and references (S06, S07, P06).

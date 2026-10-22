@@ -378,7 +378,12 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
         // The offset the anchor was aimed with is said, never silently applied.
         match p.pointer_offset_mm {
             Some((x, y)) => {
-                format!("{base}, {} ({}; {}) mm", t(LaserText::PlacementWithDot), mm_text(x, locale), mm_text(y, locale))
+                format!(
+                    "{base}, {} ({}; {}) mm",
+                    t(LaserText::PlacementWithDot),
+                    mm_text(x, locale),
+                    mm_text(y, locale)
+                )
             }
             None => base,
         }
