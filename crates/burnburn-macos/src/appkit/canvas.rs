@@ -15,7 +15,7 @@ use burnburn_render::surface::{CanvasError, DrawReport, SurfaceCanvas};
 use burnburn_render::{RenderPacket, Theme, build_packet};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::NSView;
+use objc2_app_kit::{NSAppearanceCustomization, NSView};
 use raw_window_handle::{AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 /// What the canvas draws for `scene`: the light theme, outlines only in wireframe.
@@ -29,6 +29,23 @@ pub fn canvas_packet(scene: &SceneSnapshot, wireframe: bool) -> RenderPacket {
 pub fn canvas_packet_with(scene: &SceneSnapshot, wireframe: bool, tolerance_px: f64) -> RenderPacket {
     let theme = if wireframe { Theme::light().wireframe() } else { Theme::light() };
     build_packet(scene, &theme.with_tolerance_px(tolerance_px))
+}
+
+/// The canvas theme for the window's appearance: light or dark, outlines only in wireframe, curves
+/// flattened to within `tolerance_px` device pixels.
+pub fn canvas_theme(dark: bool, wireframe: bool, tolerance_px: f64) -> Theme {
+    let theme = if dark { Theme::dark() } else { Theme::light() }.with_tolerance_px(tolerance_px);
+    if wireframe { theme.wireframe() } else { theme }
+}
+
+/// As [`canvas_packet_with`], in the light or the dark canvas theme.
+pub fn canvas_packet_themed(scene: &SceneSnapshot, wireframe: bool, tolerance_px: f64, dark: bool) -> RenderPacket {
+    build_packet(scene, &canvas_theme(dark, wireframe, tolerance_px))
+}
+
+/// Whether `view` is in the dark appearance (system setting or the window's own appearance).
+pub(crate) fn is_dark(view: &NSView) -> bool {
+    view.effectiveAppearance().name().to_string().contains("Dark")
 }
 
 pub(crate) struct Canvas {

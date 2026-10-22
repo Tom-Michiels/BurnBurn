@@ -197,7 +197,7 @@ fn grid_lines_follow_spacing_under_the_items_and_are_pixel_aligned() {
         camera,
         viewport,
         vec![(rect_path(0.0, 0.0, 10.0, 10.0), StyleRole::Design)],
-        vec![Overlay::Grid { spacing_mm: 5.0 }],
+        vec![Overlay::Grid { spacing_mm: 5.0, major_every: 0 }],
     );
     let packet = build_packet(&s, &t);
     let lines: Vec<_> = strokes(&packet.primitives).into_iter().filter(|s| s.3 == grid).collect();
@@ -216,7 +216,7 @@ fn grid_lines_follow_spacing_under_the_items_and_are_pixel_aligned() {
     t.grid = None;
     assert!(strokes(&build_packet(&s, &t).primitives).iter().all(|l| l.3 != grid));
     t.grid = Some(grid);
-    let dense = scene(camera, viewport, vec![], vec![Overlay::Grid { spacing_mm: 1e-6 }]);
+    let dense = scene(camera, viewport, vec![], vec![Overlay::Grid { spacing_mm: 1e-6, major_every: 0 }]);
     assert!(build_packet(&dense, &t).primitives.is_empty());
 }
 
