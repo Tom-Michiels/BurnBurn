@@ -15,25 +15,32 @@ exit 0, 3946 tests geslaagd, 0 gefaald, 11 genegeerd (macOS 27 arm64, toolchain 
 ### Software (eerlijk nog niet gebouwd)
 
 - **Hosts delen modellen via `#[path]`** in plaats van via `burnburn-presentation` (W4-L8a, contracts-phase-c §IM20).
-- **CAM** (G7-cam, 22-10-2026; zie `docs/dev-notes/G7-cam.md`): Tab Cut Power is gebouwd tot en met plan, preview, GRBL-S per
-  beweging en het Cut Settings-veld op beide hosts; common-line cutting (document, bestand, compile, nest, Cut Settings) en
-  korrelrichting van de plaat staan in de UI; de nest kent aantal exemplaren per onderdeel (ook per onderdeel), binnencontouren
-  als gaten, strak pakken met exacte controle en een gedeelde-randteller; recepten in de rijen van bestaande projecten (C08)
-  hebben een handgeschreven schema-2-fixture met migratie- en paneeltests. Wat daarvan eerlijk open blijft:
+- **CAM** (G7-cam en G8-cam-werk, 22-10-2026; zie `docs/dev-notes/G7-cam.md` en `docs/dev-notes/G8-cam-werk.md`): Tab Cut Power is
+  gebouwd tot en met plan, preview, GRBL-S per beweging, het Cut Settings-veld op beide hosts en (G8) de plan-blob van de historie;
+  common-line cutting (document, bestand, compile, nest, Cut Settings) snijdt het gedeelde stuk sinds G8 bij de *laatste* vorm, ná het
+  binnenwerk van beide (contract IM32), en korrelrichting van de plaat staat in de UI, nu ook per onderdeel (volgt / dwars / vrij); de
+  nest kent aantal exemplaren per onderdeel (ook per onderdeel), toont alle onderdelen in pagina's van 8, geeft kopieën een eigen naam
+  ("Naam (2)"), kent binnencontouren als gaten, strak pakken met exacte controle en een gedeelde-randteller; recepten in de rijen van
+  bestaande projecten (C08) hebben een handgeschreven schema-2-fixture met migratie- en paneeltests. Wat daarvan eerlijk open blijft:
   - *Tab Cut Power*: RD weigert het getypeerd (`tab cut power`, `Feature::TabCutPower` is `Unverified`), GRBL schrijft het als één
-    `G1` met eigen `S` (alleen tegen de eigen interpreter getest); de plan-blob van de historie slaat zo'n plan niet op (RD-jobs
-    zonder tabvermogen wel). Het vermogen is een percentage van het bewerkingsvermogen, 0 = overslaan (zoals voorheen).
-  - *Common-line*: de compiler snijdt een gedeeld stuk één keer binnen een tolerantie en vanaf een minimale overlap, bij de
-    *eerst* gesneden vorm; de contractregel "laatste vorm, ná het binnenwerk van beide" (`contracts-phase-c` IM32) is niet
-    gebouwd. `Feature::CommonLine` blijft `Unverified` op RD en GRBL: zo'n plan wordt geweigerd tot er bewijs is.
-  - *Nest*: `Packing::Tight` houdt de afstand tot op de productietolerantie (0,01 mm) en is trager; niet gemeten op echte
-    plaatdata. Nerf geldt voor de hele plaat met de X-as van elk onderdeel langs de nerf (geen nerf per onderdeel in de UI).
-    Het paneel toont rijen voor de eerste 12 onderdelen. Kopieën krijgen de naam van hun bron.
-- **Werkpakketten van het plan** (golf 7 sloot W04, W07, W01/W02, W09 en de basis van W06, zie "G7-werk" hieronder): open blijft
-  bij W06 het herkennen van gedraaide/geschaalde producten (nu alleen translatie), het bewaren van geleerde sjablonen
-  (alleen in het geheugen) en het wijzen van het vak in het beeld (nu getypt); bij W07 open aantallen/exemplaren in de nest;
-  bij W09 het bewijs van de tekenconventie van de pointeroffset op een machine; bij W01/W02 dat een order een job uit de
-  historie op de naam van het onderdeel kiest (de naam van zo'n job is de bestandsnaam van het project).
+    `G1` met eigen `S` (alleen tegen de eigen interpreter getest); de plan-blob van de historie bewaart zo'n plan sinds G8 (roundtrip-
+    test, vermogen en herkomst, plan-id gecontroleerd). Het vermogen is een percentage van het bewerkingsvermogen, 0 = overslaan.
+  - *Common-line*: de compiler snijdt een gedeeld stuk één keer binnen een tolerantie en vanaf een minimale overlap; sinds G8 bij de
+    laatste vorm, ná het binnenwerk van beide (met `inner_first` aan, de standaard; met die heuristiek uit geldt alleen "de laatste
+    vorm"). `Feature::CommonLine` blijft `Unverified` op RD en GRBL: zo'n plan wordt geweigerd tot er bewijs is.
+  - *Nest*: `Packing::Tight` houdt de afstand tot op de productietolerantie (0,01 mm); gemeten (G8, één synthetische plaat van 600 x
+    400 mm met 39 tot 156 onderdelen): zelfde benutting zolang alles past (kortere bereik), +9 stuks / +4 tot +5 procentpunt zodra de
+    plaat vol raakt, maar 40x tot 200x de rekentijd van Grid (tot ruim 6 s op 78 stuks). Nog niet op echte werkplaatsdata. De nerf per
+    onderdeel is een keuze uit drie (geen vrije hoek); er is geen automatisch verdelen over platen.
+- **Werkpakketten van het plan** (golf 7 sloot W04, W07, W01/W02, W09 en de basis van W06, zie "G7-werk"; G8-cam-werk bouwde W06 af,
+  W07 aantallen en W01/W02 op onderdeelnaam, zie `docs/dev-notes/G8-cam-werk.md`): W06 herkent nu gedraaide en geschaalde producten
+  (eigen Rust, operator beslist nog steeds over elke treffer; geen spiegeling, geen perspectief, uniforme schaal; een product dat deels
+  buiten het beeld ligt wordt niet gevonden), bewaart geleerde sjablonen (`recognition-templates.json`, schema 1) en laat het zoekvak in
+  het beeld aanwijzen; W07: één knop in het nest-paneel neemt het aantal (nog te maken) van een order over als aantal exemplaren van de
+  onderdelen met die naam; W01/W02: een order vindt een vrijgegeven job ook op de naam van een getekend onderdeel. Open blijft: bij W09
+  het bewijs van de tekenconventie van de pointeroffset op een machine; bij W06 de snelheid op echte camerabeelden en het uiterlijk van
+  het wijzen met de muis (alleen headless geoefend); bij W01/W02 dat een order een job vindt op de *getekende* objectnamen (geen
+  aparte onderdeelnaam in het project) en dat dezelfde naam in meer jobs de keuze van de operator vraagt.
 - **Editor** (G7-editor heeft E05, E06, E07/E08, S07/P06 en S01 gebouwd, zie `docs/dev-notes/G7-editor.md`; wat blijft):
   E05 afronden/afschuinen alleen tussen rechte zijden (geen krommen) en het verlengen van een Bézier-uiteinde is begrensd tot
   3 parameterlengtes; E06 een stap *toevoegen* kan alleen als offsetketen of via Schikken ▸ Reeks… (geen boolean-/raster-/
