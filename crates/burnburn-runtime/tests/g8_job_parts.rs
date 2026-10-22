@@ -144,5 +144,9 @@ fn an_explicit_part_name_replaces_the_object_names_in_the_frozen_project_also_af
     drop(first);
     let second = start(&fs);
     let back = second.approved_jobs().unwrap().remove(0);
-    assert_eq!(second.job_parts(back.plan), vec!["Houder links".to_owned()], "the name came back with the frozen project");
+    assert_eq!(
+        second.job_parts(back.plan),
+        vec!["Houder links".to_owned()],
+        "the name came back with the frozen project"
+    );
 }

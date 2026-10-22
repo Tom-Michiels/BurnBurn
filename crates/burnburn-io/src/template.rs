@@ -110,7 +110,7 @@ pub fn template_of(project: &Project, content: TemplateContent) -> Result<Projec
                 library_links: project.library_links.clone(),
                 production: None,
                 layer_slots: project.layer_slots.clone(),
-            part_name: None,
+                part_name: None,
             })
         }
     }

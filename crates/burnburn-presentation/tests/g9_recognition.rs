@@ -41,8 +41,7 @@ fn speckle(x: i64, y: i64) -> f64 {
 /// A blob with three features of different strength, size and distance: handed, so that it differs
 /// from its mirror image by more than a turn.
 fn product(u: f64, v: f64) -> f64 {
-    90.0 * (-(u * u + v * v) / 32.0).exp()
-        - 45.0 * (-((u + 10.0).powi(2) + (v - 6.0).powi(2)) / 18.0).exp()
+    90.0 * (-(u * u + v * v) / 32.0).exp() - 45.0 * (-((u + 10.0).powi(2) + (v - 6.0).powi(2)) / 18.0).exp()
         + 60.0 * (-((u - 11.0).powi(2) + (v + 8.0).powi(2)) / 12.5).exp()
         + 50.0 * (-((u - 4.0).powi(2) + (v - 12.0).powi(2)) / 8.0).exp()
 }

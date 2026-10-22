@@ -25,8 +25,9 @@ impl AppController {
     ) -> AppUpdate {
         match outcome.result {
             Ok(TaskOutput::Opened { project, path }) => {
-                let Project { uuid, document: snapshot, assets, library_links, production, layer_slots, part_name, .. } =
-                    *project;
+                let Project {
+                    uuid, document: snapshot, assets, library_links, production, layer_slots, part_name, ..
+                } = *project;
                 let mut doc = DocumentSession::from_snapshot(document, snapshot);
                 let session = match &restored {
                     // A recovered document is unsaved and untitled: Save asks for a location and

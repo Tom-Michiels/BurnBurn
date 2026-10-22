@@ -462,10 +462,9 @@ fn pair(t: SchikkenText) -> (&'static str, &'static str) {
         T::NestPartsPrev => ("Vorige onderdelen", "Previous parts"),
         T::NestPartsNext => ("Volgende onderdelen", "Next parts"),
         T::NestPartGrain => ("Onderdeel {n}: {name}, nerf", "Part {n}: {name}, grain"),
-        T::NestPartGrainAngle => (
-            "Onderdeel {n}: {name}, hoek van de nerf (°)",
-            "Part {n}: {name}, angle of the grain (°)",
-        ),
+        T::NestPartGrainAngle => {
+            ("Onderdeel {n}: {name}, hoek van de nerf (°)", "Part {n}: {name}, angle of the grain (°)")
+        }
         T::NestOrdersHeading => ("Aantal van een order overnemen", "Take the quantity of an order"),
         T::NestOrderLineOne => (
             "{name}: nog {left} te maken, 1 onderdeel van de nest heeft deze naam",
@@ -1439,7 +1438,8 @@ pub fn schikken_intent(
             let typed = value(values, control).trim().replace(',', ".").parse::<f64>().ok().filter(|d| d.is_finite());
             nest(&|i| {
                 if let Some(degrees) = typed
-                    && let Some(entry) = i.part_grain.iter_mut().find(|(o, g)| *o == object && g.angle_degrees().is_some())
+                    && let Some(entry) =
+                        i.part_grain.iter_mut().find(|(o, g)| *o == object && g.angle_degrees().is_some())
                 {
                     entry.1 = burnburn_presentation::NestPartGrain::at_degrees(degrees);
                 }

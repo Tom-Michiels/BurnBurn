@@ -450,7 +450,8 @@ pub fn locate_pose(
                                     tx,
                                     ty,
                                 };
-                                if let Some((s, _)) = score(&small_frame, &small, &small_kernel, &pose, params.min_visible)
+                                if let Some((s, _)) =
+                                    score(&small_frame, &small, &small_kernel, &pose, params.min_visible)
                                 {
                                     scores[y * fw + x] = s;
                                 }

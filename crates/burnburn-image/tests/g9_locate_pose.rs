@@ -197,13 +197,8 @@ fn a_tilted_product_scores_clearly_lower_when_only_a_flat_view_is_tried() {
 fn mirrored_turned_scaled_and_tilted_at_once() {
     let template = template();
     let params = PoseParams { mirror: true, max_tilt: Some(0.4), scales: vec![0.8, 1.0, 1.25], ..base() };
-    let f = frame(&[Placed {
-        angle: 100.0,
-        scale: 1.1,
-        mirrored: true,
-        tilt: (0.15, -0.2),
-        ..Placed::at(110.5, 85.5)
-    }]);
+    let f =
+        frame(&[Placed { angle: 100.0, scale: 1.1, mirrored: true, tilt: (0.15, -0.2), ..Placed::at(110.5, 85.5) }]);
     let m = one(&locate_pose(&f, &template, &params, &never()).unwrap());
     assert!(m.mirrored && m.score > 0.93, "{m:?}");
     assert!((m.x_px - 110.5).abs() < 1.2 && (m.y_px - 85.5).abs() < 1.2, "{m:?}");

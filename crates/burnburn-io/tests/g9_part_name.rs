@@ -63,7 +63,11 @@ fn a_blank_or_oversized_or_unknown_part_name_entry_is_refused_not_repaired() {
 #[test]
 fn the_names_an_order_can_use_are_the_explicit_name_or_else_the_names_of_the_objects() {
     let plain = sample_project();
-    assert_eq!(plain.order_part_names(), vec!["Plaat".to_owned(), "Logo".to_owned()], "the drawn objects, in draw order");
+    assert_eq!(
+        plain.order_part_names(),
+        vec!["Plaat".to_owned(), "Logo".to_owned()],
+        "the drawn objects, in draw order"
+    );
     // An explicit name replaces them: the objects are no longer how an order finds this project.
     assert_eq!(named("Houder").order_part_names(), vec!["Houder".to_owned()]);
     // A blank name is no name.

@@ -208,7 +208,9 @@ mod recognition {
             assert!(nl.contains(caption), "{caption}: {nl}");
         }
         let en = texts(&r, Locale::En);
-        assert!(en.contains("( ) Find mirrored products") && en.contains("( ) Find products partly outside the picture"));
+        assert!(
+            en.contains("( ) Find mirrored products") && en.contains("( ) Find products partly outside the picture")
+        );
 
         let draft = vec![(C::RecogMirror, "1".to_owned())];
         assert_eq!(
