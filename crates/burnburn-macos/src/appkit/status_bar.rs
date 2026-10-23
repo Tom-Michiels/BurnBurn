@@ -4,8 +4,7 @@
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAccessibility, NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField,
-    NSView,
+    NSAccessibility, NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField, NSView,
 };
 use objc2_foundation::NSString;
 

@@ -104,7 +104,10 @@ fn scenario() -> Result<(), String> {
         .app
         .with_window(doc, |w| w.plan_labels.iter().map(|l| l.stringValue().to_string()).collect())
         .unwrap_or_default();
-    expect(|| format!("labels {labels:?}"), labels.first().is_some_and(|t| t.starts_with("Plan van ") && t.contains(" \u{b7} ")))?;
+    expect(
+        || format!("labels {labels:?}"),
+        labels.first().is_some_and(|t| t.starts_with("Plan van ") && t.contains(" \u{b7} ")),
+    )?;
     // The hash is not the visible text (LF3 Q4); the title carries it as a tooltip.
     expect(|| format!("plan id row {labels:?}"), labels.get(1).is_some_and(String::is_empty))?;
     let tooltip = s.app.with_window(doc, |w| w.plan_labels[0].toolTip().map(|t| t.to_string())).flatten();

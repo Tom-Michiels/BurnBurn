@@ -449,3 +449,8 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
 |---|---|---|---|---|---|
 | LF1-layout | Q1 dubbele verschuiving, Q3 primaire knop rechts en Esc/Return, Q6 reden één keer, Q9 laserlabels, layout-invarianten | – (alleen `macos/src/appkit`) | – | `macos/tests` native `layout_invariants` (rood op 474 fouten, groen), `cam_dialogs::test_dialogs_make_a_private_job_and_focus_test_is_greyed_with_its_reason`; dev-note `docs/dev-notes/LF1.md` | klaar; open: basislijncontrole, laservenster op klein scherm (handmatig) |
+
+## LF-B (look and feel)
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| LF7-documentvenster | NSSplitView-panes (alleen canvas groeit), minSize, bewaard frame, laagtabel zonder afkapping, statusbalk, een aanpasbare NSToolbar, SF Symbols, plantijdstip + Kopieer id, statusglyph | – | `PlanViewModel.compiled_at`; host-models `status_bar`, `window_state`, `plan_title` | `presentation/tests/lf7_plan_time.rs`, `macos/tests/{lf7_plan_title,lf7_status_bar}.rs`, `host-models/tests/lf7_window_state.rs`, native `lf7_document_window`; dev-note `docs/dev-notes/LF7.md` | klaar; open: Windows-statusbalk en venstertoestand (LF14), laagstaal als cirkel, gevoel met de gebruiker |

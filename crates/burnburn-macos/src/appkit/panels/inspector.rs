@@ -13,8 +13,8 @@ use objc2_app_kit::{
 use objc2_foundation::NSString;
 
 use super::widgets::{Column, field, label, push_button, rect};
-use crate::appkit::toolstrip::symbol_image;
 use crate::adapter::{MenuItem, menu_tag, message_text};
+use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
 /// Tag of the caption label of inspector field `n` is `CAPTION_TAG_BASE + n` (field `n` has tag `n`).

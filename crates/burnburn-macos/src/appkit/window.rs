@@ -343,7 +343,11 @@ impl DocWindow {
         // view and the status bar.
         let tool_strip = ToolStrip::new(mtm, app, document, target, locale);
         controller.set_panel_items(
-            tool_strip.panel_item_ids().into_iter().filter_map(|id| tool_strip.panel_item(&id).map(|i| (id, i))).collect(),
+            tool_strip
+                .panel_item_ids()
+                .into_iter()
+                .filter_map(|id| tool_strip.panel_item(&id).map(|i| (id, i)))
+                .collect(),
         );
         let container =
             NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height));
@@ -715,13 +719,7 @@ impl DocWindow {
 
     /// The status bar: the pointer's coordinate (once it was over the canvas), zoom and unit.
     pub(crate) fn refresh_status_bar(&self, doc: &burnburn_presentation::DocumentViewModel) {
-        let bar = crate::panels::status_bar(
-            self.pointer,
-            &doc.camera,
-            &doc.viewport,
-            self.length_unit,
-            self.locale,
-        );
+        let bar = crate::panels::status_bar(self.pointer, &doc.camera, &doc.viewport, self.length_unit, self.locale);
         self.status_bar.show(&bar);
     }
 

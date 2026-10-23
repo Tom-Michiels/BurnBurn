@@ -22,8 +22,8 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSAppearanceCustomization, NSBezelStyle, NSBitmapImageRep, NSButton, NSButtonType, NSFont,
-    NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSImage, NSMenu,
+    NSAccessibility, NSAppearanceCustomization, NSBezelStyle, NSBitmapImageRep, NSButton, NSButtonType,
+    NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSFont, NSImage, NSMenu,
     NSMenuItem, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};

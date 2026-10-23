@@ -1,8 +1,8 @@
 //! The operations section of the production strip: colour palette, layer table, add row.
 
 use crate::appkit::panels::production::LIFT;
-use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::panels::widgets::{push_button, rect, set_text, strip_label};
+use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 
 use burnburn_presentation::{AppViewModel, PALETTE_SLOTS};
@@ -11,8 +11,8 @@ use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSButtonCell, NSButtonType, NSCellImagePosition, NSColor,
-    NSFont, NSImageScaling, NSPopUpButton,
-    NSScrollView, NSTableColumn, NSTableView, NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
+    NSFont, NSImageScaling, NSPopUpButton, NSScrollView, NSTableColumn, NSTableView,
+    NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
 };
 use objc2_foundation::{NSSize, NSString};
 

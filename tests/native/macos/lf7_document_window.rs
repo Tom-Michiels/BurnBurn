@@ -49,7 +49,11 @@ mod scenario {
     fn panes(s: &Session, doc: DocumentId) -> Result<[f64; 3], String> {
         s.app
             .with_window(doc, |w| {
-                [w.sidebar_pane.frame().size.width, w.canvas_pane.frame().size.width, w.inspector_pane.frame().size.width]
+                [
+                    w.sidebar_pane.frame().size.width,
+                    w.canvas_pane.frame().size.width,
+                    w.inspector_pane.frame().size.width,
+                ]
             })
             .ok_or_else(|| "no window".to_owned())
     }
@@ -72,7 +76,8 @@ mod scenario {
         let result = checks(&s);
         // The user's own defaults are exactly as before; the temporary domain goes away again.
         let after = standard.stringForKey(&frame_key).map(|v| v.to_string());
-        objc2_foundation::NSUserDefaults::standardUserDefaults().removePersistentDomainForName(&NSString::from_str(&suite));
+        objc2_foundation::NSUserDefaults::standardUserDefaults()
+            .removePersistentDomainForName(&NSString::from_str(&suite));
         result?;
         expect(|| format!("the user's defaults changed: {before:?} -> {after:?}"), before == after)
     }
@@ -91,11 +96,7 @@ mod scenario {
     fn resize_grows_only_the_canvas(s: &Session, doc: DocumentId) -> Check {
         let before = panes(s, doc)?;
         let frame = s.app.with_window(doc, |w| w.window.frame()).ok_or("no window")?;
-        set_frame(
-            s,
-            doc,
-            NSRect::new(frame.origin, NSSize::new(frame.size.width + 500.0, frame.size.height)),
-        );
+        set_frame(s, doc, NSRect::new(frame.origin, NSSize::new(frame.size.width + 500.0, frame.size.height)));
         let after = panes(s, doc)?;
         expect(|| format!("object list changed width: {before:?} -> {after:?}"), (after[0] - before[0]).abs() < 1.0)?;
         expect(|| format!("inspector changed width: {before:?} -> {after:?}"), (after[2] - before[2]).abs() < 1.0)?;
@@ -138,7 +139,10 @@ mod scenario {
                 && (restored.origin.y - saved_frame.origin.y).abs() < 1.0,
         )?;
         let sidebar = panes(s, second)?[0];
-        expect(|| format!("sidebar width {sidebar} instead of the saved {saved_sidebar}"), (sidebar - saved_sidebar).abs() < 1.0)?;
+        expect(
+            || format!("sidebar width {sidebar} instead of the saved {saved_sidebar}"),
+            (sidebar - saved_sidebar).abs() < 1.0,
+        )?;
         s.app.with_window(second, |w| w.window.close());
         s.pump(0.2);
         Ok(())
@@ -160,10 +164,8 @@ mod scenario {
         s.app.with_window(doc, |w| w.split.setPosition_ofDividerAtIndex(200.0, 0));
         let default_width = 1400.0;
         let frame = s.app.with_window(doc, |w| w.window.frame()).ok_or("no window")?;
-        let content = s
-            .app
-            .with_window(doc, |w| w.window.contentRectForFrameRect(w.window.frame()).size)
-            .ok_or("no window")?;
+        let content =
+            s.app.with_window(doc, |w| w.window.contentRectForFrameRect(w.window.frame()).size).ok_or("no window")?;
         set_frame(
             s,
             doc,
@@ -183,26 +185,40 @@ mod scenario {
                     let header = column.headerCell();
                     let need = header.cellSize().width;
                     if need > column.width() + 0.5 {
-                        problems.push(format!("header {:?} needs {need:.0} pt in a {:.0} pt column", header.stringValue(), column.width()));
+                        problems.push(format!(
+                            "header {:?} needs {need:.0} pt in a {:.0} pt column",
+                            header.stringValue(),
+                            column.width()
+                        ));
                     }
                     if table.numberOfRows() > 0 {
                         let cell = table.preparedCellAtColumn_row(i as isize, 0);
                         if let Some(cell) = cell {
-                            let is_toggle = column.identifier().to_string() == "output" || column.identifier().to_string() == "visible";
+                            let is_toggle = column.identifier().to_string() == "output"
+                                || column.identifier().to_string() == "visible";
                             let text = cell.stringValue().to_string();
                             if !is_toggle && !text.is_empty() && cell.cellSize().width > column.width() + 0.5 {
-                                problems.push(format!("cell {text:?} needs {:.0} pt in a {:.0} pt column", cell.cellSize().width, column.width()));
+                                problems.push(format!(
+                                    "cell {text:?} needs {:.0} pt in a {:.0} pt column",
+                                    cell.cellSize().width,
+                                    column.width()
+                                ));
                             }
                         }
                     }
                 }
                 if total > visible + 0.5 {
-                    problems.push(format!("the columns need {total:.0} pt, the table shows {visible:.0} pt ({:?})", columns.iter().map(|c| (c.identifier().to_string(), c.width().round())).collect::<Vec<_>>()));
+                    problems.push(format!(
+                        "the columns need {total:.0} pt, the table shows {visible:.0} pt ({:?})",
+                        columns.iter().map(|c| (c.identifier().to_string(), c.width().round())).collect::<Vec<_>>()
+                    ));
                 }
                 // Swatch and name: the layer cell is filled with the layer colour, the name follows.
                 let layer = table.preparedCellAtColumn_row(0, 0);
                 let name = table.preparedCellAtColumn_row(1, 0);
-                let swatch = layer.as_ref().and_then(|c| c.downcast_ref::<objc2_app_kit::NSTextFieldCell>().map(|c| c.drawsBackground()));
+                let swatch = layer
+                    .as_ref()
+                    .and_then(|c| c.downcast_ref::<objc2_app_kit::NSTextFieldCell>().map(|c| c.drawsBackground()));
                 if swatch != Some(true) {
                     problems.push("the layer column has no colour swatch".into());
                 }
@@ -262,7 +278,9 @@ mod scenario {
                         problems.push(format!("no view for panel {title}"));
                         continue;
                     };
-                    let item = items.iter().find(|i| i.view().is_some_and(|v| std::ptr::eq(&*v as *const NSView, &*panel as *const NSView)));
+                    let item = items.iter().find(|i| {
+                        i.view().is_some_and(|v| std::ptr::eq(&*v as *const NSView, &*panel as *const NSView))
+                    });
                     let Some(item) = item else {
                         problems.push(format!("panel {title:?} is not a toolbar item"));
                         continue;
@@ -270,7 +288,8 @@ mod scenario {
                     if item.label().to_string() != *title {
                         problems.push(format!("item label {:?} instead of {title:?}", item.label()));
                     }
-                    let menu_items = item.menuFormRepresentation().and_then(|m| m.submenu()).map_or(0, |m| m.numberOfItems());
+                    let menu_items =
+                        item.menuFormRepresentation().and_then(|m| m.submenu()).map_or(0, |m| m.numberOfItems());
                     if menu_items == 0 {
                         problems.push(format!("panel {title:?} has no overflow menu"));
                     }
@@ -315,11 +334,9 @@ mod scenario {
         // SAFETY: a live button on the main thread; nil sender.
         unsafe { button.performClick(None) };
         s.pump(0.1);
-        let copied = s
-            .app
-            .pasteboard()
-            .stringForType(unsafe { objc2_app_kit::NSPasteboardTypeString })
-            .map(|t| t.to_string());
+        // SAFETY: reading AppKit's immutable string pasteboard type constant.
+        let kind = unsafe { objc2_app_kit::NSPasteboardTypeString };
+        let copied = s.app.pasteboard().stringForType(kind).map(|t| t.to_string());
         expect(|| format!("pasteboard holds {copied:?}, not {id}"), copied.as_deref() == Some(id.as_str()))?;
         let title = s.app.with_window(doc, |w| w.plan_labels[0].stringValue().to_string()).ok_or("no window")?;
         expect(|| format!("plan title {title:?}"), title.starts_with("Plan van ") && title.contains(" \u{b7} "))?;

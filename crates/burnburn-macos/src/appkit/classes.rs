@@ -33,8 +33,8 @@ use objc2_app_kit::{
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
     NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
     NSPopUpButton, NSResponder, NSSegmentedControl, NSSplitView, NSSplitViewDelegate, NSTableColumn, NSTableView,
-    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem,
-    NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar,
+    NSToolbarDelegate, NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -43,8 +43,8 @@ use objc2_foundation::{
 
 use super::app::HostApp;
 use super::canvas::Canvas;
-use super::toolstrip::PanelItem;
 use super::panels::cut_settings::OptionControl;
+use super::toolstrip::PanelItem;
 use crate::adapter::{
     CommitCause, MouseButton, MousePhase, NativeEvent, menu_checked, menu_enabled_with_recent, menu_item, menu_title,
 };
