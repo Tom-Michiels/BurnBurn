@@ -7,13 +7,14 @@ use burnburn_types::DocumentId;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSAccessibility, NSBezelStyle, NSButton, NSButtonType, NSControlStateValueOff, NSControlStateValueOn, NSFont,
-    NSTextField,
+    NSAccessibility, NSBezelStyle, NSButton, NSButtonType, NSCellImagePosition, NSControlStateValueOff,
+    NSControlStateValueOn, NSFont, NSTextField,
 };
 use objc2_foundation::NSString;
 
 use super::widgets::{Column, field, label, push_button, rect};
 use crate::adapter::{MenuItem, menu_tag, message_text};
+use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
 /// Tag of the caption label of inspector field `n` is `CAPTION_TAG_BASE + n` (field `n` has tag `n`).
@@ -25,8 +26,9 @@ use crate::panels::{INSPECTOR_FLIP_BUTTONS, INSPECTOR_ROWS, field_unit, inspecto
 const CELL: f64 = 20.0;
 const FIELD_HEIGHT: f64 = 24.0;
 const CAPTION_HEIGHT: f64 = 14.0;
-/// Glyphs of the flip buttons (the accessibility label and tooltip are the command's name).
-const FLIP_GLYPHS: [&str; 2] = ["\u{2194}", "\u{2195}"];
+/// SF Symbols of the flip buttons (horizontal, vertical); the accessibility label and tooltip are
+/// the command's name.
+const FLIP_SYMBOLS: [&str; 2] = ["arrow.left.and.right", "arrow.up.and.down"];
 
 /// The controls beside the fields.
 pub(crate) struct InspectorControlsWidgets {
@@ -72,7 +74,9 @@ pub(crate) fn transform_block(
             let width = (half - 4.0) / 2.0;
             for (i, command) in INSPECTOR_FLIP_BUTTONS.iter().enumerate() {
                 let name = message_text(MessageKey::Command(*command), locale);
-                let b = push_button(mtm, FLIP_GLYPHS[i]);
+                let b = push_button(mtm, "");
+                b.setImage(symbol_image(FLIP_SYMBOLS[i], &name).as_deref());
+                b.setImagePosition(NSCellImagePosition::ImageOnly);
                 b.setFrame(rect(12.0 + half + 8.0 + i as f64 * (width + 4.0), field_y, width, FIELD_HEIGHT));
                 b.setTag(menu_tag(MenuItem::Command(*command)));
                 b.setAccessibilityLabel(Some(&NSString::from_str(&name)));

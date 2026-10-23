@@ -20,8 +20,10 @@ pub mod clipboard;
 mod classes;
 mod panels;
 pub mod symbols;
+mod status_bar;
 mod toolstrip;
 mod window;
+mod window_state;
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -163,6 +165,8 @@ pub fn run_app() -> ExitCode {
         };
     }
     let host = HostApp::new(mtm, Arc::new(burnburn_io::std_fs::StdFileSystem), options);
+    // The running app keeps window frames and pane widths in the user's defaults.
+    host.use_standard_window_state();
     if let Some(dir) = user_dir {
         host.use_user_dir(dir);
     }

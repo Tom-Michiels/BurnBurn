@@ -33,6 +33,7 @@ mod plan;
 mod schikken;
 mod shapes;
 mod sketch;
+mod status_bar;
 mod text;
 
 pub use cam::*;
@@ -53,6 +54,7 @@ pub use plan::*;
 pub use schikken::*;
 pub use shapes::*;
 pub use sketch::*;
+pub use status_bar::*;
 pub use text::*;
 
 /// Segments of the toolbar's Schets control (momentary), left to right.
