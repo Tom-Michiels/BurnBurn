@@ -519,9 +519,9 @@ pub(super) fn style_scene(s: &Session, snapshot: &DocumentSnapshot, scene: &mut 
             .iter()
             .filter(|op| !s.layers.hidden.contains(op))
             .filter(|op| {
-                process.operation(**op).is_some_and(|o| {
-                    matches!(o.mode(), OperationMode::Fill(_) | OperationMode::OffsetFill(_))
-                })
+                process
+                    .operation(**op)
+                    .is_some_and(|o| matches!(o.mode(), OperationMode::Fill(_) | OperationMode::OffsetFill(_)))
             })
             .find_map(|op| colours.get(op).map(|slot| u16::from(*slot)));
         true

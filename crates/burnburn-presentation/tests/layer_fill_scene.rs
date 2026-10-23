@@ -3,9 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use burnburn_presentation::{
-    CommandKey, CutSettingsInput, HeadlessEditorHarness, OperationKind, SelectMode, UiIntent,
-};
+use burnburn_presentation::{CommandKey, CutSettingsInput, HeadlessEditorHarness, OperationKind, SelectMode, UiIntent};
 use burnburn_types::{DocumentId, GeometryId, OperationId};
 
 fn two_rectangles(h: &mut HeadlessEditorHarness) -> (DocumentId, GeometryId, GeometryId) {

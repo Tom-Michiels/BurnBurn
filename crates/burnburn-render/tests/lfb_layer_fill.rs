@@ -98,7 +98,10 @@ fn offscreen_pixels_show_the_tint_inside_the_filled_square_only() {
         // The tint moves the pixel from the background towards the layer colour.
         let towards = (c * 255.0).round() as i32 - bg[i];
         let moved = i32::from(tinted[i]) - bg[i];
-        assert!(towards.abs() < 8 || (moved != 0 && moved.signum() == towards.signum()), "channel {i}: {moved} vs {towards}");
+        assert!(
+            towards.abs() < 8 || (moved != 0 && moved.signum() == towards.signum()),
+            "channel {i}: {moved} vs {towards}"
+        );
     }
     assert_ne!(tinted[..3], plain[..3], "filled and line-only squares differ");
 }
