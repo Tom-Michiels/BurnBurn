@@ -20,7 +20,8 @@ use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSPoint, NSSize, NSString}
 use super::app::{HostApp, HostOptions};
 use super::canvas::Canvas;
 use super::classes::{
-    CanvasView, ControllerParts, WindowController, table_delegate, table_source, toolbar_delegate, window_delegate,
+    CanvasView, ControllerParts, WindowController, split_delegate, table_delegate, table_source, toolbar_delegate,
+    window_delegate,
 };
 use super::panels::arrange::arrange_toolbar;
 use super::panels::barcode::{BarcodeSection, barcode_section};
@@ -39,12 +40,22 @@ use super::panels::sketch::{SketchSection, sketch_section};
 use super::panels::text::{TextSection, text_section};
 use super::panels::variable::{VariableSection, variable_section};
 use super::panels::widgets::{Column, button, rect, selected_rows, set_button_title, set_text};
-use super::toolstrip::{STRIP_HEIGHT as TOOL_STRIP_HEIGHT, ToolStrip};
+use super::status_bar::{STATUS_HEIGHT, StatusBarWidgets, status_bar_widgets};
+use super::toolstrip::ToolStrip;
+use super::window_state::WindowState;
 use crate::adapter::{message_text, object_labels, selected_rows as vm_selected_rows, window_title};
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{machine_panel, plan_panel};
 
-const CONTENT_SIZE: NSSize = NSSize { width: 1100.0, height: 800.0 };
+/// Default content size: the layer table needs about 630 pt beside the camera section, so the
+/// canvas column is 940 pt wide (the plan's 1100 pt left only 640).
+const CONTENT_SIZE: NSSize = NSSize { width: 1400.0, height: 820.0 };
+/// The window does not shrink below this content size.
+const MIN_CONTENT: NSSize = NSSize { width: 960.0, height: 620.0 };
+/// Pane widths the dividers allow (points): object list, inspector, and the canvas column.
+pub(crate) const SIDEBAR_RANGE: (f64, f64) = (150.0, 360.0);
+pub(crate) const INSPECTOR_RANGE: (f64, f64) = (240.0, 420.0);
+pub(crate) const CANVAS_MIN: f64 = 420.0;
 /// Machine controls offered at most at once (ConfirmStored, Start, QueryStatus, Cancel, Reconnect).
 const MACHINE_SLOTS: usize = 6;
 const SIDEBAR_WIDTH: f64 = 200.0;
@@ -63,6 +74,22 @@ pub(crate) struct DocWindow {
     pub(crate) window: Retained<NSWindow>,
     pub(crate) controller: Retained<WindowController>,
     pub(crate) canvas_view: Retained<CanvasView>,
+    /// The split view and its three panes: object list, canvas column, inspector column.
+    pub(crate) split: Retained<NSSplitView>,
+    pub(crate) sidebar_pane: Retained<NSView>,
+    pub(crate) canvas_pane: Retained<NSView>,
+    pub(crate) inspector_pane: Retained<NSView>,
+    /// The status bar: pointer coordinate, zoom, unit.
+    pub(crate) status_coordinate: Retained<NSTextField>,
+    pub(crate) status_zoom: Retained<NSTextField>,
+    pub(crate) status_unit: Retained<NSTextField>,
+    /// "Kopieer id" at the plan.
+    pub(crate) copy_id_button: Retained<NSButton>,
+    /// Pointer in canvas points (None until the pointer was over the canvas) and the display unit
+    /// the coordinate is shown in.
+    pub(crate) pointer: Option<[f64; 2]>,
+    pub(crate) length_unit: burnburn_host_models::format::LengthPreference,
+    pub(crate) status_bar: StatusBarWidgets,
     pub(crate) table: Retained<NSTableView>,
     pub(crate) toolbar: Retained<NSToolbar>,
     /// The toolbar's Uitlijnen control (align and distribute segments).
@@ -125,7 +152,9 @@ impl DocWindow {
         document: DocumentId,
         options: &HostOptions,
         locale: Locale,
+        store: &WindowState,
     ) -> DocWindow {
+        let saved = store.load(mtm);
         let style = NSWindowStyleMask::Titled
             | NSWindowStyleMask::Closable
             | NSWindowStyleMask::Miniaturizable
@@ -134,7 +163,7 @@ impl DocWindow {
         let window = unsafe {
             NSWindow::initWithContentRect_styleMask_backing_defer(
                 NSWindow::alloc(mtm),
-                rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height + TOOL_STRIP_HEIGHT),
+                rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height),
                 style,
                 NSBackingStoreType::Buffered,
                 false,
@@ -143,7 +172,8 @@ impl DocWindow {
         // SAFETY: ownership stays with this Retained; AppKit must not also release on close.
         unsafe { window.setReleasedWhenClosed(false) };
 
-        let (h, canvas_width) = (CONTENT_SIZE.height, CONTENT_SIZE.width - SIDEBAR_WIDTH - INSPECTOR_WIDTH);
+        let (h, canvas_width) =
+            (CONTENT_SIZE.height - STATUS_HEIGHT, CONTENT_SIZE.width - SIDEBAR_WIDTH - INSPECTOR_WIDTH);
         let split = NSSplitView::initWithFrame(NSSplitView::alloc(mtm), rect(0.0, 0.0, CONTENT_SIZE.width, h));
         split.setVertical(true);
         split.setDividerStyle(NSSplitViewDividerStyle::Thin);
@@ -192,10 +222,10 @@ impl DocWindow {
         col.y -= 12.0;
         let plan_title = col.add_label("", 20.0);
         plan_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
-        let plan_id = col.add_label("", 18.0);
-        plan_id.setLineBreakMode(NSLineBreakMode::ByTruncatingMiddle);
-        plan_id.setSelectable(true);
-        plan_id.setFont(Some(&NSFont::systemFontOfSize(10.0)));
+        // The plan id row: the id itself is not shown (Q4); "Kopieer id" copies it, and the GRBL
+        // refusals pull-down sits at the right end.
+        let plan_id = col.add_label("", 26.0);
+        plan_id.setHidden(true);
         let estimate = col.add_label("", 18.0);
         let state = col.add_label("", 34.0);
         state.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
@@ -208,12 +238,6 @@ impl DocWindow {
         // The GRBL refusals share the plan-identity row: that label truncates in the middle anyway.
         let popup_width = 104.0;
         let id_frame = plan_id.frame();
-        plan_id.setFrame(rect(
-            id_frame.origin.x,
-            id_frame.origin.y,
-            id_frame.size.width - popup_width - 4.0,
-            id_frame.size.height,
-        ));
         let (grbl_refusals, grbl_refusal_target) = super::panels::grbl_window::refusal_popup(
             mtm,
             app.clone(),
@@ -227,6 +251,11 @@ impl DocWindow {
         );
         inspector.addSubview(&grbl_refusals);
 
+        let status_bar = status_bar_widgets(mtm, CONTENT_SIZE.width, locale);
+        let (status_coordinate, status_zoom, status_unit) =
+            (status_bar.coordinate.clone(), status_bar.zoom.clone(), status_bar.unit.clone());
+        let sidebar_pane: Retained<NSView> = Retained::into_super(scroll.clone());
+        let canvas_pane: Retained<NSView> = Retained::into_super(centre.clone());
         let controller = WindowController::new(
             mtm,
             ControllerParts {
@@ -251,6 +280,15 @@ impl DocWindow {
             },
         );
         let target: &AnyObject = controller.as_ref();
+        let copy_id_button = button(
+            mtm,
+            crate::panels::copy_plan_id_title(locale),
+            target,
+            sel!(copyPlanId:),
+            rect(id_frame.origin.x, id_frame.origin.y, 100.0, id_frame.size.height - 2.0),
+        );
+        copy_id_button.setEnabled(false);
+        inspector.addSubview(&copy_id_button);
         let compile_button = col.add_button(host_text(HostText::CompileButton, locale), target, CommandKey::Compile);
         let export_button = col.add_button(host_text(HostText::ExportButton, locale), target, CommandKey::ExportRd);
 
@@ -294,23 +332,29 @@ impl DocWindow {
         centre.setPosition_ofDividerAtIndex(h - STRIP_HEIGHT, 0);
         split.addSubview(&scroll);
         split.addSubview(&centre);
+        split.setDelegate(Some(split_delegate(&controller)));
         // The inspector column carries the stack of the selection at its foot (G9-editor, E06) and
         // scrolls when the window is lower than the column.
         let inspector_column = super::panels::g5::embed_stack(mtm, &inspector, &mut g5, INSPECTOR_WIDTH, h);
+        let inspector_pane: Retained<NSView> = Retained::into_super(inspector_column.clone());
         split.addSubview(&inspector_column);
         split.adjustSubviews();
-        // The tool strip sits above the split view; the content view holds both.
-        let tool_strip = ToolStrip::new(mtm, app, document, target, locale, CONTENT_SIZE.width);
-        tool_strip.view().setFrame(rect(0.0, h, CONTENT_SIZE.width, TOOL_STRIP_HEIGHT));
+        // The tool groups are the items of the window's toolbar; the content view holds the split
+        // view and the status bar.
+        let tool_strip = ToolStrip::new(mtm, app, document, target, locale);
+        controller.set_panel_items(
+            tool_strip.panel_item_ids().into_iter().filter_map(|id| tool_strip.panel_item(&id).map(|i| (id, i))).collect(),
+        );
         let container =
-            NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, CONTENT_SIZE.width, h + TOOL_STRIP_HEIGHT));
-        split.setFrame(rect(0.0, 0.0, CONTENT_SIZE.width, h));
+            NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, CONTENT_SIZE.width, CONTENT_SIZE.height));
+        split.setFrame(rect(0.0, STATUS_HEIGHT, CONTENT_SIZE.width, h));
         split.setAutoresizingMask(NSAutoresizingMaskOptions(
             NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewHeightSizable.0,
         ));
         container.addSubview(&split);
-        container.addSubview(tool_strip.view());
+        container.addSubview(&status_bar.view);
         window.setContentView(Some(&container));
+        window.setContentMinSize(MIN_CONTENT);
 
         for (_, f) in &fields {
             // SAFETY: the target is weak; DocWindow keeps the controller alive while the field
@@ -418,11 +462,23 @@ impl DocWindow {
         let toolbar =
             NSToolbar::initWithIdentifier(NSToolbar::alloc(mtm), &NSString::from_str("app.burnburn.document"));
         toolbar.setDisplayMode(NSToolbarDisplayMode::IconAndLabel);
+        toolbar.setAllowsUserCustomization(true);
+        // The toolbar writes its customisation to the user's defaults: only the app does that.
+        toolbar.setAutosavesConfiguration(store.is_standard());
         // The delegate is weak; cleared in Drop.
         toolbar.setDelegate(Some(toolbar_delegate(&controller)));
         window.setToolbar(Some(&toolbar));
 
-        window.center();
+        match &saved {
+            Some(s) => {
+                window.setFrame_display(rect(s.x, s.y, s.width, s.height), false);
+                split.adjustSubviews();
+                split.setPosition_ofDividerAtIndex(s.sidebar, 0);
+                let total = split.frame().size.width;
+                split.setPosition_ofDividerAtIndex(total - s.inspector - split.dividerThickness(), 1);
+            }
+            None => window.center(),
+        }
         if options.quiet_windows {
             // Quiet native tests: in the window list (views lay out, events can be sent), but
             // invisible, click-through and without taking the focus from the user's app.
@@ -456,6 +512,17 @@ impl DocWindow {
             window,
             controller,
             canvas_view,
+            pointer: None,
+            length_unit: burnburn_host_models::format::LengthPreference::Millimeters,
+            status_bar,
+            split,
+            sidebar_pane,
+            canvas_pane,
+            inspector_pane,
+            status_coordinate,
+            status_zoom,
+            status_unit,
+            copy_id_button,
             table,
             toolbar,
             arrange_tools,
@@ -549,7 +616,9 @@ impl DocWindow {
         {
             message = crate::toolbar::measurement_text(m, locale);
         }
-        set_text(&self.status_label, &message);
+        // The colour is never the only carrier: the symbol of the tone leads the line.
+        let line = if message.is_empty() { message } else { format!("{} {message}", tone.glyph()) };
+        set_text(&self.status_label, &line);
         // Only a failure is red; ordinary messages and measurements are secondary text.
         self.status_label.setTextColor(Some(&*match tone {
             burnburn_host_models::style::StatusTone::Neutral => NSColor::secondaryLabelColor(),
@@ -571,6 +640,10 @@ impl DocWindow {
         self.plan_calibration.setToolTip(Some(&NSString::from_str(&panel.calibration.join("\n"))));
         super::panels::grbl_window::refresh_refusals(&self.grbl_refusals, &panel, locale);
         let enabled = |k: CommandKey| vm.active == Some(document) && vm.commands.get(&k).is_some_and(|c| c.enabled);
+        set_button_title(&self.copy_id_button, &panel.copy_id_title);
+        self.copy_id_button.setEnabled(!panel.plan_id.is_empty());
+        self.copy_id_button
+            .setToolTip((!panel.id_tooltip.is_empty()).then(|| NSString::from_str(&panel.id_tooltip)).as_deref());
         self.compile_button.setEnabled(enabled(CommandKey::Compile));
         self.export_button.setEnabled(enabled(CommandKey::ExportRd));
 
@@ -604,6 +677,8 @@ impl DocWindow {
         self.refresh_barcode(vm, document);
         self.refresh_files(vm, document);
 
+        self.refresh_status_bar(doc);
+
         // The view model's toolbar is the active document's: another window keeps what it had.
         if vm.active == Some(document) {
             self.strip.refresh(&vm.toolbar);
@@ -635,6 +710,31 @@ impl DocWindow {
                     eprintln!("burnburn: {e}");
                 }
             });
+        }
+    }
+
+    /// The status bar: the pointer's coordinate (once it was over the canvas), zoom and unit.
+    pub(crate) fn refresh_status_bar(&self, doc: &burnburn_presentation::DocumentViewModel) {
+        let bar = crate::panels::status_bar(
+            self.pointer,
+            &doc.camera,
+            &doc.viewport,
+            self.length_unit,
+            self.locale,
+        );
+        self.status_bar.show(&bar);
+    }
+
+    /// The window's frame and pane widths, for saving.
+    pub(crate) fn saved_state(&self) -> burnburn_host_models::window_state::SavedWindow {
+        let frame = self.window.frame();
+        burnburn_host_models::window_state::SavedWindow {
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: frame.size.width,
+            height: frame.size.height,
+            sidebar: self.sidebar_pane.frame().size.width,
+            inspector: self.inspector_pane.frame().size.width,
         }
     }
 
@@ -695,6 +795,9 @@ impl Drop for DocWindow {
             unsafe { b.setTarget(None) };
         }
         self.toolbar.setDelegate(None);
+        self.split.setDelegate(None);
+        // SAFETY: a nil target cannot dangle.
+        unsafe { self.copy_id_button.setTarget(None) };
         for (_, b) in &self.sketch.buttons {
             // SAFETY: as above.
             unsafe { b.setTarget(None) };

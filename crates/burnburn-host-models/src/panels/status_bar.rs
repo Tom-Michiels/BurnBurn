@@ -16,6 +16,14 @@ pub struct StatusBar {
     pub unit: String,
 }
 
+/// Accessibility names of the three labels: coordinate, zoom, unit.
+pub fn status_bar_labels(locale: Locale) -> (&'static str, &'static str, &'static str) {
+    match locale {
+        Locale::Nl => ("Aanwijzerpositie", "Zoom", "Eenheid"),
+        Locale::En => ("Pointer position", "Zoom", "Unit"),
+    }
+}
+
 const MM_PER_INCH: f64 = 25.4;
 /// Points per millimetre at true size.
 const TRUE_SIZE_POINTS_PER_MM: f64 = 72.0 / MM_PER_INCH;

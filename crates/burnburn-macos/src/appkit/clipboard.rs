@@ -31,6 +31,18 @@ pub fn write_clipboard(pasteboard: &NSPasteboard, bytes: &[u8]) -> Result<(), St
     if accepted { Ok(()) } else { Err("the pasteboard did not accept the data".to_owned()) }
 }
 
+/// Replace the pasteboard's contents with plain `text` (what "Kopieer id" copies).
+#[allow(unsafe_code)]
+pub fn write_text(pasteboard: &NSPasteboard, text: &str) -> Result<(), String> {
+    let accepted = super::objc_try("writing the pasteboard", || {
+        pasteboard.clearContents();
+        // SAFETY: reading AppKit's immutable string pasteboard type constant.
+        let kind = unsafe { objc2_app_kit::NSPasteboardTypeString };
+        pasteboard.setString_forType(&NSString::from_str(text), kind)
+    })?;
+    if accepted { Ok(()) } else { Err("the pasteboard did not accept the text".to_owned()) }
+}
+
 /// Whether the pasteboard holds BurnBurn's own type.
 pub fn has_clipboard(pasteboard: &NSPasteboard) -> bool {
     let wanted = clipboard_type();

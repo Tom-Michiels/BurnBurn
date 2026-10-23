@@ -20,7 +20,7 @@ pub struct PlanPanel {
     pub plan_id: String,
     /// The identity as a tooltip ("Plan-id: plan-…"); the panel itself does not show the hash.
     pub id_tooltip: String,
-    /// The "Copy id" button's title (empty without plan).
+    /// The "Copy id" button's title (the button is disabled without plan).
     pub copy_id_title: String,
     pub estimate: String,
     /// Current, or out of date — said in words, not only with a colour (X03).
@@ -112,7 +112,7 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
             title: host_text(HostText::NoPlan, locale).to_owned(),
             plan_id: String::new(),
             id_tooltip: String::new(),
-            copy_id_title: String::new(),
+            copy_id_title: copy_plan_id_title(locale).to_owned(),
             estimate: String::new(),
             state: host_text(HostText::NoPlanHint, locale).to_owned(),
             findings: String::new(),
@@ -128,11 +128,7 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
             Locale::Nl => format!("Plan-id: {}", plan.id),
             Locale::En => format!("Plan id: {}", plan.id),
         },
-        copy_id_title: match locale {
-            Locale::Nl => "Kopieer id",
-            Locale::En => "Copy id",
-        }
-        .to_owned(),
+        copy_id_title: copy_plan_id_title(locale).to_owned(),
         estimate: estimate_text(plan.preview.estimated_seconds, locale),
         state: host_text(state, locale).to_owned(),
         findings: findings_text(plan.errors, plan.warnings, locale),
@@ -185,6 +181,14 @@ pub fn calibration_lines(applied: &[burnburn_presentation::AppliedCalibration], 
 fn findings_text(errors: usize, warnings: usize, locale: Locale) -> String {
     use crate::format::{Noun, format_count};
     format!("{}, {}", format_count(errors, Noun::Error, locale), format_count(warnings, Noun::Warning, locale))
+}
+
+/// Title of the button that copies the plan id.
+pub fn copy_plan_id_title(locale: Locale) -> &'static str {
+    match locale {
+        Locale::Nl => "Kopieer id",
+        Locale::En => "Copy id",
+    }
 }
 
 /// "Plan van 18-06-2026 05:04 · ≈ 1,6 s": the plan's own compile moment (job clock, its fixed zone)
