@@ -396,6 +396,24 @@ als vergelijking. Ze worden **niet** als golden geaccepteerd zonder review.
 | **LF7 Documentvenster** | `macos/src/appkit/{window.rs,toolstrip.rs}`, `panels/{operations.rs,production.rs,inspector.rs,priority.rs}`, `classes.rs` (splitdelegate) | Native: (a) bij vergroten van 1100→1600 pt groeit alleen het canvas, zijbalk en inspecteur blijven gelijk; (b) minSize, en het frame wordt bewaard en hersteld (via een temp-defaults-domein); (c) de laagtabel toont staal + naam en de kolommen zijn niet afgekapt bij de standaardbreedte; (d) de statusbalk toont coördinaat, zoom en eenheid na een muisbeweging. Eén werkbalk: NSToolbar (aanpasbaar) met de lintgroepen als toolbar-items of een segment-per-groep. Q3. | het gevoel van de werkbalk en het lint, met de gebruiker |
 | **LF8 Iconen** | `burnburn-icons`, `assets/icons/ui/*`, `macos/src/appkit/symbols.rs` (nieuw) | Headless: elke SVG gebruikt alleen de streekset; elk icoon rendert bij schaal 1,0/1,5/2,0/3,0 met de juiste pixelmaat. Native: geen knoptitel bevat een glyph uit {▾■↔↕◀▶▲▼●○‹›↑↓}; elke SF Symbol-naam bestaat (`imageWithSystemSymbolName` ≠ nil). | iconenset als geheel beoordelen |
 
+### Golf LF-B: uitgevoerd (23-10-2026)
+
+- **LF5** `FormSpec` + Mac-bouwer op `NSGridView` (basislijn label/veld, eenheid als suffix, knoppen [annuleer, primair]
+  met ⏎/⎋), basislijncontrole in `layout_invariants`. **LF6a** alle CAM-dialogen en Snij-instellingen, **LF6b** export,
+  bundel, bibliotheken, import, beeld importeren/aanpassen en tracer, **LF6c** de G5–G7-panelen, Schikken, Instellingen
+  (tabs) en Machinehub (tabs) op de bouwer; `BASELINE_PENDING` bevat alleen nog `document` en `laser`.
+- **LF7** documentvenster: splitpanelen (alleen het canvas groeit), minSize, bewaard frame, laagtabel zonder afkapping,
+  statusbalk (coördinaat, zoom, eenheid), één aanpasbare `NSToolbar`, plantitel "Plan van <tijd> · <duur>" met "Kopieer id",
+  statussymbool naast de kleur. **LF8** één iconenset en SF Symbols (`appkit/symbols.rs`); geen glyphs meer in knoptitels.
+- **LF-A-restpunten**: zoom naar het bed, vulling per Fill-bewerking, laservenster op schermhoogte, Windows-icoon in de exe
+  (eigen `.res`), donker canvas en statuskleur op Windows.
+- Verify (stil) op `integratie/lf-b` (872bf91): 5046 geslaagd, 0 gefaald, 15 genegeerd; Windows-clippy schoon.
+  Screenshots van de eindstand: `scratchpad/lf-b-final/`. Dev-notes `LF5.md`, `LF6a–c.md`, `LF7.md`, `LF8.md`, `LFB-rest.md`.
+- **Nog open uit LF-B**: documentvenster en laservenster nog op de basislijnlijst; barcode en Hoeken afronden houden hun eigen
+  sheet; "niet beschikbaar"-reden per sectie nog niet in de G5-modellen; laagstaal als cirkel (view-based tabel); Windows
+  gebruikt `FormSpec` nog niet (LF13) en heeft geen statusbalk/venstertoestand (LF14); tab-volgorde (LF15). Handmatig: de
+  panelen naast de HIG, standaardknop-accent, donker thema, toolbar aanpassen, tabtitels, op een echt scherm.
+
 ### Golf LF-C: canvasafwerking en preview (na LF2)
 
 | Pakket | Eigendom | Eerst te schrijven tests | Handmatig |
