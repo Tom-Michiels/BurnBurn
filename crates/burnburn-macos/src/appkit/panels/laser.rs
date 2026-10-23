@@ -28,7 +28,8 @@ use objc2_foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::widgets::{field, label, push_button, rect, selected_rows, set_button_title, set_text};
+use crate::appkit::panels::widgets::{field, label, push_button, rect, selected_rows, set_text};
+use crate::appkit::symbols::{self, Symbol};
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
 use crate::panels::{
@@ -563,6 +564,16 @@ pub(crate) fn laser_section(
     .enumerate()
     {
         let b = JogButton::new(mtm, app.clone(), document, key, t(text));
+        let symbol = match key {
+            JogKey::XLeft => Some((Symbol::ArrowLeft, false)),
+            JogKey::XRight => Some((Symbol::ArrowRight, true)),
+            JogKey::YTop => Some((Symbol::ArrowUp, false)),
+            JogKey::YBottom => Some((Symbol::ArrowDown, false)),
+            _ => None,
+        };
+        if let Some((symbol, trailing)) = symbol {
+            symbols::apply_with_title(&b, symbol, locale, t(text), trailing);
+        }
         b.setFrame(rect(MARGIN + i as f64 * (quarter + 6.0), at, quarter, 28.0));
         content.addSubview(&b);
         jog.push((key, b));
@@ -572,13 +583,14 @@ pub(crate) fn laser_section(
     let at = row(28.0, 6.0);
     let small = 50.0;
     let arrows = [
-        (StepDirectionTag::Left, "◀"),
-        (StepDirectionTag::Right, "▶"),
-        (StepDirectionTag::Up, "▲"),
-        (StepDirectionTag::Down, "▼"),
+        (StepDirectionTag::Left, Symbol::ArrowLeft),
+        (StepDirectionTag::Right, Symbol::ArrowRight),
+        (StepDirectionTag::Up, Symbol::ArrowUp),
+        (StepDirectionTag::Down, Symbol::ArrowDown),
     ];
-    for (i, (dir, glyph)) in arrows.into_iter().enumerate() {
-        let b = push_button(mtm, glyph);
+    for (i, (dir, symbol)) in arrows.into_iter().enumerate() {
+        let b = push_button(mtm, "");
+        symbols::apply(&b, symbol, locale);
         b.setFrame(rect(MARGIN + i as f64 * (small + 6.0), at, small, 28.0));
         content.addSubview(&b);
         if let Some(slot) = simple.get_mut(usize::try_from(tag_of(&LaserControlKind::Step(dir.into()))).unwrap_or(0)) {
@@ -690,7 +702,8 @@ pub(crate) fn laser_section(
     let mut anchors = Vec::new();
     for i in 0..9 {
         let (r, c) = (i / 3, i % 3);
-        let b = push_button(mtm, "○");
+        let b = push_button(mtm, "");
+        symbols::apply(&b, Symbol::AnchorOff, locale);
         b.setFrame(rect(MARGIN + c as f64 * (cell + 4.0), grid_top - (r as f64 + 1.0) * (cell + 4.0), cell, cell));
         if let Some(anchor) = anchor_for_tag(i as isize) {
             b.setAccessibilityLabel(Some(&NSString::from_str(t(anchor_text(anchor)))));
@@ -1032,7 +1045,8 @@ impl DocWindow {
         l.start_from.setEnabled(model.connected);
         for (i, b) in l.anchors.iter().enumerate() {
             b.setEnabled(model.connected);
-            set_button_title(b, if anchor_for_tag(i as isize) == Some(model.anchor) { "●" } else { "○" });
+            let on = anchor_for_tag(i as isize) == Some(model.anchor);
+            symbols::set_symbol(b, if on { Symbol::AnchorOn } else { Symbol::AnchorOff }, self.locale);
         }
         if !field_is_editing(&l.step_field) {
             set_text(&l.step_field, &model.step_mm);

@@ -449,3 +449,9 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
 |---|---|---|---|---|---|
 | LF1-layout | Q1 dubbele verschuiving, Q3 primaire knop rechts en Esc/Return, Q6 reden één keer, Q9 laserlabels, layout-invarianten | – (alleen `macos/src/appkit`) | – | `macos/tests` native `layout_invariants` (rood op 474 fouten, groen), `cam_dialogs::test_dialogs_make_a_private_job_and_focus_test_is_greyed_with_its_reason`; dev-note `docs/dev-notes/LF1.md` | klaar; open: basislijncontrole, laservenster op klein scherm (handmatig) |
+
+## LF-B (look and feel)
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| LF8-iconen | Eén iconenset (streek 2,55/4,25), SF Symbols per actie (`appkit/symbols.rs`), geen glyph-titels | – | – | `burnburn-icons/tests/style.rs::*`, native `symbols` (`tests/native/macos/symbols.rs`), `appkit::symbols::tests::*`; dev-note `docs/dev-notes/LF8.md` | klaar buiten LF7-bestanden |
+| LF8-iconen | Voor LF7 (integratie): vervang glyph-titels in `appkit/panels/inspector.rs` (`FLIP_GLYPHS` ↔ ↕ -> `Symbol::MirrorHorizontal/MirrorVertical`), `panels/operations.rs` (■ -> `Symbol::Stop`) en `toolstrip.rs` (▾ -> `Symbol::Disclosure`) met `symbols::apply`, en maak daarna `LF7_EXCEPTIONS` in `tests/native/macos/symbols.rs` leeg | – | – | native `symbols` (rood zodra de lijst leeg is en de glyphs er nog staan) | open (LF7) |

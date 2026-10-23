@@ -20,6 +20,7 @@ use crate::app_view::{PrefsControl, PrefsPanel, PreviewPanel, RdPanel};
 use crate::appkit::app::HostApp;
 use crate::appkit::panels::image::{caption, mark_field, note, show_bitmap};
 use crate::appkit::panels::widgets::{button, rect, set_text};
+use crate::appkit::symbols::{self, Symbol};
 use crate::l10n::Locale;
 use crate::panels_image::BitmapImage;
 
@@ -442,11 +443,12 @@ pub(crate) fn build_preview(
     travel.setFrame(rect(110.0, base - 74.0, 200.0, 22.0));
     wire(&travel, t, sel!(previewButton:), 9);
     content.addSubview(&travel);
-    let previous = button(mtm, "‹", t, sel!(previewButton:), rect(w - 106.0, base - 76.0, 40.0, 28.0));
+    let previous = button(mtm, "", t, sel!(previewButton:), rect(w - 106.0, base - 76.0, 40.0, 28.0));
     previous.setTag(-1);
-    previous.setAccessibilityLabel(Some(&NSString::from_str("‹")));
-    let next = button(mtm, "›", t, sel!(previewButton:), rect(w - 60.0, base - 76.0, 40.0, 28.0));
+    symbols::apply(&previous, Symbol::Previous, locale);
+    let next = button(mtm, "", t, sel!(previewButton:), rect(w - 60.0, base - 76.0, 40.0, 28.0));
     next.setTag(1);
+    symbols::apply(&next, Symbol::Next, locale);
     content.addSubview(&previous);
     content.addSubview(&next);
     let picked = note(mtm, &content, rect(16.0, base - 106.0, w - 32.0, 22.0), &NSColor::controlTextColor());

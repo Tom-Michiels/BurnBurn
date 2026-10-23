@@ -19,6 +19,7 @@ pub mod clipboard;
 #[allow(unsafe_code)]
 mod classes;
 mod panels;
+pub mod symbols;
 mod toolstrip;
 mod window;
 
