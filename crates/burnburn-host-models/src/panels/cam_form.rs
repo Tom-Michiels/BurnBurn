@@ -75,7 +75,7 @@ fn unit_of(word: &str) -> Option<Quantity> {
 /// A hint starts with a capital, unless it starts with a unit (`mm of lpi`).
 fn as_hint(text: &str) -> String {
     let first = text.split_whitespace().next().unwrap_or("");
-    if first.chars().count() < 3 || matches!(first, "mm" | "dpi" | "lpi") {
+    if matches!(first, "mm" | "dpi" | "lpi") || !first.chars().next().is_some_and(char::is_alphabetic) {
         return text.to_owned();
     }
     let mut chars = text.chars();
@@ -218,7 +218,8 @@ fn heading(group: Group, locale: Locale) -> Option<&'static str> {
     ))
 }
 
-/// Buttons the form shows as rows (the others are the dialog's buttons).
+/// Buttons the form shows as rows (the others are the dialog's buttons). Back to flat bed lies with
+/// the rotary, the rest in a section of their own.
 const INLINE: [DialogActionKind; 6] = [
     DialogActionKind::ShowSource,
     DialogActionKind::AddRow,
@@ -287,7 +288,8 @@ fn field_row(
         DialogControl::Text => {
             let parts = split_caption(&caption);
             let value = row_vm.value.text().to_owned();
-            let control = if parts.unit.is_some() {
+            // Names are words; everything else is a number the user types (right-aligned).
+            let control = if !matches!(row_vm.field, DialogField::Model | DialogField::Firmware) {
                 Control::Number { value }
             } else {
                 Control::Text { value, placeholder: String::new() }
@@ -393,16 +395,18 @@ pub fn cam_form(vm: &DialogViewModel, locale: Locale) -> CamForm {
         section_groups.push(Group::General);
     }
     // Buttons that belong to the form: Back to flat bed under the rotary, the others after the fields.
+    let mut actions: Vec<FormRow> = Vec::new();
     for kind in INLINE {
         let Some(row) = action_row(vm, kind, locale) else { continue };
-        let at = if kind == DialogActionKind::ReturnToFlatbed {
-            section_groups.iter().position(|g| *g == Group::Rotary)
-        } else {
-            None
-        }
-        .unwrap_or(sections.len() - 1);
         targets.push((row.id, CamTarget::Action(kind)));
-        sections[at].rows.push(row);
+        let rotary = section_groups.iter().position(|g| *g == Group::Rotary);
+        match rotary {
+            Some(at) if kind == DialogActionKind::ReturnToFlatbed => sections[at].rows.push(row),
+            _ => actions.push(row),
+        }
+    }
+    if !actions.is_empty() {
+        sections.push(FormSection::new(Some(pick(("Acties", "Actions"), locale)), actions));
     }
     // The notes, the capability list and the result.
     let mut notes: Vec<String> = vm.notes.iter().map(|n| cam_note(*n, locale)).filter(|t| !t.is_empty()).collect();
@@ -506,7 +510,7 @@ mod tests {
 
     #[test]
     fn a_caption_loses_its_unit_and_keeps_its_remark_as_a_hint() {
-        let cases: [(&str, &str, Option<Quantity>, Option<&str>); 14] = [
+        let cases: [(&str, &str, Option<Quantity>, Option<&str>); 15] = [
             ("Snelheid (mm/s)", "Snelheid", Some(Quantity::MillimetersPerSecond), None),
             ("Vermogen (%)", "Vermogen", Some(Quantity::Percent), None),
             ("Overcut (mm, 0 = uit)", "Overcut", Some(Quantity::Millimeters), Some("0 = uit")),
@@ -520,6 +524,7 @@ mod tests {
             ("Aantal vakken (1–25)", "Aantal vakken", None, Some("1–25")),
             ("Kleinste lijnafstand (mm of lpi)", "Kleinste lijnafstand", None, Some("mm of lpi")),
             ("Controllermodel (zoals jij het opgeeft)", "Controllermodel", None, Some("Zoals jij het opgeeft")),
+            ("Sublaag (in volgorde van uitvoeren)", "Sublaag", None, Some("In volgorde van uitvoeren")),
             ("Binnenste vormen eerst snijden", "Binnenste vormen eerst snijden", None, None),
         ];
         for (caption, label, unit, hint) in cases {
@@ -613,6 +618,26 @@ mod tests {
         let generate = form.spec.buttons.primary.as_ref().unwrap();
         assert!(!generate.enabled);
         assert!(form.spec.problems().is_empty());
+    }
+
+    #[test]
+    fn numbers_are_number_fields_and_words_are_text_fields_and_buttons_have_their_own_section() {
+        let (mut h, doc) = rig(Support::Supported);
+        let vm = open(&mut h, doc, CamDialog::Device);
+        let form = cam_form(&vm, Locale::Nl);
+        let control_of = |field: DialogField| {
+            let id = form.targets.iter().find(|(_, t)| *t == CamTarget::Field(field)).unwrap().0;
+            form.spec.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == id).unwrap().control.clone()
+        };
+        assert!(matches!(control_of(DialogField::BedWidth), Control::Number { .. }));
+        assert!(matches!(control_of(DialogField::StepsPerRotation), Control::Number { .. }), "no unit, still a number");
+        assert!(matches!(control_of(DialogField::Model), Control::Text { .. }), "a model name is words");
+        let vm = open(&mut h, doc, CamDialog::Sublayers);
+        let form = cam_form(&vm, Locale::En);
+        let add = form.targets.iter().find(|(_, t)| *t == CamTarget::Action(DialogActionKind::AddRow)).unwrap().0;
+        let section = form.spec.sections.iter().find(|s| s.rows.iter().any(|r| r.id == add)).unwrap();
+        assert_eq!(section.heading.as_deref(), Some("Actions"));
+        assert!(section.rows.iter().all(|r| matches!(r.control, Control::Action { .. })), "only buttons in it");
     }
 
     #[test]

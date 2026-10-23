@@ -37,7 +37,7 @@ mod sketch;
 mod text;
 
 pub use cam::*;
-pub use cam_form::{CamForm, CamTarget, CaptionParts, cam_form, split_caption};
+pub use cam_form::{CamForm, CamTarget, CaptionParts, arrow_label, cam_form, split_caption};
 pub use camera::*;
 pub use camera_workspace::*;
 pub use cut_settings::*;
