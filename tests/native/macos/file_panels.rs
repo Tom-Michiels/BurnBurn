@@ -230,7 +230,9 @@ fn scenario() -> Result<(), String> {
     // that are left (LF6b: the options are rows of a form, hidden per format).
     s.menu(MenuItem::Command(CommandKey::ExportDxf))?;
     s.wait(5.0, "the DXF export sheet", || {
-        s.app.with_window(doc, |w| w.files.export_sheet.is_some() && w.window.attachedSheet().is_some()).unwrap_or(false)
+        s.app
+            .with_window(doc, |w| w.files.export_sheet.is_some() && w.window.attachedSheet().is_some())
+            .unwrap_or(false)
     })?;
     let dxf = s
         .app
