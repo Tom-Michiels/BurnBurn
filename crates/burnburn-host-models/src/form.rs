@@ -13,16 +13,32 @@ pub struct FormId(pub u32);
 /// What a row edits.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Control {
-    Text { value: String, placeholder: String },
-    Number { value: String },
-    Choice { options: Vec<String>, selected: usize },
-    Check { on: bool },
+    Text {
+        value: String,
+        placeholder: String,
+    },
+    Number {
+        value: String,
+    },
+    Choice {
+        options: Vec<String>,
+        selected: usize,
+    },
+    Check {
+        on: bool,
+    },
     /// A multi-line text.
-    Memo { text: String },
+    Memo {
+        text: String,
+    },
     /// A button inside the form (not one of the dialog buttons).
-    Action { title: String },
+    Action {
+        title: String,
+    },
     /// A value the user only reads.
-    ReadOnly { value: String },
+    ReadOnly {
+        value: String,
+    },
 }
 
 impl Control {
@@ -187,7 +203,8 @@ impl DialogButtons {
             (ButtonRole::Cancel, &self.cancel),
             (ButtonRole::Primary, &self.primary),
         ];
-        let mut out: Vec<(ButtonRole, &FormButton)> = all.iter().filter_map(|(r, b)| b.as_ref().map(|b| (*r, b))).collect();
+        let mut out: Vec<(ButtonRole, &FormButton)> =
+            all.iter().filter_map(|(r, b)| b.as_ref().map(|b| (*r, b))).collect();
         if platform == Platform::Windows {
             let rank = |r: ButtonRole| match r {
                 ButtonRole::Primary => 0,
@@ -225,12 +242,10 @@ pub struct FormSpec {
 fn label_has_unit(label: &str, unit: Quantity) -> bool {
     let u = unit_label(unit);
     let trimmed = label.trim_end();
-    let bracketed = ['(', '[']
-        .iter()
-        .any(|open| label.contains(&format!("{open}{u}")) || label.contains(&format!("{open} {u}")));
-    let trailing = trimmed
-        .strip_suffix(u)
-        .is_some_and(|rest| rest.is_empty() || rest.ends_with(' ') || rest.ends_with('('));
+    let bracketed =
+        ['(', '['].iter().any(|open| label.contains(&format!("{open}{u}")) || label.contains(&format!("{open} {u}")));
+    let trailing =
+        trimmed.strip_suffix(u).is_some_and(|rest| rest.is_empty() || rest.ends_with(' ') || rest.ends_with('('));
     bracketed || trailing
 }
 
