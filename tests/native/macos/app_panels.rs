@@ -546,8 +546,13 @@ fn shortcuts() -> Result<(), String> {
     s.pump(0.1);
     expect(|| "recorder takes H".into(), record("h", 4, NSEventModifierFlags::empty())?)?;
     s.pump(0.1);
-    let doc_window = s.app.window(doc).ok_or("no document window")?;
-    let tips: Vec<String> = controls(&doc_window).iter().filter_map(|v| v.toolTip().map(|t| t.to_string())).collect();
+    // The ribbon buttons live in toolbar items now (not in the content view): ask the strip.
+    let tips: Vec<String> = s
+        .app
+        .with_window(doc, |w| w.strip.button("select").and_then(|b| b.toolTip()).map(|t| t.to_string()))
+        .flatten()
+        .into_iter()
+        .collect();
     expect(
         || format!("the select tool's tooltip names H: {tips:?}"),
         tips.iter().any(|t| t.contains("(H)")) && !tips.iter().any(|t| t.contains("Selecteer (V)")),

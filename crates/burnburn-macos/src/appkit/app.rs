@@ -950,7 +950,9 @@ impl HostApp {
                     && let Ok(windows) = self.windows.try_borrow()
                     && let Some(w) = windows.get(document)
                 {
-                    w.status_label.setStringValue(&NSString::from_str(&text));
+                    // An error: the symbol of its tone leads, as in the window's own refresh.
+                    let glyph = burnburn_host_models::style::StatusTone::Error.glyph();
+                    w.status_label.setStringValue(&NSString::from_str(&format!("{glyph} {text}")));
                 }
             }
             HostEffect::Redraw { document } => self.redraw(*document),

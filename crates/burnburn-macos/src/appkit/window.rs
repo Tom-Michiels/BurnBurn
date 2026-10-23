@@ -220,7 +220,9 @@ impl DocWindow {
         status_label.setTextColor(Some(&NSColor::secondaryLabelColor()));
         status_label.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         col.y -= 12.0;
-        let plan_title = col.add_label("", 20.0);
+        // Two lines: "Plan van <datum tijd> · <duur>" is wider than the column.
+        let plan_title = col.add_label("", 36.0);
+        plan_title.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         plan_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
         // The plan id row: the id itself is not shown (Q4); "Kopieer id" copies it, and the GRBL
         // refusals pull-down sits at the right end.

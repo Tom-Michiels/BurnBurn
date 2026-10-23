@@ -50,10 +50,10 @@ voor `scratchpad/lf-lf7/before/`, na `scratchpad/lf-lf7/after/` (zie `light-nl-0
 | `host-models/tests/lf7_window_state.rs` (5) | 3 gefaald tegen een stub (`to_text` leeg, `parse` None, zichtbaar altijd waar); de twee "wordt verworpen"-tests slaagden vacuüm tegen de stub | 5 geslaagd |
 | native `tests/native/macos/lf7_document_window.rs` (`[[test]] lf7_document_window`, stil) | opeenvolgend: (a) `object list changed width: [199.5, 639.0, 259.5] -> [290.5, 930.0, 377.5]`; (c) `header "Snelheid (mm/s)" needs 89 pt in a 64 pt column; ... the columns need 663 pt, the table shows 508 pt`, daarna kolom 0 gekneld tot 20 pt; (d) `coordinate after the move: ""`; (f) `status line "" lacks the error symbol`; `symbols: flip 0: no symbol image; ...` | `test lf7_document_window ... ok` |
 
-Opmerking: de native test stopt bij de eerste fout; de rode fases (b) (frame/minSize), (e) (toolbar) zijn daarom niet los
-rood gezien: ze draaiden pas na (a) en de stubs `use_window_state_suite` (no-op) en `panel_view` (None). Dat is eerlijk
-een zwakke plek in het bewijs; de scenario's (b) en (e) zijn wel rood-bevestigd door de stubs te laten compileren en pas
-daarna de implementatie te schrijven, maar niet als aparte run vastgelegd.
+Opmerking: de native test stopt bij de eerste fout. Alleen de rode run van (a) is gezien tegen de stubs
+(`use_window_state_suite` no-op, `panel_view` None); de scenario's (b) frame/minSize en (e) toolbar zijn nooit apart rood
+gedraaid, omdat de implementatie van (a) en de toolbar/staat in één stap werd geschreven. Dat is een zwakke plek in het
+bewijs: (b) en (e) hebben alleen een groene run.
 
 ## Verificatie
 `cargo fmt --all`, `cargo clippy --workspace --all-targets --locked -- -D warnings` schoon; native `layout_invariants`,
