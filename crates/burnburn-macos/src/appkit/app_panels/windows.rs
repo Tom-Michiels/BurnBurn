@@ -17,7 +17,6 @@ use objc2_foundation::NSString;
 use super::target::{AppPanelTarget, HISTORY_TABLE, KeyRecorder, PreviewView, RD_TABLE, SHORTCUT_TABLE};
 use crate::app_text::{AppText, app_text};
 use crate::app_view::{PrefsPanel, PreviewPanel, RdPanel};
-use crate::prefs_form::{RESET_ID, prefs_form};
 use crate::appkit::app::HostApp;
 use crate::appkit::panels::form::{FormView, Wiring, build_form};
 use crate::appkit::panels::image::{caption, note, show_bitmap};
@@ -25,6 +24,7 @@ use crate::appkit::panels::widgets::{button, rect, set_text};
 use crate::appkit::symbols::{self, Symbol};
 use crate::l10n::Locale;
 use crate::panels_image::BitmapImage;
+use crate::prefs_form::{RESET_ID, prefs_form};
 
 /// Pinned to the bottom (left, or right): the flexible side is above and beside.
 const BOTTOM_LEFT: NSAutoresizingMaskOptions = NSAutoresizingMaskOptions::ViewMaxYMargin;

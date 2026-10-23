@@ -6,9 +6,7 @@ use burnburn_presentation::PrefKey;
 
 use crate::app_text::{AppText, app_text};
 use crate::app_view::{PrefsControl, PrefsPanel};
-use crate::form::{
-    Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, split_caption,
-};
+use crate::form::{Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, split_caption};
 use crate::format::Quantity;
 use crate::l10n::Locale;
 
@@ -87,7 +85,11 @@ pub fn prefs_form(panel: &PrefsPanel, locale: Locale) -> PrefsForm {
         }
         if tab == AppText::PrefsTabGeneral {
             let id = RESET_ID.0 + 1;
-            rows.push(FormRow::new(id, "", Control::ReadOnly { value: app_text(AppText::PrefsNote, locale).to_owned() }));
+            rows.push(FormRow::new(
+                id,
+                "",
+                Control::ReadOnly { value: app_text(AppText::PrefsNote, locale).to_owned() },
+            ));
         }
         sections.push(FormSection::new(None, rows).on_tab(title));
     }

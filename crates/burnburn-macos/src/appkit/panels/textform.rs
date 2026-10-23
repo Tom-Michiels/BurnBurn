@@ -17,12 +17,12 @@ use objc2_app_kit::{
 use objc2_foundation::{NSObject, NSString};
 
 use super::widgets::{align_baseline, field, label, push_button, rect, set_text};
-use burnburn_host_models::form::split_caption;
-use burnburn_host_models::format::unit_label;
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
 use crate::panels::{Slot, SlotKind, SlotValue};
+use burnburn_host_models::form::split_caption;
+use burnburn_host_models::format::unit_label;
 
 pub(crate) const MARGIN: f64 = 12.0;
 pub(crate) const LABEL_WIDTH: f64 = 180.0;

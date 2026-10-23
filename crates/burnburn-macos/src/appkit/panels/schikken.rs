@@ -182,7 +182,12 @@ impl SchikkenSection {
 
     /// Shows `lines` as a form: updates the widgets in place while its shape stays, builds a new
     /// form (keeping what the user typed) when it changes. Returns the size the panel needs.
-    fn show_form(&mut self, mtm: MainThreadMarker, title: &str, lines: &[crate::panels::SchikkenLine]) -> objc2_foundation::NSSize {
+    fn show_form(
+        &mut self,
+        mtm: MainThreadMarker,
+        title: &str,
+        lines: &[crate::panels::SchikkenLine],
+    ) -> objc2_foundation::NSSize {
         let form = schikken_form(title, lines);
         if let Some(state) = &mut self.form
             && state.view.update(&form.spec)

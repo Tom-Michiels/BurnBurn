@@ -33,12 +33,9 @@ fn line_of(line: &SchikkenLine) -> FormLine<SchikkenControl> {
         SchikkenLine::Heading(t) => FormLine::Heading(t.clone()),
         SchikkenLine::Text(t) => FormLine::Text(t.clone()),
         SchikkenLine::Problem(t) => FormLine::Problem(t.clone()),
-        SchikkenLine::Field { control, caption, text, invalid } => FormLine::Field {
-            control: *control,
-            caption: caption.clone(),
-            text: text.clone(),
-            invalid: *invalid,
-        },
+        SchikkenLine::Field { control, caption, text, invalid } => {
+            FormLine::Field { control: *control, caption: caption.clone(), text: text.clone(), invalid: *invalid }
+        }
         SchikkenLine::Choice { control, caption, options, selected } => FormLine::Choice {
             control: *control,
             caption: caption.clone(),
@@ -78,10 +75,22 @@ mod tests {
     #[test]
     fn the_ending_flows_have_cancel_left_and_the_answer_right() {
         for (lines, expected) in [
-            (vec![button(SchikkenControl::SlotsOk, "Pas toe"), button(SchikkenControl::SlotsCancel, "Annuleer")], vec!["Annuleer", "Pas toe"]),
-            (vec![button(SchikkenControl::NestApply, "Plaats"), button(SchikkenControl::NestClose, "Sluit")], vec!["Sluit", "Plaats"]),
-            (vec![button(SchikkenControl::PcRegister, "Registreer"), button(SchikkenControl::PcClose, "Sluit")], vec!["Sluit", "Registreer"]),
-            (vec![button(SchikkenControl::CfAdd, "Voeg toe"), button(SchikkenControl::CfClose, "Sluit")], vec!["Sluit"]),
+            (
+                vec![button(SchikkenControl::SlotsOk, "Pas toe"), button(SchikkenControl::SlotsCancel, "Annuleer")],
+                vec!["Annuleer", "Pas toe"],
+            ),
+            (
+                vec![button(SchikkenControl::NestApply, "Plaats"), button(SchikkenControl::NestClose, "Sluit")],
+                vec!["Sluit", "Plaats"],
+            ),
+            (
+                vec![button(SchikkenControl::PcRegister, "Registreer"), button(SchikkenControl::PcClose, "Sluit")],
+                vec!["Sluit", "Registreer"],
+            ),
+            (
+                vec![button(SchikkenControl::CfAdd, "Voeg toe"), button(SchikkenControl::CfClose, "Sluit")],
+                vec!["Sluit"],
+            ),
         ] {
             let form = schikken_form("Schikken", &lines);
             assert_eq!(titles(&form), expected);
@@ -92,14 +101,22 @@ mod tests {
     fn nest_start_and_stop_act_in_the_form_next_to_their_fields() {
         let lines = vec![
             SchikkenLine::Heading("Nesten".into()),
-            SchikkenLine::Field { control: SchikkenControl::NestPadding, caption: "Tussenruimte (mm)".into(), text: "2".into(), invalid: true },
+            SchikkenLine::Field {
+                control: SchikkenControl::NestPadding,
+                caption: "Tussenruimte (mm)".into(),
+                text: "2".into(),
+                invalid: true,
+            },
             button(SchikkenControl::NestStart, "Start"),
             button(SchikkenControl::NestStop, "Stop"),
         ];
         let form = schikken_form("Schikken", &lines);
         assert!(form.spec.buttons.primary.is_none() && form.spec.buttons.cancel.is_none());
         let rows = &form.spec.sections[0].rows;
-        assert_eq!((rows[0].label.as_str(), rows[0].unit, rows[0].invalid), ("Tussenruimte", Some(Quantity::Millimeters), true));
+        assert_eq!(
+            (rows[0].label.as_str(), rows[0].unit, rows[0].invalid),
+            ("Tussenruimte", Some(Quantity::Millimeters), true)
+        );
         assert_eq!(rows.len(), 3);
         assert_eq!(form.spec.problems(), Vec::new());
     }

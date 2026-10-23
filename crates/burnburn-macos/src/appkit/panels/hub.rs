@@ -139,7 +139,10 @@ impl HubWindow {
 
     /// The index of the open tab.
     pub(crate) fn section_selected(&self) -> isize {
-        self.view.tab_view().and_then(|t| t.selectedTabViewItem().and_then(|i| t.indexOfTabViewItem(&i).into())).unwrap_or(0)
+        self.view
+            .tab_view()
+            .and_then(|t| t.selectedTabViewItem().and_then(|i| t.indexOfTabViewItem(&i).into()))
+            .unwrap_or(0)
     }
 
     /// The form as typed.

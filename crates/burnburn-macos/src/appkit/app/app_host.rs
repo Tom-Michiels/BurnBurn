@@ -537,7 +537,11 @@ impl HostApp {
 
     /// Opens the tab called `title` of the preferences window, for tests that drive it like a user.
     pub fn select_prefs_tab(&self, title: &str) -> bool {
-        self.app_panels.try_borrow().ok().and_then(|p| p.prefs.as_ref().map(|w| windows::select_prefs_tab(w, title))).unwrap_or(false)
+        self.app_panels
+            .try_borrow()
+            .ok()
+            .and_then(|p| p.prefs.as_ref().map(|w| windows::select_prefs_tab(w, title)))
+            .unwrap_or(false)
     }
 
     /// The window that shows the preferences, for tests.

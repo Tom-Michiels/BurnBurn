@@ -224,7 +224,15 @@ pub(crate) fn shapes_section(
     let dialog_ok = push_button(mtm, t(HostText::GeometryOk));
     dialog_ok.setFrame(rect(DIALOG_WIDTH - 116.0, 12.0, 104.0, 28.0));
     dialog_ok.setKeyEquivalent(&NSString::from_str("\r"));
-    for v in [&dialog_title as &NSView, &dialog_label, &dialog_field, &dialog_unit, &dialog_error, &dialog_cancel, &dialog_ok] {
+    for v in [
+        &dialog_title as &NSView,
+        &dialog_label,
+        &dialog_field,
+        &dialog_unit,
+        &dialog_error,
+        &dialog_cancel,
+        &dialog_ok,
+    ] {
         sheet_content.addSubview(v);
     }
     dialog_field.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::GeometryOk))));

@@ -78,8 +78,9 @@ pub fn lines_form<C: Copy>(title: &str, lines: &[FormLine<C>], role: impl Fn(C) 
             FormLine::Field { control, caption, text, invalid } => {
                 let id = take_id(Some(*control), &mut controls);
                 let split = split_caption(caption);
-                let mut row = FormRow::new(id, &split.label, Control::Text { value: text.clone(), placeholder: String::new() })
-                    .invalid(*invalid);
+                let mut row =
+                    FormRow::new(id, &split.label, Control::Text { value: text.clone(), placeholder: String::new() })
+                        .invalid(*invalid);
                 row.unit = split.unit;
                 row.help = split.hint;
                 current.rows.push(row);
@@ -87,11 +88,8 @@ pub fn lines_form<C: Copy>(title: &str, lines: &[FormLine<C>], role: impl Fn(C) 
             FormLine::Choice { control, caption, options, selected } => {
                 let id = take_id(Some(*control), &mut controls);
                 let split = split_caption(caption);
-                let mut row = FormRow::new(
-                    id,
-                    &split.label,
-                    Control::Choice { options: options.clone(), selected: *selected },
-                );
+                let mut row =
+                    FormRow::new(id, &split.label, Control::Choice { options: options.clone(), selected: *selected });
                 row.unit = split.unit;
                 row.help = split.hint;
                 current.rows.push(row);

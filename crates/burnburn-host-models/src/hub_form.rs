@@ -57,10 +57,7 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     device.enabled = !panel.devices.is_empty();
     let device_tab = [
         FormSection::new(None, vec![device]),
-        FormSection::new(
-            Some(text(T::SupportHeader)),
-            vec![log(next_note(), "", panel.support.join("\n"))],
-        ),
+        FormSection::new(Some(text(T::SupportHeader)), vec![log(next_note(), "", panel.support.join("\n"))]),
     ];
 
     // Production.
@@ -107,8 +104,9 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     // Calibration.
     let kinds: Vec<String> = PROOF_KINDS.iter().map(|k| proof_kind_title(*k, locale).to_owned()).collect();
     let mut rows = vec![FormRow::new(ID_KIND, text(T::LabelKind), Control::Choice { options: kinds, selected: 0 })];
-    for (i, label) in
-        [T::LabelMaterial, T::LabelSpeed, T::LabelValue, T::LabelValueY, T::LabelMethod, T::LabelDate].into_iter().enumerate()
+    for (i, label) in [T::LabelMaterial, T::LabelSpeed, T::LabelValue, T::LabelValueY, T::LabelMethod, T::LabelDate]
+        .into_iter()
+        .enumerate()
     {
         let split = split_caption(text(label));
         let mut row = FormRow::new(

@@ -111,10 +111,7 @@ mod invariants {
             check_new_windows(&s, doc, step, &mut found);
         }
         // LF6c: a window with tabs passes the invariants on every tab, not only the open one.
-        for (name, window) in [
-            ("preferences", s.app.prefs_window()),
-            ("machine-hub", s.app.machine_hub_window()),
-        ] {
+        for (name, window) in [("preferences", s.app.prefs_window()), ("machine-hub", s.app.machine_hub_window())] {
             if let Some(window) = window {
                 check_tabs(&window, name, &mut found);
             }
@@ -320,7 +317,6 @@ mod invariants {
         }
     }
 
-
     /// LF6c: a form with tabs, a notice, a refused value, a picture and a log. Every tab passes the
     /// invariants when it is the selected one, all rows are reachable, the notice is shown once
     /// above the buttons whatever tab is open.
@@ -342,12 +338,17 @@ mod invariants {
                 FormSection::new(
                     Some("Eenheden"),
                     vec![
-                        FormRow::new(1, "Eenheden", Control::Choice { options: vec!["Millimeter".into(), "Inch".into()], selected: 0 }),
+                        FormRow::new(
+                            1,
+                            "Eenheden",
+                            Control::Choice { options: vec!["Millimeter".into(), "Inch".into()], selected: 0 },
+                        ),
                         text(2, "Hoek", "x").unit(Quantity::Degrees).invalid(true),
                     ],
                 )
                 .on_tab("Algemeen"),
-                FormSection::new(None, vec![FormRow::new(3, "Vangen aan raster", Control::Check { on: true })]).on_tab("Canvas"),
+                FormSection::new(None, vec![FormRow::new(3, "Vangen aan raster", Control::Check { on: true })])
+                    .on_tab("Canvas"),
                 FormSection::new(
                     Some("Voorbeeld"),
                     vec![
@@ -402,16 +403,20 @@ mod invariants {
         let notices: Vec<&Retained<NSView>> = all
             .iter()
             .filter(|v| {
-                as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| l.stringValue().to_string().contains("Geen geldig getal"))
+                as_any(v)
+                    .downcast_ref::<NSTextField>()
+                    .is_some_and(|l| l.stringValue().to_string().contains("Geen geldig getal"))
             })
             .collect();
         match notices.as_slice() {
             [notice] => {
                 let n = notice.frame();
                 let buttons = form.buttons();
-                let top = buttons.iter().map(|(_, _, b)| b.frame().origin.y + b.frame().size.height).fold(0.0_f64, f64::max);
+                let top =
+                    buttons.iter().map(|(_, _, b)| b.frame().origin.y + b.frame().size.height).fold(0.0_f64, f64::max);
                 if n.origin.y + TOLERANCE < top {
-                    found.push(format!("tabbed form: the notice lies below the buttons ({:.0} < {top:.0})", n.origin.y));
+                    found
+                        .push(format!("tabbed form: the notice lies below the buttons ({:.0} < {top:.0})", n.origin.y));
                 }
                 if n.origin.y + n.size.height > tabs.frame().origin.y + TOLERANCE {
                     found.push("tabbed form: the notice overlaps the tabs".into());
@@ -423,7 +428,9 @@ mod invariants {
         let red = NSColor::systemRedColor();
         let caption_red = all.iter().any(|v| {
             as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| {
-                !l.isEditable() && l.stringValue().to_string() == "Hoek" && l.textColor().is_some_and(|c| c.isEqual(Some(&red)))
+                !l.isEditable()
+                    && l.stringValue().to_string() == "Hoek"
+                    && l.textColor().is_some_and(|c| c.isEqual(Some(&red)))
             })
         });
         if !caption_red {
@@ -432,9 +439,8 @@ mod invariants {
         tabs.selectTabViewItemAtIndex(1);
         let mut all = Vec::new();
         descendants(form.root(), &mut all);
-        let picture_ok = all
-            .iter()
-            .any(|v| as_any(v).downcast_ref::<NSImageView>().is_some_and(|i| i.image().is_some()));
+        let picture_ok =
+            all.iter().any(|v| as_any(v).downcast_ref::<NSImageView>().is_some_and(|i| i.image().is_some()));
         if !picture_ok {
             found.push("tabbed form: the picture row shows no image".into());
         }
@@ -785,7 +791,8 @@ mod invariants {
             let cell = b.cell()?;
             if cell.wraps() {
                 // A wrapping title (a check box with a long sentence) fits when it fits the height.
-                let need = cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
+                let need =
+                    cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
                 return (need.height > f.size.height + TOLERANCE)
                     .then(|| format!("wrapped title needs {:.0} pt of height, has {:.0}", need.height, f.size.height));
             }
