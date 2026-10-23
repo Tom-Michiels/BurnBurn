@@ -8,7 +8,7 @@
 
 use burnburn_presentation::TracePreset;
 
-use crate::form::{Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec};
+use crate::form::{Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec};
 use crate::format::{Quantity, unit_label};
 use crate::l10n::{HostText, Locale, host_text};
 use crate::l10n_files::{FilesText as T, files_text};
@@ -599,7 +599,7 @@ pub fn tracer_forms(locale: Locale) -> (FormSpec, FormSpec) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::form::{ButtonRole, Platform};
+    use crate::form::{ButtonRole, FormId, Platform};
 
     const LOCALES: [Locale; 2] = [Locale::Nl, Locale::En];
 

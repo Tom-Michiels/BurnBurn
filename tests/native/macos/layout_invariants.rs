@@ -71,6 +71,7 @@ mod invariants {
         let mut found: Vec<String> = Vec::new();
         baseline_self_test(&s, &mut found);
         form_builder_test(&s, &mut found);
+        form_builder_extension_test(&s, &mut found);
         let doc = s.new_document()?;
         check_document(&s, doc, "document (empty)", &mut found)?;
         s.app.dispatch(UiIntent::SetMachineProfile {
@@ -307,6 +308,134 @@ mod invariants {
         if form.texts().iter().any(|t| t.contains("mm/s") && t.contains("Snelheid") && t != "mm/s") {
             found.push("form builder: a text holds caption and unit together".into());
         }
+    }
+
+    /// LF6b: the control kinds of the file panels (note, report, preview, button row), hiding a row
+    /// or a section, and growing back to the fitted size afterwards.
+    fn form_builder_extension_test(s: &Session, found: &mut Vec<String>) {
+        use burnburn_host_models::form::{
+            ButtonRole, Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec,
+        };
+        use burnburn_host_models::style::StatusTone;
+        use burnburn_macos::appkit::form::build_form;
+        let spec = FormSpec {
+            title: "Materiaal".into(),
+            sections: vec![
+                FormSection::new(
+                    None,
+                    vec![FormRow::new(
+                        1,
+                        "",
+                        Control::Note { value: "Bestand".into(), lines: 2, tone: StatusTone::Neutral, strong: true },
+                    )],
+                ),
+                FormSection::new(
+                    Some("Voorbeeld"),
+                    vec![
+                        FormRow::new(2, "", Control::Preview { width: 128, height: 96 }),
+                        FormRow::new(3, "", Control::Report { text: "regel".into(), lines: 6 }),
+                        FormRow::new(
+                            4,
+                            "",
+                            Control::Actions { titles: vec!["Pas toe".into(), "Bijwerken".into(), "Verwijder".into()] },
+                        ),
+                    ],
+                ),
+                FormSection::new(
+                    Some("Naam"),
+                    vec![FormRow::new(8, "Naam", Control::Text { value: String::new(), placeholder: String::new() })],
+                ),
+            ],
+            buttons: DialogButtons { cancel: Some(FormButton::new(10, "Sluit")), ..DialogButtons::default() },
+        };
+        let mut form = build_form(s.mtm, &spec, 440.0, None);
+        let window = scratch_window(s);
+        window.setContentSize(form.size());
+        let Some(content) = window.contentView() else { return };
+        content.addSubview(form.root());
+        form.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+        window.displayIfNeeded();
+        let mut mine = Vec::new();
+        walk_window(&window, "form builder (kinds)", &mut mine);
+        found.extend(mine);
+        match form.control(FormId(2)) {
+            Some(p) => {
+                let f = p.frame();
+                if (f.size.width - 128.0).abs() > TOLERANCE || (f.size.height - 96.0).abs() > TOLERANCE {
+                    found.push(format!(
+                        "form builder: the preview is {}x{}, expected 128x96",
+                        f.size.width, f.size.height
+                    ));
+                }
+            }
+            None => found.push("form builder: no preview control".into()),
+        }
+        match form.control(FormId(3)).and_then(|r| r.enclosingScrollView()) {
+            Some(scroll) if scroll.frame().size.height >= 6.0 * 14.0 => {}
+            Some(scroll) => found.push(format!(
+                "form builder: the report is {} pt high, expected room for 6 lines",
+                scroll.frame().size.height
+            )),
+            None => found.push("form builder: no report control inside a scroll view".into()),
+        }
+        // The button row: three buttons, left to right, one line, inside the form.
+        let row: Vec<_> = (4..7).filter_map(|id| form.control(FormId(id))).collect();
+        if row.len() != 3 {
+            found.push(format!("form builder: the button row answers {} buttons, expected 3", row.len()));
+        } else {
+            let frames: Vec<NSRect> =
+                row.iter().map(|b| b.convertRect_toView(b.bounds(), Some(form.root()))).collect();
+            if frames.windows(2).any(|w| w[0].origin.x + w[0].size.width > w[1].origin.x + TOLERANCE) {
+                found.push(format!("form builder: the buttons of a row overlap or run right to left: {frames:?}"));
+            }
+            if frames.iter().any(|f| (f.origin.y - frames[0].origin.y).abs() > TOLERANCE) {
+                found.push("form builder: the buttons of a row are not on one line".into());
+            }
+            if frames.iter().any(|f| f.origin.x + f.size.width > form.size().width) {
+                found.push("form builder: a button of a row lies outside the form".into());
+            }
+        }
+        // Hiding a row or a section takes its space; showing it gives the space back.
+        let full = form.size().height;
+        form.set_hidden(FormId(3), true);
+        let without_report = form.relayout(0.0).height;
+        if without_report > full - 6.0 * 14.0 + TOLERANCE {
+            found.push(format!("form builder: hiding the report left {without_report} of {full} pt"));
+        }
+        form.set_hidden(FormId(3), false);
+        let back = form.relayout(0.0).height;
+        if (back - full).abs() > TOLERANCE {
+            found.push(format!("form builder: showing the report again gives {back} pt, expected {full}"));
+        }
+        form.set_section_hidden(1, true);
+        let without_section = form.relayout(0.0).height;
+        if without_section > full - 150.0 {
+            found.push(format!("form builder: hiding a section left {without_section} of {full} pt"));
+        }
+        form.set_section_hidden(1, false);
+        // A taller form than its content keeps the buttons at the bottom.
+        let tall = form.relayout(full + 60.0);
+        if (tall.height - (full + 60.0)).abs() > TOLERANCE {
+            found.push(format!("form builder: a minimum height of {} gives {}", full + 60.0, tall.height));
+        }
+        let cancel = form.buttons().into_iter().find(|(r, _, _)| *r == ButtonRole::Cancel).map(|(_, _, b)| b);
+        if cancel.is_some_and(|b| b.frame().origin.y > 20.0) {
+            found.push("form builder: the button row is not at the bottom of a taller form".into());
+        }
+        // A longer note grows the form instead of being cut off.
+        if let Some(note) = form.control(FormId(1)).and_then(|v| v.downcast::<NSTextField>().ok()) {
+            let before = form.relayout(0.0).height;
+            note.setStringValue(&objc2_foundation::NSString::from_str(
+                &"Een lange regel die over meerdere regels loopt. ".repeat(12),
+            ));
+            let grown = form.relayout(0.0).height;
+            if grown <= before + 10.0 {
+                found.push(format!("form builder: a long note did not grow the form ({before} → {grown})"));
+            }
+        } else {
+            found.push("form builder: no note control".into());
+        }
+        let _ = StatusTone::Neutral;
     }
 
     /// A small hidden window for the self-test (alpha 0, never shown).
