@@ -1,22 +1,27 @@
-//! The Cut Settings sheet of one layer.
+//! The Cut Settings sheet of one layer (LF6a): the form the LF5 builder makes of
+//! `panels::cut_form` — the layer's mode, numbers and switches under its name, and below them the
+//! option rows of the chosen mode in a scrolling area, with Cancel (Escape) and OK (Return) in the
+//! button row. The form is built once, with a row for every option field of every mode; a refresh
+//! shows the rows of the chosen mode, greys what is off and fills the notes, so the widgets the
+//! window controller reads on OK stay the same for the life of the window.
 
-use crate::appkit::panels::widgets::{field, label, push_button, rect, set_text};
+use crate::appkit::panels::form::{FormLayout, FormView, build_form_with};
+use crate::appkit::panels::widgets::rect;
 use crate::appkit::window::DocWindow;
 
-use burnburn_presentation::{AppViewModel, CutExtras, CutField, CutValue};
+use burnburn_host_models::form::FormId;
+use burnburn_presentation::{AppViewModel, CutControl, CutExtras, CutField, CutSettingsViewModel, CutValue};
 use burnburn_types::{DocumentId, OperationId};
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSFont,
-    NSLineBreakMode, NSPopUpButton, NSScrollView, NSTextField, NSView, NSWindow, NSWindowStyleMask,
+    NSBackingStoreType, NSButton, NSControlStateValueOn, NSPopUpButton, NSTextField, NSView, NSWindow,
+    NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
 
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels::{
-    OptionRow, RowControl, choice_items, cut_settings_panel, option_caption, option_rows, sheet_mode_of,
-};
+use crate::panels::{CutForm, CutTarget, CutTop, cut_form, cut_settings_panel, sheet_mode_of};
 
 /// The control of one option field.
 #[derive(Clone)]
@@ -46,14 +51,6 @@ impl OptionControl {
             OptionControl::Text(f) => CutValue::Text(f.stringValue().to_string()),
             OptionControl::Flag(b) => CutValue::Flag(b.state() == NSControlStateValueOn),
             OptionControl::Popup(p) => CutValue::Choice(usize::try_from(p.indexOfSelectedItem()).unwrap_or(0)),
-        }
-    }
-
-    fn set_enabled(&self, enabled: bool) {
-        match self {
-            OptionControl::Text(f) => f.setEnabled(enabled),
-            OptionControl::Flag(b) => b.setEnabled(enabled),
-            OptionControl::Popup(p) => p.setEnabled(enabled),
         }
     }
 
@@ -102,20 +99,13 @@ impl OptionWidgets {
 /// Everything one option row consists of.
 pub(crate) struct OptionWidgets {
     pub(crate) field: CutField,
-    pub(crate) caption: Retained<NSTextField>,
     pub(crate) control: OptionControl,
     pub(crate) note: Retained<NSTextField>,
 }
 
-/// Size of the sheet and of its scrolling option area.
-const SHEET_W: f64 = 580.0;
-const SHEET_H: f64 = 700.0;
-const OPTIONS_BOTTOM: f64 = 92.0;
-const OPTION_ROW_H: f64 = 26.0;
-const OPTION_NOTE_H: f64 = 28.0;
-/// The caption column and where the control starts (the longest Dutch caption needs about 270 pt).
-const OPTION_CAPTION_W: f64 = 290.0;
-const OPTION_CONTROL_X: f64 = 296.0;
+/// Size of the sheet: the rows scroll above the button row when they do not fit.
+const SHEET_W: f64 = 560.0;
+const SHEET_H: f64 = 680.0;
 
 /// The Cut Settings sheet of one layer.
 pub(crate) struct CutSettingsSheet {
@@ -131,22 +121,34 @@ pub(crate) struct CutSettingsSheet {
     pub(crate) cancel: Retained<NSButton>,
     /// The operation whose values are in the fields while the sheet is up.
     pub(crate) shown: Option<OperationId>,
-    /// One row per option field, in a scrolling area; rows of other modes are hidden.
+    /// One row per option field, in the scrolling area; rows of other modes are hidden.
     pub(crate) options: Vec<OptionWidgets>,
-    options_view: Retained<NSView>,
-    options_scroll: Retained<NSScrollView>,
+    view: FormView,
+    form: CutForm,
+}
+
+fn text_field_of(view: Option<Retained<NSView>>, mtm: MainThreadMarker) -> Retained<NSTextField> {
+    view.and_then(|v| v.downcast::<NSTextField>().ok())
+        .unwrap_or_else(|| NSTextField::labelWithString(&NSString::from_str(""), mtm))
+}
+
+fn button_of(view: Option<Retained<NSView>>, mtm: MainThreadMarker) -> Retained<NSButton> {
+    view.and_then(|v| v.downcast::<NSButton>().ok())
+        .unwrap_or_else(|| crate::appkit::panels::widgets::push_button(mtm, ""))
 }
 
 /// The Cut Settings sheet (targets are set once the controller exists).
 #[allow(unsafe_code)]
 pub(crate) fn cut_settings_sheet(mtm: MainThreadMarker, locale: Locale) -> CutSettingsSheet {
-    let t = |text: HostText| host_text(text, locale);
-    let (w, h) = (SHEET_W, SHEET_H);
+    let form =
+        cut_form(None, &CutTop::blank(locale), &CutExtras::new(), burnburn_presentation::OperationKind::Line, locale);
+    let view = build_form_with(mtm, &form.spec, SHEET_W, None, FormLayout::Fixed(SHEET_H));
+    let size = view.size();
     // SAFETY: a freshly allocated window with a valid rect, style and the buffered backing.
     let sheet = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             NSWindow::alloc(mtm),
-            rect(0.0, 0.0, w, h),
+            rect(0.0, 0.0, size.width, size.height),
             NSWindowStyleMask::Titled,
             NSBackingStoreType::Buffered,
             false,
@@ -154,131 +156,51 @@ pub(crate) fn cut_settings_sheet(mtm: MainThreadMarker, locale: Locale) -> CutSe
     };
     // SAFETY: ownership stays with this Retained.
     unsafe { sheet.setReleasedWhenClosed(false) };
-    sheet.setTitle(&NSString::from_str(t(HostText::CutSettingsTitle)));
-    let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, w, h));
-    let title = label(mtm, "", rect(16.0, h - 36.0, w - 32.0, 20.0));
-    title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
-    content.addSubview(&title);
-    let row_y = |i: usize| h - 72.0 - i as f64 * 32.0;
-    let caption = |i: usize, text: HostText| {
-        let l = label(mtm, t(text), rect(16.0, row_y(i), 190.0, 22.0));
-        content.addSubview(&l);
-    };
-    caption(0, HostText::CutSettingsMode);
-    let mode = NSPopUpButton::initWithFrame_pullsDown(
-        NSPopUpButton::alloc(mtm),
-        rect(210.0, row_y(0) - 2.0, 194.0, 26.0),
-        false,
-    );
-    // Blocked modes stay listed but disabled (C05): enablement is ours, not AppKit's.
-    mode.setAutoenablesItems(false);
-    mode.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::CutSettingsMode))));
-    content.addSubview(&mode);
-    let captions = [
-        HostText::CutSettingsSpeed,
-        HostText::CutSettingsPowerMin,
-        HostText::CutSettingsPowerMax,
-        HostText::CutSettingsPasses,
-        HostText::CutSettingsKerf,
-    ];
-    let fields = captions.map(|text| {
-        let i = 1 + captions.iter().position(|c| *c == text).unwrap_or(0);
-        caption(i, text);
-        let f = field(mtm, rect(210.0, row_y(i), 194.0, 24.0));
-        f.setAccessibilityLabel(Some(&NSString::from_str(t(text))));
-        content.addSubview(&f);
-        f
-    });
-    let checkbox = |i: usize, text: HostText| {
-        // SAFETY: no target and no action yet; set once the controller exists (not needed: read on OK).
-        let b = unsafe { NSButton::checkboxWithTitle_target_action(&NSString::from_str(t(text)), None, None, mtm) };
-        b.setFrame(rect(16.0, row_y(i), w - 32.0, 22.0));
-        content.addSubview(&b);
-        b
-    };
-    let output = checkbox(6, HostText::CutSettingsOutput);
-    let visible = checkbox(7, HostText::CutSettingsVisible);
-    let error = label(mtm, "", rect(16.0, 50.0, w - 32.0, 34.0));
-    error.setTextColor(Some(&NSColor::systemRedColor()));
-    error.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-    content.addSubview(&error);
-    let cancel = push_button(mtm, t(HostText::CutSettingsCancel));
-    cancel.setFrame(rect(w - 232.0, 12.0, 104.0, 28.0));
-    cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    let ok = push_button(mtm, t(HostText::CutSettingsOk));
-    ok.setFrame(rect(w - 116.0, 12.0, 104.0, 28.0));
-    ok.setKeyEquivalent(&NSString::from_str("\r"));
-    content.addSubview(&cancel);
-    content.addSubview(&ok);
-    let scroll_h = row_y(7) - 8.0 - OPTIONS_BOTTOM;
-    let options_scroll =
-        NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(16.0, OPTIONS_BOTTOM, w - 32.0, scroll_h));
-    options_scroll.setHasVerticalScroller(true);
-    options_scroll.setDrawsBackground(false);
-    options_scroll.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::CutSettingsOptions))));
-    let options_view = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, w - 48.0, scroll_h));
-    let options = CutField::ALL.map(|field| option_widgets(mtm, &options_view, field, locale)).into_iter().collect();
-    options_scroll.setDocumentView(Some(&options_view));
-    content.addSubview(&options_scroll);
-    sheet.setContentView(Some(&content));
+    sheet.setTitle(&NSString::from_str(host_text(HostText::CutSettingsTitle, locale)));
+    sheet.setContentView(Some(view.root()));
+    let id = |target: CutTarget| form.id(target).unwrap_or(FormId(0));
+    let text = |target: CutTarget| text_field_of(view.control(id(target)), mtm);
+    let mode =
+        view.control(id(CutTarget::Mode)).and_then(|v| v.downcast::<NSPopUpButton>().ok()).unwrap_or_else(|| {
+            NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0), false)
+        });
+    let buttons = view.buttons();
+    let pressed = |target: CutTarget| buttons.iter().find(|(_, bid, _)| *bid == id(target)).map(|(_, _, b)| b.clone());
+    let options = CutField::ALL
+        .into_iter()
+        .filter_map(|field| {
+            let fid = form.id(CutTarget::Option(field))?;
+            let control = view.control(fid)?;
+            let control = match field.control() {
+                CutControl::Text => OptionControl::Text(control.downcast::<NSTextField>().ok()?),
+                CutControl::Flag => OptionControl::Flag(control.downcast::<NSButton>().ok()?),
+                CutControl::Choice => OptionControl::Popup(control.downcast::<NSPopUpButton>().ok()?),
+            };
+            let note = view.help_label(fid).unwrap_or_else(|| text_field_of(None, mtm));
+            Some(OptionWidgets { field, control, note })
+        })
+        .collect();
     CutSettingsSheet {
-        sheet,
-        title,
+        title: view.heading_label(0).unwrap_or_else(|| text_field_of(None, mtm)),
         mode,
-        fields,
-        output,
-        visible,
-        error,
-        ok,
-        cancel,
+        fields: [
+            text(CutTarget::Speed),
+            text(CutTarget::PowerMin),
+            text(CutTarget::PowerMax),
+            text(CutTarget::Passes),
+            text(CutTarget::Kerf),
+        ],
+        output: button_of(view.control(id(CutTarget::Output)), mtm),
+        visible: button_of(view.control(id(CutTarget::Visible)), mtm),
+        error: view.error_label(id(CutTarget::Error)).unwrap_or_else(|| text_field_of(None, mtm)),
+        ok: pressed(CutTarget::Ok).unwrap_or_else(|| button_of(None, mtm)),
+        cancel: pressed(CutTarget::Cancel).unwrap_or_else(|| button_of(None, mtm)),
+        sheet,
         shown: None,
         options,
-        options_view,
-        options_scroll,
+        view,
+        form,
     }
-}
-
-/// The widgets of one option field (hidden until a refresh places them).
-fn option_widgets(mtm: MainThreadMarker, parent: &NSView, field: CutField, locale: Locale) -> OptionWidgets {
-    let caption_text = option_caption(field, locale);
-    let caption = label(mtm, "", rect(0.0, 0.0, 240.0, 20.0));
-    let note = label(mtm, "", rect(0.0, 0.0, SHEET_W - 80.0, OPTION_NOTE_H));
-    note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
-    note.setTextColor(Some(&NSColor::secondaryLabelColor()));
-    note.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-    let control = match field.control() {
-        burnburn_presentation::CutControl::Text => {
-            caption.setStringValue(&NSString::from_str(caption_text));
-            let f = field_widget(mtm);
-            f.setAccessibilityLabel(Some(&NSString::from_str(caption_text)));
-            OptionControl::Text(f)
-        }
-        burnburn_presentation::CutControl::Flag => {
-            // SAFETY: no target and no action yet; set once the controller exists.
-            #[allow(unsafe_code)]
-            let b = unsafe {
-                NSButton::checkboxWithTitle_target_action(&NSString::from_str(caption_text), None, None, mtm)
-            };
-            OptionControl::Flag(b)
-        }
-        burnburn_presentation::CutControl::Choice => {
-            caption.setStringValue(&NSString::from_str(caption_text));
-            let p =
-                NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(0.0, 0.0, 280.0, 26.0), false);
-            p.setAutoenablesItems(false);
-            p.setAccessibilityLabel(Some(&NSString::from_str(caption_text)));
-            OptionControl::Popup(p)
-        }
-    };
-    for v in [&*caption as &NSView, control.view(), &*note] {
-        v.setHidden(true);
-        parent.addSubview(v);
-    }
-    OptionWidgets { field, caption, control, note }
-}
-
-fn field_widget(mtm: MainThreadMarker) -> Retained<NSTextField> {
-    field(mtm, rect(0.0, 0.0, 150.0, 24.0))
 }
 
 /// The values on the option widgets that are on the sheet now.
@@ -286,10 +208,21 @@ pub(crate) fn read_options(options: &[(CutField, OptionControl)]) -> Vec<(CutFie
     options.iter().filter(|(_, c)| c.shown()).map(|(f, c)| (*f, c.read())).collect()
 }
 
+/// The values the option widgets hold now, for the fields this sheet has.
+fn live_options(c: &CutSettingsSheet, sheet: &CutSettingsViewModel) -> CutExtras {
+    let mut live = CutExtras::new();
+    for w in &c.options {
+        if sheet.extras.get(w.field).is_some() {
+            live.set(w.field, w.control.read());
+        }
+    }
+    live
+}
+
 impl DocWindow {
     /// Show, fill or end the Cut Settings sheet as presentation opens and closes it. The fields
     /// are filled once per opening, so a refused OK keeps what the user typed; the option rows
-    /// are laid out again on every refresh from the values on the sheet (a mode, a switch or a
+    /// are shown again on every refresh from the values on the sheet (a mode, a switch or a
     /// pop-up changes which rows exist and which are greyed).
     pub(crate) fn refresh_cut_settings(&mut self, vm: &AppViewModel, document: DocumentId) {
         let locale = self.locale;
@@ -304,38 +237,34 @@ impl DocWindow {
             return;
         };
         let Some(sheet_vm) = vm.document(document).and_then(|d| d.cut_settings.as_ref()) else { return };
-        let titles: Vec<String> = c.mode.itemTitles().iter().map(|t| t.to_string()).collect();
-        let wanted: Vec<String> = panel.modes.iter().map(|m| m.title.clone()).collect();
-        if titles != wanted {
-            c.mode.removeAllItems();
-            for title in &wanted {
-                c.mode.addItemWithTitle(&NSString::from_str(title));
-            }
-        }
-        for (i, m) in panel.modes.iter().enumerate() {
-            if let Some(item) = c.mode.itemAtIndex(i as isize) {
-                item.setEnabled(m.enabled);
-            }
-        }
-        set_text(&c.error, &panel.error);
         let opening = c.shown != Some(panel.operation);
-        if opening {
-            set_text(&c.title, &panel.title);
-            c.mode.selectItemAtIndex(panel.mode_index.map_or(-1, |i| i as isize));
-            for (f, text) in
-                c.fields.iter().zip([&panel.speed, &panel.power_min, &panel.power_max, &panel.passes, &panel.kerf])
-            {
-                f.setStringValue(&NSString::from_str(text));
-            }
-            for (b, on) in [(&c.output, panel.output), (&c.visible, panel.visible)] {
-                b.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
-            }
-            fill_options(c, sheet_vm, locale);
+        let mut top = CutTop::opening(&panel);
+        let (live, mode_index) = if opening {
+            (sheet_vm.extras.clone(), panel.mode_index.map_or(-1, |i| i as isize))
+        } else {
+            // What the user has typed and chosen stays; the layout follows it.
+            let typed = |i: usize| c.fields[i].stringValue().to_string();
+            top.speed = typed(0);
+            top.power_min = typed(1);
+            top.power_max = typed(2);
+            top.passes = typed(3);
+            top.kerf = typed(4);
+            top.output = c.output.state() == NSControlStateValueOn;
+            top.visible = c.visible.state() == NSControlStateValueOn;
+            let index = c.mode.indexOfSelectedItem();
+            top.mode_index = usize::try_from(index).ok();
+            (live_options(c, sheet_vm), index)
+        };
+        let kind = sheet_mode_of(sheet_vm, mode_index);
+        let form = cut_form(Some(sheet_vm), &top, &live, kind, locale);
+        let done = if opening { c.view.load(&form.spec) } else { c.view.update(&form.spec) };
+        if !done {
+            // The sheet always has the same rows; a different shape is a defect, not a state.
+            eprintln!("burnburn: the Cut Settings form changed shape");
         }
-        let kind = sheet_mode_of(sheet_vm, c.mode.indexOfSelectedItem());
-        c.fields[4].setEnabled(kind == burnburn_presentation::OperationKind::Line);
-        layout_options(c, sheet_vm, kind, locale, opening);
+        c.form = form;
         if opening {
+            c.view.scroll_to_top();
             let attached = c.shown.is_some();
             c.shown = Some(panel.operation);
             if !attached {
@@ -348,115 +277,5 @@ impl DocWindow {
                 }
             }
         }
-    }
-}
-
-/// Put the stored values of the operation on the option widgets (once per opening).
-fn fill_options(c: &CutSettingsSheet, sheet: &burnburn_presentation::CutSettingsViewModel, locale: Locale) {
-    for w in &c.options {
-        let Some(value) = sheet.extras.get(w.field) else { continue };
-        match (&w.control, value) {
-            (OptionControl::Text(f), CutValue::Text(t)) => f.setStringValue(&NSString::from_str(t)),
-            (OptionControl::Flag(b), CutValue::Flag(on)) => {
-                b.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff })
-            }
-            (OptionControl::Popup(p), CutValue::Choice(i)) => {
-                set_popup_items(p, &choice_items(sheet, w.field, locale));
-                p.selectItemAtIndex(*i as isize);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn set_popup_items(p: &NSPopUpButton, items: &[crate::panels::ModeItem]) {
-    let titles: Vec<String> = p.itemTitles().iter().map(|t| t.to_string()).collect();
-    let wanted: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
-    if titles.iter().map(String::as_str).collect::<Vec<_>>() != wanted {
-        let selected = p.indexOfSelectedItem();
-        p.removeAllItems();
-        for title in &wanted {
-            p.addItemWithTitle(&NSString::from_str(title));
-        }
-        p.selectItemAtIndex(selected);
-    }
-    for (i, item) in items.iter().enumerate() {
-        if let Some(entry) = p.itemAtIndex(i as isize) {
-            entry.setEnabled(item.enabled);
-        }
-    }
-}
-
-/// The values the option widgets hold now, for the fields this sheet has.
-fn live_options(c: &CutSettingsSheet, sheet: &burnburn_presentation::CutSettingsViewModel) -> CutExtras {
-    let mut live = CutExtras::new();
-    for w in &c.options {
-        if sheet.extras.get(w.field).is_some() {
-            live.set(w.field, w.control.read());
-        }
-    }
-    live
-}
-
-/// Show the rows the chosen mode has, with their notes, and stack them from the top.
-fn layout_options(
-    c: &CutSettingsSheet,
-    sheet: &burnburn_presentation::CutSettingsViewModel,
-    kind: burnburn_presentation::OperationKind,
-    locale: Locale,
-    to_top: bool,
-) {
-    let rows: Vec<OptionRow> = option_rows(sheet, kind, &live_options(c, sheet), locale);
-    // Rows that follow each other with the same note (the several fields of one missing capability)
-    // say it once, under the first of them; the tooltips of the others keep it.
-    let mut noted: Vec<CutField> = Vec::new();
-    let mut previous: Option<&str> = None;
-    for r in &rows {
-        if !r.note.is_empty() && previous != Some(r.note.as_str()) {
-            noted.push(r.field);
-        }
-        previous = Some(r.note.as_str());
-    }
-    let height_of = |r: &OptionRow| OPTION_ROW_H + if noted.contains(&r.field) { OPTION_NOTE_H } else { 0.0 };
-    let content_h = rows.iter().map(height_of).sum::<f64>() + 8.0;
-    let clip_h = c.options_scroll.frame().size.height;
-    let total_h = content_h.max(clip_h);
-    let width = c.options_view.frame().size.width;
-    c.options_view.setFrame(rect(0.0, 0.0, width, total_h));
-    let mut y = total_h - 4.0;
-    for w in &c.options {
-        let Some(row) = rows.iter().find(|r| r.field == w.field) else {
-            for v in [&*w.caption as &NSView, w.control.view(), &*w.note] {
-                v.setHidden(true);
-            }
-            continue;
-        };
-        y -= OPTION_ROW_H;
-        let has_caption = matches!(row.control, RowControl::Text(_) | RowControl::Popup { .. });
-        w.caption.setHidden(!has_caption);
-        w.caption.setFrame(rect(0.0, y + 2.0, OPTION_CAPTION_W, 20.0));
-        w.control.view().setHidden(false);
-        match (&w.control, &row.control) {
-            (OptionControl::Text(f), RowControl::Text(_)) => f.setFrame(rect(OPTION_CONTROL_X, y, 150.0, 24.0)),
-            (OptionControl::Flag(b), RowControl::Check(_)) => b.setFrame(rect(0.0, y + 2.0, width, 22.0)),
-            (OptionControl::Popup(p), RowControl::Popup { items, .. }) => {
-                set_popup_items(p, items);
-                p.setFrame(rect(OPTION_CONTROL_X, y - 1.0, width - OPTION_CONTROL_X, 26.0));
-            }
-            _ => {}
-        }
-        w.control.set_enabled(row.enabled);
-        let note = if noted.contains(&row.field) { row.note.as_str() } else { "" };
-        set_text(&w.note, note);
-        let tip = NSString::from_str(&row.note);
-        w.control.view().setToolTip(if row.note.is_empty() { None } else { Some(&tip) });
-        w.note.setHidden(note.is_empty());
-        if !note.is_empty() {
-            y -= OPTION_NOTE_H;
-            w.note.setFrame(rect(20.0, y, width - 20.0, OPTION_NOTE_H - 2.0));
-        }
-    }
-    if to_top {
-        c.options_view.scrollPoint(objc2_foundation::NSPoint::new(0.0, total_h));
     }
 }

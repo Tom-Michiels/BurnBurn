@@ -13,8 +13,10 @@ use burnburn_presentation::{AppViewModel, CommandKey, FieldKey};
 use crate::l10n::{HostText, Locale, host_text};
 
 mod cam;
+mod cam_form;
 mod camera;
 mod camera_workspace;
+mod cut_form;
 mod cut_settings;
 mod g5;
 mod g5_form;
@@ -37,8 +39,10 @@ mod status_bar;
 mod text;
 
 pub use cam::*;
+pub use cam_form::{CamForm, CamTarget, CaptionParts, arrow_label, cam_form, split_caption};
 pub use camera::*;
 pub use camera_workspace::*;
+pub use cut_form::{CutForm, CutTarget, CutTop, cut_form};
 pub use cut_settings::*;
 pub use g5::*;
 pub use g5_form::{G5Form, dialog_role, g5_form};
