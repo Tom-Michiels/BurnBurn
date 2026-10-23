@@ -84,6 +84,11 @@ fn suffix(unit: Quantity) -> &'static str {
     }
 }
 
+/// The unit as it stands after a control: `mm`, `°`, `%` (no leading space).
+pub fn unit_label(unit: Quantity) -> &'static str {
+    suffix(unit).trim_start()
+}
+
 fn decimals(unit: Quantity) -> usize {
     match unit {
         Quantity::Degrees | Quantity::Percent | Quantity::Seconds => 2,
