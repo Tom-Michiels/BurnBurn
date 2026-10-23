@@ -49,10 +49,11 @@ use burnburn_render::surface::SurfaceCanvas;
 use burnburn_render::{Theme, build_packet};
 use burnburn_types::{DocumentId, OperationId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{COLOR_BTNFACE, GetSysColorBrush, ScreenToClient};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
@@ -65,8 +66,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LBS_NOTIFY, LoadCursorW, LoadIconW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
     SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
-    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW,
-    WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_SETTINGCHANGE, WM_TIMER,
+    WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
+    WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
@@ -74,6 +76,9 @@ use crate::adapter::{
     CharDecoder, Control, MessageContext, Reaction, accelerators, close_guard, message_text, msg, object_labels,
     on_close_box, on_guard_box, on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text,
     recovery_dir, selected_rows, window_title, window_title_localized,
+};
+use crate::appearance::{
+    APPS_USE_LIGHT_THEME, Appearance, PERSONALIZE_KEY, appearance_from_apps_use_light_theme, is_theme_change,
 };
 use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
 use crate::forms::{
@@ -130,6 +135,8 @@ struct Host {
     automation: Option<crate::automation_host::Automation>,
     /// The clock the automation pump measures its time limit with.
     started: std::time::Instant,
+    /// The system's app theme: the canvas is drawn in `Theme::dark()` or `Theme::light()` after it.
+    appearance: Appearance,
 }
 
 thread_local! {
@@ -435,10 +442,56 @@ fn sync_forms(h: &mut Host, document: DocumentId, wanted: &[crate::forms::Form],
     w.cut_op = open_cut;
 }
 
+/// The system's app theme from `HKCU\...\Personalize\AppsUseLightTheme` (light when it is unreadable).
+fn system_appearance() -> Appearance {
+    let key: Vec<u16> = PERSONALIZE_KEY.encode_utf16().chain(Some(0)).collect();
+    let name: Vec<u16> = APPS_USE_LIGHT_THEME.encode_utf16().chain(Some(0)).collect();
+    let mut data = 0u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: NUL-terminated key and value names that outlive the call; `data` and `size` are a valid
+    // writable DWORD and its byte length, as RRF_RT_REG_DWORD requires.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(std::ptr::from_mut(&mut data).cast()),
+            Some(&mut size),
+        )
+    };
+    appearance_from_apps_use_light_theme((status == ERROR_SUCCESS).then_some(data))
+}
+
+/// `WM_SETTINGCHANGE`: reads the theme again when the broadcast says it changed, then redraws.
+fn theme_changed(lparam: LPARAM) {
+    let setting = if lparam.0 == 0 {
+        None
+    } else {
+        // SAFETY: for WM_SETTINGCHANGE a non-zero lParam is a NUL-terminated UTF-16 string that
+        // lives for the duration of the message.
+        unsafe { PCWSTR(lparam.0 as *const u16).to_string() }.ok()
+    };
+    if !is_theme_change(setting.as_deref()) {
+        return;
+    }
+    let appearance = system_appearance();
+    let documents = with_host(|h| {
+        h.appearance = appearance;
+        h.windows.keys().copied().collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    for document in documents {
+        redraw(document);
+    }
+}
+
 fn redraw(document: DocumentId) {
     with_host(|h| {
         let Some(scene) = h.controller.scene(document) else { return };
-        let packet = build_packet(&scene, &Theme::light());
+        let theme = if h.appearance == Appearance::Dark { Theme::dark() } else { Theme::light() };
+        let packet = build_packet(&scene, &theme);
         if let Some(canvas) = h.windows.get_mut(&document).and_then(|w| w.canvas_surface.as_mut())
             && let Err(e) = canvas.draw(&packet)
         {
@@ -648,6 +701,9 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 layout(hwnd);
                 return LRESULT(0);
             }
+            // The user switched between light and dark: the canvas follows (the broadcast reaches
+            // every top-level window; the first one updates the host).
+            WM_SETTINGCHANGE => theme_changed(lparam),
             // Closing the last window quits: while the machine is busy that needs a confirmation
             // (X07 update gate, same reason and words as the macOS alert).
             msg::WM_CLOSE if !quit_allowed(hwnd) => return LRESULT(0),
@@ -1164,6 +1220,7 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
                 chars: CharDecoder::default(),
                 automation: Some(automation),
                 started: std::time::Instant::now(),
+                appearance: system_appearance(),
             });
         }
     });

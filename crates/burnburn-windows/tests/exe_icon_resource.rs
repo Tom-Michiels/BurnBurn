@@ -113,7 +113,7 @@ fn a_damaged_icon_file_is_refused_with_a_reason() {
 /// resource of the shipped icon, byte for byte.
 #[test]
 fn the_build_script_produced_the_resource_file_of_the_shipped_icon() {
-    let path = option_env!("BURNBURN_ICON_RES").expect("build.rs sets BURNBURN_ICON_RES");
+    let path = env!("BURNBURN_ICON_RES"); // set by build.rs: a missing variable fails the compile
     let written = std::fs::read(path).expect("the resource file exists");
     assert_eq!(written, icon_resource(ICO).unwrap());
     assert!(!read_res(&written).is_empty());

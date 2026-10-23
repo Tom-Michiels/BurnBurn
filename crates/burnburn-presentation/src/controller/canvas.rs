@@ -163,10 +163,10 @@ impl AppController {
             CameraIntent::Resized { viewport } => {
                 s.viewport = viewport;
                 // The first real canvas size completes the framing of a fresh window.
-                if std::mem::take(&mut s.fit_pending) {
-                    if let Some(bed) = bed {
-                        let _ = super::arrange::fit_to(s, document, bed);
-                    }
+                if std::mem::take(&mut s.fit_pending)
+                    && let Some(bed) = bed
+                {
+                    let _ = super::arrange::fit_to(s, document, bed);
                 }
                 AppUpdate::redraw(document)
             }

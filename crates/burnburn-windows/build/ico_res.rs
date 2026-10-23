@@ -68,10 +68,8 @@ fn parse_ico(ico: &[u8]) -> Result<Vec<Entry<'_>>, IcoError> {
         let dir = ico.get(at..at + 16).ok_or(IcoError::Truncated)?;
         let size = u32_at(dir, 8).ok_or(IcoError::Truncated)? as usize;
         let offset = u32_at(dir, 12).ok_or(IcoError::Truncated)? as usize;
-        let data = offset
-            .checked_add(size)
-            .and_then(|end| ico.get(offset..end))
-            .ok_or(IcoError::ImageOutOfRange { index })?;
+        let data =
+            offset.checked_add(size).and_then(|end| ico.get(offset..end)).ok_or(IcoError::ImageOutOfRange { index })?;
         entries.push(Entry {
             width: dir[0],
             height: dir[1],
@@ -98,7 +96,7 @@ fn record(out: &mut Vec<u8>, kind: u16, id: u16, memory_flags: u16, data: &[u8])
     out.extend_from_slice(&0u32.to_le_bytes()); // Version
     out.extend_from_slice(&0u32.to_le_bytes()); // Characteristics
     out.extend_from_slice(data);
-    while out.len() % 4 != 0 {
+    while !out.len().is_multiple_of(4) {
         out.push(0);
     }
 }
