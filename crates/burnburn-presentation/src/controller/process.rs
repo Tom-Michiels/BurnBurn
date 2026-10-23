@@ -112,6 +112,7 @@ impl AppController {
                 _ => snapshot,
             };
             s.compile_plates.insert(id, plate);
+            s.compile_clocks.insert(id, clock);
             let snapshot = match registration {
                 Some(m) => Arc::new(snapshot.transformed(&m)),
                 None => snapshot,
@@ -147,6 +148,7 @@ impl AppController {
             if !s.pending.contains_key(&id) {
                 s.variable.take_record(id);
                 s.compile_plates.remove(&id);
+                s.compile_clocks.remove(&id);
                 s.cam.feeder.take_task(id);
             }
             update
@@ -399,6 +401,7 @@ pub(super) fn plan_view(c: &Compiled, s: &Session, machine: Option<&Machine>) ->
         calibration: c.plan.calibration().to_vec(),
         errors,
         warnings: c.report.findings.len() - plan_errors,
+        compiled_at: s.plan_compiled_at,
     }
 }
 

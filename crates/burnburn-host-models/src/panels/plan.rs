@@ -122,7 +122,7 @@ pub fn plan_panel(vm: &AppViewModel, document: DocumentId, locale: Locale) -> Pl
     };
     let state = if plan.stale { HostText::PlanStale } else { HostText::PlanCurrent };
     PlanPanel {
-        title: host_text(HostText::PlanTitle, locale).to_owned(),
+        title: plan_title(plan.compiled_at, plan.preview.estimated_seconds, locale),
         plan_id: plan.id.to_string(),
         id_tooltip: match locale {
             Locale::Nl => format!("Plan-id: {}", plan.id),
@@ -185,6 +185,23 @@ pub fn calibration_lines(applied: &[burnburn_presentation::AppliedCalibration], 
 fn findings_text(errors: usize, warnings: usize, locale: Locale) -> String {
     use crate::format::{Noun, format_count};
     format!("{}, {}", format_count(errors, Noun::Error, locale), format_count(warnings, Noun::Warning, locale))
+}
+
+/// "Plan van 18-06-2026 05:04 · ≈ 1,6 s": the plan's own compile moment (job clock, its fixed zone)
+/// and its estimated duration. Without a usable clock the plain panel title: a missing time is
+/// never replaced by a guess.
+pub fn plan_title(compiled_at: Option<burnburn_presentation::JobClock>, seconds: f64, locale: Locale) -> String {
+    let plain = || host_text(HostText::PlanTitle, locale).to_owned();
+    let Some(clock) = compiled_at else { return plain() };
+    let (stamp, word) = match locale {
+        Locale::Nl => (clock.format("%d-%m-%Y %H:%M"), "Plan van"),
+        Locale::En => (clock.format("%Y-%m-%d %H:%M"), "Plan of"),
+    };
+    let Ok(stamp) = stamp else { return plain() };
+    let body = estimate_text(seconds, locale);
+    // The title carries the figure only; the line below says it is an estimate.
+    let duration = body.split(" (").next().unwrap_or(&body).to_owned();
+    format!("{word} {stamp} \u{b7} {duration}")
 }
 
 /// The plan's constant-velocity time estimate, always labelled as an estimate (it is not a
