@@ -368,8 +368,17 @@ pub fn cam_form(vm: &DialogViewModel, locale: Locale) -> CamForm {
     let mut sections: Vec<FormSection> = Vec::new();
     let mut section_groups: Vec<Group> = Vec::new();
     for (group, indices) in &groups {
-        let rows: Vec<FormRow> =
+        let mut rows: Vec<FormRow> =
             indices.iter().map(|i| field_row(vm, *i, &vm.rows[*i], locale, &mut targets)).collect();
+        // A hint that rows in a row share is said under the first of them.
+        let mut previous: Option<String> = None;
+        for row in &mut rows {
+            let this = row.help.clone();
+            if this.is_some() && this == previous {
+                row.help = None;
+            }
+            previous = this;
+        }
         // A reason is said once in the dialog: in the first section it applies to.
         let reasons: Vec<String> = unique(
             indices
@@ -618,6 +627,27 @@ mod tests {
         let generate = form.spec.buttons.primary.as_ref().unwrap();
         assert!(!generate.enabled);
         assert!(form.spec.problems().is_empty());
+    }
+
+    #[test]
+    fn a_hint_that_two_fields_in_a_row_share_is_said_once_under_the_first() {
+        let (mut h, doc) = rig(Support::Supported);
+        let vm = open(&mut h, doc, CamDialog::Device);
+        for locale in LOCALES {
+            let form = cam_form(&vm, locale);
+            let texts: Vec<String> = form.spec.sections.iter().flat_map(|s| s.texts()).collect();
+            let mut seen = texts.clone();
+            seen.sort();
+            let repeated: Vec<&String> =
+                seen.windows(2).filter(|w| w[0] == w[1] && w[0].chars().count() > 20).map(|w| &w[0]).collect();
+            assert!(repeated.is_empty(), "{locale:?}: said twice: {repeated:?}");
+        }
+        let model = cam_form(&vm, Locale::Nl);
+        let id = |f: DialogField| model.targets.iter().find(|(_, t)| *t == CamTarget::Field(f)).unwrap().0;
+        let rows: Vec<&crate::form::FormRow> = model.spec.sections.iter().flat_map(|s| &s.rows).collect();
+        let hint = |f: DialogField| rows.iter().find(|r| r.id == id(f)).unwrap().help.clone();
+        assert_eq!(hint(DialogField::Model).as_deref(), Some("Zoals jij het opgeeft"));
+        assert_eq!(hint(DialogField::Firmware), None, "the firmware row follows the model row");
     }
 
     #[test]
