@@ -39,6 +39,14 @@ pub enum Control {
     ReadOnly {
         value: String,
     },
+    /// Read-only text that scrolls (a queue, a list of support lines).
+    Log {
+        text: String,
+    },
+    /// A small picture (the preview of a found project).
+    Picture {
+        image: crate::panels_image::BitmapImage,
+    },
 }
 
 impl Control {
@@ -51,6 +59,8 @@ impl Control {
             Control::Memo { .. } => "memo",
             Control::Action { .. } => "action",
             Control::ReadOnly { .. } => "readonly",
+            Control::Log { .. } => "log",
+            Control::Picture { .. } => "picture",
         }
     }
 }
@@ -66,12 +76,28 @@ pub struct FormRow {
     pub unit: Option<Quantity>,
     pub help: Option<String>,
     pub error: Option<String>,
+    /// The value is refused: the caption is drawn in the error colour.
+    pub invalid: bool,
     pub enabled: bool,
 }
 
 impl FormRow {
     pub fn new(id: u32, label: &str, control: Control) -> Self {
-        FormRow { id: FormId(id), label: label.to_owned(), control, unit: None, help: None, error: None, enabled: true }
+        FormRow {
+            id: FormId(id),
+            label: label.to_owned(),
+            control,
+            unit: None,
+            help: None,
+            error: None,
+            invalid: false,
+            enabled: true,
+        }
+    }
+
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
+        self
     }
 
     pub fn unit(mut self, unit: Quantity) -> Self {
@@ -101,12 +127,21 @@ pub struct FormSection {
     pub heading: Option<String>,
     /// Why the section cannot be used now; said once for the section, never per row.
     pub unavailable: Option<String>,
+    /// The tab the section lies on; `None` for a form without tabs. Consecutive sections with the
+    /// same title share a tab.
+    pub tab: Option<String>,
     pub rows: Vec<FormRow>,
 }
 
 impl FormSection {
     pub fn new(heading: Option<&str>, rows: Vec<FormRow>) -> Self {
-        FormSection { heading: heading.map(str::to_owned), unavailable: None, rows }
+        FormSection { heading: heading.map(str::to_owned), unavailable: None, tab: None, rows }
+    }
+
+    /// Puts the section on the tab `title`.
+    pub fn on_tab(mut self, title: &str) -> Self {
+        self.tab = Some(title.to_owned());
+        self
     }
 
     pub fn unavailable(mut self, reason: &str) -> Self {
@@ -234,7 +269,52 @@ pub enum FormProblem {
 pub struct FormSpec {
     pub title: String,
     pub sections: Vec<FormSection>,
+    /// One notice for the whole form, shown above the buttons whatever tab is open (a refused
+    /// value, a read problem).
+    pub notice: Option<String>,
     pub buttons: DialogButtons,
+}
+
+/// A caption split into the words that name the field, the unit that belongs after the control and
+/// what is left of the brackets (a hint such as `0 = uit`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplitCaption {
+    pub label: String,
+    pub unit: Option<Quantity>,
+    pub hint: Option<String>,
+}
+
+/// The unit a bracket word names, in the words of both languages.
+fn unit_of_word(word: &str) -> Option<Quantity> {
+    Some(match word.trim() {
+        "mm" => Quantity::Millimeters,
+        "inch" => Quantity::Inches,
+        "°" | "graden" | "degrees" => Quantity::Degrees,
+        "%" => Quantity::Percent,
+        "s" | "seconden" | "seconds" => Quantity::Seconds,
+        "mm/s" => Quantity::MillimetersPerSecond,
+        "px" | "pixels" => Quantity::Pixels,
+        _ => return None,
+    })
+}
+
+/// Takes the unit out of a caption: `Tussenruimte (mm)` is `Tussenruimte` with `mm`,
+/// `Automatisch bewaren (s, 0 = uit)` is `Automatisch bewaren` with `s` and the hint `0 = uit`.
+/// Brackets that do not start with a unit stay in the label.
+pub fn split_caption(caption: &str) -> SplitCaption {
+    let whole = |label: &str| SplitCaption { label: label.to_owned(), unit: None, hint: None };
+    let trimmed = caption.trim_end();
+    let Some(body) = trimmed.strip_suffix(')') else { return whole(caption) };
+    let Some(open) = body.rfind('(') else { return whole(caption) };
+    let (head, inside) = (body[..open].trim_end(), &body[open + 1..]);
+    let (word, rest) = match inside.split_once(',') {
+        Some((w, r)) => (w, Some(r.trim().to_owned())),
+        None => (inside, None),
+    };
+    match unit_of_word(word) {
+        Some(unit) if !head.is_empty() => SplitCaption { label: head.to_owned(), unit: Some(unit), hint: rest },
+        _ => whole(caption),
+    }
 }
 
 /// Whether `label` names a unit in brackets or as a trailing word: `Snelheid (mm/s)`, `Hoek [°]`,
@@ -250,6 +330,17 @@ fn label_has_unit(label: &str, unit: Quantity) -> bool {
 }
 
 impl FormSpec {
+    /// The tab titles in order of appearance; empty for a form without tabs.
+    pub fn tabs(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for tab in self.sections.iter().filter_map(|s| s.tab.as_ref()) {
+            if !out.contains(tab) {
+                out.push(tab.clone());
+            }
+        }
+        out
+    }
+
     /// Structural faults; an empty list means the description follows the rules.
     pub fn problems(&self) -> Vec<FormProblem> {
         let mut out = Vec::new();
@@ -287,9 +378,10 @@ impl FormSpec {
         let mut out = Vec::new();
         for (i, section) in self.sections.iter().enumerate() {
             out.push(format!(
-                "section {i} heading={} unavailable={}",
+                "section {i} heading={} unavailable={} tab={}",
                 section.heading.is_some(),
-                section.unavailable.is_some()
+                section.unavailable.is_some(),
+                section.tab.as_deref().unwrap_or("-")
             ));
             for row in &section.rows {
                 let options = match &row.control {
@@ -316,6 +408,67 @@ impl FormSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_unit_in_brackets_leaves_the_caption_and_becomes_the_suffix() {
+        let cases = [
+            ("Tussenruimte (mm)", "Tussenruimte", Some(Quantity::Millimeters), None),
+            ("Snelheid (mm/s)", "Snelheid", Some(Quantity::MillimetersPerSecond), None),
+            ("Vermogen (%)", "Vermogen", Some(Quantity::Percent), None),
+            ("Cirkel: hoek (graden)", "Cirkel: hoek", Some(Quantity::Degrees), None),
+            ("Vangstraal objecten (px)", "Vangstraal objecten", Some(Quantity::Pixels), None),
+            ("Automatisch bewaren (s, 0 = uit)", "Automatisch bewaren", Some(Quantity::Seconds), Some("0 = uit")),
+            ("Afstand (mm, positief vergroot)", "Afstand", Some(Quantity::Millimeters), Some("positief vergroot")),
+            ("Sheet grain (°, blank = none)", "Sheet grain", Some(Quantity::Degrees), Some("blank = none")),
+        ];
+        for (caption, label, unit, hint) in cases {
+            let split = split_caption(caption);
+            assert_eq!(split.label, label, "{caption}");
+            assert_eq!(split.unit, unit, "{caption}");
+            assert_eq!(split.hint.as_deref(), hint, "{caption}");
+        }
+    }
+
+    #[test]
+    fn brackets_that_are_not_a_unit_stay_in_the_caption() {
+        for caption in [
+            "Afstand (negatief = naar binnen)",
+            "Datum (JJJJ-MM-DD, leeg is vandaag)",
+            "Kleinste leesbare module (mm of lpi)",
+            "Naam",
+            "",
+            "(mm)",
+        ] {
+            let split = split_caption(caption);
+            assert_eq!(split, SplitCaption { label: caption.to_owned(), unit: None, hint: None }, "{caption}");
+        }
+    }
+
+    #[test]
+    fn consecutive_sections_with_one_title_make_one_tab_in_order() {
+        let sec = |tab: Option<&str>| {
+            let s = FormSection::new(None, vec![text(1, "A")]);
+            match tab {
+                Some(t) => s.on_tab(t),
+                None => s,
+            }
+        };
+        let spec = FormSpec {
+            sections: vec![sec(Some("Algemeen")), sec(Some("Algemeen")), sec(Some("Canvas")), sec(Some("Algemeen"))],
+            ..FormSpec::default()
+        };
+        assert_eq!(spec.tabs(), vec!["Algemeen".to_owned(), "Canvas".to_owned()]);
+        assert!(FormSpec { sections: vec![sec(None)], ..FormSpec::default() }.tabs().is_empty());
+    }
+
+    #[test]
+    fn the_shape_sees_a_section_move_to_another_tab() {
+        let make = |tab: &str| FormSpec {
+            sections: vec![FormSection::new(None, vec![text(1, "A")]).on_tab(tab)],
+            ..FormSpec::default()
+        };
+        assert_ne!(make("Algemeen").shape(), make("Canvas").shape());
+    }
 
     fn text(id: u32, label: &str) -> FormRow {
         FormRow::new(id, label, Control::Text { value: String::new(), placeholder: String::new() })

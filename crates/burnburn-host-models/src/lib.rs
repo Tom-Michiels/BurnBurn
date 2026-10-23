@@ -7,6 +7,7 @@ pub mod app_text;
 pub mod app_view;
 pub mod automation_host;
 pub mod form;
+pub mod form_lines;
 pub mod format;
 pub mod hub_panel;
 pub mod l10n;

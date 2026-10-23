@@ -1,10 +1,11 @@
-//! The golf-5 panel lines as a [`FormSpec`] (LF5): the line model stays what the headless tests
-//! check, the form is what both hosts build. A Text line after a row is its help, a Problem line
-//! its error; the buttons that save or close a panel are the dialog buttons, every other button an
-//! action inside the form. The role table below grows panel by panel (LF6).
+//! The golf-5 panel lines as a [`FormSpec`] (LF5, LF6c): the line model stays what the headless
+//! tests check, the form is what both hosts build (see [`crate::form_lines`]). The buttons that
+//! save, start or close a panel are the dialog buttons (the role table below), every other button
+//! an action inside the form.
 
 use super::g5::{G5Control, G5Line};
-use crate::form::{ButtonRole, Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec};
+use crate::form::{ButtonRole, FormId, FormSpec};
+use crate::form_lines::{FormLine, lines_form};
 
 /// A form and which panel control each of its ids is.
 #[derive(Debug, Clone, PartialEq)]
@@ -13,101 +14,55 @@ pub struct G5Form {
     pub controls: Vec<(FormId, G5Control)>,
 }
 
-/// The dialog role of a button, `None` for a button inside the form.
+/// The dialog role of a button, `None` for a button inside the form. A panel with two groups of
+/// preview/apply buttons (offset and repair) has no dialog button for them: each button acts on
+/// its own section.
 pub fn dialog_role(control: G5Control) -> Option<ButtonRole> {
     match control {
-        G5Control::NotesSave => Some(ButtonRole::Primary),
-        G5Control::NotesClose => Some(ButtonRole::Cancel),
+        G5Control::NotesSave | G5Control::GeneratorInsert | G5Control::StartConfirm => Some(ButtonRole::Primary),
+        G5Control::NotesClose | G5Control::GeneratorCancel | G5Control::StartCancel | G5Control::SearchClose => {
+            Some(ButtonRole::Cancel)
+        }
         _ => None,
     }
 }
 
-/// The form of a panel's lines under `title`. Pictures have no place in a form and are left out.
+fn line_of(line: &G5Line) -> FormLine<G5Control> {
+    match line {
+        G5Line::Heading(t) => FormLine::Heading(t.clone()),
+        G5Line::Text(t) => FormLine::Text(t.clone()),
+        G5Line::Problem(t) => FormLine::Problem(t.clone()),
+        G5Line::Memo { control, text, .. } => FormLine::Memo { control: *control, text: text.clone() },
+        G5Line::Field { control, caption, text } => {
+            FormLine::Field { control: *control, caption: caption.clone(), text: text.clone(), invalid: false }
+        }
+        G5Line::Choice { control, caption, options, selected } => FormLine::Choice {
+            control: *control,
+            caption: caption.clone(),
+            options: options.clone(),
+            selected: *selected,
+        },
+        G5Line::Check { control, caption, on } => {
+            FormLine::Check { control: *control, caption: caption.clone(), on: *on }
+        }
+        G5Line::Button { control, title, enabled } => {
+            FormLine::Button { control: *control, title: title.clone(), enabled: *enabled }
+        }
+        G5Line::Image(image) => FormLine::Image(image.clone()),
+    }
+}
+
+/// The form of a panel's lines under `title`.
 pub fn g5_form(title: &str, lines: &[G5Line]) -> G5Form {
-    let mut rows: Vec<FormRow> = Vec::new();
-    let mut controls: Vec<(FormId, G5Control)> = Vec::new();
-    let mut buttons = DialogButtons::default();
-    let mut next = 0_u32;
-    let mut take_id = |control: Option<G5Control>, controls: &mut Vec<(FormId, G5Control)>| {
-        next += 1;
-        if let Some(c) = control {
-            controls.push((FormId(next), c));
-        }
-        next
-    };
-    for line in lines {
-        match line {
-            G5Line::Heading(text) => {
-                // A heading is a row without a control: a read-only line in bold is the host's job.
-                let id = take_id(None, &mut controls);
-                rows.push(FormRow::new(id, "", Control::ReadOnly { value: text.clone() }));
-            }
-            G5Line::Text(text) => match rows.last_mut() {
-                Some(row) if row.help.is_none() && !matches!(row.control, Control::ReadOnly { .. }) => {
-                    row.help = Some(text.clone());
-                }
-                _ => {
-                    let id = take_id(None, &mut controls);
-                    rows.push(FormRow::new(id, "", Control::ReadOnly { value: text.clone() }));
-                }
-            },
-            G5Line::Problem(text) => match rows.last_mut() {
-                Some(row) if row.error.is_none() => row.error = Some(text.clone()),
-                _ => {
-                    let id = take_id(None, &mut controls);
-                    let mut row = FormRow::new(id, "", Control::ReadOnly { value: String::new() });
-                    row.error = Some(text.clone());
-                    rows.push(row);
-                }
-            },
-            G5Line::Memo { control, text, .. } => {
-                let id = take_id(Some(*control), &mut controls);
-                rows.push(FormRow::new(id, "", Control::Memo { text: text.clone() }));
-            }
-            G5Line::Field { control, caption, text } => {
-                let id = take_id(Some(*control), &mut controls);
-                rows.push(FormRow::new(id, caption, Control::Text { value: text.clone(), placeholder: String::new() }));
-            }
-            G5Line::Choice { control, caption, options, selected } => {
-                let id = take_id(Some(*control), &mut controls);
-                rows.push(FormRow::new(id, caption, Control::Choice { options: options.clone(), selected: *selected }));
-            }
-            G5Line::Check { control, caption, on } => {
-                let id = take_id(Some(*control), &mut controls);
-                rows.push(FormRow::new(id, caption, Control::Check { on: *on }));
-            }
-            G5Line::Button { control, title, enabled } => {
-                let id = take_id(Some(*control), &mut controls);
-                match dialog_role(*control) {
-                    Some(role) => {
-                        let mut button = FormButton::new(id, title);
-                        button.enabled = *enabled;
-                        match role {
-                            ButtonRole::Primary => buttons.primary = Some(button),
-                            ButtonRole::Cancel => buttons.cancel = Some(button),
-                            ButtonRole::Destructive => buttons.destructive = Some(button),
-                            ButtonRole::Help => buttons.help = Some(button),
-                        }
-                    }
-                    None => {
-                        let mut row = FormRow::new(id, "", Control::Action { title: title.clone() });
-                        row.enabled = *enabled;
-                        rows.push(row);
-                    }
-                }
-            }
-            G5Line::Image(_) => {}
-        }
-    }
-    G5Form {
-        spec: FormSpec { title: title.to_owned(), sections: vec![FormSection::new(None, rows)], buttons },
-        controls,
-    }
+    let lines: Vec<FormLine<G5Control>> = lines.iter().map(line_of).collect();
+    let form = lines_form(title, &lines, dialog_role);
+    G5Form { spec: form.spec, controls: form.controls }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::form::{Control, FormRow};
 
     fn notes_lines(too_long: bool) -> Vec<G5Line> {
         let mut lines = vec![
@@ -181,5 +136,50 @@ mod tests {
         assert_eq!(memo.error.as_deref(), Some("Te lang"));
         assert_eq!(form.spec.buttons.primary.as_ref().map(|b| b.enabled), Some(false));
         assert_eq!(form.spec.buttons.cancel.as_ref().map(|b| b.enabled), Some(true));
+    }
+
+    #[test]
+    fn the_generator_start_confirmation_and_search_panels_have_dialog_buttons() {
+        use crate::form::Platform;
+        let button = |c: G5Control, t: &str| G5Line::Button { control: c, title: t.into(), enabled: true };
+        for (lines, expected) in [
+            (
+                vec![button(G5Control::GeneratorInsert, "Voeg in"), button(G5Control::GeneratorCancel, "Annuleer")],
+                vec!["Annuleer", "Voeg in"],
+            ),
+            (
+                vec![button(G5Control::StartConfirm, "Start"), button(G5Control::StartCancel, "Niet starten")],
+                vec!["Niet starten", "Start"],
+            ),
+            (
+                vec![button(G5Control::SearchOpenProject, "Open project"), button(G5Control::SearchClose, "Sluit")],
+                vec!["Sluit"],
+            ),
+        ] {
+            let form = g5_form("T", &lines);
+            let titles: Vec<&str> =
+                form.spec.buttons.order(Platform::Mac).into_iter().map(|(_, b)| b.title.as_str()).collect();
+            assert_eq!(titles, expected);
+        }
+    }
+
+    #[test]
+    fn the_offset_and_repair_buttons_stay_actions_in_their_own_section() {
+        let lines = vec![
+            G5Line::Heading("Offset".into()),
+            G5Line::Field { control: G5Control::OffsetDistance, caption: "Afstand (mm)".into(), text: "1".into() },
+            G5Line::Button { control: G5Control::OffsetPreview, title: "Voorbeeld".into(), enabled: true },
+            G5Line::Button { control: G5Control::OffsetApply, title: "Pas toe".into(), enabled: true },
+            G5Line::Heading("Reparatie".into()),
+            G5Line::Button { control: G5Control::RepairApply, title: "Repareer".into(), enabled: false },
+        ];
+        let form = g5_form("Offset en reparatie", &lines);
+        assert_eq!(form.spec.sections.len(), 2);
+        assert_eq!(form.spec.sections[0].heading.as_deref(), Some("Offset"));
+        assert_eq!(form.spec.sections[0].rows.len(), 3);
+        assert_eq!(form.spec.sections[0].rows[0].label, "Afstand");
+        assert!(form.spec.buttons.primary.is_none());
+        assert!(!form.spec.sections[1].rows[0].enabled, "a disabled button stays disabled");
+        assert_eq!(form.spec.problems(), Vec::new());
     }
 }
