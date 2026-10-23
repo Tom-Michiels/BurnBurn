@@ -62,7 +62,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DefWindowProcW, DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GA_ROOT, GWLP_USERDATA,
     GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL,
     HMENU, IDC_ARROW, IsDialogMessageW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL,
-    LBS_NOTIFY, LoadCursorW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
+    LBS_NOTIFY, LoadCursorW, LoadIconW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
     SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
     WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW,
@@ -1016,14 +1016,28 @@ fn random_uuid() -> burnburn_io::ProjectUuid {
     burnburn_io::ProjectUuid::from_bytes(bytes)
 }
 
+/// Resource id of the application icon group that `build.rs` embeds (`APP_ICON_ID` in
+/// `build/ico_res.rs`; the lowest id, so Explorer shows it too).
+const APP_ICON_RESOURCE_ID: usize = 1;
+
+/// The embedded application icon (title bar, taskbar, Alt+Tab), or none when the executable has no
+/// such resource (the system then shows its default icon).
+fn app_icon(instance: HINSTANCE) -> windows::Win32::UI::WindowsAndMessaging::HICON {
+    // SAFETY: loads the icon group of this executable by its integer resource id; the handle is shared
+    // and owned by the module (never destroyed).
+    unsafe { LoadIconW(Some(instance), PCWSTR(APP_ICON_RESOURCE_ID as *const u16)) }.unwrap_or_default()
+}
+
 fn register(instance: HINSTANCE, name: PCWSTR, proc_: windows::Win32::UI::WindowsAndMessaging::WNDPROC) -> bool {
     // SAFETY: loads the shared system arrow cursor (no ownership).
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW) }.unwrap_or_default();
+    let icon = app_icon(instance);
     let class = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: proc_,
         hInstance: instance,
+        hIcon: icon,
         hCursor: cursor,
         lpszClassName: name,
         ..Default::default()
