@@ -370,6 +370,23 @@ als vergelijking. Ze worden **niet** als golden geaccepteerd zonder review.
 | **LF3 Tokens en tekst** | `burnburn-host-models/src/{style.rs (nieuw),format.rs (nieuw),l10n*.rs,app_text.rs}`, `presentation/src/field.rs` (alleen `format_*`) | Headless: (a) `format_quantity(1.5, Mm, nl)=="1,5 mm"`, inch-voorkeur geeft "in", round-trip parse/format; (b) catalogus-lint: geen sleutel met NL==EN behalve een allowlist, geen `{…:?}`, geen "u/uw" in NL, één werkwoordsvorm voor Annuleer/Sluit/Pas toe, ellips-regel (opent dialoog ⇔ "…"); (c) pluralisatie `{0} objecten`; (d) WCAG-contrast van `style`-tokenparen ≥ 4,5:1 (tekst) en 3:1 (UI) in licht en donker. Q2, Q4, Q7, Q8, Q10. | NL-toon nalezen (Haiku-voorstel, gebruiker beslist) |
 | **LF4 App-identiteit** | `assets/app-icon/` (nieuw), `xtask` (bundle/Info.plist), `macos/src/appkit/app/app_host.rs` (About) | Test: de bundle bevat `CFBundleIconFile`, `.icns` heeft 16–1024 @1x/@2x; de About-opties bevatten naam, versie en credits (headless, via de options-dictionary). Q5. | het icoon zelf ontwerpen (gebruiker of ontwerper) |
 
+### Golf LF-A: uitgevoerd (23-10-2026)
+
+- **Quick wins**: Q1 (dubbele verschuiving, inspecteur en panelen), Q3 (primaire knop rechts, Esc/Return), Q6 (CAM-reden één
+  keer), Q9 (laservenster gelabeld en scrollend, Snij-instellingen niet afgekapt) in LF1; Q2 (statuskleur), Q4 (geen plan-id
+  als titel), Q7 (NL/EN-namen), Q8 (meervoud/getallen), Q10 (Instellingen…/Opties…) in LF3; Q5 (standaard About-paneel) in LF4.
+- **LF1**: native `layout_invariants` (geen overlap, binnen de container, niet afgekapt, vóór en na vergroten; rood: 474
+  overtredingen). **LF2**: MSAA 4×, licht en donker canvasthema met contrastchecks, bed met oorsprong en hoofd-/hulpraster,
+  geen grijze vulling. **LF3**: `style.rs`, `format.rs`, lint op de vertalingen. **LF4**: eigen app- en documenticoon
+  (`assets/app-icon/`, `cargo xtask icon`), `.icns`/`.ico`/MSIX-logo's, plist-sleutels.
+- Verify (stil) op de integratie: 4928 geslaagd, 0 gefaald, 15 genegeerd; Windows-clippy schoon. Dev-notes `LF1.md`–`LF4.md`.
+- **Nog open uit LF-A**: zoom naar het bed bij openen (de standaardcamera kadert het bed niet); "Plan van <tijd> · <duur>"
+  (geen compile-tijdstip in `PlanViewModel`) en een knop "Kopieer id"; statussymbool naast de kleur in de statusregel (Mac)
+  en statuskleur op Windows; basislijncontrole label/veld in `layout_invariants`; laservenster begrensd op 700 pt i.p.v. de
+  echte schermhoogte; vulling per Fill-bewerking op het canvas (vraagt een scene-veld); Windows: icoon inbedden in de exe,
+  donker canvasthema volgen. Handmatig: het getoonde About-paneel, Dock-icoon van de gebundelde app, NL-toon, het echte
+  menu-item Instellingen…, licht/donker op een echt scherm.
+
 ### Golf LF-B: formulieren en componenten (na LF-A)
 
 | Pakket | Lane / eigendom | Eerst te schrijven tests | Handmatig |

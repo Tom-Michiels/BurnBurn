@@ -1,7 +1,7 @@
 # Uitvoeringsstatus BurnBurn (22-10-2026)
 
 Verificatie op main 9335726 (na golf 6): `cargo xtask verify` (fmt, layers, workspace-deps, clippy -D warnings, tests, doctests)
-**slaagt** met exit 0 op macOS 27 arm64 met toolchain 1.99.1: **4863 tests geslaagd, 0 gefaald, 14 genegeerd** (na golf 9; native tests stil); 26 crates in
+**slaagt** met exit 0 op macOS 27 arm64 met toolchain 1.99.1: **4928 tests geslaagd, 0 gefaald, 15 genegeerd** (na golf 9 en look-and-feel LF-A; native tests stil); 26 crates in
 `crates/*`, 318 707 regels Rust (`wc -l` over `crates/**/*.rs`, inclusief de tests in de crates). Daarnaast is
 `cargo clippy -p burnburn-windows --target x86_64-pc-windows-msvc --all-targets -D warnings` **schoon**.
 Dat is een typecheck, geen Windows-run: **de Win32-laag is nooit gelinkt of gedraaid**. In de documentatieronde van 22-10-2026 zijn
