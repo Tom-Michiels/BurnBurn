@@ -31,6 +31,7 @@ mod operations;
 mod plan;
 mod schikken;
 mod shapes;
+mod status_bar;
 mod sketch;
 mod text;
 
@@ -50,6 +51,7 @@ pub use operations::*;
 pub use plan::*;
 pub use schikken::*;
 pub use shapes::*;
+pub use status_bar::*;
 pub use sketch::*;
 pub use text::*;
 
