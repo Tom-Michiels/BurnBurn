@@ -449,3 +449,8 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
 |---|---|---|---|---|---|
 | LF1-layout | Q1 dubbele verschuiving, Q3 primaire knop rechts en Esc/Return, Q6 reden één keer, Q9 laserlabels, layout-invarianten | – (alleen `macos/src/appkit`) | – | `macos/tests` native `layout_invariants` (rood op 474 fouten, groen), `cam_dialogs::test_dialogs_make_a_private_job_and_focus_test_is_greyed_with_its_reason`; dev-note `docs/dev-notes/LF1.md` | klaar; open: basislijncontrole, laservenster op klein scherm (handmatig) |
+
+## LF-B (look and feel)
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| LF5-formulieren | `FormSpec` (secties, rijen, eenheid als suffix, `DialogButtons`-rollen), Mac-bouwer op `NSGridView`, basislijncontrole in `layout_invariants` | – (`host-models/src/form.rs`, `panels/g5_form.rs`, `macos/src/appkit/panels/form.rs`) | `g5_form(title, lines)` zet G5-regels om; `dialog_role` per `G5Control` | `host-models form::tests::*` (8), `panels::g5_form::tests::*` (3), native `layout_invariants` (`form_builder_test`, `baseline_self_test`), `windows/tests/form_spec.rs`; dev-note `docs/dev-notes/LF5.md` | klaar voor Notities; open: LF6 migreert de rest en leegt `BASELINE_PENDING` (26 vensters, 209 meldingen); LF13 Windows-layout |

@@ -87,10 +87,9 @@ fn wire(control: &NSControl, wiring: Option<Wiring<'_>>) {
     if let Some(w) = wiring {
         // SAFETY: the target is weak; the owner of the form keeps it and clears the targets
         // before it goes (`FormView::clear_targets`). `action` takes the sender (`v@:@`).
-        unsafe {
-            control.setTarget(Some(w.target));
-            control.setAction(Some(w.action));
-        }
+        unsafe { control.setTarget(Some(w.target)) };
+        // SAFETY: as above.
+        unsafe { control.setAction(Some(w.action)) };
     }
 }
 
