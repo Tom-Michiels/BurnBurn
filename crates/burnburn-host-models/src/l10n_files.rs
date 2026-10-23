@@ -280,6 +280,24 @@ texts! {
     MenuNewFromRecentTemplate => ("Recente templates", "Recent Templates"),
     MenuExportSubmenu => ("Exporteer", "Export"),
     MenuBundleSubmenu => ("Bundels", "Bundles"),
+    // --- Section headings of the forms of the file, library, import, image and tracer panels (LF6b).
+    SectionOptions => ("Opties", "Options"),
+    SectionReport => ("Rapport", "Report"),
+    SectionSearch => ("Zoeken", "Search"),
+    SectionPreview => ("Voorbeeld", "Preview"),
+    SectionExportLoss => ("Wat verloren gaat", "What is lost"),
+    SectionBundlePreview => ("Wat de bundel verandert", "What the bundle changes"),
+    SectionMaterialLayer => ("Laag van het project", "Layer of the project"),
+    SectionMaterialStore => ("Bewaar de laag als item", "Store the layer as an entry"),
+    SectionArtItem => ("Gekozen item", "Chosen item"),
+    SectionArtAdd => ("Toevoegen", "Add"),
+    SectionArtManage => ("Beheren", "Manage"),
+    SectionImageSize => ("Afmeting", "Size"),
+    SectionImageValues => ("Waarden", "Values"),
+    SectionImageCrop => ("Uitsnede", "Crop"),
+    SectionTracerKind => ("Soort trace", "Kind of trace"),
+    SectionTracerThreshold => ("Zwart en wit", "Black and white"),
+    SectionTracerOutput => ("Resultaat", "Result"),
 }
 
 /// `text` in `locale`.

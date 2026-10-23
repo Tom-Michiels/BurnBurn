@@ -16,6 +16,7 @@ mod cam;
 mod camera;
 mod camera_workspace;
 mod cut_settings;
+pub mod files_form;
 mod g5;
 mod g5_form;
 mod g6;

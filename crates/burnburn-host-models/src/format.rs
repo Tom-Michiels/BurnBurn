@@ -16,6 +16,8 @@ pub enum Quantity {
     Seconds,
     MillimetersPerSecond,
     Pixels,
+    DotsPerInch,
+    SquareMillimeters,
 }
 
 /// The display length unit chosen in the preferences.
@@ -81,6 +83,8 @@ fn suffix(unit: Quantity) -> &'static str {
         Quantity::Seconds => " s",
         Quantity::MillimetersPerSecond => " mm/s",
         Quantity::Pixels => " px",
+        Quantity::DotsPerInch => " dpi",
+        Quantity::SquareMillimeters => " mm²",
     }
 }
 

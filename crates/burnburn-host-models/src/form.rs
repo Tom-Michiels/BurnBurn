@@ -5,6 +5,7 @@
 //! form says. Units come from [`crate::format::Quantity`], so a label never carries one.
 
 use crate::format::{Quantity, unit_label};
+use crate::style::StatusTone;
 
 /// Identifies a row or a button to the panel model that owns the form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,6 +40,29 @@ pub enum Control {
     ReadOnly {
         value: String,
     },
+    /// A wrapping text the user only reads (a status, a hint, an issue). Without a caption it runs
+    /// the whole width of the form; `lines` lines are kept free for it so a longer text later does
+    /// not move the buttons. `tone` colours it, `strong` makes it bold.
+    Note {
+        value: String,
+        lines: u8,
+        tone: StatusTone,
+        strong: bool,
+    },
+    /// A read-only multi-line text with its own scroll bar, `lines` lines high (a report).
+    Report {
+        text: String,
+        lines: u8,
+    },
+    /// A picture the host fills in later (a preview), `width` by `height` points.
+    Preview {
+        width: u16,
+        height: u16,
+    },
+    /// Several buttons in one row. The buttons are answered as ids `id`, `id + 1`, ….
+    Actions {
+        titles: Vec<String>,
+    },
 }
 
 impl Control {
@@ -51,6 +75,10 @@ impl Control {
             Control::Memo { .. } => "memo",
             Control::Action { .. } => "action",
             Control::ReadOnly { .. } => "readonly",
+            Control::Note { .. } => "note",
+            Control::Report { .. } => "report",
+            Control::Preview { .. } => "preview",
+            Control::Actions { .. } => "actions",
         }
     }
 }
@@ -250,6 +278,11 @@ fn label_has_unit(label: &str, unit: Quantity) -> bool {
 }
 
 impl FormSpec {
+    /// The row with this id.
+    pub fn row(&self, id: u32) -> Option<&FormRow> {
+        self.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == FormId(id))
+    }
+
     /// Structural faults; an empty list means the description follows the rules.
     pub fn problems(&self) -> Vec<FormProblem> {
         let mut out = Vec::new();
