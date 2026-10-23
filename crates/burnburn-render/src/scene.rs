@@ -79,6 +79,9 @@ pub struct Theme {
     /// Stroke colour per layer-palette slot (presentation's `LAYER_SLOTS`); hosts draw the
     /// palette buttons in the same colours. Higher slots cycle.
     pub process_layers: [Rgba; LAYER_COLOURS],
+    /// Opacity of the light fill that a Fill / Offset Fill operation gives its objects, in the
+    /// colour of its layer (`SceneItem::fill_slot`); 0 draws no such fill.
+    pub layer_fill_alpha: f32,
     /// Minor grid lines; `None` hides the grid.
     pub grid: Option<Rgba>,
     /// Major grid lines (every n-th, see `Overlay::Grid::major_every`).
@@ -126,6 +129,7 @@ impl Theme {
             disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.62, 0.62, 0.65, 1.0)), stroke_width_pt: 1.0 },
             process_layers: LAYER_PALETTE
                 .map(|[r, g, b]| Rgba::new(f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0, 1.0)),
+            layer_fill_alpha: 0.22,
             grid: Some(Rgba::new(0.91, 0.91, 0.93, 1.0)),
             grid_major: Rgba::new(0.78, 0.78, 0.82, 1.0),
             bed_fill: Rgba::new(1.0, 1.0, 1.0, 1.0),
@@ -165,6 +169,7 @@ impl Theme {
             hovered: RoleStyle { fill: None, stroke: Some(Rgba::new(1.0, 0.65, 0.25, 1.0)), stroke_width_pt: 1.0 },
             disabled: RoleStyle { fill: None, stroke: Some(Rgba::new(0.45, 0.45, 0.48, 1.0)), stroke_width_pt: 1.0 },
             process_layers: light.process_layers.map(lift),
+            layer_fill_alpha: 0.28,
             grid: Some(Rgba::new(0.20, 0.20, 0.22, 1.0)),
             grid_major: Rgba::new(0.30, 0.30, 0.33, 1.0),
             bed_fill: bed,
@@ -196,6 +201,7 @@ impl Theme {
             selected: bare(self.selected),
             hovered: bare(self.hovered),
             disabled: bare(self.disabled),
+            layer_fill_alpha: 0.0,
             ..self
         }
     }
@@ -552,7 +558,20 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
         origin_mark(&mut out, area, origin, theme, proj.scale);
     }
     for item in &scene.items {
-        draw_path(&mut out, flatten(&item.path, &item.transform, &proj), theme.role(item.role), proj.scale);
+        let polylines = flatten(&item.path, &item.transform, &proj);
+        // An operation fill lies beneath the outline (and the selection tint).
+        if let Some(slot) = item.fill_slot.filter(|_| theme.layer_fill_alpha > 0.0) {
+            let layer = theme.process_layers[usize::from(slot) % theme.process_layers.len()];
+            let contours: Vec<Vec<[f32; 2]>> =
+                polylines.iter().filter(|(_, closed)| *closed).map(|(p, _)| p.clone()).collect();
+            if !contours.is_empty() {
+                out.push(Primitive::Fill {
+                    contours_px: contours,
+                    color: Rgba::new(layer.r, layer.g, layer.b, theme.layer_fill_alpha),
+                });
+            }
+        }
+        draw_path(&mut out, polylines, theme.role(item.role), proj.scale);
     }
     // A bitmap preview lies on its image object: above the design, below the selection marks.
     for overlay in &scene.overlays {

@@ -955,6 +955,7 @@ fn command_pair(key: CommandKey) -> Option<(&'static str, &'static str)> {
         C::SelectSameType => ("Selecteer zelfde type", "Select Same Type"),
         C::IsolateSelection => ("Isoleer selectie", "Isolate Selection"),
         C::ZoomPage => ("Zoom naar werkblad", "Zoom to Page"),
+        C::ZoomBed => ("Zoom naar bed", "Zoom to Bed"),
         C::ZoomSelection => ("Zoom naar selectie", "Zoom to Selection"),
         C::ZoomIn => ("Zoom in", "Zoom In"),
         C::ZoomOut => ("Zoom uit", "Zoom Out"),

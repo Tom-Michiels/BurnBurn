@@ -1,6 +1,8 @@
-//! The tool strip above the canvas (SolidCraft's ribbon in AppKit form): panels with a title,
-//! icon buttons per tool, a small arrow with a drop-down for variant groups, tooltips with the
-//! shortcut and the reason a tool is disabled.
+//! The tool groups of the document window (SolidCraft's ribbon in AppKit form), as the items of
+//! the window's one `NSToolbar` (LF7): a view per panel holding the icon buttons of its tools, a
+//! small arrow with a drop-down for variant groups, tooltips with the shortcut and the reason a
+//! tool is disabled. The toolbar names each item by its panel title and offers a menu with the
+//! panel's tools while the item does not fit (overflow).
 //!
 //! The strip only shows: every state (selected, enabled, the variant on a group's face) comes
 //! from `ToolbarViewModel`, every click becomes a `NativeEvent` with a catalog id. Icons are the
@@ -20,9 +22,9 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSAppearanceCustomization, NSAutoresizingMaskOptions, NSBezelStyle, NSBitmapImageRep, NSBox,
-    NSBoxType, NSButton, NSButtonType, NSCellImagePosition, NSColor, NSControlStateValueOff, NSControlStateValueOn,
-    NSDeviceRGBColorSpace, NSFont, NSImage, NSMenu, NSMenuItem, NSScrollView, NSTextAlignment, NSTextField, NSView,
+    NSAccessibility, NSAppearanceCustomization, NSBezelStyle, NSBitmapImageRep, NSButton, NSButtonType,
+    NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn, NSDeviceRGBColorSpace, NSFont, NSImage, NSMenu,
+    NSMenuItem, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
@@ -31,17 +33,16 @@ use super::classes::ToolStripView;
 use crate::l10n::Locale;
 use crate::toolbar::{panel_title, tag_for_id, tool_label, tooltip};
 
-/// Height of the strip: icon row plus the panel titles.
-pub(crate) const STRIP_HEIGHT: f64 = 62.0;
+/// Height of a panel's view in the toolbar (the toolbar item label sits under it).
+pub(crate) const PANEL_HEIGHT: f64 = 30.0;
 const BUTTON_W: f64 = 30.0;
 const BUTTON_H: f64 = 28.0;
 const TEXT_BUTTON_W: f64 = 66.0;
 const CARET_W: f64 = 11.0;
 const GAP: f64 = 2.0;
-const PANEL_PAD: f64 = 8.0;
 const ICON_PT: u32 = 20;
 const MENU_ICON_PT: u32 = 16;
-const ROW_Y: f64 = 24.0;
+const ROW_Y: f64 = 1.0;
 
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
     NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
@@ -58,12 +59,20 @@ struct Entry {
     face: Cell<&'static str>,
 }
 
+/// One panel of the ribbon: the view that becomes a toolbar item, its title and overflow menu.
+struct PanelEntry {
+    panel: PanelId,
+    title: String,
+    view: Retained<ToolStripView>,
+    /// The item the toolbar shows in its overflow menu: the panel's tools as a submenu.
+    overflow: Retained<NSMenuItem>,
+    /// Overflow entries with the catalog id they stand for.
+    overflow_items: Vec<(&'static str, Retained<NSMenuItem>)>,
+}
+
 pub struct ToolStrip {
-    scroll: Retained<NSScrollView>,
-    content: Retained<ToolStripView>,
+    panels: Vec<PanelEntry>,
     entries: Vec<Entry>,
-    /// Panel titles, in panel order.
-    titles: Vec<(PanelId, Retained<NSTextField>)>,
     target: Retained<AnyObject>,
     locale: Locale,
     /// Appearance and scale the images were drawn for.
@@ -81,7 +90,6 @@ impl ToolStrip {
         document: DocumentId,
         target: &AnyObject,
         locale: Locale,
-        width: f64,
     ) -> ToolStrip {
         let layout = ToolbarViewModel::build(
             burnburn_presentation::ToolCatalog::standard(),
@@ -89,30 +97,31 @@ impl ToolStrip {
             burnburn_presentation::ActiveTool { tool: None, trim: false, polygon: None },
             &burnburn_presentation::VariantMemory::new(),
         );
-        let content = ToolStripView::new(mtm, rect(0.0, 0.0, 10.0, STRIP_HEIGHT), app, document);
         let mut entries = Vec::new();
-        let mut titles = Vec::new();
-        let mut x = PANEL_PAD;
+        let mut panels = Vec::new();
         for panel in &layout.panels {
             if panel.groups.is_empty() {
                 continue;
             }
-            let panel_x = x;
+            let view = ToolStripView::new(mtm, rect(0.0, 0.0, 10.0, PANEL_HEIGHT), app.clone(), document);
+            let mut x = 0.0;
             for group in &panel.groups {
                 let text_only = !burnburn_icons::has_icon(group.active.icon);
                 let main_w = if text_only { TEXT_BUTTON_W } else { BUTTON_W };
                 let main = new_button(mtm, target, sel!(toolButton:), rect(x, ROW_Y, main_w, BUTTON_H));
                 let tag = tag_for_id(group.active.id).unwrap_or(-1);
                 main.setTag(tag);
-                content.addSubview(&main);
+                view.addSubview(&main);
                 x += main_w;
                 let caret = group.group.map(|_| {
                     let c = new_button(mtm, target, sel!(variantMenu:), rect(x, ROW_Y, CARET_W, BUTTON_H));
-                    c.setTitle(&NSString::from_str("\u{25BE}"));
-                    c.setFont(Some(&NSFont::systemFontOfSize(9.0)));
+                    // SF Symbol "chevron.down" instead of a glyph character in the title.
+                    c.setImage(symbol_image("chevron.down", &tool_label(group.active.id, locale)).as_deref());
+                    c.setTitle(&NSString::from_str(""));
+                    c.setImagePosition(NSCellImagePosition::ImageOnly);
                     c.setTag(tag);
                     c.setBezelStyle(NSBezelStyle::Toolbar);
-                    content.addSubview(&c);
+                    view.addSubview(&c);
                     x += CARET_W;
                     c
                 });
@@ -125,38 +134,14 @@ impl ToolStrip {
                     face: Cell::new(group.active.id),
                 });
             }
-            let panel_w = (x - panel_x - GAP).max(64.0);
-            x = x.max(panel_x + panel_w + GAP);
-            let title = NSTextField::labelWithString(&NSString::from_str(&panel_title(panel.panel, locale)), mtm);
-            title.setFrame(rect(panel_x, 4.0, panel_w, 14.0));
-            title.setAlignment(NSTextAlignment::Center);
-            title.setFont(Some(&NSFont::systemFontOfSize(9.0)));
-            title.setTextColor(Some(&NSColor::secondaryLabelColor()));
-            content.addSubview(&title);
-            titles.push((panel.panel, title));
-            x += PANEL_PAD;
-            let rule =
-                NSBox::initWithFrame(NSBox::alloc(mtm), rect(x - PANEL_PAD / 2.0, 8.0, 1.0, STRIP_HEIGHT - 16.0));
-            rule.setBoxType(NSBoxType::Separator);
-            content.addSubview(&rule);
-            x += PANEL_PAD / 2.0;
+            view.setFrameSize(NSSize::new((x - GAP).max(1.0), PANEL_HEIGHT));
+            let title = panel_title(panel.panel, locale);
+            let (overflow, overflow_items) = overflow_menu(mtm, target, &title, panel, locale);
+            panels.push(PanelEntry { panel: panel.panel, title, view, overflow, overflow_items });
         }
-        content.setFrameSize(NSSize::new(x, STRIP_HEIGHT));
-
-        let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(0.0, 0.0, width, STRIP_HEIGHT));
-        scroll.setHasHorizontalScroller(true);
-        scroll.setHasVerticalScroller(false);
-        scroll.setAutohidesScrollers(true);
-        scroll.setDrawsBackground(false);
-        scroll.setAutoresizingMask(NSAutoresizingMaskOptions(
-            NSAutoresizingMaskOptions::ViewMinYMargin.0 | NSAutoresizingMaskOptions::ViewWidthSizable.0,
-        ));
-        scroll.setDocumentView(Some(&content));
         ToolStrip {
-            scroll,
-            content,
+            panels,
             entries,
-            titles,
             target: target.retain(),
             locale,
             drawn: Cell::new(None),
@@ -165,9 +150,23 @@ impl ToolStrip {
         }
     }
 
-    /// The view to put into the window.
-    pub(crate) fn view(&self) -> &NSView {
-        &self.scroll
+    /// The view of panel `index` (what the toolbar shows as its item).
+    pub fn panel_view(&self, index: usize) -> Option<Retained<NSView>> {
+        self.panels.get(index).map(|p| Retained::into_super(p.view.clone()))
+    }
+
+    /// What the toolbar item with `identifier` is made of.
+    pub(crate) fn panel_item(&self, identifier: &str) -> Option<PanelItem> {
+        self.panels.iter().find(|p| panel_item_id(p.panel) == identifier).map(|p| PanelItem {
+            title: p.title.clone(),
+            view: Retained::into_super(p.view.clone()),
+            overflow: p.overflow.clone(),
+        })
+    }
+
+    /// Identifiers of the panel items, in panel order.
+    pub(crate) fn panel_item_ids(&self) -> Vec<String> {
+        self.panels.iter().map(|p| panel_item_id(p.panel)).collect()
     }
 
     /// The shortcuts the user chose for tools (id → text, `None` = no shortcut); the next
@@ -234,12 +233,26 @@ impl ToolStrip {
                 }
             }
         }
+        for p in &self.panels {
+            for (id, item) in &p.overflow_items {
+                if let Some(b) = vm.button(id) {
+                    item.setEnabled(b.enablement.is_enabled());
+                    item.setState(if b.selected { NSControlStateValueOn } else { NSControlStateValueOff });
+                }
+            }
+        }
         self.drawn.set(Some((theme, scale)));
     }
 
     /// Clear the weak targets before the window controller goes.
     #[allow(unsafe_code)]
     pub(crate) fn clear_targets(&self) {
+        for p in &self.panels {
+            for (_, item) in &p.overflow_items {
+                // SAFETY: a nil target cannot dangle.
+                unsafe { item.setTarget(None) };
+            }
+        }
         for e in &self.entries {
             // SAFETY: a nil target cannot dangle.
             unsafe { e.main.setTarget(None) };
@@ -268,9 +281,9 @@ impl ToolStrip {
         Some(self.build_menu(mtm, g))
     }
 
-    /// Titles of the panels, as shown.
+    /// Titles of the panels, as shown (the toolbar item labels).
     pub fn panel_titles(&self) -> Vec<String> {
-        self.titles.iter().map(|(_, t)| t.stringValue().to_string()).collect()
+        self.panels.iter().map(|p| p.title.clone()).collect()
     }
 
     /// Theme the icons are drawn in now.
@@ -311,12 +324,74 @@ impl ToolStrip {
     }
 
     fn current_theme(&self) -> Theme {
-        theme_of(&self.content)
+        self.panels.first().map_or(Theme::Light, |p| theme_of(&p.view))
     }
 
     fn current_scale(&self) -> u32 {
-        scale_of(&self.content)
+        self.panels.first().map_or(2, |p| scale_of(&p.view))
     }
+}
+
+/// What a toolbar item for a ribbon panel is made of.
+pub(crate) struct PanelItem {
+    pub(crate) title: String,
+    pub(crate) view: Retained<NSView>,
+    pub(crate) overflow: Retained<NSMenuItem>,
+}
+
+/// Toolbar item identifier of a ribbon panel.
+pub(crate) fn panel_item_id(panel: PanelId) -> String {
+    format!("app.burnburn.toolbar.panel.{}", panel.key())
+}
+
+/// The overflow entry of a panel: its title with a submenu of the panel's tools (every variant),
+/// each choosing the tool like its button. The entries follow the view model in `refresh`.
+#[allow(unsafe_code)]
+fn overflow_menu(
+    mtm: MainThreadMarker,
+    target: &AnyObject,
+    title: &str,
+    panel: &burnburn_presentation::PanelViewModel,
+    locale: Locale,
+) -> (Retained<NSMenuItem>, Vec<(&'static str, Retained<NSMenuItem>)>) {
+    let submenu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
+    submenu.setAutoenablesItems(false);
+    let mut items = Vec::new();
+    for group in &panel.groups {
+        let tools: Vec<&burnburn_presentation::ToolButton> =
+            if group.variants.is_empty() { vec![&group.active] } else { group.variants.iter().collect() };
+        for tool in tools {
+            // SAFETY: a freshly allocated item; `toolButton:` takes the sender (`v@:@`) on the
+            // window controller, which outlives its menus (the target is weak).
+            let item = unsafe {
+                NSMenuItem::initWithTitle_action_keyEquivalent(
+                    NSMenuItem::alloc(mtm),
+                    &NSString::from_str(&tool_label(tool.id, locale)),
+                    Some(sel!(toolButton:)),
+                    &NSString::from_str(""),
+                )
+            };
+            // SAFETY: as above; the window clears the weak target in Drop.
+            unsafe { item.setTarget(Some(target)) };
+            item.setTag(tag_for_id(tool.id).unwrap_or(-1));
+            submenu.addItem(&item);
+            items.push((tool.id, item));
+        }
+    }
+    let overflow = NSMenuItem::new(mtm);
+    overflow.setTitle(&NSString::from_str(title));
+    overflow.setSubmenu(Some(&submenu));
+    (overflow, items)
+}
+
+/// An SF Symbol with its accessibility description (LF7/LF8: no glyph characters as titles).
+/// Names used by the document window: `chevron.down` (variant arrows), `arrow.left.and.right` and
+/// `arrow.up.and.down` (flip), `square.fill` (layer colour swatch).
+pub(crate) fn symbol_image(name: &str, description: &str) -> Option<Retained<NSImage>> {
+    NSImage::imageWithSystemSymbolName_accessibilityDescription(
+        &NSString::from_str(name),
+        Some(&NSString::from_str(description)),
+    )
 }
 
 /// Light or dark, from the view's effective appearance.

@@ -138,9 +138,13 @@ fn edit_chain() -> Result<(), String> {
     let status = s.app.with_window(doc, |w| w.status_label.stringValue().to_string()).unwrap_or_default();
     expect(
         || format!("the unreadable clipboard is reported in the window, status {status:?}"),
+        // The status line leads with the symbol of its tone (an error here), then the message.
         status
-            == burnburn_macos::l10n::message(MessageKey::ClipboardUnreadable, burnburn_macos::l10n::Locale::Nl)
-                .unwrap_or_default(),
+            == format!(
+                "\u{2716} {}",
+                burnburn_macos::l10n::message(MessageKey::ClipboardUnreadable, burnburn_macos::l10n::Locale::Nl)
+                    .unwrap_or_default()
+            ),
     )?;
 
     // Cut removes the selection and fills the pasteboard again.

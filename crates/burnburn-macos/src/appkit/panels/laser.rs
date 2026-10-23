@@ -34,8 +34,8 @@ use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
 use crate::panels::{
     LaserPanel, LaserText, anchor_for_tag, anchor_text, file_intent, jog_key_for_key_code, jog_press_intent,
-    jog_release_intent, laser_panel, laser_text, move_intent, save_rd_intent, segment_for_start_from, setup_intent,
-    simple_controls, simple_intent, start_from_for_segment,
+    jog_release_intent, laser_panel, laser_text, laser_window_height, laser_window_top_left, move_intent,
+    save_rd_intent, segment_for_start_from, setup_intent, simple_controls, simple_intent, start_from_for_segment,
 };
 
 pub(crate) const WIDTH: f64 = 590.0;
@@ -973,11 +973,24 @@ impl DocWindow {
         let panel = self.laser.panel.clone();
         if self.laser.shown {
             let frame = self.window.frame();
+            // The visible part of the screen the document window is on (menu bar and Dock excluded).
+            let window = self.window.clone();
             if let Err(e) = crate::appkit::objc_try("showing the laser panel", || {
-                panel.setFrameTopLeftPoint(NSPoint::new(
-                    frame.origin.x + 24.0,
-                    frame.origin.y + frame.size.height - 60.0,
-                ));
+                let visible = window.screen().or_else(|| panel.screen()).map(|s| s.visibleFrame());
+                if let Some(v) = visible {
+                    panel.setContentSize(NSSize::new(WIDTH, laser_window_height(v.size.height, HEIGHT)));
+                }
+                let size = panel.frame().size;
+                let wanted = (frame.origin.x + 24.0, frame.origin.y + frame.size.height - 60.0);
+                let (x, y) = match visible {
+                    Some(v) => laser_window_top_left(
+                        wanted,
+                        (size.width, size.height),
+                        (v.origin.x, v.origin.y, v.size.width, v.size.height),
+                    ),
+                    None => wanted,
+                };
+                panel.setFrameTopLeftPoint(NSPoint::new(x, y));
                 // Show the top of the content (the window is shorter than the content).
                 if let Some(doc) =
                     panel.contentView().and_then(|v| v.downcast::<NSScrollView>().ok()).and_then(|s| s.documentView())

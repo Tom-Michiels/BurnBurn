@@ -158,17 +158,26 @@ impl AppController {
     }
 
     pub(super) fn camera(&mut self, document: DocumentId, intent: CameraIntent) -> AppUpdate {
+        let bed = self.bed_bounds();
         self.with_session(document, |s| match intent {
             CameraIntent::Resized { viewport } => {
                 s.viewport = viewport;
+                // The first real canvas size completes the framing of a fresh window.
+                if std::mem::take(&mut s.fit_pending)
+                    && let Some(bed) = bed
+                {
+                    let _ = super::arrange::fit_to(s, document, bed);
+                }
                 AppUpdate::redraw(document)
             }
             // Camera pan/zoom is window state: it never becomes a document command.
             CameraIntent::Scroll { delta_pt } => {
+                s.fit_pending = false;
                 s.camera.pan_by_points(delta_pt);
                 AppUpdate::redraw(document)
             }
             CameraIntent::Magnify { magnification, anchor_pt } => {
+                s.fit_pending = false;
                 match s.camera.zoom_at(&s.viewport, anchor_pt, 1.0 + magnification) {
                     Ok(()) => AppUpdate::redraw(document),
                     Err(_) => AppUpdate::default(),

@@ -32,9 +32,9 @@ use objc2_app_kit::{
     NSAccessibility, NSAccessibilityElement, NSAccessibilityLayoutAreaRole, NSAccessibilityLayoutItemRole,
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
     NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
-    NSPopUpButton, NSResponder, NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource,
-    NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar, NSToolbarDelegate, NSToolbarItem,
-    NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSPopUpButton, NSResponder, NSSegmentedControl, NSSplitView, NSSplitViewDelegate, NSTableColumn, NSTableView,
+    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar,
+    NSToolbarDelegate, NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -44,6 +44,7 @@ use objc2_foundation::{
 use super::app::HostApp;
 use super::canvas::Canvas;
 use super::panels::cut_settings::OptionControl;
+use super::toolstrip::PanelItem;
 use crate::adapter::{
     CommitCause, MouseButton, MousePhase, NativeEvent, menu_checked, menu_enabled_with_recent, menu_item, menu_title,
 };
@@ -274,6 +275,8 @@ pub(crate) struct ControllerIvars {
     sketch_tools_label: String,
     arrange_tools: Retained<NSSegmentedControl>,
     arrange_tools_label: String,
+    /// The ribbon panels as toolbar items (identifier, content), set once the strip exists.
+    panel_items: RefCell<Vec<(String, PanelItem)>>,
     /// Layer-table rows, copied from the view model.
     operation_rows: RefCell<Vec<OperationLine>>,
     /// Constraint-table and parameter-table rows, copied from the view model.
@@ -319,9 +322,24 @@ define_class!(
         #[unsafe(method(toolButton:))]
         fn tool_button(&self, sender: Option<&AnyObject>) {
             ffi_guard("toolButton:", (), || {
-                let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
-                if let Some(spec) = crate::toolbar::spec_for_tag(button.tag()) {
+                // A button of the ribbon, or an entry of a panel's overflow menu in the toolbar.
+                let tag = match sender {
+                    Some(s) if s.downcast_ref::<NSButton>().is_some() => s.downcast_ref::<NSButton>().map(|b| b.tag()),
+                    Some(s) => s.downcast_ref::<NSMenuItem>().map(|i| i.tag()),
+                    None => None,
+                };
+                if let Some(spec) = tag.and_then(crate::toolbar::spec_for_tag) {
                     self.send(NativeEvent::ToolButton { document: self.ivars().document, id: spec.id.to_owned() });
+                }
+            });
+        }
+
+        /// "Kopieer id" at the plan: the plan id goes on the pasteboard as text.
+        #[unsafe(method(copyPlanId:))]
+        fn copy_plan_id(&self, _sender: Option<&AnyObject>) {
+            ffi_guard("copyPlanId:", (), || {
+                if let Some(app) = self.ivars().app.upgrade() {
+                    app.copy_plan_id(self.ivars().document);
                 }
             });
         }
@@ -619,6 +637,16 @@ define_class!(
             });
         }
 
+        #[unsafe(method(windowDidResize:))]
+        fn window_did_resize(&self, _notification: &NSNotification) {
+            ffi_guard("windowDidResize:", (), || self.geometry_changed());
+        }
+
+        #[unsafe(method(windowDidMove:))]
+        fn window_did_move(&self, _notification: &NSNotification) {
+            ffi_guard("windowDidMove:", (), || self.geometry_changed());
+        }
+
         #[unsafe(method(windowDidChangeOcclusionState:))]
         fn window_did_change_occlusion_state(&self, _notification: &NSNotification) {
             ffi_guard("windowDidChangeOcclusionState:", (), || self.redraw());
@@ -789,16 +817,34 @@ define_class!(
             &self,
             _toolbar: &NSToolbar,
             identifier: &NSString,
-            _flag: bool,
+            flag: bool,
         ) -> Option<Retained<NSToolbarItem>> {
             ffi_guard("toolbar:itemForItemIdentifier:willBeInsertedIntoToolbar:", None, || {
-                // The drawing tools live in the tool strip; the native toolbar keeps the Schets item.
-                let (control, label) = match identifier.to_string().as_str() {
+                let mtm = MainThreadMarker::new()?;
+                // A ribbon panel: its tool buttons are the item's view (a palette copy has none),
+                // its tools are the overflow menu.
+                let wanted = identifier.to_string();
+                let panel = self
+                    .ivars()
+                    .panel_items
+                    .try_borrow()
+                    .ok()
+                    .and_then(|p| p.iter().find(|(id, _)| *id == wanted).map(|(_, i)| (i.title.clone(), i.view.clone(), i.overflow.clone())));
+                if let Some((title, view, overflow)) = panel {
+                    let item = NSToolbarItem::initWithItemIdentifier(NSToolbarItem::alloc(mtm), identifier);
+                    item.setLabel(&NSString::from_str(&title));
+                    item.setPaletteLabel(&NSString::from_str(&title));
+                    if flag {
+                        item.setView(Some(&view));
+                        item.setMenuFormRepresentation(Some(&overflow));
+                    }
+                    return Some(item);
+                }
+                let (control, label) = match wanted.as_str() {
                     SKETCH_ITEM => (&self.ivars().sketch_tools, &self.ivars().sketch_tools_label),
                     ARRANGE_ITEM => (&self.ivars().arrange_tools, &self.ivars().arrange_tools_label),
                     _ => return None,
                 };
-                let mtm = MainThreadMarker::new()?;
                 let item = NSToolbarItem::initWithItemIdentifier(NSToolbarItem::alloc(mtm), identifier);
                 let label = NSString::from_str(label);
                 item.setLabel(&label);
@@ -810,12 +856,70 @@ define_class!(
 
         #[unsafe(method_id(toolbarDefaultItemIdentifiers:))]
         fn toolbar_default(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(ARRANGE_ITEM), NSString::from_str(SKETCH_ITEM)])
+            self.toolbar_identifiers()
         }
 
         #[unsafe(method_id(toolbarAllowedItemIdentifiers:))]
         fn toolbar_allowed(&self, _toolbar: &NSToolbar) -> Retained<NSArray<NSString>> {
-            NSArray::from_retained_slice(&[NSString::from_str(ARRANGE_ITEM), NSString::from_str(SKETCH_ITEM)])
+            self.toolbar_identifiers()
+        }
+    }
+
+    /// The panes keep their width range: object list 150–360 pt, inspector 240–420 pt, and the
+    /// canvas column never gets narrower than 420 pt (LF7).
+    unsafe impl NSSplitViewDelegate for WindowController {
+        #[unsafe(method(splitView:constrainMinCoordinate:ofSubviewAt:))]
+        fn constrain_min(&self, split_view: &NSSplitView, proposed: f64, index: NSInteger) -> f64 {
+            ffi_guard("splitView:constrainMinCoordinate:ofSubviewAt:", proposed, || {
+                let (sidebar, inspector, width, thickness) = split_metrics(split_view);
+                match index {
+                    0 => super::window::SIDEBAR_RANGE.0,
+                    _ => (sidebar + thickness + super::window::CANVAS_MIN)
+                        .max(width - thickness - super::window::INSPECTOR_RANGE.1)
+                        .min(width - thickness - inspector.min(super::window::INSPECTOR_RANGE.1)),
+                }
+            })
+        }
+
+        #[unsafe(method(splitView:constrainMaxCoordinate:ofSubviewAt:))]
+        fn constrain_max(&self, split_view: &NSSplitView, proposed: f64, index: NSInteger) -> f64 {
+            ffi_guard("splitView:constrainMaxCoordinate:ofSubviewAt:", proposed, || {
+                let (_, inspector, width, thickness) = split_metrics(split_view);
+                match index {
+                    0 => super::window::SIDEBAR_RANGE
+                        .1
+                        .min(width - 2.0 * thickness - inspector - super::window::CANVAS_MIN)
+                        .max(super::window::SIDEBAR_RANGE.0),
+                    _ => width - thickness - super::window::INSPECTOR_RANGE.0,
+                }
+            })
+        }
+
+        /// Only the canvas column takes the extra room when the window grows (and gives it back
+        /// when it shrinks): the object list and the inspector hold their width.
+        #[unsafe(method(splitView:resizeSubviewsWithOldSize:))]
+        fn resize_subviews(&self, split_view: &NSSplitView, _old_size: NSSize) {
+            ffi_guard("splitView:resizeSubviewsWithOldSize:", (), || {
+                let panes = split_view.subviews();
+                if panes.count() != 3 {
+                    // Not our layout: AppKit's own.
+                    split_view.adjustSubviews();
+                    return;
+                }
+                let (sidebar, inspector) = pane_widths(split_view.frame().size.width, split_view);
+                let size = split_view.frame().size;
+                let t = split_view.dividerThickness();
+                let centre = (size.width - sidebar - inspector - 2.0 * t).max(0.0);
+                let frame = |x: f64, w: f64| NSRect::new(NSPoint::new(x, 0.0), NSSize::new(w, size.height));
+                panes.objectAtIndex(0).setFrame(frame(0.0, sidebar));
+                panes.objectAtIndex(1).setFrame(frame(sidebar + t, centre));
+                panes.objectAtIndex(2).setFrame(frame(sidebar + t + centre + t, inspector));
+            });
+        }
+
+        #[unsafe(method(splitViewDidResizeSubviews:))]
+        fn split_did_resize(&self, _notification: &NSNotification) {
+            ffi_guard("splitViewDidResizeSubviews:", (), || self.geometry_changed());
         }
     }
 );
@@ -885,7 +989,51 @@ impl ToolStripView {
     }
 }
 
+/// The widths the object list and the inspector keep for a split view `total` wide: what they
+/// have, within their ranges, giving way (inspector first) only when the canvas column would fall
+/// below its minimum.
+fn pane_widths(total: f64, split: &NSSplitView) -> (f64, f64) {
+    let (sidebar, inspector, _, t) = split_metrics(split);
+    let (sidebar_range, inspector_range) = (super::window::SIDEBAR_RANGE, super::window::INSPECTOR_RANGE);
+    let mut sidebar = sidebar.clamp(sidebar_range.0, sidebar_range.1);
+    let mut inspector = inspector.clamp(inspector_range.0, inspector_range.1);
+    let deficit = super::window::CANVAS_MIN - (total - sidebar - inspector - 2.0 * t);
+    if deficit > 0.0 {
+        let from_inspector = deficit.min(inspector - inspector_range.0);
+        inspector -= from_inspector;
+        sidebar -= (deficit - from_inspector).min(sidebar - sidebar_range.0);
+    }
+    // A split view narrower than its panes (never for a window at its minimum size): they share it.
+    let room = (total - 2.0 * t).max(0.0);
+    if sidebar + inspector > room {
+        let ratio = room / (sidebar + inspector);
+        sidebar *= ratio;
+        inspector *= ratio;
+    }
+    (sidebar, inspector)
+}
+
+/// Width of the object list and of the inspector, of the split view and of its dividers.
+fn split_metrics(split: &NSSplitView) -> (f64, f64, f64, f64) {
+    let panes = split.subviews();
+    let width_of = |i: usize| if i < panes.count() { panes.objectAtIndex(i).frame().size.width } else { 0.0 };
+    (width_of(0), width_of(2), split.frame().size.width, split.dividerThickness())
+}
+
 impl WindowController {
+    /// Panel items, then Uitlijnen and Schets (the toolbar's default and allowed items).
+    fn toolbar_identifiers(&self) -> Retained<NSArray<NSString>> {
+        let mut ids: Vec<Retained<NSString>> = self
+            .ivars()
+            .panel_items
+            .try_borrow()
+            .map(|p| p.iter().map(|(id, _)| NSString::from_str(id)).collect())
+            .unwrap_or_default();
+        ids.push(NSString::from_str(ARRANGE_ITEM));
+        ids.push(NSString::from_str(SKETCH_ITEM));
+        NSArray::from_retained_slice(&ids)
+    }
+
     pub(crate) fn new(mtm: MainThreadMarker, parts: ControllerParts) -> Retained<Self> {
         let ControllerParts {
             app,
@@ -926,6 +1074,7 @@ impl WindowController {
             sketch_tools_label,
             arrange_tools,
             arrange_tools_label,
+            panel_items: RefCell::new(Vec::new()),
             operation_rows: RefCell::new(Vec::new()),
             sketch_rows: RefCell::new(Vec::new()),
             sketch_params: RefCell::new(Vec::new()),
@@ -941,6 +1090,20 @@ impl WindowController {
     fn send(&self, event: NativeEvent) {
         if let Some(app) = self.ivars().app.upgrade() {
             app.native(event);
+        }
+    }
+
+    /// The ribbon panels the toolbar shows as its items.
+    pub(crate) fn set_panel_items(&self, items: Vec<(String, PanelItem)>) {
+        if let Ok(mut slot) = self.ivars().panel_items.try_borrow_mut() {
+            *slot = items;
+        }
+    }
+
+    /// Frame or pane widths changed: the host saves them.
+    fn geometry_changed(&self) {
+        if let Some(app) = self.ivars().app.upgrade() {
+            app.window_geometry_changed(self.ivars().document);
         }
     }
 
@@ -1537,6 +1700,11 @@ impl CanvasView {
     pub(crate) fn as_view(&self) -> &NSView {
         self
     }
+}
+
+/// The split view delegate object as the protocol AppKit expects.
+pub(crate) fn split_delegate(controller: &WindowController) -> &ProtocolObject<dyn NSSplitViewDelegate> {
+    ProtocolObject::from_ref(controller)
 }
 
 /// The window delegate object as the protocol AppKit expects.

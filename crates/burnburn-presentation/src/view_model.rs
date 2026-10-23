@@ -475,6 +475,8 @@ pub struct PlanViewModel {
     pub calibration: Vec<burnburn_job::AppliedCalibration>,
     pub errors: usize,
     pub warnings: usize,
+    /// When the plan was compiled (the injected job clock; `None` when the host has no usable time).
+    pub compiled_at: Option<burnburn_generators::JobClock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

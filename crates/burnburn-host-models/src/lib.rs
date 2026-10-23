@@ -29,3 +29,4 @@ pub mod quit_guard;
 pub mod recent;
 pub mod style;
 pub mod toolbar;
+pub mod window_state;

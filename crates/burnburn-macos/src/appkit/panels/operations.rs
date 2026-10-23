@@ -2,6 +2,7 @@
 
 use crate::appkit::panels::production::LIFT;
 use crate::appkit::panels::widgets::{push_button, rect, set_text, strip_label};
+use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 
 use burnburn_presentation::{AppViewModel, PALETTE_SLOTS};
@@ -9,16 +10,19 @@ use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSButtonCell, NSButtonType, NSColor, NSFont, NSPopUpButton,
-    NSScrollView, NSTableColumn, NSTableView, NSTextField, NSView,
+    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSButtonCell, NSButtonType, NSCellImagePosition, NSColor,
+    NSFont, NSImageScaling, NSPopUpButton, NSScrollView, NSTableColumn, NSTableView,
+    NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
 };
-use objc2_foundation::NSString;
+use objc2_foundation::{NSSize, NSString};
 
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{
     LAYER_COLUMNS, LayerColumn, OPERATION_KINDS, layer_label, operation_kind_name, operations_panel, palette_buttons,
 };
 
+/// Room around a column header's text.
+const HEADER_PAD: f64 = 6.0;
 /// Palette swatch width and pitch (points).
 pub(crate) const SWATCH: f64 = 19.0;
 pub(crate) const SWATCH_PITCH: f64 = 19.0;
@@ -59,9 +63,12 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     // Colour palette across the strip (LightBurn-like): a click puts the selection on that layer.
     let mut palette = Vec::new();
     for slot in 0..PALETTE_SLOTS {
-        let b = push_button(mtm, "\u{25A0}");
+        // The swatch is the SF Symbol "square.fill" in the layer colour (was the glyph U+25A0).
+        let b = push_button(mtm, "");
         b.setBordered(false);
-        b.setFont(Some(&NSFont::systemFontOfSize(20.0)));
+        b.setImage(symbol_image("square.fill", &layer_label(slot)).as_deref());
+        b.setImagePosition(NSCellImagePosition::ImageOnly);
+        b.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
         b.setContentTintColor(Some(&layer_colour(slot)));
         b.setFrame(rect(12.0 + f64::from(slot) * SWATCH_PITCH, 214.0 + LIFT, SWATCH, 26.0));
         b.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
@@ -86,15 +93,26 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewMinYMargin.0,
     ));
     let table = NSTableView::initWithFrame(NSTableView::alloc(mtm), rect(0.0, 0.0, ops_width - 12.0, 98.0));
+    // Set before the columns are added: a table that squeezes its columns while they are added
+    // keeps them squeezed.
+    table.setColumnAutoresizingStyle(NSTableViewColumnAutoresizingStyle::NoColumnAutoresizing);
     for c in LAYER_COLUMNS {
         let column = NSTableColumn::initWithIdentifier(NSTableColumn::alloc(mtm), &NSString::from_str(c.id()));
         column.setTitle(&NSString::from_str(c.caption(locale)));
         column.setEditable(c.field().is_some() || c.is_toggle());
-        column.setWidth(match c {
-            LayerColumn::Name => 100.0,
-            LayerColumn::Layer | LayerColumn::Output | LayerColumn::Visible | LayerColumn::Passes => 48.0,
-            _ => 64.0,
-        });
+        // Wide enough for the header in this language (never cut off), and for what the cells
+        // show: the swatch with its layer label, a name, a checkbox.
+        let floor: f64 = match c {
+            LayerColumn::Name => 96.0,
+            LayerColumn::Layer => 48.0,
+            LayerColumn::Kind => 56.0,
+            LayerColumn::Output | LayerColumn::Visible => 40.0,
+            _ => 48.0,
+        };
+        let width = floor.max((column.headerCell().cellSize().width + HEADER_PAD).ceil());
+        column.setWidth(width);
+        // Never narrower than that, whatever the table does when the window changes size.
+        column.setMinWidth(width);
         if c.is_toggle() {
             let cell = NSButtonCell::initTextCell(NSButtonCell::alloc(mtm), &NSString::from_str(""));
             cell.setButtonType(NSButtonType::Switch);
@@ -104,6 +122,11 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         table.addTableColumn(&column);
     }
     table.setAllowsEmptySelection(true);
+    // The system's 17 pt between columns would not leave room for the columns at the default width.
+    table.setIntercellSpacing(NSSize::new(4.0, 2.0));
+    // The columns keep the width they were given (a squeezed header is a cut-off header); a
+    // narrow window scrolls the table instead.
+    table.setColumnAutoresizingStyle(NSTableViewColumnAutoresizingStyle::NoColumnAutoresizing);
     table.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::OperationsTitle))));
     scroll.setDocumentView(Some(&table));
     strip.addSubview(&scroll);

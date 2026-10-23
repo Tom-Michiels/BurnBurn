@@ -133,6 +133,8 @@ pub struct HostApp {
     /// Archief ▸ Recente templates, rebuilt from the controller's list.
     recent_templates_menu: Retained<NSMenu>,
     pasteboard: Retained<objc2_app_kit::NSPasteboard>,
+    /// Where window frames and pane widths are kept between runs (off unless the app or a test says).
+    window_state: RefCell<super::window_state::WindowState>,
     open_panel: RefCell<Option<Retained<NSOpenPanel>>>,
     /// The file sheet of the tracer's batch while it is open (G8-trace, T10).
     trace_batch_panel: RefCell<Option<Retained<NSOpenPanel>>>,
@@ -242,6 +244,7 @@ impl HostApp {
                 } else {
                     super::clipboard::general_pasteboard()
                 },
+                window_state: RefCell::new(super::window_state::WindowState::Off),
                 open_panel: RefCell::new(None),
                 trace_batch_panel: RefCell::new(None),
                 options,
@@ -352,6 +355,67 @@ impl HostApp {
         self.controller.try_borrow().map(|c| c.recent_projects().len()).unwrap_or(0)
     }
 
+    /// Save and restore window frames and pane widths in the defaults suite `name` (tests use a
+    /// temporary domain; the user's own defaults are never touched). `false` when unavailable.
+    pub fn use_window_state_suite(&self, name: &str) -> bool {
+        let Some(state) = super::window_state::WindowState::suite(name) else { return false };
+        match self.window_state.try_borrow_mut() {
+            Ok(mut current) => {
+                *current = state;
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Keep window frames and pane widths in the user's defaults (the running app).
+    pub fn use_standard_window_state(&self) {
+        if let Ok(mut current) = self.window_state.try_borrow_mut() {
+            *current = super::window_state::WindowState::Standard;
+        }
+    }
+
+    /// A window's frame or pane widths changed: save them for the next window.
+    pub(crate) fn window_geometry_changed(&self, document: DocumentId) {
+        let (Ok(windows), Ok(state)) = (self.windows.try_borrow(), self.window_state.try_borrow()) else { return };
+        if let Some(w) = windows.get(&document) {
+            state.save(&w.saved_state());
+        }
+    }
+
+    /// "Kopieer id": the plan id of `document` as text on the pasteboard.
+    pub(crate) fn copy_plan_id(&self, document: DocumentId) {
+        let Some(id) = self.view().document(document).and_then(|d| d.plan.as_ref().map(|p| p.id.to_string())) else {
+            return;
+        };
+        if let Err(e) = super::clipboard::write_text(&self.pasteboard, &id) {
+            eprintln!("burnburn: {e}");
+        }
+    }
+
+    /// The pointer moved over (or dragged on) the canvas: the status bar shows where it is.
+    fn pointer_moved(&self, document: DocumentId, at: [f64; 2]) {
+        let unit = self.length_preference();
+        let vm = self.view();
+        let Some(doc) = vm.document(document) else { return };
+        if let Ok(mut windows) = self.windows.try_borrow_mut()
+            && let Some(w) = windows.get_mut(&document)
+        {
+            w.pointer = Some(at);
+            w.length_unit = unit;
+            w.refresh_status_bar(doc);
+        }
+    }
+
+    /// The display unit of lengths (preferences).
+    fn length_preference(&self) -> burnburn_host_models::format::LengthPreference {
+        use burnburn_host_models::format::LengthPreference;
+        match self.controller.try_borrow().map(|c| c.prefs_view().unit) {
+            Ok(burnburn_presentation::LengthUnit::Inches) => LengthPreference::Inches,
+            _ => LengthPreference::Millimeters,
+        }
+    }
+
     /// The pasteboard Cut/Copy/Paste use.
     pub fn pasteboard(&self) -> &objc2_app_kit::NSPasteboard {
         &self.pasteboard
@@ -440,6 +504,9 @@ impl HostApp {
             // Light/dark or backing scale changed: the strip draws its icons again.
             self.refresh();
             return;
+        }
+        if let NativeEvent::Mouse { document, location_pt, .. } = &event {
+            self.pointer_moved(*document, *location_pt);
         }
         match translate(event, &self.view()) {
             Reaction::Nothing => {}
@@ -883,7 +950,9 @@ impl HostApp {
                     && let Ok(windows) = self.windows.try_borrow()
                     && let Some(w) = windows.get(document)
                 {
-                    w.status_label.setStringValue(&NSString::from_str(&text));
+                    // An error: the symbol of its tone leads, as in the window's own refresh.
+                    let glyph = burnburn_host_models::style::StatusTone::Error.glyph();
+                    w.status_label.setStringValue(&NSString::from_str(&format!("{glyph} {text}")));
                 }
             }
             HostEffect::Redraw { document } => self.redraw(*document),
@@ -936,7 +1005,10 @@ impl HostApp {
         if self.windows.try_borrow().map(|w| w.contains_key(&document)).unwrap_or(true) {
             return;
         }
-        let window = DocWindow::open(self.mtm, self.me.clone(), document, &self.options, self.locale);
+        let window = match self.window_state.try_borrow() {
+            Ok(state) => DocWindow::open(self.mtm, self.me.clone(), document, &self.options, self.locale, &state),
+            Err(_) => return,
+        };
         if let Ok(mut windows) = self.windows.try_borrow_mut() {
             windows.insert(document, window);
         }
@@ -960,9 +1032,11 @@ impl HostApp {
             Err(_) => (None, None, BTreeMap::new()),
         };
         let tool_shortcuts = self.tool_shortcuts();
+        let unit = self.length_preference();
         if let Ok(mut windows) = self.windows.try_borrow_mut() {
             for (document, w) in windows.iter_mut() {
                 w.strip.set_shortcuts(tool_shortcuts.clone());
+                w.length_unit = unit;
                 w.refresh(&vm, *document, machine.as_ref(), camera.as_ref());
                 if w.laser.shown {
                     w.refresh_laser(laser.get(document).and_then(Option::as_ref));
@@ -1251,6 +1325,14 @@ impl HostApp {
             aspect_lock: &w.controls.aspect_lock,
             flip_buttons: &w.controls.flip,
             strip: &w.strip,
+            split: &w.split,
+            sidebar_pane: &w.sidebar_pane,
+            canvas_pane: &w.canvas_pane,
+            inspector_pane: &w.inspector_pane,
+            status_coordinate: &w.status_coordinate,
+            status_zoom: &w.status_zoom,
+            status_unit: &w.status_unit,
+            copy_id_button: &w.copy_id_button,
             status_label: &w.status_label,
             plan_labels: [
                 &w.plan_labels[0],
@@ -1426,6 +1508,17 @@ pub struct WindowParts<'a> {
     pub aspect_lock: &'a objc2_app_kit::NSButton,
     pub flip_buttons: &'a [Retained<objc2_app_kit::NSButton>],
     pub strip: &'a super::toolstrip::ToolStrip,
+    /// The split view and its panes: object list, canvas column, inspector column (LF7).
+    pub split: &'a objc2_app_kit::NSSplitView,
+    pub sidebar_pane: &'a objc2_app_kit::NSView,
+    pub canvas_pane: &'a objc2_app_kit::NSView,
+    pub inspector_pane: &'a objc2_app_kit::NSView,
+    /// The status bar: pointer coordinate, zoom, unit.
+    pub status_coordinate: &'a objc2_app_kit::NSTextField,
+    pub status_zoom: &'a objc2_app_kit::NSTextField,
+    pub status_unit: &'a objc2_app_kit::NSTextField,
+    /// "Kopieer id" at the plan.
+    pub copy_id_button: &'a objc2_app_kit::NSButton,
     pub status_label: &'a objc2_app_kit::NSTextField,
     /// Preview panel: title, plan id, estimate, state, findings.
     pub plan_labels: [&'a objc2_app_kit::NSTextField; 5],
@@ -1839,6 +1932,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         t(HostText::MenuView),
         vec![
             item(c(CommandKey::ZoomPage), "0", false),
+            plain(CommandKey::ZoomBed),
             item(c(CommandKey::ZoomSelection), "0", true),
             item(c(CommandKey::ZoomIn), "=", false),
             item(c(CommandKey::ZoomOut), "-", false),

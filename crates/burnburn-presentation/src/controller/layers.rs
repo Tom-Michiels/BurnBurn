@@ -514,6 +514,16 @@ pub(super) fn style_scene(s: &Session, snapshot: &DocumentSnapshot, scene: &mut 
         {
             item.role = StyleRole::ProcessLayer(u16::from(*slot));
         }
+        // A Fill / Offset Fill operation also fills the object on the canvas, in its own layer colour.
+        item.fill_slot = ops
+            .iter()
+            .filter(|op| !s.layers.hidden.contains(op))
+            .filter(|op| {
+                process
+                    .operation(**op)
+                    .is_some_and(|o| matches!(o.mode(), OperationMode::Fill(_) | OperationMode::OffsetFill(_)))
+            })
+            .find_map(|op| colours.get(op).map(|slot| u16::from(*slot)));
         true
     });
 }

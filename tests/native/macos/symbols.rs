@@ -54,8 +54,7 @@ mod checks {
     /// (window label, glyph) pairs of LF7 files (inspector flip buttons, operations stop button,
     /// toolstrip drop-down arrow) that may still show a glyph. Must be empty at integration: LF7
     /// replaces them with `appkit::symbols`.
-    const LF7_EXCEPTIONS: [(&str, char); 4] =
-        [("document", '↔'), ("document", '↕'), ("document", '■'), ("document", '▾')];
+    const LF7_EXCEPTIONS: [(&str, char); 0] = [];
 
     pub fn run() -> Result<(), String> {
         let mut found: Vec<String> = Vec::new();

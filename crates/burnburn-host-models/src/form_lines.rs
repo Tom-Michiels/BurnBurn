@@ -196,7 +196,7 @@ mod tests {
         let rows = rows(&form);
         assert_eq!((rows[0].label.as_str(), rows[0].unit), ("Tussenruimte", Some(Quantity::Millimeters)));
         assert_eq!((rows[1].label.as_str(), rows[1].unit), ("Hoek", Some(Quantity::Degrees)));
-        assert_eq!(rows[1].help.as_deref(), Some("leeg = geen"));
+        assert_eq!(rows[1].help.as_deref(), Some("Leeg = geen"));
         assert_eq!(form.spec.problems(), Vec::new());
     }
 
