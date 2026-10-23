@@ -13,9 +13,7 @@
 //! go; a section with nothing to show loses its heading. A form can be capped in height: the rows
 //! then scroll above the button row.
 
-use burnburn_host_models::form::{
-    ButtonRole, Control, FormId, FormRow, FormSection, FormSpec, Key, Platform,
-};
+use burnburn_host_models::form::{ButtonRole, Control, FormId, FormRow, FormSection, FormSpec, Key, Platform};
 use burnburn_host_models::style::{Space, StatusTone, TextRole};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
@@ -213,7 +211,8 @@ pub fn build_form_with(
         .map(|r| caption_probe(&r.label))
         .fold(0.0_f64, f64::max)
         .min(inner * CAPTION_SHARE);
-    let tools_width = |n: usize| if n == 0 { 0.0 } else { n as f64 * TOOL_WIDTH + (n as f64 - 1.0) * Space::Hairline.points() };
+    let tools_width =
+        |n: usize| if n == 0 { 0.0 } else { n as f64 * TOOL_WIDTH + (n as f64 - 1.0) * Space::Hairline.points() };
     let unit_w = spec
         .sections
         .iter()
@@ -361,11 +360,8 @@ pub fn build_form_with(
                     None => empty(),
                 }
             };
-            let views: [&NSView; 3] = if spans {
-                [&control, &*empty(), &*empty()]
-            } else {
-                [&caption_view, &control, &unit_view]
-            };
+            let views: [&NSView; 3] =
+                if spans { [&control, &*empty(), &*empty()] } else { [&caption_view, &control, &unit_view] };
             let grid_row = grid.addRowWithViews(&NSArray::from_slice(&views));
             grid_row.setTopPadding(if first { 0.0 } else { Space::Hairline.points() });
             first = false;

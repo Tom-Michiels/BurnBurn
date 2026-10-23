@@ -510,8 +510,8 @@ mod tests {
     #[test]
     fn a_hidden_row_says_nothing_but_keeps_the_shape_of_the_form() {
         let make = |hidden: bool| {
-            let section = FormSection::new(Some("Tabs"), vec![text(1, "Aantal").help("Per rand"), text(2, "Breedte")])
-                .reason("");
+            let section =
+                FormSection::new(Some("Tabs"), vec![text(1, "Aantal").help("Per rand"), text(2, "Breedte")]).reason("");
             let mut section = section;
             section.rows[0].hidden = hidden;
             FormSpec { sections: vec![section], ..FormSpec::default() }
@@ -536,7 +536,8 @@ mod tests {
         assert!(section.row_enabled(&section.rows[0]), "a reason does not switch the other rows off");
         assert!(!section.row_enabled(&section.rows[1]));
         assert!(FormSection::new(None, vec![text(3, "x")]).reason("").texts().iter().all(|t| !t.is_empty()));
-        let repeated = FormSection::new(None, vec![text(1, "Snelheid").help("Kies een machine")]).reason("Kies een machine");
+        let repeated =
+            FormSection::new(None, vec![text(1, "Snelheid").help("Kies een machine")]).reason("Kies een machine");
         let spec = FormSpec { sections: vec![repeated], ..FormSpec::default() };
         assert_eq!(spec.problems(), vec![FormProblem::ReasonRepeated(FormId(1))]);
     }
@@ -560,7 +561,10 @@ mod tests {
             ..FormSpec::default()
         };
         assert!(clash.problems().contains(&FormProblem::DuplicateId(FormId(2))));
-        let reasoned = FormSpec { sections: vec![FormSection::new(None, vec![text(1, "Laag")]).reason("")], ..FormSpec::default() };
+        let reasoned = FormSpec {
+            sections: vec![FormSection::new(None, vec![text(1, "Laag")]).reason("")],
+            ..FormSpec::default()
+        };
         assert_ne!(plain.shape(), reasoned.shape(), "a section that can show a reason has another shape");
     }
 }

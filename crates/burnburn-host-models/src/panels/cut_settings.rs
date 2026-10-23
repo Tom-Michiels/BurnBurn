@@ -147,7 +147,12 @@ pub fn choice_items(sheet: &CutSettingsViewModel, field: CutField, locale: Local
         .collect()
 }
 
-pub(super) fn row_control(field: CutField, sheet: &CutSettingsViewModel, live: &CutExtras, locale: Locale) -> RowControl {
+pub(super) fn row_control(
+    field: CutField,
+    sheet: &CutSettingsViewModel,
+    live: &CutExtras,
+    locale: Locale,
+) -> RowControl {
     match field.control() {
         CutControl::Flag => RowControl::Check(live.flag(field)),
         CutControl::Text => RowControl::Text(live.text(field).to_owned()),

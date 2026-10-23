@@ -51,8 +51,8 @@ mod invariants {
     use objc2::runtime::AnyObject;
     use objc2::{MainThreadOnly, Message};
     use objc2_app_kit::{
-        NSAccessibility, NSApplication, NSButton, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSegmentedControl,
-        NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
+        NSAccessibility, NSApplication, NSButton, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView,
+        NSSegmentedControl, NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
     };
     use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -338,7 +338,10 @@ mod invariants {
                         FormRow::new(
                             4,
                             "Modus",
-                            Control::Choice { options: vec!["Lijn".into(), "Vulling".into(), "Offset".into()], selected: 0 },
+                            Control::Choice {
+                                options: vec!["Lijn".into(), "Vulling".into(), "Offset".into()],
+                                selected: 0,
+                            },
                         )
                         .disabled_option(2, Some("Niet ondersteund door dit profiel"))
                         .tooltip("Kies de modus"),
@@ -383,10 +386,16 @@ mod invariants {
                 // Frames in the coordinates of the form: the small buttons lie inside a stack.
                 let in_form = |v: &NSView| v.convertRect_toView(v.bounds(), Some(form.root()));
                 let (c, u, d) = (in_form(&control), in_form(&up), in_form(&down));
-                if u.origin.x < c.origin.x + c.size.width - TOLERANCE || d.origin.x < u.origin.x + u.size.width - TOLERANCE {
-                    found.push(format!("form builder extras: the small buttons do not follow the control: {c:?} {u:?} {d:?}"));
+                if u.origin.x < c.origin.x + c.size.width - TOLERANCE
+                    || d.origin.x < u.origin.x + u.size.width - TOLERANCE
+                {
+                    found.push(format!(
+                        "form builder extras: the small buttons do not follow the control: {c:?} {u:?} {d:?}"
+                    ));
                 }
-                if (u.origin.y - d.origin.y).abs() > TOLERANCE || (u.origin.y + u.size.height / 2.0 - (c.origin.y + c.size.height / 2.0)).abs() > 6.0 {
+                if (u.origin.y - d.origin.y).abs() > TOLERANCE
+                    || (u.origin.y + u.size.height / 2.0 - (c.origin.y + c.size.height / 2.0)).abs() > 6.0
+                {
                     found.push("form builder extras: the small buttons are not on the line of their control".into());
                 }
                 if up.accessibilityLabel().map(|l| l.to_string()).as_deref() != Some("Laag omhoog") {
@@ -406,7 +415,9 @@ mod invariants {
                         }
                         let tip = item.toolTip().map(|t| t.to_string()).unwrap_or_default();
                         if !tip.contains("Niet ondersteund") {
-                            found.push(format!("form builder extras: a disabled option has no reason as tooltip: {tip:?}"));
+                            found.push(format!(
+                                "form builder extras: a disabled option has no reason as tooltip: {tip:?}"
+                            ));
                         }
                     }
                     None => found.push("form builder extras: the choice has no third entry".into()),
@@ -434,10 +445,10 @@ mod invariants {
         }
         // A tick shows the row and the form grows; typing survives `update`, `load` replaces it.
         let before = form.size().height;
-        if let Some(f) = form.control(FormId(5)) {
-            if let Some(t) = as_any(&f).downcast_ref::<NSTextField>() {
-                t.setStringValue(&objc2_foundation::NSString::from_str("250"));
-            }
+        if let Some(f) = form.control(FormId(5))
+            && let Some(t) = as_any(&f).downcast_ref::<NSTextField>()
+        {
+            t.setStringValue(&objc2_foundation::NSString::from_str("250"));
         }
         if !form.update(&spec(true, "100")) {
             found.push("form builder extras: update refused a form of the same shape".into());
@@ -447,7 +458,10 @@ mod invariants {
             found.push("form builder extras: a row that became visible is still hidden".into());
         }
         if form.size().height <= before {
-            found.push(format!("form builder extras: the form did not grow when a row appeared: {before} -> {}", form.size().height));
+            found.push(format!(
+                "form builder extras: the form did not grow when a row appeared: {before} -> {}",
+                form.size().height
+            ));
         }
         let typed = |form: &burnburn_macos::appkit::form::FormView| {
             form.values().into_iter().find(|(id, _)| id.0 == 5).map(|(_, v)| v)

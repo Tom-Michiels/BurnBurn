@@ -12,15 +12,13 @@
 //! dialog really gets other rows.
 
 use burnburn_document::process::OrderKey;
-use burnburn_presentation::{
-    DialogActionKind, DialogControl, DialogField, DialogValue, DialogViewModel, FieldState,
-};
+use burnburn_presentation::{DialogActionKind, DialogControl, DialogField, DialogValue, DialogViewModel, FieldState};
 
 use burnburn_presentation::DialogRow;
 
 use super::{
-    cam_action_title, cam_caption, cam_choice_label, cam_error, cam_label, cam_note, cam_result_text,
-    cam_support_line, cam_title, order_key_caption,
+    cam_action_title, cam_caption, cam_choice_label, cam_error, cam_label, cam_note, cam_result_text, cam_support_line,
+    cam_title, order_key_caption,
 };
 use crate::form::{Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, FormTool};
 use crate::format::Quantity;
@@ -477,8 +475,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
     use crate::form::{ButtonRole, Platform};
-    use burnburn_presentation::CamDialog;
     use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
+    use burnburn_presentation::CamDialog;
     use burnburn_presentation::{HeadlessEditorHarness, UiIntent};
     use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
     use burnburn_types::DocumentId;
@@ -676,12 +674,8 @@ mod tests {
         let vm = open(&mut h, doc, CamDialog::Optimization);
         let form = cam_form(&vm, Locale::En);
         let level = |key: OrderKey| {
-            let id = form
-                .targets
-                .iter()
-                .find(|(_, t)| *t == CamTarget::Field(DialogField::OrderEnabled(key)))
-                .unwrap()
-                .0;
+            let id =
+                form.targets.iter().find(|(_, t)| *t == CamTarget::Field(DialogField::OrderEnabled(key))).unwrap().0;
             form.spec.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == id).unwrap().clone()
         };
         let first = level(OrderKey::Layer);
@@ -720,8 +714,7 @@ mod tests {
         let vm = h.controller().cam_dialog(doc, CamDialog::Device).unwrap();
         let after = cam_form(&vm, Locale::Nl);
         assert_eq!(before, after.spec.shape(), "a tick shows the rotary fields, an error shows its line: same shape");
-        let rotary =
-            after.targets.iter().find(|(_, t)| *t == CamTarget::Field(DialogField::RotaryDiameter)).unwrap().0;
+        let rotary = after.targets.iter().find(|(_, t)| *t == CamTarget::Field(DialogField::RotaryDiameter)).unwrap().0;
         let row = after.spec.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == rotary).unwrap();
         assert!(!row.hidden, "the rotary fields are there once the rotary is on");
         let width = after.targets.iter().find(|(_, t)| *t == CamTarget::Field(DialogField::BedWidth)).unwrap().0;

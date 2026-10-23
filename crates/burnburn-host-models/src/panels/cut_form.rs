@@ -222,7 +222,8 @@ pub fn cut_form(
         let mut row = FormRow::new(id, &parts.label, control);
         row.unit = parts.unit;
         let note_here = visible.filter(|r| noted.contains(&r.field)).map_or("", |r| r.note.as_str());
-        let help: Vec<&str> = [parts.hint.as_deref().unwrap_or(""), note_here].into_iter().filter(|t| !t.is_empty()).collect();
+        let help: Vec<&str> =
+            [parts.hint.as_deref().unwrap_or(""), note_here].into_iter().filter(|t| !t.is_empty()).collect();
         row.help = Some(help.join("\n"));
         row.tooltip = visible.map(|r| r.note.clone()).filter(|n| !n.is_empty());
         row.enabled = visible.is_some_and(|r| r.enabled);
@@ -313,7 +314,7 @@ mod tests {
         cut_form(Some(sheet), &CutTop::opening(&panel), &sheet.extras, kind, locale)
     }
 
-    fn row<'a>(form: &'a CutForm, target: CutTarget) -> &'a FormRow {
+    fn row(form: &CutForm, target: CutTarget) -> &FormRow {
         let id = form.id(target).unwrap_or_else(|| panic!("no id for {target:?}"));
         form.spec.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == id).unwrap()
     }
@@ -327,7 +328,11 @@ mod tests {
             let blank = cut_form(None, &CutTop::blank(locale), &CutExtras::new(), OperationKind::Line, locale);
             assert!(!line.spec.shape().is_empty());
             assert_eq!(line.spec.shape(), fill.spec.shape(), "{locale:?}: a mode swaps rows, not the form");
-            assert_eq!(line.spec.shape(), blank.spec.shape(), "{locale:?}: the form that is built before the sheet opens");
+            assert_eq!(
+                line.spec.shape(),
+                blank.spec.shape(),
+                "{locale:?}: the form that is built before the sheet opens"
+            );
             for form in [&line, &fill, &blank] {
                 assert!(form.spec.problems().is_empty(), "{:?}", form.spec.problems());
             }
@@ -406,7 +411,9 @@ mod tests {
         assert_eq!(options.len(), 3);
         assert_eq!(*selected, 0);
         assert!(options[2].to_lowercase().contains("ontbrekende capability"), "{options:?}");
-        assert!(mode.disabled_options.iter().any(|(i, _)| *i == 2) && mode.disabled_options.iter().all(|(i, _)| *i == 2));
+        assert!(
+            mode.disabled_options.iter().any(|(i, _)| *i == 2) && mode.disabled_options.iter().all(|(i, _)| *i == 2)
+        );
         // The title names the layer; the error of a refused OK is the error of its own row.
         assert!(form.spec.sections[0].heading.as_deref().unwrap_or("").contains("C01"));
         let panel = cut_settings_panel(&h.view(), doc, Locale::Nl).unwrap();

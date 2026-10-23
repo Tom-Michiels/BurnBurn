@@ -140,13 +140,8 @@ fn button_of(view: Option<Retained<NSView>>, mtm: MainThreadMarker) -> Retained<
 /// The Cut Settings sheet (targets are set once the controller exists).
 #[allow(unsafe_code)]
 pub(crate) fn cut_settings_sheet(mtm: MainThreadMarker, locale: Locale) -> CutSettingsSheet {
-    let form = cut_form(
-        None,
-        &CutTop::blank(locale),
-        &CutExtras::new(),
-        burnburn_presentation::OperationKind::Line,
-        locale,
-    );
+    let form =
+        cut_form(None, &CutTop::blank(locale), &CutExtras::new(), burnburn_presentation::OperationKind::Line, locale);
     let view = build_form_with(mtm, &form.spec, SHEET_W, None, FormLayout::Fixed(SHEET_H));
     let size = view.size();
     // SAFETY: a freshly allocated window with a valid rect, style and the buffered backing.
@@ -165,14 +160,12 @@ pub(crate) fn cut_settings_sheet(mtm: MainThreadMarker, locale: Locale) -> CutSe
     sheet.setContentView(Some(view.root()));
     let id = |target: CutTarget| form.id(target).unwrap_or(FormId(0));
     let text = |target: CutTarget| text_field_of(view.control(id(target)), mtm);
-    let mode = view
-        .control(id(CutTarget::Mode))
-        .and_then(|v| v.downcast::<NSPopUpButton>().ok())
-        .unwrap_or_else(|| NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0), false));
+    let mode =
+        view.control(id(CutTarget::Mode)).and_then(|v| v.downcast::<NSPopUpButton>().ok()).unwrap_or_else(|| {
+            NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0), false)
+        });
     let buttons = view.buttons();
-    let pressed = |target: CutTarget| {
-        buttons.iter().find(|(_, bid, _)| *bid == id(target)).map(|(_, _, b)| b.clone())
-    };
+    let pressed = |target: CutTarget| buttons.iter().find(|(_, bid, _)| *bid == id(target)).map(|(_, _, b)| b.clone());
     let options = CutField::ALL
         .into_iter()
         .filter_map(|field| {
