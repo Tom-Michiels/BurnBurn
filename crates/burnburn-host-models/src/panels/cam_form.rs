@@ -13,7 +13,7 @@
 
 use burnburn_document::process::OrderKey;
 use burnburn_presentation::{
-    CamDialog, DialogActionKind, DialogControl, DialogField, DialogValue, DialogViewModel, FieldState,
+    DialogActionKind, DialogControl, DialogField, DialogValue, DialogViewModel, FieldState,
 };
 
 use burnburn_presentation::DialogRow;
@@ -464,6 +464,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
     use crate::form::{ButtonRole, Platform};
+    use burnburn_presentation::CamDialog;
     use burnburn_job::{Feature, MachineCapabilities, MachineFrame, MachineProfile, OriginCorner, PowerRatio, Support};
     use burnburn_presentation::{HeadlessEditorHarness, UiIntent};
     use burnburn_ruida::{Magic, OverscanPolicy, RuidaProfile};
