@@ -41,7 +41,8 @@ mod checks {
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{
-        NSAccessibility, NSApplication, NSButton, NSCellImagePosition, NSImage, NSPopUpButton, NSSegmentedControl, NSView, NSWindow,
+        NSAccessibility, NSApplication, NSButton, NSCellImagePosition, NSImage, NSPopUpButton, NSSegmentedControl,
+        NSView, NSWindow,
     };
     use objc2_foundation::NSString;
 
@@ -49,12 +50,12 @@ mod checks {
     use crate::common::{Session, start_with};
 
     /// A glyph that used to stand in for an icon on a button.
-    const FORBIDDEN: [char; 17] =
-        ['▾', '■', '↔', '↕', '◀', '▶', '▲', '▼', '●', '○', '‹', '›', '↑', '↓', '▸', '◂', '▴'];
+    const FORBIDDEN: [char; 17] = ['▾', '■', '↔', '↕', '◀', '▶', '▲', '▼', '●', '○', '‹', '›', '↑', '↓', '▸', '◂', '▴'];
     /// (window label, glyph) pairs of LF7 files (inspector flip buttons, operations stop button,
     /// toolstrip drop-down arrow) that may still show a glyph. Must be empty at integration: LF7
     /// replaces them with `appkit::symbols`.
-    const LF7_EXCEPTIONS: [(&str, char); 4] = [("document", '↔'), ("document", '↕'), ("document", '■'), ("document", '▾')];
+    const LF7_EXCEPTIONS: [(&str, char); 4] =
+        [("document", '↔'), ("document", '↕'), ("document", '■'), ("document", '▾')];
 
     pub fn run() -> Result<(), String> {
         let mut found: Vec<String> = Vec::new();
@@ -158,7 +159,8 @@ mod checks {
     }
 
     fn glyph(name: &str, text: &str) -> Option<char> {
-        text.chars().find(|c| FORBIDDEN.contains(c) && !LF7_EXCEPTIONS.iter().any(|(w, g)| name.starts_with(w) && g == c))
+        text.chars()
+            .find(|c| FORBIDDEN.contains(c) && !LF7_EXCEPTIONS.iter().any(|(w, g)| name.starts_with(w) && g == c))
     }
 
     fn walk(view: &NSView, name: &str, found: &mut Vec<String>) {
@@ -176,10 +178,14 @@ mod checks {
                     found.push(format!("{name}: button `{text}` contains the glyph {g}"));
                 }
             }
-            if title.is_empty() && button.imagePosition() == NSCellImagePosition::ImageOnly && button.image().is_some() {
+            if title.is_empty() && button.imagePosition() == NSCellImagePosition::ImageOnly && button.image().is_some()
+            {
                 let label = button.accessibilityLabel().map(|l| l.to_string()).unwrap_or_default();
                 if label.is_empty() {
-                    found.push(format!("{name}: an icon button has no accessible name (tooltip `{:?}`)", button.toolTip()));
+                    found.push(format!(
+                        "{name}: an icon button has no accessible name (tooltip `{:?}`)",
+                        button.toolTip()
+                    ));
                 }
             }
         } else if let Some(segments) = any.downcast_ref::<NSSegmentedControl>() {

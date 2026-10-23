@@ -149,7 +149,9 @@ impl Symbol {
             Symbol::RotateLeft => ("rotate.left", None, "Linksom draaien", "Rotate counterclockwise"),
             Symbol::RotateRight => ("rotate.right", None, "Rechtsom draaien", "Rotate clockwise"),
             Symbol::AlignLeft => ("align.horizontal.left", None, "Links uitlijnen", "Align left"),
-            Symbol::AlignCenterHorizontal => ("align.horizontal.center", None, "Horizontaal centreren", "Center horizontally"),
+            Symbol::AlignCenterHorizontal => {
+                ("align.horizontal.center", None, "Horizontaal centreren", "Center horizontally")
+            }
             Symbol::AlignRight => ("align.horizontal.right", None, "Rechts uitlijnen", "Align right"),
             Symbol::AlignTop => ("align.vertical.top", None, "Boven uitlijnen", "Align top"),
             Symbol::AlignCenterVertical => ("align.vertical.center", None, "Verticaal centreren", "Center vertically"),
@@ -200,8 +202,10 @@ pub fn without_glyphs(text: &str) -> String {
 /// has no symbol of that name.
 pub fn image(symbol: Symbol, locale: Locale) -> Option<Retained<NSImage>> {
     let description = NSString::from_str(symbol.description(locale));
-    let image =
-        NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(symbol.name()), Some(&description))?;
+    let image = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+        &NSString::from_str(symbol.name()),
+        Some(&description),
+    )?;
     image.setTemplate(true);
     Some(image)
 }

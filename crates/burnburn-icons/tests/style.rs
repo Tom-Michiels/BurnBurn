@@ -14,8 +14,25 @@ const STROKES: [&str; 2] = ["2.55", "4.25"];
 const DASHES: [&str; 2] = ["0.1 5", "2.4 4.2"];
 const ELEMENTS: [&str; 7] = ["svg", "title", "path", "circle", "defs", "mask", "g"];
 const ATTRIBUTES: [&str; 19] = [
-    "xmlns", "viewBox", "d", "cx", "cy", "r", "fill", "stroke", "stroke-width", "stroke-linejoin", "stroke-linecap",
-    "stroke-dasharray", "mask", "id", "maskUnits", "x", "y", "width", "height",
+    "xmlns",
+    "viewBox",
+    "d",
+    "cx",
+    "cy",
+    "r",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linejoin",
+    "stroke-linecap",
+    "stroke-dasharray",
+    "mask",
+    "id",
+    "maskUnits",
+    "x",
+    "y",
+    "width",
+    "height",
 ];
 /// Point sizes of menu/table (16), ribbon (20) and toolbar (24), at 1x, 1.5x, 2x and 3x.
 const POINTS: [u32; 3] = [16, 20, 24];
@@ -189,7 +206,10 @@ fn every_icon_renders_at_all_sizes_and_scales_with_the_right_pixel_size_and_cont
                     };
                     // Not clipped: the outermost pixel ring stays (nearly) transparent.
                     if edge_alpha(&img) > EDGE_ALPHA_MAX {
-                        bad.push(format!("{id} {px}@{scale} ({theme:?}): artwork reaches the edge (alpha {})", edge_alpha(&img)));
+                        bad.push(format!(
+                            "{id} {px}@{scale} ({theme:?}): artwork reaches the edge (alpha {})",
+                            edge_alpha(&img)
+                        ));
                     }
                     // Not a speck: the artwork covers at least half of the width or height.
                     if (x1 - x0 + 1).max(y1 - y0 + 1) * 2 < side {
@@ -290,7 +310,8 @@ fn contact_sheet_for_review() {
                     let d = (((oy + y) * w + ox + x) * 4) as usize;
                     let a = u32::from(img.pixels[s + 3]);
                     for c in 0..3 {
-                        sheet[d + c] = ((u32::from(img.pixels[s + c]) * a + u32::from(sheet[d + c]) * (255 - a)) / 255) as u8;
+                        sheet[d + c] =
+                            ((u32::from(img.pixels[s + c]) * a + u32::from(sheet[d + c]) * (255 - a)) / 255) as u8;
                     }
                 }
             }
