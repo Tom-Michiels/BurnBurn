@@ -25,7 +25,7 @@ use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::form::{FormView, Wiring, build_form};
+use crate::appkit::panels::form::{FormView, Wiring, build_form, install_form};
 use crate::appkit::panels::image::{image_view, show_bitmap};
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
 use crate::appkit::window::DocWindow;
@@ -193,12 +193,14 @@ pub(crate) struct G5Section {
 /// A panel drawn by the form builder, and which panel control each form id is.
 struct FormState {
     view: FormView,
+    size: NSSize,
     ids: Vec<(FormId, G5Control)>,
 }
 
-/// The panels that are forms.
-fn is_form_panel(kind: G5Panel) -> bool {
-    kind == G5Panel::Notes
+/// The panels that are forms: every floating panel. The sections embedded in the inspector column
+/// (the stack, E06) keep the hand-laid column layout until the inspector is migrated (LF7).
+fn is_form_panel(_kind: G5Panel) -> bool {
+    true
 }
 
 /// Where an embedded section lies in its host view.
@@ -354,7 +356,7 @@ impl G5Section {
             && state.view.update(&form.spec)
         {
             state.ids = form.controls;
-            return state.view.size();
+            return state.size;
         }
         let typed = self.form.as_ref().map(|s| (s.view.edits(), s.ids.clone())).unwrap_or_default();
         self.clear_targets();
@@ -379,9 +381,8 @@ impl G5Section {
         if let Ok(mut slot) = self.target.ivars().controls.try_borrow_mut() {
             *slot = controls;
         }
-        self.panel.setContentView(Some(view.root()));
-        let size = view.size();
-        self.form = Some(FormState { view, ids: form.controls });
+        let size = install_form(mtm, &self.panel, &view, MAX_HEIGHT);
+        self.form = Some(FormState { view, size, ids: form.controls });
         size
     }
 

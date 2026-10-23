@@ -86,6 +86,24 @@ define_class!(
             });
         }
 
+        /// Any control of the preferences form: the kind of control says what it reports.
+        #[unsafe(method(prefControl:))]
+        fn pref_control(&self, sender: Option<&AnyObject>) {
+            ffi_guard("prefControl:", (), || {
+                let Some(s) = sender else { return };
+                let Some(control) = s.downcast_ref::<objc2_app_kit::NSControl>() else { return };
+                if control.tag() == super::windows::PREFS_RESET_TAG {
+                    self.send(AppEvent::PrefsReset);
+                } else if s.downcast_ref::<NSPopUpButton>().is_some() {
+                    self.pref_choice(objc2::sel!(prefChoice:), sender);
+                } else if s.downcast_ref::<NSTextField>().is_some() {
+                    self.pref_text(objc2::sel!(prefText:), sender);
+                } else {
+                    self.pref_check(objc2::sel!(prefCheck:), sender);
+                }
+            });
+        }
+
         #[unsafe(method(prefsReset:))]
         fn prefs_reset(&self, _sender: Option<&AnyObject>) {
             ffi_guard("prefsReset:", (), || self.send(AppEvent::PrefsReset));

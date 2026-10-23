@@ -349,6 +349,7 @@ mod invariants {
                 .on_tab("Canvas"),
             ],
             notice: Some("Geen geldig getal".into()),
+            notice_slot: false,
             buttons: DialogButtons {
                 destructive: Some(FormButton::new(10, "Standaardwaarden")),
                 primary: Some(FormButton::new(11, "Gereed")),
@@ -723,7 +724,14 @@ mod invariants {
             if any.downcast_ref::<NSPopUpButton>().is_some() {
                 return None;
             }
-            let need = b.cell()?.cellSize();
+            let cell = b.cell()?;
+            if cell.wraps() {
+                // A wrapping title (a check box with a long sentence) fits when it fits the height.
+                let need = cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
+                return (need.height > f.size.height + TOLERANCE)
+                    .then(|| format!("wrapped title needs {:.0} pt of height, has {:.0}", need.height, f.size.height));
+            }
+            let need = cell.cellSize();
             let tip = b.toolTip().is_some_and(|tip| !tip.to_string().is_empty());
             (need.width > f.size.width + TOLERANCE && !tip)
                 .then(|| format!("title needs {:.0} pt of width, has {:.0}", need.width, f.size.width))
@@ -773,18 +781,10 @@ mod invariants {
         "document",
         "sheet",
         "cut-settings",
-        "preferences",
         "machine-hub",
         "laser",
         "material-library",
         "art-library",
-        "schikken",
-        "offset",
-        "structure",
-        "recognition",
-        "remnants",
-        "search",
-        "generator",
         "cam-optimization",
         "cam-device",
         "cam-array",

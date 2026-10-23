@@ -272,6 +272,9 @@ pub struct FormSpec {
     /// One notice for the whole form, shown above the buttons whatever tab is open (a refused
     /// value, a read problem).
     pub notice: Option<String>,
+    /// The room for the notice is kept even while there is none, so a notice that comes and goes
+    /// does not change the shape of the form (the host would build it again under the user's hands).
+    pub notice_slot: bool,
     pub buttons: DialogButtons,
 }
 
@@ -375,7 +378,7 @@ impl FormSpec {
 
     /// What the form looks like without its values: the host rebuilds only when this changes.
     pub fn shape(&self) -> Vec<String> {
-        let mut out = vec![format!("notice={}", self.notice.is_some())];
+        let mut out = vec![format!("notice={}", self.notice_slot || self.notice.is_some())];
         for (i, section) in self.sections.iter().enumerate() {
             out.push(format!(
                 "section {i} heading={} unavailable={} tab={}",

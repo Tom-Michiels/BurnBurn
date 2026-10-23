@@ -1,71 +1,38 @@
-//! The Schikken panel (W3-UI-schikken): a floating utility panel that draws the lines of
-//! `crate::panels::schikken_panel` — headings, texts, fields, pop-ups, checkboxes and buttons — and
-//! reports each use of a control, with the panel's current values, as a `NativeEvent`. It decides
-//! nothing: what is shown and what a control means is the headless model's. The widgets are rebuilt
-//! when the shape of the panel changes (another flow, another set of lines) and otherwise only
-//! updated in place, never a field the user is typing in.
+//! The Schikken panel (W3-UI-schikken, LF6c): a floating utility panel that draws the lines of
+//! `crate::panels::schikken_panel` as a form (`crate::panels::schikken_form`, built by
+//! `appkit::panels::form`): sections with a heading, captions on one baseline with their field, the
+//! unit as a suffix, and the buttons that end a flow as the dialog buttons. It reports each use of
+//! a control, with the panel's current values, as a `NativeEvent`. It decides nothing: what is
+//! shown and what a control means is the headless model's. The form is updated in place while its
+//! shape stays (never a field the user is typing in) and built again when the shape changes.
 
 use std::cell::RefCell;
 use std::rc::Weak;
 
+use burnburn_host_models::form::FormId;
 use burnburn_presentation::AppViewModel;
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSFont,
-    NSLineBreakMode, NSPanel, NSPopUpButton, NSTextField, NSView, NSWindow, NSWindowStyleMask,
+    NSBackingStoreType, NSButton, NSControlStateValueOn, NSPanel, NSPopUpButton, NSTextField, NSView, NSWindow,
+    NSWindowStyleMask,
 };
-use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
+use objc2_foundation::{NSObject, NSPoint, NSString};
 
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
+use crate::appkit::panels::form::{FormView, Wiring, build_form, install_form};
+use crate::appkit::panels::widgets::rect;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
-use crate::panels::{SchikkenControl, SchikkenLine, schikken_panel};
+use crate::panels::{SchikkenControl, schikken_form, schikken_panel};
 
 const PANEL_WIDTH: f64 = 380.0;
-const MARGIN: f64 = 12.0;
-const CAPTION_WIDTH: f64 = 170.0;
-const ROW_HEIGHT: f64 = 28.0;
-const HEADING_HEIGHT: f64 = 24.0;
-const TEXT_LINE_HEIGHT: f64 = 16.0;
-
-/// The widget of one line, and what was last copied into it.
-enum Widget {
-    Label(Retained<NSTextField>),
-    Field { caption: Retained<NSTextField>, field: Retained<NSTextField>, pushed: String },
-    Choice { caption: Retained<NSTextField>, popup: Retained<NSPopUpButton>, pushed: usize },
-    Check { button: Retained<NSButton> },
-    Button { button: Retained<NSButton> },
-}
-
-/// What the lines look like without their values: a change rebuilds the widgets.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Shape {
-    Heading,
-    Text,
-    Problem,
-    Field(SchikkenControl),
-    Choice(SchikkenControl, usize),
-    Check(SchikkenControl),
-    Button(SchikkenControl),
-}
-
-fn shape_of(line: &SchikkenLine) -> Shape {
-    match line {
-        SchikkenLine::Heading(_) => Shape::Heading,
-        SchikkenLine::Text(_) => Shape::Text,
-        SchikkenLine::Problem(_) => Shape::Problem,
-        SchikkenLine::Field { control, .. } => Shape::Field(*control),
-        SchikkenLine::Choice { control, options, .. } => Shape::Choice(*control, options.len()),
-        SchikkenLine::Check { control, .. } => Shape::Check(*control),
-        SchikkenLine::Button { control, .. } => Shape::Button(*control),
-    }
-}
+/// The panel never grows beyond this; the form scrolls instead.
+const MAX_HEIGHT: f64 = 640.0;
 
 pub(crate) struct TargetIvars {
     app: Weak<HostApp>,
@@ -140,13 +107,18 @@ fn read_values(controls: &[(SchikkenControl, Retained<NSView>)]) -> Vec<(Schikke
         .collect()
 }
 
-/// The panel and its widgets.
+/// A panel drawn by the form builder, and which panel control each form id is.
+struct FormState {
+    view: FormView,
+    size: objc2_foundation::NSSize,
+    ids: Vec<(FormId, SchikkenControl)>,
+}
+
+/// The panel and its form.
 pub(crate) struct SchikkenSection {
     target: Retained<SchikkenTarget>,
     panel: Retained<NSPanel>,
-    content: Retained<NSView>,
-    shape: Vec<Shape>,
-    widgets: Vec<Widget>,
+    form: Option<FormState>,
     /// Schikken ▸ Schikkenpaneel was chosen: the options panel shows even without a flow.
     pub(crate) requested: bool,
     pub(crate) shown: bool,
@@ -170,35 +142,18 @@ pub(crate) fn schikken_section(
     panel.setFloatingPanel(true);
     panel.setHidesOnDeactivate(true);
     panel.setTitle(&NSString::from_str(&crate::panels::schikken_text(crate::panels::SchikkenText::PanelTitle, locale)));
-    let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, PANEL_WIDTH, 120.0));
-    // Hand-laid from the top for the final height: AppKit must not shift the rows once more.
-    content.setAutoresizesSubviews(false);
-    panel.setContentView(Some(&content));
     let ivars = TargetIvars { app, document, controls: RefCell::new(Vec::new()) };
     let this = SchikkenTarget::alloc(mtm).set_ivars(ivars);
     // SAFETY: NSObject's designated initialiser on a freshly allocated instance with ivars set.
     let target: Retained<SchikkenTarget> = unsafe { msg_send![super(this), init] };
-    SchikkenSection { target, panel, content, shape: Vec::new(), widgets: Vec::new(), requested: false, shown: false }
+    SchikkenSection { target, panel, form: None, requested: false, shown: false }
 }
 
 impl SchikkenSection {
     /// Nil the targets (weak references) before the section goes: nothing can call a dead object.
-    #[allow(unsafe_code)]
     pub(crate) fn clear_targets(&self) {
-        // Every control is an `NSControl`; a nil target cannot dangle.
-        let controls: Vec<&objc2_app_kit::NSControl> = self
-            .widgets
-            .iter()
-            .filter_map(|w| match w {
-                Widget::Field { field, .. } => Some(&***field),
-                Widget::Choice { popup, .. } => Some(&****popup),
-                Widget::Check { button } | Widget::Button { button } => Some(&***button),
-                Widget::Label(_) => None,
-            })
-            .collect();
-        for c in controls {
-            // SAFETY: a nil target cannot dangle.
-            unsafe { c.setTarget(None) };
+        if let Some(form) = &self.form {
+            form.view.clear_targets();
         }
         let _ = &self.target;
     }
@@ -215,14 +170,9 @@ impl SchikkenSection {
         self.target.ivars().controls.try_borrow().map(|c| c.clone()).unwrap_or_default()
     }
 
+    /// Every text the form shows (headings, captions, help, errors).
     pub(crate) fn labels(&self) -> Vec<String> {
-        self.widgets
-            .iter()
-            .filter_map(|w| match w {
-                Widget::Label(l) => Some(l.stringValue().to_string()),
-                _ => None,
-            })
-            .collect()
+        self.form.as_ref().map(|f| f.view.texts()).unwrap_or_default()
     }
 
     /// The control's widget as a plain view, if the panel has it now.
@@ -230,207 +180,42 @@ impl SchikkenSection {
         self.controls().into_iter().find(|(c, _)| *c == control).map(|(_, v)| v)
     }
 
-    #[allow(unsafe_code)]
-    fn rebuild(&mut self, mtm: MainThreadMarker, lines: &[SchikkenLine]) {
-        // What the user typed into a field survives a rebuild (a problem line appearing changes the
-        // shape of the panel, not the field), together with what the model last put there.
-        let mut kept: Vec<(SchikkenControl, String, String)> = Vec::new();
+    /// Shows `lines` as a form: updates the widgets in place while its shape stays, builds a new
+    /// form (keeping what the user typed) when it changes. Returns the size the panel needs.
+    fn show_form(&mut self, mtm: MainThreadMarker, title: &str, lines: &[crate::panels::SchikkenLine]) -> objc2_foundation::NSSize {
+        let form = schikken_form(title, lines);
+        if let Some(state) = &mut self.form
+            && state.view.update(&form.spec)
         {
-            let controls = self.target.ivars().controls.try_borrow().map(|c| c.clone()).unwrap_or_default();
-            let mut controls = controls.iter();
-            for w in &self.widgets {
-                match w {
-                    Widget::Label(_) => {}
-                    Widget::Field { field, pushed, .. } => {
-                        if let Some((c, _)) = controls.next() {
-                            kept.push((*c, field.stringValue().to_string(), pushed.clone()));
-                        }
-                    }
-                    _ => {
-                        controls.next();
-                    }
-                }
-            }
+            state.ids = form.controls;
+            return state.size;
         }
-        for v in self.content.subviews().iter() {
-            v.removeFromSuperview();
-        }
+        let typed = self.form.as_ref().map(|s| (s.view.edits(), s.ids.clone())).unwrap_or_default();
         self.clear_targets();
-        self.widgets.clear();
         let any: &AnyObject = self.target.as_ref();
-        let mut controls: Vec<(SchikkenControl, Retained<NSView>)> = Vec::new();
-        let full = PANEL_WIDTH - 2.0 * MARGIN;
-        for line in lines {
-            match line {
-                SchikkenLine::Heading(_) | SchikkenLine::Text(_) | SchikkenLine::Problem(_) => {
-                    let l = label(mtm, "", rect(MARGIN, 0.0, full, TEXT_LINE_HEIGHT));
-                    l.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-                    l.setPreferredMaxLayoutWidth(full);
-                    if matches!(line, SchikkenLine::Heading(_)) {
-                        l.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
-                    }
-                    self.content.addSubview(&l);
-                    self.widgets.push(Widget::Label(l));
-                }
-                SchikkenLine::Field { control, .. } => {
-                    let caption = label(mtm, "", rect(MARGIN, 0.0, CAPTION_WIDTH, 20.0));
-                    let f = field(mtm, rect(MARGIN + CAPTION_WIDTH + 6.0, 0.0, full - CAPTION_WIDTH - 6.0, 24.0));
-                    // SAFETY: the target is weak; the section keeps it and clears it before it goes.
-                    unsafe { f.setTarget(Some(any)) };
-                    // SAFETY: `schikkenControl:` takes the sender (`v@:@`).
-                    unsafe { f.setAction(Some(sel!(schikkenControl:))) };
-                    self.content.addSubview(&caption);
-                    self.content.addSubview(&f);
-                    controls.push((*control, Retained::into_super(Retained::into_super(f.clone()))));
-                    let mut pushed = String::new();
-                    if let Some((_, typed, was)) = kept.iter().find(|(c, _, _)| c == control) {
-                        f.setStringValue(&NSString::from_str(typed));
-                        pushed.clone_from(was);
-                    }
-                    self.widgets.push(Widget::Field { caption, field: f, pushed });
-                }
-                SchikkenLine::Choice { control, options, .. } => {
-                    let caption = label(mtm, "", rect(MARGIN, 0.0, CAPTION_WIDTH, 20.0));
-                    let popup = NSPopUpButton::initWithFrame_pullsDown(
-                        NSPopUpButton::alloc(mtm),
-                        rect(MARGIN + CAPTION_WIDTH + 6.0, 0.0, full - CAPTION_WIDTH - 6.0, 26.0),
-                        false,
-                    );
-                    for o in options {
-                        popup.addItemWithTitle(&NSString::from_str(o));
-                    }
-                    // SAFETY: as above.
-                    unsafe { popup.setTarget(Some(any)) };
-                    // SAFETY: as above.
-                    unsafe { popup.setAction(Some(sel!(schikkenControl:))) };
-                    self.content.addSubview(&caption);
-                    self.content.addSubview(&popup);
-                    controls.push((
-                        *control,
-                        Retained::into_super(Retained::into_super(Retained::into_super(popup.clone()))),
-                    ));
-                    self.widgets.push(Widget::Choice { caption, popup, pushed: usize::MAX });
-                }
-                SchikkenLine::Check { control, .. } => {
-                    // SAFETY: no target and no action yet; both are set below.
-                    let b =
-                        unsafe { NSButton::checkboxWithTitle_target_action(&NSString::from_str(""), None, None, mtm) };
-                    b.setFrame(rect(MARGIN, 0.0, full, 22.0));
-                    // SAFETY: as above.
-                    unsafe { b.setTarget(Some(any)) };
-                    // SAFETY: as above.
-                    unsafe { b.setAction(Some(sel!(schikkenControl:))) };
-                    self.content.addSubview(&b);
-                    controls.push((*control, Retained::into_super(Retained::into_super(b.clone()))));
-                    self.widgets.push(Widget::Check { button: b });
-                }
-                SchikkenLine::Button { control, .. } => {
-                    let b = push_button(mtm, "");
-                    b.setFrame(rect(MARGIN, 0.0, full, 26.0));
-                    // SAFETY: as above.
-                    unsafe { b.setTarget(Some(any)) };
-                    // SAFETY: as above.
-                    unsafe { b.setAction(Some(sel!(schikkenControl:))) };
-                    self.content.addSubview(&b);
-                    controls.push((*control, Retained::into_super(Retained::into_super(b.clone()))));
-                    self.widgets.push(Widget::Button { button: b });
-                }
+        let wiring = Wiring { target: any, action: sel!(schikkenControl:) };
+        let mut view = build_form(mtm, &form.spec, PANEL_WIDTH, Some(wiring));
+        // What the user typed survives a rebuild (a problem line appearing changes the shape of the
+        // panel, not the field), together with what the model last put there.
+        let (edits, old_ids) = typed;
+        for (old_id, text, pushed) in edits {
+            if let Some(control) = old_ids.iter().find(|(id, _)| *id == old_id).map(|(_, c)| *c)
+                && let Some(new_id) = form.controls.iter().find(|(_, c)| *c == control).map(|(id, _)| *id)
+            {
+                view.restore(new_id, &text, &pushed);
             }
         }
+        let controls: Vec<(SchikkenControl, Retained<NSView>)> = view
+            .controls()
+            .into_iter()
+            .filter_map(|(id, v)| form.controls.iter().find(|(i, _)| *i == id).map(|(_, c)| (*c, v)))
+            .collect();
         if let Ok(mut slot) = self.target.ivars().controls.try_borrow_mut() {
             *slot = controls;
         }
-    }
-
-    /// Copies the lines into the widgets and lays them out from the top. Returns the panel height.
-    fn fill(&mut self, lines: &[SchikkenLine]) -> f64 {
-        let full = PANEL_WIDTH - 2.0 * MARGIN;
-        // Heights first (wrapped text), then positions from the top.
-        let mut heights = Vec::with_capacity(lines.len());
-        for (line, widget) in lines.iter().zip(&self.widgets) {
-            heights.push(match (line, widget) {
-                (SchikkenLine::Heading(t), Widget::Label(l))
-                | (SchikkenLine::Text(t) | SchikkenLine::Problem(t), Widget::Label(l)) => {
-                    set_text(l, t);
-                    let chars_per_line = (full / 6.5).max(10.0) as usize;
-                    let rows = t.chars().count().div_ceil(chars_per_line).max(1) as f64;
-                    if matches!(line, SchikkenLine::Heading(_)) {
-                        HEADING_HEIGHT
-                    } else {
-                        rows * TEXT_LINE_HEIGHT + 6.0
-                    }
-                }
-                (
-                    SchikkenLine::Field { .. }
-                    | SchikkenLine::Choice { .. }
-                    | SchikkenLine::Button { .. }
-                    | SchikkenLine::Check { .. },
-                    _,
-                ) => ROW_HEIGHT,
-                _ => ROW_HEIGHT,
-            });
-        }
-        let total: f64 = heights.iter().sum::<f64>() + 2.0 * MARGIN;
-        let mut y = total - MARGIN;
-        for ((line, widget), height) in lines.iter().zip(self.widgets.iter_mut()).zip(&heights) {
-            y -= height;
-            match (line, widget) {
-                (SchikkenLine::Heading(_) | SchikkenLine::Text(_), Widget::Label(l)) => {
-                    l.setFrame(rect(MARGIN, y, full, *height));
-                    l.setTextColor(Some(&NSColor::labelColor()));
-                }
-                (SchikkenLine::Problem(_), Widget::Label(l)) => {
-                    l.setFrame(rect(MARGIN, y, full, *height));
-                    l.setTextColor(Some(&NSColor::systemRedColor()));
-                }
-                (
-                    SchikkenLine::Field { caption, text, invalid, .. },
-                    Widget::Field { caption: c, field, pushed, .. },
-                ) => {
-                    c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, 20.0));
-                    field.setFrame(rect(MARGIN + CAPTION_WIDTH + 6.0, y, full - CAPTION_WIDTH - 6.0, 24.0));
-                    set_text(c, caption);
-                    let color = if *invalid { NSColor::systemRedColor() } else { NSColor::labelColor() };
-                    c.setTextColor(Some(&color));
-                    // What the user typed stays until the model changes; a field being edited is left alone.
-                    if *pushed != *text && field.currentEditor().is_none() {
-                        field.setStringValue(&NSString::from_str(text));
-                        *pushed = text.clone();
-                    }
-                    field.setAccessibilityLabel(Some(&NSString::from_str(caption)));
-                }
-                (
-                    SchikkenLine::Choice { caption, options, selected, .. },
-                    Widget::Choice { caption: c, popup, pushed, .. },
-                ) => {
-                    c.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, 20.0));
-                    popup.setFrame(rect(MARGIN + CAPTION_WIDTH + 6.0, y, full - CAPTION_WIDTH - 6.0, 26.0));
-                    set_text(c, caption);
-                    for (i, o) in options.iter().enumerate() {
-                        if let Some(item) = popup.itemAtIndex(i as isize) {
-                            item.setTitle(&NSString::from_str(o));
-                        }
-                    }
-                    if *pushed != *selected {
-                        popup.selectItemAtIndex(*selected as isize);
-                        *pushed = *selected;
-                    }
-                    popup.setAccessibilityLabel(Some(&NSString::from_str(caption)));
-                }
-                (SchikkenLine::Check { caption, on, .. }, Widget::Check { button, .. }) => {
-                    button.setFrame(rect(MARGIN, y, full, 22.0));
-                    set_button_title(button, caption);
-                    button.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff });
-                }
-                (SchikkenLine::Button { title, enabled, .. }, Widget::Button { button, .. }) => {
-                    button.setFrame(rect(MARGIN, y, full, 26.0));
-                    set_button_title(button, title);
-                    button.setEnabled(*enabled);
-                }
-                _ => {}
-            }
-        }
-        total
+        let size = install_form(mtm, &self.panel, &view, MAX_HEIGHT);
+        self.form = Some(FormState { view, size, ids: form.controls });
+        size
     }
 }
 
@@ -445,21 +230,16 @@ impl DocWindow {
             self.schikken.hide();
             return;
         };
-        let shape: Vec<Shape> = model.lines.iter().map(shape_of).collect();
-        if shape != self.schikken.shape {
-            self.schikken.rebuild(mtm, &model.lines);
-            self.schikken.shape = shape;
-        }
-        let height = self.schikken.fill(&model.lines);
+        let size = self.schikken.show_form(mtm, &model.title, &model.lines);
         let was_shown = self.schikken.shown;
         self.schikken.shown = true;
         let panel = self.schikken.panel.clone();
         let window_frame = self.window.frame();
         if let Err(e) = crate::appkit::objc_try("showing the Schikken panel", || {
-            panel.setContentSize(NSSize::new(PANEL_WIDTH, height));
+            panel.setContentSize(size);
             if !was_shown {
                 panel.setFrameTopLeftPoint(NSPoint::new(
-                    window_frame.origin.x + window_frame.size.width - PANEL_WIDTH - 24.0,
+                    window_frame.origin.x + window_frame.size.width - size.width - 24.0,
                     window_frame.origin.y + window_frame.size.height - 60.0,
                 ));
                 panel.orderFront(None);

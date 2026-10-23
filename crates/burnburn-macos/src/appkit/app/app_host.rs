@@ -518,7 +518,7 @@ impl HostApp {
             if p.prefs.is_none() {
                 p.prefs = Some(windows::build_prefs(mtm, &p.target, locale, &panel, float));
             }
-            if let Some(w) = &p.prefs {
+            if let Some(w) = p.prefs.as_mut() {
                 windows::refresh_prefs(w, &panel);
                 present(&w.window, float);
             }
@@ -529,10 +529,15 @@ impl HostApp {
         let Some(view) = self.prefs_view() else { return };
         let panel = prefs_panel(&view, self.locale);
         self.with_panels(|p| {
-            if let Some(w) = &p.prefs {
+            if let Some(w) = p.prefs.as_mut() {
                 windows::refresh_prefs(w, &panel);
             }
         });
+    }
+
+    /// Opens the tab called `title` of the preferences window, for tests that drive it like a user.
+    pub fn select_prefs_tab(&self, title: &str) -> bool {
+        self.app_panels.try_borrow().ok().and_then(|p| p.prefs.as_ref().map(|w| windows::select_prefs_tab(w, title))).unwrap_or(false)
     }
 
     /// The window that shows the preferences, for tests.

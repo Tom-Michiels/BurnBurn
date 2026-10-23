@@ -21,6 +21,7 @@ pub mod l10n_g7_werk;
 pub mod l10n_machine;
 pub mod l10n_names;
 pub mod panels;
+pub mod prefs_form;
 pub mod panels_files;
 pub mod panels_image;
 pub mod quit_guard;
