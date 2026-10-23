@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <title>Counter-clockwise</title>
   <path d="M50.79 39.84A20 20 0 1 0 16.68 45.86" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M19.25 48.92L17.42 37.4L8.23 45.12Z" fill="#236ead" stroke="#236ead" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M19.25 48.92L17.42 37.4L8.23 45.12Z" fill="#236ead" stroke="#236ead" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
