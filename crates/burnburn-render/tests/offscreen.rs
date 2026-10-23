@@ -121,6 +121,7 @@ fn scene_snapshot_renders_offscreen_to_exact_pixels() {
             path: std::sync::Arc::new(Path::rectangle(rect)),
             transform: Affine::IDENTITY,
             role: StyleRole::Design,
+            fill_slot: None,
         }],
         overlays: Vec::new(),
     };

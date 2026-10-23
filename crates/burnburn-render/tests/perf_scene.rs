@@ -40,6 +40,7 @@ fn scene(objects: usize, sides: usize, spacing: f64, radius: f64, camera: Camera
                 path: Arc::new(path),
                 transform: Affine::IDENTITY,
                 role: StyleRole::Design,
+                fill_slot: None,
             }
         })
         .collect();
