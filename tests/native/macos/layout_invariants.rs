@@ -70,6 +70,7 @@ mod invariants {
         })?;
         let mut found: Vec<String> = Vec::new();
         baseline_self_test(&s, &mut found);
+        form_builder_test(&s, &mut found);
         let doc = s.new_document()?;
         check_document(&s, doc, "document (empty)", &mut found)?;
         s.app.dispatch(UiIntent::SetMachineProfile {
@@ -174,6 +175,124 @@ mod invariants {
         walk_window(&window, "selftest aligned", &mut mine);
         if mine.iter().any(|m| m.contains(": baseline")) {
             found.push(format!("baseline self-test: an aligned caption was reported: {mine:?}"));
+        }
+    }
+
+    /// Every descendant of `view`, depth first.
+    fn descendants(view: &NSView, out: &mut Vec<Retained<NSView>>) {
+        for child in view.subviews().iter() {
+            out.push(child.clone());
+            descendants(&child, out);
+        }
+    }
+
+    /// LF5: a form the Mac builder makes holds the layout invariants (including the baseline of
+    /// every caption), puts the unit after the field on the field's baseline, says a section's
+    /// reason once, and orders the buttons [help, cancel, primary] with Return and Escape.
+    fn form_builder_test(s: &Session, found: &mut Vec<String>) {
+        use burnburn_host_models::form::{
+            ButtonRole, Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec,
+        };
+        use burnburn_host_models::format::Quantity;
+        use burnburn_macos::appkit::form::build_form;
+        let text = |id: u32, label: &str, value: &str| {
+            FormRow::new(id, label, Control::Text { value: value.into(), placeholder: String::new() })
+        };
+        let spec = FormSpec {
+            title: "Snij-instellingen".into(),
+            sections: vec![
+                FormSection::new(
+                    Some("Snijden"),
+                    vec![
+                        text(1, "Snelheid", "100").unit(Quantity::MillimetersPerSecond),
+                        FormRow::new(2, "Vermogen", Control::Number { value: "20".into() }).unit(Quantity::Percent),
+                        FormRow::new(
+                            3,
+                            "Modus",
+                            Control::Choice { options: vec!["Lijn".into(), "Vullen".into()], selected: 0 },
+                        ),
+                        FormRow::new(4, "Lucht aan", Control::Check { on: true }),
+                        FormRow::new(5, "Opmerking", Control::Memo { text: "Eik, 4 mm".into() })
+                            .help("Wordt met het project bewaard")
+                            .error("Te lang voor dit veld"),
+                    ],
+                ),
+                FormSection::new(Some("Machine"), vec![text(6, "Naam", ""), text(7, "Adres", "")])
+                    .unavailable("Kies eerst een machine in de machinehub"),
+            ],
+            buttons: DialogButtons {
+                cancel: Some(FormButton::new(10, "Annuleer")),
+                primary: Some(FormButton::new(11, "Pas toe")),
+                help: Some(FormButton::new(12, "Hulp")),
+                destructive: None,
+            },
+        };
+        let form = build_form(s.mtm, &spec, 440.0, None);
+        let window = scratch_window(s);
+        window.setContentSize(form.size());
+        let Some(content) = window.contentView() else { return };
+        content.addSubview(form.root());
+        form.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+        let mut mine = Vec::new();
+        window.displayIfNeeded();
+        walk_window(&window, "form builder", &mut mine);
+        found.extend(mine);
+        // Buttons: order, rightmost primary, key equivalents.
+        let buttons = form.buttons();
+        let roles: Vec<ButtonRole> = buttons.iter().map(|(r, _, _)| *r).collect();
+        if roles != [ButtonRole::Help, ButtonRole::Cancel, ButtonRole::Primary] {
+            found.push(format!("form builder: buttons run {roles:?}, expected help, cancel, primary"));
+        }
+        let xs: Vec<f64> = buttons.iter().map(|(_, _, b)| b.frame().origin.x).collect();
+        if xs.windows(2).any(|w| w[0] >= w[1]) {
+            found.push(format!("form builder: buttons do not lie left to right: {xs:?}"));
+        }
+        for (role, _, b) in &buttons {
+            let key = b.keyEquivalent().to_string();
+            let want = match role {
+                ButtonRole::Primary => "\r",
+                ButtonRole::Cancel => "\u{1b}",
+                _ => "",
+            };
+            if key != want {
+                found.push(format!("form builder: {role:?} button has key equivalent {key:?}, expected {want:?}"));
+            }
+        }
+        // The unit is a suffix on the field's baseline, never part of the caption.
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let label_with = |t: &str| {
+            all.iter().find(|v| as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| !l.isEditable() && l.stringValue().to_string() == t)).cloned()
+        };
+        let field = form.controls().into_iter().find(|(id, _)| id.0 == 1).map(|(_, v)| v);
+        match (label_with("mm/s"), field, label_with("Snelheid")) {
+            (Some(unit), Some(field), Some(caption)) => {
+                let (u, f) = (unit.frame(), field.frame());
+                if u.origin.x + TOLERANCE < f.origin.x + f.size.width {
+                    found.push(format!("form builder: the unit is not after the field: {}  /  {}", describe(&unit), describe(&field)));
+                }
+                if (baseline(&unit) - baseline(&field)).abs() > TOLERANCE {
+                    found.push("form builder: the unit is not on the baseline of its field".into());
+                }
+                if caption.frame().origin.x + caption.frame().size.width > f.origin.x + TOLERANCE {
+                    found.push("form builder: the caption is not left of its field".into());
+                }
+            }
+            _ => found.push("form builder: no unit label 'mm/s', field or caption 'Snelheid' in the form".into()),
+        }
+        let reasons = all
+            .iter()
+            .filter(|v| {
+                as_any(v)
+                    .downcast_ref::<NSTextField>()
+                    .is_some_and(|l| l.stringValue().to_string() == "Kies eerst een machine in de machinehub")
+            })
+            .count();
+        if reasons != 1 {
+            found.push(format!("form builder: the reason is shown {reasons} times, expected once"));
+        }
+        if form.texts().iter().any(|t| t.contains("mm/s") && t.contains("Snelheid") && t != "mm/s") {
+            found.push("form builder: a text holds caption and unit together".into());
         }
     }
 

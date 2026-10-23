@@ -34,6 +34,7 @@ pub use app::{CamPanelParts, HostApp, HostOptions, QuitOutcome, WindowParts};
 pub use app::{MenuKeyReport, app_user_dir};
 pub use canvas::{canvas_packet, canvas_packet_themed, canvas_packet_with, canvas_theme};
 pub use panels::camera_window::CameraParts;
+pub use panels::form;
 pub use panels::image::trace_batch_open_panel;
 pub use panels::laser::LaserParts;
 pub use toolstrip::{ToolStrip, image_pixels};
