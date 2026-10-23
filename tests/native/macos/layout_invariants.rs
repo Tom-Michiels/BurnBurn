@@ -110,6 +110,15 @@ mod invariants {
             }
             check_new_windows(&s, doc, step, &mut found);
         }
+        // LF6c: a window with tabs passes the invariants on every tab, not only the open one.
+        for (name, window) in [
+            ("preferences", s.app.prefs_window()),
+            ("machine-hub", s.app.machine_hub_window()),
+        ] {
+            if let Some(window) = window {
+                check_tabs(&window, name, &mut found);
+            }
+        }
         // The dialog sheets are built with the window, shown or not.
         let sheets: Vec<(&str, Retained<NSWindow>)> = s
             .app
@@ -442,6 +451,28 @@ mod invariants {
         if roles != [ButtonRole::Destructive, ButtonRole::Primary] {
             found.push(format!("tabbed form: buttons run {roles:?}, expected destructive then primary"));
         }
+    }
+
+    /// Opens each tab of the tab view in `window` and walks the window.
+    fn check_tabs(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        use objc2_app_kit::NSTabView;
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let Some(tabs) = all.iter().find_map(|v| as_any(v).downcast_ref::<NSTabView>().map(|t| t.retain())) else {
+            found.push(format!("{name}: no tab view"));
+            return;
+        };
+        let count = tabs.numberOfTabViewItems();
+        if count < 2 {
+            found.push(format!("{name}: {count} tabs, expected several"));
+        }
+        for index in 0..count {
+            tabs.selectTabViewItemAtIndex(index);
+            window.displayIfNeeded();
+            walk_window(window, &format!("{name} (tab {index})"), found);
+        }
+        tabs.selectTabViewItemAtIndex(0);
     }
 
     /// A small hidden window for the self-test (alpha 0, never shown).
@@ -781,7 +812,6 @@ mod invariants {
         "document",
         "sheet",
         "cut-settings",
-        "machine-hub",
         "laser",
         "material-library",
         "art-library",

@@ -9,6 +9,7 @@ pub mod automation_host;
 pub mod form;
 pub mod form_lines;
 pub mod format;
+pub mod hub_form;
 pub mod hub_panel;
 pub mod l10n;
 pub mod l10n_files;

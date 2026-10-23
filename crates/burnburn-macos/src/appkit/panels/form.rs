@@ -17,7 +17,7 @@ use objc2::runtime::{AnyObject, Sel};
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSAccessibility, NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
-    NSGridCellPlacement, NSGridRowAlignment, NSGridView, NSImageScaling, NSImageView, NSPopUpButton, NSScrollView,
+    NSGridCellPlacement, NSGridRow, NSGridRowAlignment, NSGridView, NSImageScaling, NSImageView, NSPopUpButton, NSScrollView,
     NSTabView, NSTabViewItem, NSTextAlignment, NSTextField, NSTextView, NSView,
 };
 use objc2_foundation::{NSArray, NSRange, NSSize, NSString};
@@ -74,6 +74,8 @@ struct RowWidgets {
     /// The view the user works in (the text view of a memo).
     control: Retained<NSView>,
     caption: Option<Retained<NSTextField>>,
+    /// The grid row of the control (a wrapped text changes its height).
+    grid_row: Retained<NSGridRow>,
     /// The unit suffix after the control.
     unit: Option<Retained<NSTextField>>,
     help: Option<Retained<NSTextField>>,
@@ -97,6 +99,17 @@ pub struct FormView {
     buttons: Vec<(ButtonRole, FormId, Retained<NSButton>)>,
     shape: Vec<String>,
     size: NSSize,
+    /// The width of the control column, to measure wrapped texts.
+    control_w: f64,
+    /// The grids (one per tab), laid out again after an update.
+    grids: Vec<Retained<NSGridView>>,
+    /// Measures kept to size the form again when a text changes height.
+    base: f64,
+    margin: f64,
+    inner: f64,
+    inner_g: f64,
+    chrome_h: f64,
+    mtm: MainThreadMarker,
 }
 
 fn as_view<T: AsRef<NSView>>(v: &T) -> &NSView {
@@ -372,6 +385,16 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                 } else if need > control_w {
                     grid_row.mergeCellsInRange(NSRange::new(1, 2));
                 }
+            } else if kind == Kind::ReadOnly {
+                // A wrapped text gets the height it needs at the width of the column, measured, so
+                // the grid cannot leave it one line high.
+                let wanted = as_any(&control)
+                    .downcast_ref::<NSTextField>()
+                    .and_then(|l| l.cell())
+                    .map_or(0.0, |c| c.cellSizeForBounds(rect(0.0, 0.0, control_w, 10_000.0)).height.ceil());
+                if wanted > 0.0 {
+                    grid_row.setHeight(wanted);
+                }
             } else if kind == Kind::Check {
                 // The check box takes the control and the unit column; its title wraps there.
                 grid_row.mergeCellsInRange(NSRange::new(1, 2));
@@ -432,6 +455,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                     _ => control,
                 },
                 caption,
+                grid_row: grid_row.clone(),
                 unit: unit_label,
                 help,
                 error,
@@ -488,7 +512,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     let base = margin + button_row + notice_h;
 
     let fits: Vec<NSSize> = grids.iter().map(|(_, g)| g.fittingSize()).collect();
-    let (body_h, tab_view) = if tabbed {
+    let (body_h, tab_view, chrome_h) = if tabbed {
         let fit_h = fits.iter().map(|f| f.height).fold(0.0_f64, f64::max);
         let tv = NSTabView::initWithFrame(NSTabView::alloc(mtm), rect(0.0, 0.0, inner, 300.0));
         for (title, grid) in &grids {
@@ -513,9 +537,9 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         }
         let tv_h = page_h + chrome_h;
         tv.setFrame(rect(margin, base, inner, tv_h));
-        (tv_h, Some(tv))
+        (tv_h, Some(tv), chrome_h)
     } else {
-        (fits.first().map_or(0.0, |f| f.height), None)
+        (fits.first().map_or(0.0, |f| f.height), None, 0.0)
     };
     let height = margin + button_row + notice_h + body_h + margin;
     let root = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, height));
@@ -549,7 +573,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     for (_, grid) in &grids {
         grid.layoutSubtreeIfNeeded();
     }
-    FormView { root, rows, headings, reasons, notice, tab_view, buttons, shape: spec.shape(), size: NSSize::new(width, height) }
+    FormView { root, rows, headings, reasons, notice, tab_view, buttons, shape: spec.shape(), size: NSSize::new(width, height), control_w, grids: grids.iter().map(|(_, g)| g.clone()).collect(), base, margin, inner, inner_g, chrome_h, mtm }
 }
 
 fn text_field(mtm: MainThreadMarker, value: &str, wiring: Option<Wiring<'_>>) -> Retained<NSTextField> {
@@ -749,6 +773,13 @@ impl FormView {
                 (Control::ReadOnly { value }, _) => {
                     if let Some(l) = any.downcast_ref::<NSTextField>() {
                         set_text(l, value);
+                        // The text may wrap differently now: the row takes the height it needs.
+                        let wanted = l.cell().map_or(0.0, |c| {
+                            c.cellSizeForBounds(rect(0.0, 0.0, self.control_w, 10_000.0)).height.ceil()
+                        });
+                        if wanted > 0.0 {
+                            widgets.grid_row.setHeight(wanted);
+                        }
                     }
                 }
                 (Control::Log { text }, _) => {
@@ -768,7 +799,41 @@ impl FormView {
             }
             widget.setEnabled(b.enabled);
         }
+        self.relayout();
         true
+    }
+
+    /// Lays the grids out again and gives the tabs, the grids and the form the height the content
+    /// now needs (a text that wraps differently changes a row). `size()` is the new size.
+    fn relayout(&mut self) {
+        for g in &self.grids {
+            g.layoutSubtreeIfNeeded();
+        }
+        let fit_h = self.grids.iter().map(|g| g.fittingSize().height).fold(0.0_f64, f64::max);
+        let body_h = match &self.tab_view {
+            Some(tv) => {
+                let page_h = fit_h + 2.0 * TAB_PAD;
+                for (grid, item) in self.grids.iter().zip(tv.tabViewItems().iter()) {
+                    let Some(page) = item.view(self.mtm) else { continue };
+                    let page_w = page.frame().size.width;
+                    page.setFrameSize(NSSize::new(page_w, page_h));
+                    let gh = grid.fittingSize().height;
+                    grid.setFrame(rect((page_w - self.inner_g) / 2.0, page_h - TAB_PAD - gh, self.inner_g, gh));
+                }
+                let tv_h = page_h + self.chrome_h;
+                tv.setFrame(rect(self.margin, self.base, self.inner, tv_h));
+                tv_h
+            }
+            None => {
+                if let Some(g) = self.grids.first() {
+                    g.setFrame(rect(self.margin, self.base, self.inner, fit_h));
+                }
+                fit_h
+            }
+        };
+        let height = self.base + body_h + self.margin;
+        self.root.setFrameSize(NSSize::new(self.size.width, height));
+        self.size = NSSize::new(self.size.width, height);
     }
 
     /// The texts the form shows (headings, reasons, captions, help, errors), for tests.
@@ -815,6 +880,18 @@ impl FormView {
             return;
         }
         row.pushed = pushed.to_owned();
+    }
+
+    /// Chooses item `index` in the pop-up row `id` of a rebuilt form.
+    pub fn restore_choice(&mut self, id: FormId, index: usize) {
+        let Some(row) = self.rows.iter_mut().find(|r| r.id == id) else { return };
+        let any: &AnyObject = row.control.as_ref();
+        if let Some(p) = any.downcast_ref::<NSPopUpButton>()
+            && (index as isize) < p.numberOfItems()
+        {
+            p.selectItemAtIndex(index as isize);
+            row.pushed = index.to_string();
+        }
     }
 
     /// What the user has typed and chosen: text, the chosen index, `1`/`0` for a checkbox.

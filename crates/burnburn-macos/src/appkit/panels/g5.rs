@@ -356,6 +356,10 @@ impl G5Section {
             && state.view.update(&form.spec)
         {
             state.ids = form.controls;
+            // A text that wraps differently changes the height of the form.
+            if (state.view.size().height - state.size.height).abs() > 0.5 && state.size.height <= MAX_HEIGHT {
+                state.size = install_form(mtm, &self.panel, &state.view, MAX_HEIGHT);
+            }
             return state.size;
         }
         let typed = self.form.as_ref().map(|s| (s.view.edits(), s.ids.clone())).unwrap_or_default();
