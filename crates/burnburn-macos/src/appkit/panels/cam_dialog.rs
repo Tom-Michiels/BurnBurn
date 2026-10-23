@@ -27,6 +27,7 @@ use objc2_foundation::{NSObject, NSPoint, NSString};
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_text};
+use crate::appkit::symbols::{self, Symbol};
 use crate::l10n::{Locale, message_or_key};
 use crate::panels::{
     cam_action_title, cam_caption, cam_choice_label, cam_error, cam_label, cam_note, cam_result_text, cam_support_line,
@@ -287,12 +288,13 @@ impl CamPanelUi {
             note.setFont(Some(&NSFont::systemFontOfSize(10.0)));
             note.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
             let (up, down) = if matches!(row.field, DialogField::OrderEnabled(_)) {
-                let arrow = |glyph: &str| {
-                    let b = push_button(mtm, glyph);
+                let arrow = |symbol: Symbol| {
+                    let b = push_button(mtm, "");
                     b.setFrame(rect(0.0, 0.0, ARROW_W, 24.0));
+                    symbols::apply(&b, symbol, locale);
                     b
                 };
-                (Some(arrow("\u{2191}")), Some(arrow("\u{2193}")))
+                (Some(arrow(Symbol::OrderUp)), Some(arrow(Symbol::OrderDown)))
             } else {
                 (None, None)
             };

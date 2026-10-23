@@ -320,6 +320,12 @@ path = "../../tests/native/macos/gui_snapshots.rs"
 harness = false
 
 # Layout invariants of every window/panel/sheet (LF1): no clipped, overlapping or cut-off controls.
+# SF Symbols per action exist and no button title is a Unicode glyph (LF8).
+[[test]]
+name = "symbols"
+path = "../../tests/native/macos/symbols.rs"
+harness = false
+
 [[test]]
 name = "layout_invariants"
 path = "../../tests/native/macos/layout_invariants.rs"

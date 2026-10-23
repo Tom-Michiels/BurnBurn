@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <title>Clockwise</title>
   <path d="M13.21 39.84A20 20 0 1 1 47.32 45.86" fill="none" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M44.75 48.92L55.77 45.12L46.58 37.4Z" fill="#236ead" stroke="#236ead" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M44.75 48.92L55.77 45.12L46.58 37.4Z" fill="#236ead" stroke="#236ead" stroke-width="2.55" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>

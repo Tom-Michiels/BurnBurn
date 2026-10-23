@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <title>Double star</title>
-  <path d="M45 10.48L45.06 25.46L58 33L45.06 40.54L45 55.52L32 48.08L19 55.52L18.94 40.54L6 33L18.94 25.46L19 10.48L32 17.92Z" fill="none" stroke="#8e9faf" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M32 7L39.54 19.94L54.52 20L47.08 33L54.52 46L39.54 46.06L32 59L24.46 46.06L9.48 46L16.92 33L9.48 20L24.46 19.94Z" fill="#b9ddf8" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M43.7 12.73L43.75 26.21L55.4 33L43.75 39.79L43.7 53.27L32 46.57L20.3 53.27L20.25 39.79L8.6 33L20.25 26.21L20.3 12.73L32 19.43Z" fill="none" stroke="#8e9faf" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32 9.6L38.79 21.25L52.27 21.3L45.57 33L52.27 44.7L38.79 44.75L32 56.4L25.21 44.75L11.73 44.7L18.43 33L11.73 21.3L25.21 21.25Z" fill="#b9ddf8" stroke="#236ead" stroke-width="4.25" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
