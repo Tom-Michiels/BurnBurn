@@ -145,17 +145,15 @@ fn scenario() -> Result<(), String> {
     let visible = s.app.with_laser(doc, |p| p.panel.isVisible()).unwrap_or(false);
     expect(|| "the panel window is visible".into(), visible)?;
     // LFB-rest: the window is bounded by the visible part of its screen, not by a fixed height.
-    if let Some((frame, screen)) = s.app.with_laser(doc, |p| (p.panel.frame(), p.panel.screen())) {
-        if let Some(screen) = screen {
-            let v = screen.visibleFrame();
-            expect(
-                || format!("panel frame {frame:?} outside the visible screen {v:?}"),
-                frame.origin.y >= v.origin.y - 0.5
-                    && frame.origin.y + frame.size.height <= v.origin.y + v.size.height + 0.5
-                    && frame.origin.x >= v.origin.x - 0.5
-                    && frame.origin.x + frame.size.width <= v.origin.x + v.size.width + 0.5,
-            )?;
-        }
+    if let Some((frame, Some(screen))) = s.app.with_laser(doc, |p| (p.panel.frame(), p.panel.screen())) {
+        let v = screen.visibleFrame();
+        expect(
+            || format!("panel frame {frame:?} outside the visible screen {v:?}"),
+            frame.origin.y >= v.origin.y - 0.5
+                && frame.origin.y + frame.size.height <= v.origin.y + v.size.height + 0.5
+                && frame.origin.x >= v.origin.x - 0.5
+                && frame.origin.x + frame.size.width <= v.origin.x + v.size.width + 0.5,
+        )?;
     }
 
     // Nothing is proven on this controller: position unknown (not 0), Home off with the reason.

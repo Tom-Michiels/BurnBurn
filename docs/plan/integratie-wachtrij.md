@@ -449,3 +449,8 @@ Plan `docs/plan/solidcraft-look.md` werkt in de hoofdcheckout in `burnburn-edito
 | Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
 |---|---|---|---|---|---|
 | LF1-layout | Q1 dubbele verschuiving, Q3 primaire knop rechts en Esc/Return, Q6 reden één keer, Q9 laserlabels, layout-invarianten | – (alleen `macos/src/appkit`) | – | `macos/tests` native `layout_invariants` (rood op 474 fouten, groen), `cam_dialogs::test_dialogs_make_a_private_job_and_focus_test_is_greyed_with_its_reason`; dev-note `docs/dev-notes/LF1.md` | klaar; open: basislijncontrole, laservenster op klein scherm (handmatig) |
+
+## LF-B (LFB-rest)
+| Lane | Feature | Domein-API | Gewenste intent/viewmodel | Story-test | Status |
+|---|---|---|---|---|---|
+| LFB-rest | Zoom naar bed (open/nieuw + commando), vulling per Fill-bewerking, laservenster op schermhoogte, Windows: icoon in exe, donker canvas, statustoon | `CommandKey::ZoomBed`, `SceneItem::fill_slot`, `laser_window_height`, `appearance`, `status_line` | – | `zoom_bed`, `layer_fill_scene`, `lfb_layer_fill`, `lfb_laser_window`, `exe_icon_resource`, `appearance`, `status_line`; dev-note `docs/dev-notes/LFB-rest.md` | klaar; open: PE-controle van de gelinkte exe en echte Windows-run (runner), handmatig klein scherm |
