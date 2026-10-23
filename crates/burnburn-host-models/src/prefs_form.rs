@@ -131,7 +131,7 @@ mod tests {
     fn the_groups_are_tabs_and_every_preference_is_on_exactly_one() {
         let form = prefs_form(&panel(Locale::Nl), Locale::Nl);
         assert_eq!(form.spec.title, "Instellingen");
-        assert_eq!(form.spec.tabs(), vec!["Algemeen", "Canvas", "Verplaatsen"]);
+        assert_eq!(form.spec.tabs(), vec!["Algemeen", "Tekenvlak", "Verplaatsen"]);
         for key in PrefKey::ALL {
             let n = form.spec.sections.iter().flat_map(|s| &s.rows).filter(|r| r.id == pref_form_id(key)).count();
             assert_eq!(n, 1, "{key:?}");
@@ -141,7 +141,7 @@ mod tests {
             form.spec.sections.iter().find(|s| s.rows.iter().any(|r| r.id == id)).and_then(|s| s.tab.clone())
         };
         assert_eq!(tab_of(PrefKey::Language).as_deref(), Some("Algemeen"));
-        assert_eq!(tab_of(PrefKey::GridSnap).as_deref(), Some("Canvas"));
+        assert_eq!(tab_of(PrefKey::GridSnap).as_deref(), Some("Tekenvlak"));
         assert_eq!(tab_of(PrefKey::NudgeLarge).as_deref(), Some("Verplaatsen"));
     }
 

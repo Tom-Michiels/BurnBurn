@@ -395,7 +395,7 @@ fn preferences() -> Result<(), String> {
 
     // A bare number is inches now: 2.5 in = 63.5 mm. The field gets the raw text. (LF6c: the
     // snapping preferences lie on the Canvas tab, so the test opens that tab like a user.)
-    expect(|| "the Canvas tab exists".into(), s.app.select_prefs_tab("Canvas"))?;
+    expect(|| "the Tekenvlak tab exists".into(), s.app.select_prefs_tab("Tekenvlak"))?;
     let grid = field(&window, "Rasterafstand")?;
     grid.setStringValue(&NSString::from_str("2,5"));
     fire(&grid)?;

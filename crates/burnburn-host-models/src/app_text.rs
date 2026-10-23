@@ -81,7 +81,7 @@ app_texts! {
     SuffixPx => ("px", "px"),
     SuffixSeconds => ("s", "s"),
     PrefsTabGeneral => ("Algemeen", "General"),
-    PrefsTabCanvas => ("Canvas", "Canvas"),
+    PrefsTabCanvas => ("Tekenvlak", "Canvas"),
     PrefsTabNudge => ("Verplaatsen", "Nudging"),
     PrefsReset => ("Standaardwaarden herstellen", "Restore Defaults"),
     PrefsNote => (

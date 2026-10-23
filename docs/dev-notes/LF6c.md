@@ -14,7 +14,7 @@ Basis `0b517ed`. Alle commando's met `CARGO_TARGET_DIR=/Users/tom/Sandbox/BurnBu
   een kop begint een sectie, Tekst na een rij is de hulp, Probleem de fout, een knoprol per rol (een tweede knop voor een bezette
   rol wordt een actie in het formulier, verdwijnt niet). `g5_form` en `schikken_form` gebruiken het; `dialog_role` kreeg
   Generator (Voeg in/Annuleer), startbevestiging, Zoeken (Sluit); `schikken_dialog_role` Sleuven, Nesten, Print and Cut, camera.
-- `prefs_form.rs`: Voorkeuren met tabs Algemeen / Canvas / Verplaatsen, venstertitel "Instellingen", eenheid als suffix,
+- `prefs_form.rs`: Voorkeuren met tabs Algemeen / Tekenvlak / Verplaatsen, venstertitel "Instellingen", eenheid als suffix,
   `Standaardwaarden herstellen` als destructieve knop, de banner als melding (met slot). `hub_form.rs`: Machinehub met tabs
   Apparaat / Productie / Historie / Kalibratie; de ids zijn de tags van de Mac-controls.
 - Mac `form.rs`: tabs (`NSTabView`, één grid per tab, kolombreedtes gedeeld), melding, plaatje, log (alleen-lezen scrollend),
@@ -39,7 +39,7 @@ Basis `0b517ed`. Alle commando's met `CARGO_TARGET_DIR=/Users/tom/Sandbox/BurnBu
 | `hub_form::tests::*` (4) | stub: `0 passed; 4 failed` | `4 passed` |
 | native `layout_invariants::tabbed_form_test` | bouwer zonder tabs: `1 layout violations: tabbed form: no tab view`; daarna rood op onbereikbare rij/rood bijschrift (testfout: tab niet geselecteerd, test aangepast met reden in de code) | `ok` |
 | G5-panelen als formulier (`is_form_panel` = waar) | `7 layout violations`: lange vinkjes en actieknoppen afgekapt (`title needs 330 pt of width, has 200`); daarna overlap van een brede knop; | vinkjes breken, knoppen lopen over de rij: `layout_invariants ok` |
-| Voorkeuren (tabs) | `app_panels::preferences_window_edits_apply_persist_and_refuse_bad_input` faalde op `the unit label follows` (suffix werd niet bijgewerkt) | unit-label in `update`; test opent eerst het tabblad Canvas/Algemeen (`select_prefs_tab`), zoekt `Automatisch bewaren` (eenheid en `0 = uit` zijn uit het label) en `contains("Geen geldig getal.")` (de melding heeft een statusglyph): groen |
+| Voorkeuren (tabs) | `app_panels::preferences_window_edits_apply_persist_and_refuse_bad_input` faalde op `the unit label follows` (suffix werd niet bijgewerkt) | unit-label in `update`; test opent eerst het tabblad Tekenvlak/Algemeen (`select_prefs_tab`), zoekt `Automatisch bewaren` (eenheid en `0 = uit` zijn uit het label) en `contains("Geen geldig getal.")` (de melding heeft een statusglyph): groen |
 | Machinehub tabs | `machine-hub (tab 1): cut off (wrapped text needs 32 pt of height, has 16)` en `…needs 17 pt, has 1` (rij te laag na update) | gemeten rijhoogte + `relayout`: groen |
 | barcode / Hoeken afronden | `barcode…: baseline of the caption is +4.0 pt off`, `a caption holds its unit: 'Modulegrootte (mm)'`, `no unit suffix label after any field`; idem `round-corners` | suffixlabel en `align_baseline`: `layout_invariants ok` |
 
@@ -64,3 +64,7 @@ een inactief venster); de tab is er wel (de test leest de titels). Een screensho
 - De Windows-layout uit `FormSpec` (tabs, melding, log, plaatje) is LF13.
 - Handmatig: de panelen naast de HIG-referentie, tabbladtitel in het geselecteerde tabblad, toetsenbordnavigatie door de tabs.
 - `appkit/panels/form.rs` is ook in LF6a/LF6b aangeraakt: verwacht een merge.
+
+## Verify (eerste poging)
+
+`cargo xtask verify`: `l10n_lint::no_text_is_left_untranslated` faalde op `AppText::PrefsTabCanvas: "Canvas"` (NL gelijk aan EN). Het NL-label is nu "Tekenvlak" (EN "Canvas"); de tests (`prefs_form`, `app_panels`) volgen.
