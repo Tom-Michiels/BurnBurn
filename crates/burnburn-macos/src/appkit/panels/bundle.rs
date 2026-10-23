@@ -6,22 +6,25 @@
 //! choice for differing items and one check box per differing profile ("Vervang profiel …"). The
 //! controls call the intent builders in `crate::panels_files`; nothing is applied but by a click
 //! on Importeer.
+//!
+//! One form (`files_form::bundle_form`, LF6b) with two sections the host swaps: what goes in (an
+//! export) and what would change (an import).
 
 use std::rc::{Rc, Weak};
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::files_form::{bundle as id, bundle_form};
 use burnburn_presentation::AppViewModel;
 use burnburn_types::DocumentId;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSButton, NSColor, NSPopUpButton, NSTextField, NSTextView, NSWindow};
+use objc2_app_kit::{NSButton, NSPopUpButton, NSTextField, NSTextView, NSWindow};
 use objc2_foundation::NSString;
 
-use super::files_ui::{
-    FilesTarget, Link, checkbox, is_on, report_view, save_file, set_check, set_popup, set_report, tri_state_checkbox,
-    unwire,
-};
-use super::image::{begin_sheet, caption, end_sheet, heading, note, popup, sheet_window};
-use super::widgets::{push_button, rect, set_text};
+use super::files_ui::{FilesTarget, Link, is_on, save_file, set_check, set_popup, set_report, unwire};
+use super::form_surface::{FormSurface, form_sheet};
+use super::image::{begin_sheet, end_sheet};
+use super::widgets::set_text;
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -31,19 +34,18 @@ use crate::panels_files::{
     bundle_profile_intent, bundle_write_intent,
 };
 
-const SIZE: (f64, f64) = (540.0, 600.0);
+const WIDTH: f64 = 540.0;
 /// Check boxes for the profiles of an incoming bundle (more are not offered: a bundle holds few).
-pub(crate) const PROFILE_SLOTS: usize = 4;
+pub(crate) const PROFILE_SLOTS: usize = id::PROFILE_SLOTS;
 
 pub(crate) struct BundleSheet {
     pub(crate) sheet: Retained<NSWindow>,
+    surface: FormSurface,
     pub(crate) shown: bool,
     pub(crate) title: Retained<NSTextField>,
     pub(crate) status: Retained<NSTextField>,
     pub(crate) kinds: Vec<Retained<NSButton>>,
-    pub(crate) choose: Retained<NSTextField>,
     pub(crate) preview: Retained<NSTextView>,
-    pub(crate) conflict_label: Retained<NSTextField>,
     pub(crate) conflict: Retained<NSPopUpButton>,
     pub(crate) profiles: Vec<Retained<NSButton>>,
     pub(crate) report: Retained<NSTextField>,
@@ -58,58 +60,26 @@ pub(crate) fn bundle_sheet(
     document: DocumentId,
     locale: Locale,
 ) -> BundleSheet {
-    let t = |text: T| files_text(text, locale);
-    let (w, h) = SIZE;
-    let (sheet, content) = sheet_window(mtm, SIZE, t(T::BundleExportTitle));
-    let inner = w - 32.0;
-    let mut y = h - 16.0;
-    let title = heading(mtm, &content, rect(16.0, y - 20.0, inner, 20.0));
-    y -= 30.0;
-    let status = note(mtm, &content, rect(16.0, y - 34.0, inner, 34.0), &NSColor::secondaryLabelColor());
-    y -= 44.0;
-    // Export: what goes in.
-    let choose = caption(mtm, &content, t(T::BundleChoose), rect(16.0, y - 20.0, inner, 20.0));
-    let mut kinds = Vec::new();
-    for i in 0..4 {
-        let b = tri_state_checkbox(mtm, rect(24.0, y - 50.0 - 28.0 * i as f64, inner - 16.0, 22.0));
-        content.addSubview(&b);
-        kinds.push(b);
-    }
-    // Import: the preview, the choice and the profile check boxes.
-    let preview = report_view(mtm, &content, rect(16.0, 230.0, inner, y - 230.0 - 4.0));
-    let conflict_label = caption(mtm, &content, t(T::LabelConflict), rect(16.0, 198.0, 220.0, 20.0));
-    let conflict = popup(mtm, &content, t(T::LabelConflict), &[], rect(240.0, 194.0, inner - 224.0, 26.0));
-    let mut profiles = Vec::new();
-    for i in 0..PROFILE_SLOTS {
-        let b = checkbox(mtm, "", rect(24.0, 168.0 - 24.0 * i as f64, inner - 16.0, 20.0));
-        content.addSubview(&b);
-        profiles.push(b);
-    }
-    let report = note(mtm, &content, rect(16.0, 56.0, inner, 48.0), &NSColor::labelColor());
-    let primary = push_button(mtm, t(T::ButtonExport));
-    primary.setFrame(rect(w - 128.0, 12.0, 112.0, 28.0));
-    primary.setKeyEquivalent(&NSString::from_str("\r"));
-    content.addSubview(&primary);
-    let close = push_button(mtm, t(T::ButtonClose));
-    close.setFrame(rect(w - 232.0, 12.0, 96.0, 28.0));
-    close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    content.addSubview(&close);
-    sheet.setContentView(Some(&content));
-
+    let spec = bundle_form(locale);
+    let surface = FormSurface::new(mtm, &[(&spec, WIDTH)]);
+    let sheet = form_sheet(mtm, &surface, files_text(T::BundleExportTitle, locale));
+    // A click never decides the mixed state of a kind: the intent follows the view model.
+    let kinds: Vec<Retained<NSButton>> = (0..4).map(|i| surface.button(id::KIND + i)).collect();
+    kinds.iter().for_each(|b| b.setAllowsMixedState(true));
+    let profiles = (0..PROFILE_SLOTS as u32).map(|i| surface.button(id::PROFILE + i)).collect();
     let this = BundleSheet {
         sheet,
         shown: false,
-        title,
-        status,
+        title: surface.text(id::TITLE),
+        status: surface.text(id::STATUS),
         kinds,
-        choose,
-        preview,
-        conflict_label,
-        conflict,
+        preview: surface.report(id::PREVIEW),
+        conflict: surface.popup(id::CONFLICT),
         profiles,
-        report,
-        primary,
-        close,
+        report: surface.text(id::REPORT),
+        primary: surface.dialog_button(ButtonRole::Primary),
+        close: surface.dialog_button(ButtonRole::Cancel),
+        surface,
     };
     let link = Rc::new(Link { app, document });
     for (row, b) in this.kinds.iter().enumerate() {
@@ -206,15 +176,16 @@ impl DocWindow {
             }
             return;
         };
-        let b = &self.files.bundle;
+        let b = &mut self.files.bundle;
         b.sheet.setTitle(&NSString::from_str(&model.title));
         set_text(&b.title, &model.title);
         set_text(&b.status, &model.status);
         let export = !model.import;
-        b.choose.setHidden(!export);
+        b.surface.set_section_hidden(0, id::EXPORT_SECTION, !export);
+        b.surface.set_section_hidden(0, id::IMPORT_SECTION, export);
         for (i, button) in b.kinds.iter().enumerate() {
             let row = model.kinds.get(i).filter(|_| export);
-            button.setHidden(row.is_none());
+            b.surface.set_hidden(id::KIND + i as u32, row.is_none());
             if let Some(row) = row {
                 if button.title().to_string() != row.title {
                     button.setTitle(&NSString::from_str(&row.title));
@@ -223,18 +194,13 @@ impl DocWindow {
                 button.setEnabled(row.enabled);
             }
         }
-        b.preview.enclosingScrollView().inspect(|s| s.setHidden(export));
         if !export {
             set_report(&b.preview, &model.preview);
-        }
-        b.conflict_label.setHidden(export);
-        b.conflict.setHidden(export);
-        if !export {
             set_popup(&b.conflict, &model.conflict, true);
         }
         for (i, button) in b.profiles.iter().enumerate() {
             let row = model.profiles.get(i).filter(|_| !export);
-            button.setHidden(row.is_none());
+            b.surface.set_hidden(id::PROFILE + i as u32, row.is_none());
             if let Some(row) = row {
                 if button.title().to_string() != row.title {
                     button.setTitle(&NSString::from_str(&row.title));
@@ -256,9 +222,10 @@ impl DocWindow {
         if b.primary.title().to_string() != title {
             b.primary.setTitle(&NSString::from_str(title));
         }
+        b.surface.fit_window(&b.sheet);
         if !b.shown {
-            self.files.bundle.shown = true;
-            begin_sheet(&self.window, &self.files.bundle.sheet, "showing the bundle sheet");
+            b.shown = true;
+            begin_sheet(&self.window, &b.sheet, "showing the bundle sheet");
         }
     }
 }

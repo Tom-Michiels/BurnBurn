@@ -7,6 +7,8 @@
 //! [`ImagePanelTarget`], which reads every widget of its panel and sends one event, so one edit is
 //! one intent with all values. `unsafe` is limited to the Objective-C class definition, the
 //! control wiring and the bitmap copy (SAFETY comments); no callback lets a panic unwind into AppKit.
+//! The widgets of the two sheets come from forms (`files_form::image_import_form`,
+//! `image_adjust_forms`, LF6b); the sheets copy the view model into them as before.
 #![allow(unsafe_code)]
 
 use std::path::PathBuf;
@@ -21,22 +23,24 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSBackingStoreType, NSBitmapImageRep, NSButton, NSColor, NSControlStateValueOn,
-    NSDeviceRGBColorSpace, NSFont, NSImage, NSImageFrameStyle, NSImageScaling, NSImageView, NSLineBreakMode,
-    NSModalResponse, NSOpenPanel, NSPopUpButton, NSSavePanel, NSTextField, NSView, NSWindow, NSWindowStyleMask,
+    NSDeviceRGBColorSpace, NSImage, NSImageFrameStyle, NSImageScaling, NSImageView, NSLineBreakMode, NSModalResponse,
+    NSOpenPanel, NSPopUpButton, NSSavePanel, NSTextField, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSArray, NSSize, NSString};
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::files_form::{image_adjust as adjust_id, image_adjust_forms};
+use burnburn_host_models::panels::files_form::{image_import as import_id, image_import_form};
+
+use super::form_surface::{FormSurface, form_sheet, point_at};
 use super::tracer::{TracerSheet, tracer_sheet};
-use super::widgets::{button, field, label, rect, set_text};
+use super::widgets::{label, rect, set_text};
 use crate::adapter::{MenuItem, NativeEvent, menu_tag};
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels_image::{
-    BitmapImage, GRAY_METHODS, ImageAdjustPanel, ImageImportPanel, gray_method_name, image_adjust_panel,
-    image_import_panel,
-};
+use crate::panels_image::{BitmapImage, ImageAdjustPanel, ImageImportPanel, image_adjust_panel, image_import_panel};
 
 /// Picture types the bitmap flow offers in file panels (W4-UI-gaten: BMP and TIFF decode now; a
 /// damaged file of either type still gets the decoder's honest refusal).
@@ -45,8 +49,9 @@ pub(crate) const BITMAP_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", 
 /// Picture types the tracer reads.
 pub(crate) const TRACE_TYPES: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "tif", "tiff"];
 
-const IMPORT_SIZE: (f64, f64) = (460.0, 290.0);
-const ADJUST_SIZE: (f64, f64) = (740.0, 490.0);
+const IMPORT_WIDTH: f64 = 460.0;
+/// The values form and the preview form of the Adjust Image sheet.
+const ADJUST_WIDTHS: (f64, f64) = (372.0, 360.0);
 
 /// A titled sheet window of `size` with an empty content view.
 pub(crate) fn sheet_window(
@@ -94,47 +99,6 @@ pub(crate) fn note(
     l.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
     l.setTextColor(Some(color));
     l
-}
-
-/// A bold label added to `content`.
-pub(crate) fn heading(
-    mtm: MainThreadMarker,
-    content: &NSView,
-    frame: objc2_foundation::NSRect,
-) -> Retained<NSTextField> {
-    let l = caption(mtm, content, "", frame);
-    l.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
-    l
-}
-
-/// A text field with an accessibility label, added to `content`.
-pub(crate) fn input(
-    mtm: MainThreadMarker,
-    content: &NSView,
-    name: &str,
-    frame: objc2_foundation::NSRect,
-) -> Retained<NSTextField> {
-    let f = field(mtm, frame);
-    f.setAccessibilityLabel(Some(&NSString::from_str(name)));
-    content.addSubview(&f);
-    f
-}
-
-/// A pop-up with `titles` and an accessibility label, added to `content`.
-pub(crate) fn popup(
-    mtm: MainThreadMarker,
-    content: &NSView,
-    name: &str,
-    titles: &[String],
-    frame: objc2_foundation::NSRect,
-) -> Retained<NSPopUpButton> {
-    let p = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), frame, false);
-    for title in titles {
-        p.addItemWithTitle(&NSString::from_str(title));
-    }
-    p.setAccessibilityLabel(Some(&NSString::from_str(name)));
-    content.addSubview(&p);
-    p
 }
 
 /// A square-ish image view that keeps the picture's aspect.
@@ -363,6 +327,7 @@ pub(crate) fn wire(control: &objc2_app_kit::NSControl, target: &ImagePanelTarget
 /// The bitmap import sheet: file, pixel size, DPI field with the proposal, physical size, issue.
 pub(crate) struct ImageImportSheet {
     pub(crate) sheet: Retained<NSWindow>,
+    surface: FormSurface,
     /// File, pixels, DPI caption, proposal, size, issue.
     pub(crate) labels: [Retained<NSTextField>; 6],
     pub(crate) dpi: Retained<NSTextField>,
@@ -377,6 +342,7 @@ pub(crate) struct ImageImportSheet {
 /// The Adjust Image sheet.
 pub(crate) struct ImageAdjustSheet {
     pub(crate) sheet: Retained<NSWindow>,
+    surface: FormSurface,
     /// Operation title, source size, issue, "berekenen…".
     pub(crate) labels: [Retained<NSTextField>; 4],
     /// Brightness, contrast, gamma, sharpen amount, sharpen radius, crop x, y, width, height.
@@ -410,11 +376,9 @@ pub(crate) fn image_sheets(
     document: DocumentId,
     locale: Locale,
 ) -> ImageSheets {
-    let command_button = |content: &NSView, title: &str, key: CommandKey, frame| {
-        let b = button(mtm, title, controller, sel!(panelButton:), frame);
+    let command_button = |b: &NSButton, key: CommandKey| {
+        point_at(b, controller, sel!(panelButton:));
         b.setTag(menu_tag(MenuItem::Command(key)));
-        content.addSubview(&b);
-        b
     };
     let import = import_sheet(mtm, locale, &command_button);
     let adjust = adjust_sheet(mtm, locale, &command_button);
@@ -497,116 +461,65 @@ impl ImageSheets {
     }
 }
 
-pub(crate) type CommandButton<'a> =
-    dyn Fn(&NSView, &str, CommandKey, objc2_foundation::NSRect) -> Retained<NSButton> + 'a;
+/// Makes a button of a form run `CommandKey` through the window controller's `panelButton:`.
+pub(crate) type CommandButton<'a> = dyn Fn(&NSButton, CommandKey) + 'a;
 
 fn import_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandButton<'_>) -> ImageImportSheet {
-    let t = |text: HostText| host_text(text, locale);
-    let (w, h) = IMPORT_SIZE;
-    let (sheet, content) = sheet_window(mtm, IMPORT_SIZE, t(HostText::ImageImportTitle));
-    let file = heading(mtm, &content, rect(16.0, h - 36.0, w - 32.0, 20.0));
-    let pixels = caption(mtm, &content, "", rect(16.0, h - 60.0, w - 32.0, 18.0));
-    let dpi_caption = caption(mtm, &content, t(HostText::ImageImportDpi), rect(16.0, h - 96.0, 190.0, 22.0));
-    let dpi = input(mtm, &content, t(HostText::ImageImportDpi), rect(212.0, h - 98.0, 120.0, 24.0));
-    let suggestion = note(mtm, &content, rect(16.0, h - 144.0, w - 32.0, 40.0), &NSColor::secondaryLabelColor());
-    let size = caption(mtm, &content, "", rect(16.0, h - 172.0, w - 32.0, 18.0));
-    size.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
-    let issue = note(mtm, &content, rect(16.0, 56.0, w - 32.0, 40.0), &NSColor::systemRedColor());
-    let cancel = command_button(
-        &content,
-        t(HostText::ImageImportCancel),
-        CommandKey::CancelImport,
-        rect(w - 232.0, 12.0, 104.0, 28.0),
-    );
-    cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    let commit = command_button(
-        &content,
-        t(HostText::ImageImportCommit),
-        CommandKey::CommitImport,
-        rect(w - 116.0, 12.0, 104.0, 28.0),
-    );
-    commit.setKeyEquivalent(&NSString::from_str("\r"));
-    sheet.setContentView(Some(&content));
+    let spec = image_import_form(locale);
+    let surface = FormSurface::new(mtm, &[(&spec, IMPORT_WIDTH)]);
+    let sheet = form_sheet(mtm, &surface, host_text(HostText::ImageImportTitle, locale));
+    let cancel = surface.dialog_button(ButtonRole::Cancel);
+    command_button(&cancel, CommandKey::CancelImport);
+    let commit = surface.dialog_button(ButtonRole::Primary);
+    command_button(&commit, CommandKey::CommitImport);
     ImageImportSheet {
         sheet,
-        labels: [file, pixels, dpi_caption, suggestion, size, issue],
-        dpi,
+        labels: [
+            surface.text(import_id::FILE),
+            surface.text(import_id::PIXELS),
+            surface.caption(import_id::DPI),
+            surface.text(import_id::SUGGESTION),
+            surface.text(import_id::SIZE),
+            surface.text(import_id::ISSUE),
+        ],
+        dpi: surface.text(import_id::DPI),
         commit,
         cancel,
         shown: false,
         last_dpi: None,
+        surface,
     }
 }
 
 fn adjust_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandButton<'_>) -> ImageAdjustSheet {
-    let t = |text: HostText| host_text(text, locale);
-    let (w, h) = ADJUST_SIZE;
-    let left = 366.0;
-    let (sheet, content) = sheet_window(mtm, ADJUST_SIZE, t(HostText::ImageAdjustTitle));
-    let mut y = h - 16.0;
-    let title = heading(mtm, &content, rect(16.0, y - 20.0, left, 20.0));
-    y -= 24.0;
-    let source = caption(mtm, &content, "", rect(16.0, y - 18.0, left, 18.0));
-    y -= 28.0;
-    // Five value rows, the gray pop-up, the crop heading and two crop rows of two fields.
-    let y_values = y;
-    let y_crop = y_values - 5.0 * 30.0 - 36.0 - 38.0;
-    let rows: [(HostText, f64, f64, f64, f64, f64); 9] = [
-        (HostText::ImageAdjustBrightness, 16.0, 232.0, 252.0, 114.0, y_values),
-        (HostText::ImageAdjustContrast, 16.0, 232.0, 252.0, 114.0, y_values - 30.0),
-        (HostText::ImageAdjustGamma, 16.0, 232.0, 252.0, 114.0, y_values - 60.0),
-        (HostText::ImageAdjustSharpenAmount, 16.0, 232.0, 252.0, 114.0, y_values - 90.0),
-        (HostText::ImageAdjustSharpenRadius, 16.0, 232.0, 252.0, 114.0, y_values - 120.0),
-        (HostText::ImageAdjustCropX, 16.0, 60.0, 80.0, 80.0, y_crop),
-        (HostText::ImageAdjustCropY, 176.0, 60.0, 240.0, 90.0, y_crop),
-        (HostText::ImageAdjustCropWidth, 16.0, 60.0, 80.0, 80.0, y_crop - 30.0),
-        (HostText::ImageAdjustCropHeight, 176.0, 60.0, 240.0, 90.0, y_crop - 30.0),
-    ];
-    let fields = rows.map(|(name, cx, cw, fx, fw, ry)| {
-        caption(mtm, &content, t(name), rect(cx, ry - 22.0, cw, 22.0));
-        input(mtm, &content, t(name), rect(fx, ry - 24.0, fw, 24.0))
-    });
-    y = y_values - 150.0;
-    caption(mtm, &content, t(HostText::ImageAdjustGray), rect(16.0, y - 22.0, 232.0, 22.0));
-    let gray_titles: Vec<String> = GRAY_METHODS.iter().map(|g| gray_method_name(*g, locale).to_owned()).collect();
-    let gray = popup(mtm, &content, t(HostText::ImageAdjustGray), &gray_titles, rect(252.0, y - 26.0, 150.0, 26.0));
-    y -= 36.0;
-    let crop = caption(mtm, &content, t(HostText::ImageAdjustCrop), rect(16.0, y - 34.0, left, 34.0));
-    crop.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-    crop.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
-    let issue = note(mtm, &content, rect(16.0, 56.0, left, 40.0), &NSColor::systemRedColor());
-    let x = 404.0;
-    let preview_caption = caption(mtm, &content, t(HostText::ImageAdjustPreview), rect(x, h - 36.0, 320.0, 18.0));
-    preview_caption.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
-    let preview = image_view(mtm, &content, t(HostText::ImageAdjustPreview), rect(x, h - 366.0, 320.0, 322.0));
-    let computing = caption(mtm, &content, "", rect(x, h - 392.0, 320.0, 18.0));
-    let cancel = command_button(
-        &content,
-        t(HostText::ImageAdjustCancel),
-        CommandKey::CancelImageAdjust,
-        rect(w - 232.0, 12.0, 104.0, 28.0),
-    );
-    cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    let apply = command_button(
-        &content,
-        t(HostText::ImageAdjustApply),
-        CommandKey::ApplyImageAdjust,
-        rect(w - 116.0, 12.0, 104.0, 28.0),
-    );
-    apply.setKeyEquivalent(&NSString::from_str("\r"));
-    sheet.setContentView(Some(&content));
+    let (left, right) = image_adjust_forms(locale);
+    let surface = FormSurface::new(mtm, &[(&left, ADJUST_WIDTHS.0), (&right, ADJUST_WIDTHS.1)]);
+    let sheet = form_sheet(mtm, &surface, host_text(HostText::ImageAdjustTitle, locale));
+    let cancel = surface.dialog_button(ButtonRole::Cancel);
+    command_button(&cancel, CommandKey::CancelImageAdjust);
+    let apply = surface.dialog_button(ButtonRole::Primary);
+    command_button(&apply, CommandKey::ApplyImageAdjust);
+    // Brightness, contrast, gamma, sharpen amount and radius, then the crop x, y, width and height.
+    let (v, c) = (adjust_id::VALUE, adjust_id::CROP);
+    let fields = [v, v + 1, v + 2, v + 3, v + 4, c, c + 1, c + 2, c + 3].map(|id| surface.text(id));
     ImageAdjustSheet {
         sheet,
-        labels: [title, source, issue, computing],
+        labels: [
+            surface.text(adjust_id::TITLE),
+            surface.text(adjust_id::SOURCE),
+            surface.text(adjust_id::ISSUE),
+            surface.text(adjust_id::COMPUTING),
+        ],
         fields,
-        gray,
-        preview,
+        gray: surface.popup(adjust_id::GRAY),
+        preview: surface.image(adjust_id::PREVIEW),
         apply,
         cancel,
         shown: None,
         last_fields: None,
         last_gray: None,
         last_preview: None,
+        surface,
     }
 }
 
@@ -640,8 +553,15 @@ impl DocWindow {
             dpi_invalid,
             commit_enabled,
         } = panel;
-        for (l, text) in s.labels.iter().zip([&file, &pixels, &dpi_caption, &suggestion, &size, &issue]) {
-            set_text(l, text);
+        // The caption of the resolution row (index 2) is part of the form, with the unit as its
+        // suffix, so the model's `dpi_caption` is not copied over it.
+        let _ = dpi_caption;
+        for (i, (l, text)) in
+            s.labels.iter().zip([&file, &pixels, &dpi_caption, &suggestion, &size, &issue]).enumerate()
+        {
+            if i != 2 {
+                set_text(l, text);
+            }
         }
         // The DPI field is written when the view model's text changed since the last refresh (the
         // proposal, a corrected value); a refused text stays what the user typed.
@@ -651,6 +571,7 @@ impl DocWindow {
         }
         mark_field(&s.dpi, dpi_invalid && !issue.is_empty());
         s.commit.setEnabled(commit_enabled);
+        s.surface.fit_window(&s.sheet);
         if !s.shown {
             s.shown = begin_sheet(&self.window, &s.sheet, "showing the bitmap import sheet");
         }
@@ -701,6 +622,7 @@ impl DocWindow {
         s.last_gray = Some(gray_index);
         show_bitmap(&s.preview, &mut s.last_preview, preview.as_ref());
         s.apply.setEnabled(apply_enabled);
+        s.surface.fit_window(&s.sheet);
         if s.shown.is_none() {
             s.shown = Some(operation);
             if !begin_sheet(&self.window, &s.sheet, "showing the Adjust Image sheet") {

@@ -16,6 +16,9 @@ pub(crate) mod files_ui;
 // The form builder calls `setTarget` on the controls it wires (LF5).
 #[allow(unsafe_code)]
 pub mod form;
+// The sheets and panels that hold built forms create windows and point controls at targets (LF6b).
+#[allow(unsafe_code)]
+pub(crate) mod form_surface;
 // `define_class!` and `msg_send!` need unsafe (the golf-5 panels have their own small target object).
 #[allow(unsafe_code)]
 pub(crate) mod g5;

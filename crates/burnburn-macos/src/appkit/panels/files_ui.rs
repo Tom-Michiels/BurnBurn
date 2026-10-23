@@ -19,9 +19,9 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSButton, NSControl, NSControlStateValueMixed, NSControlStateValueOff, NSControlStateValueOn, NSModalResponse,
-    NSOpenPanel, NSPopUpButton, NSSavePanel, NSScrollView, NSTextView, NSView, NSWindow,
+    NSOpenPanel, NSPopUpButton, NSSavePanel, NSTextView, NSView, NSWindow,
 };
-use objc2_foundation::{NSArray, NSRect, NSString};
+use objc2_foundation::{NSArray, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
@@ -126,14 +126,6 @@ pub(crate) fn set_popup(popup: &NSPopUpButton, model: &Popup, select: bool) {
     }
 }
 
-/// A two-state check box.
-pub(crate) fn checkbox(mtm: MainThreadMarker, title: &str, frame: NSRect) -> Retained<NSButton> {
-    // SAFETY: no target and no action yet: clicking does nothing until `FilesTarget::wire`.
-    let b = unsafe { NSButton::checkboxWithTitle_target_action(&NSString::from_str(title), None, None, mtm) };
-    b.setFrame(frame);
-    b
-}
-
 pub(crate) fn set_check(button: &NSButton, state: CheckState) {
     let wanted = match state {
         CheckState::Off => NSControlStateValueOff,
@@ -145,31 +137,8 @@ pub(crate) fn set_check(button: &NSButton, state: CheckState) {
     }
 }
 
-/// A check box that can show a mixed state (some of a kind chosen). A click never decides the
-/// state: the intent follows the view model, and the next refresh shows the result.
-pub(crate) fn tri_state_checkbox(mtm: MainThreadMarker, frame: NSRect) -> Retained<NSButton> {
-    let b = checkbox(mtm, "", frame);
-    b.setAllowsMixedState(true);
-    b
-}
-
 pub(crate) fn is_on(button: &NSButton) -> bool {
     button.state() == NSControlStateValueOn
-}
-
-/// A read-only multi-line text with a scroll bar, for reports.
-pub(crate) fn report_view(mtm: MainThreadMarker, content: &NSView, frame: NSRect) -> Retained<NSTextView> {
-    let scroll: Retained<NSScrollView> = NSTextView::scrollableTextView(mtm);
-    scroll.setFrame(frame);
-    scroll.setHasVerticalScroller(true);
-    let text = scroll
-        .documentView()
-        .and_then(|v| Retained::downcast::<NSTextView>(v).ok())
-        .unwrap_or_else(|| NSTextView::initWithFrame(NSTextView::alloc(mtm), frame));
-    text.setEditable(false);
-    text.setSelectable(true);
-    content.addSubview(&scroll);
-    text
 }
 
 pub(crate) fn set_report(view: &NSTextView, text: &str) {

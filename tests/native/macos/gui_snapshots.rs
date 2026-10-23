@@ -140,12 +140,98 @@ mod snapshots {
             }
             shot.new_windows(&s, doc, step);
         }
+        shot.file_sheets(&s, doc);
         shot.document(&s, doc, "after-compile-sketch")?;
         println!("    {} images in {}", shot.count, shot.dir.display());
         Ok(())
     }
 
     impl Shooter {
+        /// The import, bitmap, Adjust Image, tracer and bundle-import sheets (LF6b): each is opened
+        /// the way the user does (a chosen file), shot, and closed through its own command.
+        fn file_sheets(&mut self, s: &Session, doc: DocumentId) {
+            use burnburn_macos::adapter::NativeEvent;
+            let close = |command: CommandKey| {
+                s.app.dispatch(UiIntent::Invoke { document: Some(doc), command });
+                s.pump(0.4);
+            };
+            let svg = s.dir.join("vierkant.svg");
+            let svg_text = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40mm\" height=\"20mm\" \
+                viewBox=\"0 0 40 20\"><rect width=\"40\" height=\"20\" fill=\"none\" stroke=\"black\"/></svg>";
+            if std::fs::write(&svg, svg_text).is_ok() {
+                s.app.native(NativeEvent::ImportFileChosen { document: doc, path: Some(svg) });
+                self.new_windows_keep(s, doc, "import-svg");
+                close(CommandKey::CancelImport);
+            }
+            let pixels: Vec<u8> = (0..40).flat_map(|_| (0..60).map(|x| if x < 30 { 0u8 } else { 255 })).collect();
+            let Ok(png) = burnburn_image::encode_png_gray8(60, 40, &pixels) else { return };
+            let path = s.dir.join("twee-tinten.png");
+            if std::fs::write(&path, png).is_err() {
+                return;
+            }
+            s.app.native(NativeEvent::ImportFileChosen { document: doc, path: Some(path.clone()) });
+            let _ = s.wait(5.0, "the bitmap import sheet", || {
+                s.app.with_window(doc, |w| w.image_import_sheet.is_some()).unwrap_or(false)
+            });
+            if let Some(dpi) = s.app.with_window(doc, |w| w.image_dpi.retain()) {
+                dpi.setStringValue(&objc2_foundation::NSString::from_str("254"));
+                // SAFETY: the field's own action to its own target, as Return sends it.
+                unsafe { dpi.sendAction_to(dpi.action(), dpi.target().as_deref()) };
+                s.pump(0.4);
+            }
+            self.new_windows_keep(s, doc, "image-import");
+            // Import it, so the Adjust Image sheet and the tracer have a picture.
+            if let Some(commit) = s.app.with_window(doc, |w| w.image_commit.retain()) {
+                // SAFETY: clicking our own button with no sender, as the user does.
+                unsafe { commit.performClick(None) };
+            }
+            let _ = s.wait(3.0, "the sheet to close", || {
+                s.app.with_window(doc, |w| w.window.attachedSheet().is_none()).unwrap_or(false)
+            });
+            s.pump(0.5);
+            if let Some(id) = s.doc(doc).and_then(|d| d.objects.last().map(|o| o.id)) {
+                s.app.dispatch(UiIntent::Select {
+                    document: doc,
+                    ids: vec![id],
+                    mode: burnburn_presentation::SelectMode::Replace,
+                });
+                s.pump(0.3);
+            }
+            let adjust = s.menu(MenuItem::Command(CommandKey::AdjustImage));
+            if let Err(e) = &adjust {
+                println!("    image-adjust: {e}");
+            }
+            if adjust.is_ok() {
+                let _ = s.wait(5.0, "the first preview", || {
+                    s.app.with_window(doc, |w| w.adjust_preview.image().is_some()).unwrap_or(false)
+                });
+                self.new_windows_keep(s, doc, "image-adjust");
+                close(CommandKey::CancelImageAdjust);
+            }
+            s.app.native(NativeEvent::TraceFileChosen { document: doc, path: Some(path) });
+            let _ = s.wait(5.0, "the tracer sheet", || {
+                s.app.with_window(doc, |w| w.tracer_sheet.is_some()).unwrap_or(false)
+            });
+            self.new_windows_keep(s, doc, "tracer");
+            close(CommandKey::CloseTracer);
+        }
+
+        /// Like `new_windows`, but leaves the windows up: the caller closes them by their command.
+        fn new_windows_keep(&mut self, s: &Session, doc: DocumentId, step: &str) {
+            s.pump(0.6);
+            let main = s.app.window(doc);
+            let app = NSApplication::sharedApplication(s.mtm);
+            let mut seen = HashSet::new();
+            for w in app.windows().iter() {
+                if !w.isVisible() || main.as_deref().is_some_and(|m| ptr::eq(m, &*w)) {
+                    continue;
+                }
+                if seen.insert(w.windowNumber()) {
+                    self.window(s, &w, step, None);
+                }
+            }
+        }
+
         fn path(&mut self, step: &str, title: &str) -> PathBuf {
             self.count += 1;
             let clean: String = title

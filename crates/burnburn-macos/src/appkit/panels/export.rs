@@ -3,22 +3,24 @@
 //! lost need the "Ik begrijp dat dit verloren gaat" check box before Exporteer… works.
 //!
 //! The controls call the intent builders in `crate::panels_files`; every option change sends the
-//! whole form and presentation answers with the new report.
+//! whole form and presentation answers with the new report. The sheet is a form built from
+//! `files_form::export_form` (LF6b); the options a format does not have are hidden rows.
 
 use std::rc::{Rc, Weak};
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::files_form::{export as id, export_form};
 use burnburn_presentation::{AppViewModel, ExportField};
 use burnburn_types::DocumentId;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSButton, NSColor, NSPopUpButton, NSTextField, NSTextView, NSView, NSWindow};
+use objc2_app_kit::{NSButton, NSPopUpButton, NSTextField, NSTextView, NSWindow};
 use objc2_foundation::NSString;
 
-use super::files_ui::{
-    FilesTarget, Link, checkbox, is_on, report_view, save_file, set_check, set_popup, set_report, unwire,
-};
-use super::image::{begin_sheet, caption, end_sheet, heading, input, mark_field, note, popup, sheet_window};
-use super::widgets::{push_button, rect, set_text};
+use super::files_ui::{FilesTarget, Link, is_on, save_file, set_check, set_popup, set_report, unwire};
+use super::form_surface::{FormSurface, form_sheet};
+use super::image::{begin_sheet, end_sheet, mark_field};
+use super::widgets::set_text;
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -28,25 +30,21 @@ use crate::panels_files::{
     export_panel, export_write_intent,
 };
 
-const SIZE: (f64, f64) = (540.0, 640.0);
+const WIDTH: f64 = 540.0;
 
 pub(crate) struct ExportSheet {
     pub(crate) sheet: Retained<NSWindow>,
+    surface: FormSurface,
     pub(crate) shown: bool,
     pub(crate) title: Retained<NSTextField>,
     pub(crate) objects: Retained<NSTextField>,
     pub(crate) selection_only: Retained<NSButton>,
-    pub(crate) unit_label: Retained<NSTextField>,
     pub(crate) unit: Retained<NSPopUpButton>,
     pub(crate) layers: Retained<NSPopUpButton>,
-    pub(crate) curves_label: Retained<NSTextField>,
     pub(crate) curves: Retained<NSPopUpButton>,
     pub(crate) use_colors: Retained<NSButton>,
-    pub(crate) stroke_label: Retained<NSTextField>,
     pub(crate) stroke: Retained<NSTextField>,
-    pub(crate) decimals_label: Retained<NSTextField>,
     pub(crate) decimals: Retained<NSTextField>,
-    pub(crate) tolerance_label: Retained<NSTextField>,
     pub(crate) tolerance: Retained<NSTextField>,
     pub(crate) losses: Retained<NSTextView>,
     pub(crate) acknowledge: Retained<NSButton>,
@@ -89,75 +87,28 @@ pub(crate) fn export_sheet(
     document: DocumentId,
     locale: Locale,
 ) -> ExportSheet {
-    let t = |text: T| files_text(text, locale);
-    let (w, h) = SIZE;
-    let (sheet, content) = sheet_window(mtm, SIZE, t(T::ExportSvgTitle));
-    let inner = w - 32.0;
-    let mut y = h - 16.0;
-    let title = heading(mtm, &content, rect(16.0, y - 20.0, inner, 20.0));
-    y -= 28.0;
-    let objects = caption(mtm, &content, "", rect(16.0, y - 18.0, inner, 18.0));
-    y -= 28.0;
-    let selection_only = checkbox(mtm, t(T::CheckSelectionOnly), rect(16.0, y - 20.0, inner, 20.0));
-    content.addSubview(&selection_only);
-    y -= 30.0;
-    let unit_label = caption(mtm, &content, t(T::LabelUnit), rect(16.0, y - 22.0, 110.0, 20.0));
-    let unit = popup(mtm, &content, t(T::LabelUnit), &[], rect(130.0, y - 24.0, inner - 114.0, 26.0));
-    y -= 32.0;
-    caption(mtm, &content, t(T::LabelLayers), rect(16.0, y - 22.0, 110.0, 20.0));
-    let layers = popup(mtm, &content, t(T::LabelLayers), &[], rect(130.0, y - 24.0, inner - 114.0, 26.0));
-    y -= 32.0;
-    let curves_label = caption(mtm, &content, t(T::LabelCurves), rect(16.0, y - 22.0, 110.0, 20.0));
-    let curves = popup(mtm, &content, t(T::LabelCurves), &[], rect(130.0, y - 24.0, inner - 114.0, 26.0));
-    y -= 32.0;
-    let stroke_label = caption(mtm, &content, t(T::LabelStroke), rect(16.0, y - 22.0, 150.0, 20.0));
-    let stroke = input(mtm, &content, t(T::LabelStroke), rect(170.0, y - 24.0, 90.0, 24.0));
-    let decimals_label = caption(mtm, &content, t(T::LabelDecimals), rect(280.0, y - 22.0, 90.0, 20.0));
-    let decimals = input(mtm, &content, t(T::LabelDecimals), rect(374.0, y - 24.0, 60.0, 24.0));
-    decimals.setPlaceholderString(Some(&NSString::from_str(t(T::DecimalsHint))));
-    let tolerance_label = caption(mtm, &content, t(T::LabelTolerance), rect(16.0, y - 22.0, 150.0, 20.0));
-    let tolerance = input(mtm, &content, t(T::LabelTolerance), rect(170.0, y - 24.0, 90.0, 24.0));
-    y -= 32.0;
-    let use_colors = checkbox(mtm, t(T::CheckUseColors), rect(16.0, y - 20.0, inner, 20.0));
-    content.addSubview(&use_colors);
-    y -= 32.0;
-    let losses = report_view(mtm, &content, rect(16.0, 112.0, inner, y - 112.0));
-    let acknowledge = checkbox(mtm, t(T::ExportAcknowledge), rect(16.0, 84.0, inner, 20.0));
-    content.addSubview(&acknowledge);
-    let status = note(mtm, &content, rect(16.0, 48.0, inner, 32.0), &NSColor::secondaryLabelColor());
-    let primary = push_button(mtm, t(T::ButtonExport));
-    primary.setFrame(rect(w - 128.0, 12.0, 112.0, 28.0));
-    primary.setKeyEquivalent(&NSString::from_str("\r"));
-    content.addSubview(&primary);
-    let close = push_button(mtm, t(T::ButtonClose));
-    close.setFrame(rect(w - 232.0, 12.0, 96.0, 28.0));
-    close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    content.addSubview(&close);
-    sheet.setContentView(Some(&content));
-
+    let spec = export_form(locale);
+    let surface = FormSurface::new(mtm, &[(&spec, WIDTH)]);
+    let sheet = form_sheet(mtm, &surface, files_text(T::ExportSvgTitle, locale));
     let this = ExportSheet {
         sheet,
         shown: false,
-        title,
-        objects,
-        selection_only,
-        unit_label,
-        unit,
-        layers,
-        curves_label,
-        curves,
-        use_colors,
-        stroke_label,
-        stroke,
-        decimals_label,
-        decimals,
-        tolerance_label,
-        tolerance,
-        losses,
-        acknowledge,
-        status,
-        primary,
-        close,
+        title: surface.text(id::TITLE),
+        objects: surface.text(id::OBJECTS),
+        selection_only: surface.button(id::SELECTION_ONLY),
+        unit: surface.popup(id::UNIT),
+        layers: surface.popup(id::LAYERS),
+        curves: surface.popup(id::CURVES),
+        use_colors: surface.button(id::USE_COLORS),
+        stroke: surface.text(id::STROKE),
+        decimals: surface.text(id::DECIMALS),
+        tolerance: surface.text(id::TOLERANCE),
+        losses: surface.report(id::LOSSES),
+        acknowledge: surface.button(id::ACKNOWLEDGE),
+        status: surface.text(id::STATUS),
+        primary: surface.dialog_button(ButtonRole::Primary),
+        close: surface.dialog_button(ButtonRole::Cancel),
+        surface,
     };
     let link = Rc::new(Link { app, document });
     let controls = Rc::new(Controls {
@@ -277,7 +228,7 @@ impl DocWindow {
             }
             return;
         };
-        let e = &self.files.export;
+        let e = &mut self.files.export;
         e.sheet.setTitle(&NSString::from_str(&model.title));
         set_text(&e.title, &model.title);
         set_text(&e.objects, &model.objects);
@@ -298,27 +249,22 @@ impl DocWindow {
                 field.setStringValue(&NSString::from_str(text));
             }
         }
-        for v in [&e.stroke_label as &NSView, &e.stroke, &e.decimals_label, &e.decimals] {
-            v.setHidden(!model.show_stroke);
-        }
-        for v in [&e.curves_label as &NSView, &e.curves] {
-            v.setHidden(!model.show_curves);
-        }
-        for v in [&e.tolerance_label as &NSView, &e.tolerance] {
-            v.setHidden(!model.show_tolerance);
-        }
-        let _ = &e.unit_label;
+        e.surface.set_hidden(id::STROKE, !model.show_stroke);
+        e.surface.set_hidden(id::DECIMALS, !model.show_stroke);
+        e.surface.set_hidden(id::CURVES, !model.show_curves);
+        e.surface.set_hidden(id::TOLERANCE, !model.show_tolerance);
         set_report(&e.losses, &model.losses);
-        e.acknowledge.setHidden(!model.show_acknowledge);
+        e.surface.set_hidden(id::ACKNOWLEDGE, !model.show_acknowledge);
         if e.acknowledge.title().to_string() != model.acknowledge_title {
             e.acknowledge.setTitle(&NSString::from_str(&model.acknowledge_title));
         }
         set_check(&e.acknowledge, if model.acknowledged { CheckState::On } else { CheckState::Off });
         set_text(&e.status, &model.status);
         e.primary.setEnabled(model.can_export);
+        e.surface.fit_window(&e.sheet);
         if !e.shown {
-            self.files.export.shown = true;
-            begin_sheet(&self.window, &self.files.export.sheet, "showing the export sheet");
+            e.shown = true;
+            begin_sheet(&self.window, &e.sheet, "showing the export sheet");
         }
     }
 }

@@ -383,8 +383,7 @@ mod invariants {
         if row.len() != 3 {
             found.push(format!("form builder: the button row answers {} buttons, expected 3", row.len()));
         } else {
-            let frames: Vec<NSRect> =
-                row.iter().map(|b| b.convertRect_toView(b.bounds(), Some(form.root()))).collect();
+            let frames: Vec<NSRect> = row.iter().map(|b| b.convertRect_toView(b.bounds(), Some(form.root()))).collect();
             if frames.windows(2).any(|w| w[0].origin.x + w[0].size.width > w[1].origin.x + TOLERANCE) {
                 found.push(format!("form builder: the buttons of a row overlap or run right to left: {frames:?}"));
             }
@@ -766,13 +765,14 @@ mod invariants {
     /// them to the form builder and empties this list.
     const BASELINE_PENDING: &[&str] = &[
         "document",
-        "sheet",
+        // The sheets of LF6a (cut-settings) and LF6c (geometry) stay; the file, import, image and
+        // tracer sheets (LF6b) are migrated and no longer listed.
+        "sheet cut-settings",
+        "sheet geometry",
         "cut-settings",
         "preferences",
         "machine-hub",
         "laser",
-        "material-library",
-        "art-library",
         "schikken",
         "offset",
         "structure",
@@ -789,7 +789,6 @@ mod invariants {
         "cam-feeder",
         "round-corners",
         "barcode",
-        "export-svg",
     ];
 
     /// The y of the first text baseline of `view` in its parent's own coordinates.

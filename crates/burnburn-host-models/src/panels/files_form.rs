@@ -496,7 +496,15 @@ pub fn image_adjust_forms(locale: Locale) -> (FormSpec, FormSpec) {
         HostText::ImageAdjustCropWidth,
         HostText::ImageAdjustCropHeight,
     ];
-    let mut crop_rows = vec![note_row(image_adjust::CROP_NOTE, 2, StatusTone::Neutral, false)];
+    // The explanation of the crop is a fixed text under the heading.
+    let mut crop_note = note_row(image_adjust::CROP_NOTE, 2, StatusTone::Neutral, false);
+    crop_note.control = Control::Note {
+        value: h(HostText::ImageAdjustCrop).to_owned(),
+        lines: 2,
+        tone: StatusTone::Neutral,
+        strong: false,
+    };
+    let mut crop_rows = vec![crop_note];
     crop_rows.extend(
         crop.iter()
             .enumerate()
@@ -666,15 +674,17 @@ mod tests {
     fn the_bundle_sheet_has_four_kinds_and_room_for_the_profiles_and_two_sections_the_host_swaps() {
         let spec = bundle_form(Locale::Nl);
         for i in 0..4 {
-            assert!(
-                spec.row(bundle::KIND + i).is_some_and(|r| matches!(r.control, Control::Check { .. })),
-                "kind {i}"
-            );
+            assert!(spec.row(bundle::KIND + i).is_some_and(|r| matches!(r.control, Control::Check { .. })), "kind {i}");
         }
         for i in 0..bundle::PROFILE_SLOTS as u32 {
             assert!(spec.row(bundle::PROFILE + i).is_some(), "profile {i}");
         }
-        assert!(spec.row(bundle::KIND).is_some_and(|_| spec.sections[bundle::EXPORT_SECTION].rows.iter().any(|r| r.id == FormId(bundle::KIND))));
+        assert!(
+            spec.row(bundle::KIND).is_some_and(|_| spec.sections[bundle::EXPORT_SECTION]
+                .rows
+                .iter()
+                .any(|r| r.id == FormId(bundle::KIND)))
+        );
         assert!(spec.sections[bundle::IMPORT_SECTION].rows.iter().any(|r| r.id == FormId(bundle::PREVIEW)));
         assert_eq!(roles(&spec), vec![ButtonRole::Cancel, ButtonRole::Primary]);
     }
@@ -704,7 +714,10 @@ mod tests {
             let row = spec.row(base).expect("actions row");
             assert!(matches!(&row.control, Control::Actions { titles } if titles.len() == n), "{base}");
         }
-        assert!(spec.row(art::SCALE_UNIT).is_some_and(|r| matches!(&r.control, Control::Choice { options, .. } if options.len() == 3)));
+        assert!(
+            spec.row(art::SCALE_UNIT)
+                .is_some_and(|r| matches!(&r.control, Control::Choice { options, .. } if options.len() == 3))
+        );
         assert_eq!(roles(&spec), vec![ButtonRole::Cancel]);
     }
 
@@ -735,6 +748,11 @@ mod tests {
         for i in 0..4 {
             assert_eq!(suffix(&left, image_adjust::CROP + i), Some("px"), "crop {i}");
         }
+        assert!(
+            matches!(left.row(image_adjust::CROP_NOTE).map(|r| &r.control),
+                Some(Control::Note { value, .. }) if value.starts_with("Uitsnede in bronpixels")),
+            "the crop section explains itself"
+        );
         assert!(roles(&left).is_empty(), "the buttons are in the right form");
         assert_eq!(roles(&right), vec![ButtonRole::Cancel, ButtonRole::Primary]);
         assert!(matches!(
@@ -752,7 +770,11 @@ mod tests {
         assert_eq!(left.row(tracer::THRESHOLD_VALUE).and_then(|r| r.help.as_deref()), Some("0…255"));
         assert!(roles(&left).is_empty());
         assert_eq!(roles(&right), vec![ButtonRole::Cancel, ButtonRole::Primary]);
-        assert!(right.row(tracer::APPLY_LINKED).is_some_and(|r| matches!(&r.control, Control::Actions { titles } if titles.len() == 1)));
+        assert!(
+            right
+                .row(tracer::APPLY_LINKED)
+                .is_some_and(|r| matches!(&r.control, Control::Actions { titles } if titles.len() == 1))
+        );
         assert_eq!(right.buttons.primary.as_ref().map(|b| b.id), Some(FormId(tracer::APPLY)));
     }
 }

@@ -4,25 +4,26 @@
 //!
 //! The panel copies `panels_files::art_panel` into widgets; every control calls one of the intent
 //! builders next to it. Dragging a thumbnail onto the canvas is not part of this panel yet: the
-//! Plaats button inserts at the centre of the view.
+//! Plaats button inserts at the centre of the view. The widgets come from a form
+//! (`files_form::art_form`, LF6b): sections with a heading, the buttons of a section in one row.
 
 #![allow(unsafe_code)] // a panel is owned by its Retained (SAFETY below)
 
 use std::rc::{Rc, Weak};
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::files_form::{art as id, art_form};
 use burnburn_presentation::AppViewModel;
 use burnburn_types::DocumentId;
+use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2::{MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{
-    NSBackingStoreType, NSButton, NSColor, NSImageView, NSPanel, NSPopUpButton, NSTextField, NSView, NSWindow,
-    NSWindowStyleMask,
-};
+use objc2_app_kit::{NSAccessibility, NSButton, NSImageView, NSPanel, NSPopUpButton, NSTextField, NSWindow};
 use objc2_foundation::NSString;
 
 use super::files_ui::{FilesTarget, Link, open_file, set_popup, unwire};
-use super::image::{caption, image_view, input, note, popup, show_bitmap};
-use super::widgets::{push_button, rect, set_text};
+use super::form_surface::{FormSurface, form_panel};
+use super::image::show_bitmap;
+use super::widgets::set_text;
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -31,15 +32,14 @@ use crate::panels_files::{
     ART_FILE_TYPES, art_add_file_intents, art_add_group_intent, art_add_selection_intents, art_group_intent,
     art_item_intent, art_move_item_intent, art_panel, art_place_intent, art_remove_group_intent,
     art_remove_item_intent, art_rename_group_intent, art_rename_item_intent, art_retry_intents, art_search_intent,
-    art_unit_titles,
 };
 use crate::panels_image::BitmapImage;
 
 pub(crate) const WIDTH: f64 = 500.0;
-pub(crate) const HEIGHT: f64 = 614.0;
 
 pub(crate) struct ArtSection {
     pub(crate) panel: Retained<NSPanel>,
+    surface: FormSurface,
     pub(crate) shown: bool,
     pub(crate) status: Retained<NSTextField>,
     pub(crate) groups: Retained<NSPopUpButton>,
@@ -64,13 +64,6 @@ pub(crate) struct ArtSection {
     shown_thumbnail: Option<BitmapImage>,
 }
 
-fn button_at(mtm: MainThreadMarker, content: &NSView, title: &str, x: f64, y: f64, w: f64) -> Retained<NSButton> {
-    let b = push_button(mtm, title);
-    b.setFrame(rect(x, y, w, 28.0));
-    content.addSubview(&b);
-    b
-}
-
 pub(crate) fn art_section(
     mtm: MainThreadMarker,
     window: Retained<NSWindow>,
@@ -79,88 +72,36 @@ pub(crate) fn art_section(
     document: DocumentId,
     locale: Locale,
 ) -> ArtSection {
-    let t = |text: T| files_text(text, locale);
-    let style = NSWindowStyleMask::Titled | NSWindowStyleMask::UtilityWindow;
-    let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
-        NSPanel::alloc(mtm),
-        rect(0.0, 0.0, WIDTH, HEIGHT),
-        style,
-        NSBackingStoreType::Buffered,
-        false,
-    );
-    // SAFETY: ownership stays with this Retained; AppKit must not also release on close.
-    unsafe { panel.setReleasedWhenClosed(false) };
-    panel.setFloatingPanel(true);
-    panel.setHidesOnDeactivate(true);
-    panel.setTitle(&NSString::from_str(t(T::ArtTitle)));
-    let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, WIDTH, HEIGHT));
-    let inner = WIDTH - 24.0;
-    let mut y = HEIGHT - 12.0;
-
-    let status = note(mtm, &content, rect(12.0, y - 36.0, inner, 36.0), &NSColor::secondaryLabelColor());
-    y -= 44.0;
-    caption(mtm, &content, t(T::LabelGroup), rect(12.0, y - 22.0, 60.0, 20.0));
-    let groups = popup(mtm, &content, t(T::LabelGroup), &[], rect(76.0, y - 24.0, inner - 64.0, 26.0));
-    y -= 34.0;
-    caption(mtm, &content, t(T::LabelSearch), rect(12.0, y - 22.0, 60.0, 20.0));
-    let search = input(mtm, &content, t(T::LabelSearch), rect(76.0, y - 24.0, inner - 64.0, 24.0));
-    y -= 34.0;
-    caption(mtm, &content, t(T::LabelItems), rect(12.0, y - 22.0, inner, 20.0));
-    y -= 26.0;
-    let items = popup(mtm, &content, t(T::LabelItems), &[], rect(12.0, y - 24.0, inner, 26.0));
-    y -= 36.0;
-    let thumbnail = image_view(mtm, &content, t(T::ArtTitle), rect(12.0, y - 128.0, 128.0, 128.0));
-    let detail = note(mtm, &content, rect(152.0, y - 28.0, inner - 140.0, 24.0), &NSColor::labelColor());
-    let place = button_at(mtm, &content, t(T::ButtonPlace), 152.0, y - 64.0, inner - 140.0);
-    y -= 140.0;
-    let scale_prompt = note(mtm, &content, rect(12.0, y - 36.0, inner, 36.0), &NSColor::systemOrangeColor());
-    y -= 40.0;
-    let scale_unit = popup(mtm, &content, t(T::ArtNeedsScale), &art_unit_titles(), rect(12.0, y - 24.0, 110.0, 26.0));
-    let scale_retry = button_at(mtm, &content, t(T::ButtonAddFile), 130.0, y - 26.0, 160.0);
-    y -= 40.0;
-    caption(mtm, &content, t(T::ArtNameHint), rect(12.0, y - 22.0, inner, 20.0));
-    y -= 26.0;
-    let name = input(mtm, &content, t(T::ArtNameHint), rect(12.0, y - 24.0, inner, 24.0));
-    y -= 36.0;
-    let bw = (inner - 6.0) / 2.0;
-    let add_file = button_at(mtm, &content, t(T::ButtonAddFile), 12.0, y - 28.0, bw);
-    let add_selection = button_at(mtm, &content, t(T::ButtonAddSelection), 12.0 + bw + 6.0, y - 28.0, bw);
-    y -= 34.0;
-    let bw3 = (inner - 12.0) / 3.0;
-    let new_group = button_at(mtm, &content, t(T::ButtonNewGroup), 12.0, y - 28.0, bw3);
-    let rename_group = button_at(mtm, &content, t(T::ButtonRenameGroup), 12.0 + bw3 + 6.0, y - 28.0, bw3);
-    let remove_group = button_at(mtm, &content, t(T::ButtonRemoveGroup), 12.0 + 2.0 * (bw3 + 6.0), y - 28.0, bw3);
-    y -= 34.0;
-    let rename_item = button_at(mtm, &content, t(T::ButtonRenameItem), 12.0, y - 28.0, bw3);
-    let move_item = button_at(mtm, &content, t(T::ButtonMoveItem), 12.0 + bw3 + 6.0, y - 28.0, bw3);
-    let remove_item = button_at(mtm, &content, t(T::ButtonRemoveItem), 12.0 + 2.0 * (bw3 + 6.0), y - 28.0, bw3);
-    let close = button_at(mtm, &content, t(T::ButtonClose), WIDTH - 12.0 - 90.0, 12.0, 90.0);
-    panel.setContentView(Some(&content));
-
+    let spec = art_form(locale);
+    let surface = FormSurface::new(mtm, &[(&spec, WIDTH)]);
+    let panel = form_panel(mtm, &surface, files_text(T::ArtTitle, locale));
+    let thumbnail = surface.image(id::THUMBNAIL);
+    thumbnail.setAccessibilityLabel(Some(&NSString::from_str(files_text(T::ArtTitle, locale))));
     let section = ArtSection {
         panel,
         shown: false,
-        status,
-        groups,
-        search,
-        items,
+        status: surface.text(id::STATUS),
+        groups: surface.popup(id::GROUPS),
+        search: surface.text(id::SEARCH),
+        items: surface.popup(id::ITEMS),
         thumbnail,
-        detail,
-        place,
-        scale_prompt,
-        scale_unit,
-        scale_retry,
-        name,
-        add_file,
-        add_selection,
-        new_group,
-        rename_group,
-        remove_group,
-        rename_item,
-        move_item,
-        remove_item,
-        close,
+        detail: surface.text(id::DETAIL),
+        place: surface.button(id::PLACE),
+        scale_prompt: surface.text(id::SCALE_PROMPT),
+        scale_unit: surface.popup(id::SCALE_UNIT),
+        scale_retry: surface.button(id::SCALE_RETRY),
+        name: surface.text(id::NAME),
+        add_file: surface.button(id::ADD),
+        add_selection: surface.button(id::ADD + 1),
+        new_group: surface.button(id::GROUP_ACTIONS),
+        rename_group: surface.button(id::GROUP_ACTIONS + 1),
+        remove_group: surface.button(id::GROUP_ACTIONS + 2),
+        rename_item: surface.button(id::ITEM_ACTIONS),
+        move_item: surface.button(id::ITEM_ACTIONS + 1),
+        remove_item: surface.button(id::ITEM_ACTIONS + 2),
+        close: surface.dialog_button(ButtonRole::Cancel),
         shown_thumbnail: None,
+        surface,
     };
     section.wire(mtm, window, target, app, document, locale);
     section
@@ -383,9 +324,10 @@ impl DocWindow {
         a.remove_group.setEnabled(model.can_edit_group);
         let waiting = model.scale_prompt.is_some();
         set_text(&a.scale_prompt, model.scale_prompt.as_deref().unwrap_or(""));
-        a.scale_prompt.setHidden(!waiting);
-        a.scale_unit.setHidden(!waiting);
-        a.scale_retry.setHidden(!waiting);
+        a.surface.set_hidden(id::SCALE_PROMPT, !waiting);
+        a.surface.set_hidden(id::SCALE_UNIT, !waiting);
+        a.surface.set_hidden(id::SCALE_RETRY, !waiting);
+        a.surface.fit_window(&a.panel);
         if !a.shown {
             a.shown = true;
             let panel = a.panel.clone();

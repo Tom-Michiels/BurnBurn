@@ -16,10 +16,10 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
-    NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
+    NSAccessibility, NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
     NSGridCellPlacement, NSGridRow, NSGridRowAlignment, NSGridView, NSImageFrameStyle, NSImageScaling, NSImageView,
-    NSLayoutAttribute, NSLayoutConstraint, NSLayoutRelation, NSPopUpButton, NSScrollView, NSTextAlignment,
-    NSTextField, NSTextView, NSView,
+    NSLayoutAttribute, NSLayoutConstraint, NSLayoutRelation, NSPopUpButton, NSScrollView, NSTextAlignment, NSTextField,
+    NSTextView, NSView,
 };
 use objc2_foundation::{NSArray, NSRange, NSSize, NSString};
 
@@ -154,6 +154,24 @@ fn at_least_high(view: &NSView, height: f64) {
     constraint.setActive(true);
 }
 
+/// Asks `view` to be exactly `width` points wide.
+#[allow(unsafe_code)]
+fn exactly_wide(view: &NSView, width: f64) {
+    // SAFETY: as in `at_least_high`.
+    let constraint = unsafe {
+        NSLayoutConstraint::constraintWithItem_attribute_relatedBy_toItem_attribute_multiplier_constant(
+            view.as_ref(),
+            NSLayoutAttribute::Width,
+            NSLayoutRelation::Equal,
+            None,
+            NSLayoutAttribute::NotAnAttribute,
+            1.0,
+            width,
+        )
+    };
+    constraint.setActive(true);
+}
+
 /// Asks `view` to be exactly `width` by `height` points.
 #[allow(unsafe_code)]
 fn exactly_sized(view: &NSView, width: f64, height: f64) {
@@ -235,7 +253,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         .sections
         .iter()
         .flat_map(|s| &s.rows)
-        .filter(|r| !matches!(r.control, Control::Check { .. }))
+        .filter(|r| !matches!(r.control, Control::Check { .. }) && !r.label.is_empty())
         .map(|r| caption_probe(&r.label))
         .fold(0.0_f64, f64::max)
         .min(inner * CAPTION_SHARE);
@@ -265,6 +283,17 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     let mut headings = Vec::new();
     let mut reasons = Vec::new();
     let empty = || NSGridCell::emptyContentView(mtm);
+    // A row that runs under the captions is one merged cell. Its content lives in the first cell of
+    // the range, and a hidden column hides its cells' content: without captions the first column
+    // is hidden, so the range starts at the control column then.
+    let first_col: usize = if has_captions { 0 } else { 1 };
+    let merged_row = |view: &NSView| {
+        let (a, b) = (empty(), empty());
+        let views: [&NSView; 3] = if first_col == 0 { [view, &*a, &*b] } else { [&*a, view, &*b] };
+        let r = grid.addRowWithViews(&NSArray::from_slice(&views));
+        r.mergeCellsInRange(NSRange::new(first_col, 3 - first_col));
+        r
+    };
     let mut first = true;
     for (si, section) in spec.sections.iter().enumerate() {
         let gap = if first { 0.0 } else { Space::Group.points() };
@@ -272,8 +301,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         let mut heading_label = None;
         if let Some(text) = &section.heading {
             let l = wrapping(mtm, text, inner, TextRole::Heading);
-            let row = grid.addRowWithViews(&NSArray::from_slice(&[as_view(&l), &*empty(), &*empty()]));
-            row.mergeCellsInRange(NSRange::new(0, 3));
+            let row = merged_row(as_view(&l));
             row.setRowAlignment(NSGridRowAlignment::None);
             row.setTopPadding(gap + if first { 0.0 } else { Space::Hairline.points() });
             first = false;
@@ -285,8 +313,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         if let Some(text) = &section.unavailable {
             let l = wrapping(mtm, text, inner, TextRole::Caption);
             l.setTextColor(Some(&NSColor::secondaryLabelColor()));
-            let row = grid.addRowWithViews(&NSArray::from_slice(&[as_view(&l), &*empty(), &*empty()]));
-            row.mergeCellsInRange(NSRange::new(0, 3));
+            let row = merged_row(as_view(&l));
             row.setRowAlignment(NSGridRowAlignment::None);
             section_rows.push(row);
             reason_label = Some(l);
@@ -294,9 +321,15 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         reasons.push(reason_label);
         for row in &section.rows {
             let mut caption = None;
-            // Notes, reports, pictures and button rows sit in the control column like a field does:
-            // a merged cell does not stretch its content over the span when a column is hidden.
-            let cw = control_w;
+            // A note, picture, report or button row without a caption runs under the captions too.
+            // A merged cell keeps its content at its own size, so a report and a button row are
+            // given the width of the span.
+            let wide = row.label.is_empty()
+                && matches!(
+                    row.control,
+                    Control::Note { .. } | Control::Preview { .. } | Control::Report { .. } | Control::Actions { .. }
+                );
+            let cw = if wide { inner - edge_pad } else { control_w };
             let mut button_row = None;
             let (control, kind): (Retained<NSView>, Kind) = match &row.control {
                 Control::Text { value, placeholder } => {
@@ -318,7 +351,9 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                     for o in options {
                         p.addItemWithTitle(&NSString::from_str(o));
                     }
-                    p.selectItemAtIndex(*selected as isize);
+                    if *selected < options.len() {
+                        p.selectItemAtIndex(*selected as isize);
+                    }
                     wire(&p, wiring);
                     (Retained::into_super(Retained::into_super(Retained::into_super(p))), Kind::Choice)
                 }
@@ -371,6 +406,9 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                         tv.setString(&NSString::from_str(text));
                     }
                     at_least_high(&scroll, f64::from(*lines) * line_height(TextRole::Body.size()) + 8.0);
+                    if wide {
+                        exactly_wide(&scroll, cw);
+                    }
                     (Retained::into_super(scroll), Kind::Report)
                 }
                 Control::Preview { width, height } => {
@@ -394,10 +432,17 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                         })
                         .collect();
                     layout_buttons(&buttons, cw);
+                    if wide {
+                        exactly_wide(&container, cw);
+                    }
                     button_row = Some((container.clone(), buttons));
                     (container, Kind::Actions)
                 }
             };
+            if matches!(kind, Kind::Text | Kind::Choice) && !row.label.is_empty() {
+                // The caption sits beside the field; VoiceOver reads it from the field itself.
+                control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
+            }
             let caption_view: Retained<NSView> = if matches!(kind, Kind::Check) || row.label.is_empty() {
                 empty()
             } else {
@@ -415,7 +460,11 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                 }
                 None => empty(),
             };
-            let grid_row = grid.addRowWithViews(&NSArray::from_slice(&[&*caption_view, &*control, &*unit_view]));
+            let grid_row = if wide {
+                merged_row(&control)
+            } else {
+                grid.addRowWithViews(&NSArray::from_slice(&[&*caption_view, &*control, &*unit_view]))
+            };
             grid_row.setTopPadding(if first { 0.0 } else { Space::Hairline.points() });
             first = false;
             if matches!(kind, Kind::Memo) {
@@ -429,7 +478,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
             if matches!(kind, Kind::Note | Kind::Report | Kind::Preview) {
                 grid_row.setRowAlignment(NSGridRowAlignment::None);
             }
-            if let Some(cell) = grid.cellForView(&caption_view) {
+            if !wide && let Some(cell) = grid.cellForView(&caption_view) {
                 cell.setXPlacement(NSGridCellPlacement::Trailing);
                 if matches!(kind, Kind::Memo | Kind::Report) {
                     cell.setYPlacement(NSGridCellPlacement::Top);
@@ -438,12 +487,9 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
             if let Some(cell) = grid.cellForView(&control) {
                 match kind {
                     Kind::Text | Kind::Choice => cell.setXPlacement(NSGridCellPlacement::Fill),
-                    Kind::Memo | Kind::Report => {
-                        cell.setXPlacement(NSGridCellPlacement::Fill);
-                        cell.setYPlacement(NSGridCellPlacement::Fill);
-                    }
-                    Kind::Actions => {
-                        cell.setXPlacement(NSGridCellPlacement::Fill);
+                    Kind::Memo | Kind::Report | Kind::Actions => {
+                        // A wide one has its own width (see above); filling would fight it.
+                        cell.setXPlacement(if wide { NSGridCellPlacement::Leading } else { NSGridCellPlacement::Fill });
                         cell.setYPlacement(NSGridCellPlacement::Fill);
                     }
                     Kind::Check | Kind::Action | Kind::ReadOnly | Kind::Note | Kind::Preview => {
@@ -454,7 +500,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                     }
                 }
             }
-            if let Some(cell) = grid.cellForView(&unit_view) {
+            if !wide && let Some(cell) = grid.cellForView(&unit_view) {
                 cell.setXPlacement(NSGridCellPlacement::Leading);
             }
             let mut grid_rows = vec![grid_row];
@@ -625,7 +671,10 @@ impl FormView {
         for r in &self.rows {
             match (&r.button_row, r.kind) {
                 (Some((_, buttons)), _) => out.extend(buttons.iter().enumerate().map(|(i, b)| {
-                    (FormId(r.id.0 + u32::try_from(i).unwrap_or(0)), Retained::into_super(Retained::into_super(b.clone())))
+                    (
+                        FormId(r.id.0 + u32::try_from(i).unwrap_or(0)),
+                        Retained::into_super(Retained::into_super(b.clone())),
+                    )
                 })),
                 (None, Kind::ReadOnly | Kind::Note | Kind::Preview) => {}
                 (None, _) => out.push((r.id, r.control.clone())),

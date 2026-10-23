@@ -7,32 +7,31 @@
 //! through `ImagePanelTarget` (`traceForm:`, `tracePreset:`, `traceSuggestion:`); the buttons run
 //! `ApplyTrace` / `CloseTracer` through the window controller's `panelButton:`.
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::files_form::{tracer as id, tracer_forms};
+use burnburn_presentation::{AppViewModel, CommandKey};
+use burnburn_types::DocumentId;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSImageView, NSPopUpButton, NSTextField,
-    NSWindow,
+    NSButton, NSControlStateValueOff, NSControlStateValueOn, NSImageView, NSPopUpButton, NSTextField, NSWindow,
 };
 use objc2_foundation::NSString;
 
-use burnburn_presentation::{AppViewModel, CommandKey, TracePreset};
-use burnburn_types::DocumentId;
-use objc2_app_kit::NSView;
-
-use super::image::{
-    CommandButton, begin_sheet, caption, end_sheet, heading, image_view, input, mark_field, note, popup, sheet_window,
-    show_bitmap,
-};
-use super::widgets::{push_button, rect, set_text};
+use super::form_surface::{FormSurface, form_sheet};
+use super::image::{CommandButton, begin_sheet, end_sheet, mark_field, show_bitmap};
+use super::widgets::set_text;
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels_image::{BitmapImage, THRESHOLD_CHOICES, TRACE_MODES, TracerPanel, trace_preset_name, tracer_panel};
+use crate::panels_image::{BitmapImage, TracerPanel, tracer_panel};
 
-const SIZE: (f64, f64) = (700.0, 520.0);
+/// The settings form and the preview form of the tracer sheet.
+const WIDTHS: (f64, f64) = (372.0, 360.0);
 
 /// The tracer sheet and what it last showed.
 pub(crate) struct TracerSheet {
     pub(crate) sheet: Retained<NSWindow>,
+    surface: FormSurface,
     /// Source size, summary, "berekenen…", scale hint, issue.
     pub(crate) labels: [Retained<NSTextField>; 5],
     pub(crate) recipe: Retained<NSPopUpButton>,
@@ -63,105 +62,49 @@ struct TracerLast {
     curves: bool,
 }
 
-#[allow(unsafe_code)]
-fn checkbox(
-    mtm: MainThreadMarker,
-    content: &NSView,
-    title: &str,
-    frame: objc2_foundation::NSRect,
-) -> Retained<NSButton> {
-    // SAFETY: no target and no action yet; `image_sheets` wires both once the target exists.
-    let b = unsafe { NSButton::checkboxWithTitle_target_action(&NSString::from_str(title), None, None, mtm) };
-    b.setFrame(frame);
-    content.addSubview(&b);
-    b
-}
-
 /// The tracer sheet's window and widgets (not shown until presentation has a tracer).
 pub(crate) fn tracer_sheet(mtm: MainThreadMarker, locale: Locale, command_button: &CommandButton<'_>) -> TracerSheet {
-    let t = |text: HostText| host_text(text, locale);
-    let (w, h) = SIZE;
-    let left = 330.0;
-    let (sheet, content) = sheet_window(mtm, SIZE, t(HostText::TracerTitle));
-    let mut y = h - 16.0;
-    let source = heading(mtm, &content, rect(16.0, y - 20.0, left, 20.0));
-    y -= 32.0;
-    let row = |y: f64, name: HostText| caption(mtm, &content, t(name), rect(16.0, y - 22.0, 196.0, 22.0));
-    row(y, HostText::TracerRecipe);
-    let preset_titles: Vec<String> = TracePreset::ALL.iter().map(|p| trace_preset_name(*p, locale)).collect();
-    let recipe = popup(mtm, &content, t(HostText::TracerRecipe), &preset_titles, rect(212.0, y - 26.0, 150.0, 26.0));
-    y -= 34.0;
-    row(y, HostText::TracerMode);
-    let mode_titles = [t(HostText::TracerModeContour), t(HostText::TracerModeCenterline)].map(str::to_owned);
-    debug_assert_eq!(mode_titles.len(), TRACE_MODES.len());
-    let mode = popup(mtm, &content, t(HostText::TracerMode), &mode_titles, rect(212.0, y - 26.0, 150.0, 26.0));
-    y -= 34.0;
-    row(y, HostText::TracerDpi);
-    let dpi = input(mtm, &content, t(HostText::TracerDpi), rect(216.0, y - 24.0, 114.0, 24.0));
-    y -= 30.0;
-    let suggestion = push_button(mtm, "");
-    suggestion.setFrame(rect(16.0, y - 24.0, left, 24.0));
-    suggestion.setHidden(true);
-    content.addSubview(&suggestion);
-    y -= 30.0;
-    row(y, HostText::TracerThreshold);
-    let threshold_titles =
-        [t(HostText::TracerThresholdOtsu), t(HostText::TracerThresholdFixed), t(HostText::TracerThresholdAdaptive)]
-            .map(str::to_owned);
-    debug_assert_eq!(threshold_titles.len(), THRESHOLD_CHOICES.len());
-    let threshold =
-        popup(mtm, &content, t(HostText::TracerThreshold), &threshold_titles, rect(212.0, y - 26.0, 150.0, 26.0));
-    y -= 34.0;
-    row(y, HostText::TracerThresholdValue);
-    let value = input(mtm, &content, t(HostText::TracerThresholdValue), rect(216.0, y - 24.0, 114.0, 24.0));
-    y -= 30.0;
-    let invert = checkbox(mtm, &content, t(HostText::TracerInvert), rect(16.0, y - 22.0, left, 22.0));
-    y -= 28.0;
-    row(y, HostText::TracerIgnore);
-    let ignore = input(mtm, &content, t(HostText::TracerIgnore), rect(216.0, y - 24.0, 114.0, 24.0));
-    y -= 30.0;
-    row(y, HostText::TracerSmoothness);
-    let smoothness = input(mtm, &content, t(HostText::TracerSmoothness), rect(216.0, y - 24.0, 114.0, 24.0));
-    y -= 30.0;
-    let curves = checkbox(mtm, &content, t(HostText::TracerCurves), rect(16.0, y - 22.0, left, 22.0));
-    let issue = note(mtm, &content, rect(16.0, 56.0, left, 40.0), &NSColor::systemRedColor());
-
-    let x = 364.0;
-    let preview = image_view(mtm, &content, t(HostText::TracerTitle), rect(x, h - 16.0 - 322.0, 320.0, 322.0));
-    let summary = note(mtm, &content, rect(x, h - 16.0 - 322.0 - 40.0, 320.0, 36.0), &NSColor::controlTextColor());
-    summary.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
-    let computing = caption(mtm, &content, "", rect(x, h - 16.0 - 322.0 - 62.0, 320.0, 18.0));
-    let scale_hint = note(mtm, &content, rect(x, h - 16.0 - 322.0 - 104.0, 320.0, 38.0), &NSColor::systemOrangeColor());
-    let close =
-        command_button(&content, t(HostText::TracerClose), CommandKey::CloseTracer, rect(w - 232.0, 12.0, 104.0, 28.0));
-    close.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    let apply =
-        command_button(&content, t(HostText::TracerApply), CommandKey::ApplyTrace, rect(w - 124.0, 12.0, 112.0, 28.0));
-    apply.setKeyEquivalent(&NSString::from_str("\r"));
-    let apply_linked = command_button(
-        &content,
-        t(HostText::TracerApplyLinked),
-        CommandKey::ApplyTraceLinked,
-        rect(w - 232.0 - 12.0 - 160.0, 12.0, 160.0, 28.0),
-    );
-    sheet.setContentView(Some(&content));
+    let (left, right) = tracer_forms(locale);
+    let mut surface = FormSurface::new(mtm, &[(&left, WIDTHS.0), (&right, WIDTHS.1)]);
+    let sheet = form_sheet(mtm, &surface, host_text(HostText::TracerTitle, locale));
+    let close = surface.dialog_button(ButtonRole::Cancel);
+    command_button(&close, CommandKey::CloseTracer);
+    let apply = surface.dialog_button(ButtonRole::Primary);
+    command_button(&apply, CommandKey::ApplyTrace);
+    let apply_linked = surface.button(id::APPLY_LINKED);
+    command_button(&apply_linked, CommandKey::ApplyTraceLinked);
+    // The proposal button shows only while there is a proposal.
+    surface.set_hidden(id::SUGGESTION, true);
+    surface.relayout();
     TracerSheet {
         sheet,
-        labels: [source, summary, computing, scale_hint, issue],
-        recipe,
-        mode,
-        threshold,
-        fields: [dpi, value, ignore, smoothness],
-        invert,
-        curves,
-        suggestion,
-        preview,
+        labels: [
+            surface.text(id::SOURCE),
+            surface.text(id::SUMMARY),
+            surface.text(id::COMPUTING),
+            surface.text(id::SCALE_HINT),
+            surface.text(id::ISSUE),
+        ],
+        recipe: surface.popup(id::RECIPE),
+        mode: surface.popup(id::MODE),
+        threshold: surface.popup(id::THRESHOLD),
+        fields: [
+            surface.text(id::DPI),
+            surface.text(id::THRESHOLD_VALUE),
+            surface.text(id::IGNORE),
+            surface.text(id::SMOOTHNESS),
+        ],
+        invert: surface.button(id::INVERT),
+        curves: surface.button(id::CURVES),
+        suggestion: surface.button(id::SUGGESTION),
+        preview: surface.image(id::PREVIEW),
         apply,
         apply_linked,
         close,
         shown: false,
         last: None,
         last_preview: None,
+        surface,
     }
 }
 
@@ -237,9 +180,9 @@ impl DocWindow {
                 if s.suggestion.title().to_string() != *title {
                     s.suggestion.setTitle(&NSString::from_str(title));
                 }
-                s.suggestion.setHidden(false);
+                s.surface.set_hidden(id::SUGGESTION, false);
             }
-            None => s.suggestion.setHidden(true),
+            None => s.surface.set_hidden(id::SUGGESTION, true),
         }
         show_bitmap(&s.preview, &mut s.last_preview, preview.as_ref());
         s.apply.setEnabled(
@@ -248,6 +191,7 @@ impl DocWindow {
         s.apply_linked.setEnabled(
             vm.active == Some(document) && vm.commands.get(&CommandKey::ApplyTraceLinked).is_some_and(|c| c.enabled),
         );
+        s.surface.fit_window(&s.sheet);
         if !s.shown {
             s.shown = begin_sheet(&self.window, &s.sheet, "showing the tracer sheet");
         }
