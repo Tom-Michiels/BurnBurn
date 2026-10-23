@@ -51,10 +51,10 @@ mod invariants {
     use objc2::runtime::AnyObject;
     use objc2::{MainThreadOnly, Message};
     use objc2_app_kit::{
-        NSApplication, NSButton, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSegmentedControl,
+        NSApplication, NSButton, NSColor, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSegmentedControl,
         NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
     };
-    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     use crate::common::windows;
     use crate::common::{Session, start_with};
@@ -71,6 +71,7 @@ mod invariants {
         let mut found: Vec<String> = Vec::new();
         baseline_self_test(&s, &mut found);
         form_builder_test(&s, &mut found);
+        tabbed_form_test(&s, &mut found);
         let doc = s.new_document()?;
         check_document(&s, doc, "document (empty)", &mut found)?;
         s.app.dispatch(UiIntent::SetMachineProfile {
@@ -229,6 +230,7 @@ mod invariants {
                 help: Some(FormButton::new(12, "Hulp")),
                 destructive: None,
             },
+            ..FormSpec::default()
         };
         let form = build_form(s.mtm, &spec, 440.0, None);
         let window = scratch_window(s);
@@ -306,6 +308,138 @@ mod invariants {
         }
         if form.texts().iter().any(|t| t.contains("mm/s") && t.contains("Snelheid") && t != "mm/s") {
             found.push("form builder: a text holds caption and unit together".into());
+        }
+    }
+
+
+    /// LF6c: a form with tabs, a notice, a refused value, a picture and a log. Every tab passes the
+    /// invariants when it is the selected one, all rows are reachable, the notice is shown once
+    /// above the buttons whatever tab is open.
+    fn tabbed_form_test(s: &Session, found: &mut Vec<String>) {
+        use burnburn_host_models::form::{
+            ButtonRole, Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec,
+        };
+        use burnburn_host_models::format::Quantity;
+        use burnburn_host_models::panels_image::BitmapImage;
+        use burnburn_macos::appkit::form::build_form;
+        use objc2_app_kit::{NSImageView, NSTabView};
+        let text = |id: u32, label: &str, value: &str| {
+            FormRow::new(id, label, Control::Text { value: value.into(), placeholder: String::new() })
+        };
+        let picture = BitmapImage { width: 24, height: 24, rgba: vec![200; 24 * 24 * 4] };
+        let spec = FormSpec {
+            title: "Instellingen".into(),
+            sections: vec![
+                FormSection::new(
+                    Some("Eenheden"),
+                    vec![
+                        FormRow::new(1, "Eenheden", Control::Choice { options: vec!["Millimeter".into(), "Inch".into()], selected: 0 }),
+                        text(2, "Hoek", "x").unit(Quantity::Degrees).invalid(true),
+                    ],
+                )
+                .on_tab("Algemeen"),
+                FormSection::new(None, vec![FormRow::new(3, "Vangen aan raster", Control::Check { on: true })]).on_tab("Canvas"),
+                FormSection::new(
+                    Some("Voorbeeld"),
+                    vec![
+                        FormRow::new(4, "", Control::Picture { image: picture }),
+                        FormRow::new(5, "Regels", Control::Log { text: "een\ntwee\ndrie".into() }),
+                    ],
+                )
+                .on_tab("Canvas"),
+            ],
+            notice: Some("Geen geldig getal".into()),
+            buttons: DialogButtons {
+                destructive: Some(FormButton::new(10, "Standaardwaarden")),
+                primary: Some(FormButton::new(11, "Gereed")),
+                ..DialogButtons::default()
+            },
+        };
+        let form = build_form(s.mtm, &spec, 480.0, None);
+        let window = scratch_window(s);
+        window.setContentSize(form.size());
+        let Some(content) = window.contentView() else { return };
+        content.addSubview(form.root());
+        form.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let Some(tabs) = all.iter().find_map(|v| as_any(v).downcast_ref::<NSTabView>().map(|t| t.retain())) else {
+            found.push("tabbed form: no tab view".into());
+            return;
+        };
+        let titles: Vec<String> = tabs.tabViewItems().iter().map(|i| i.label().to_string()).collect();
+        if titles != ["Algemeen", "Canvas"] {
+            found.push(format!("tabbed form: tabs are {titles:?}, expected Algemeen and Canvas"));
+        }
+        for index in 0..titles.len() {
+            tabs.selectTabViewItemAtIndex(index as isize);
+            window.displayIfNeeded();
+            let mut mine = Vec::new();
+            walk_window(&window, &format!("tabbed form, tab {}", titles[index]), &mut mine);
+            found.extend(mine);
+        }
+        let ids: Vec<u32> = form.controls().iter().map(|(id, _)| id.0).collect();
+        for want in [1, 2, 3, 10, 11] {
+            if !ids.contains(&want) {
+                found.push(format!("tabbed form: control {want} is not reachable (have {ids:?})"));
+            }
+        }
+        // The notice: once, above the buttons, below the tabs, red. The checks below read the first
+        // tab (the views of the other tab hang outside the window while it is not selected).
+        tabs.selectTabViewItemAtIndex(0);
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let notices: Vec<&Retained<NSView>> = all
+            .iter()
+            .filter(|v| {
+                as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| l.stringValue().to_string().contains("Geen geldig getal"))
+            })
+            .collect();
+        match notices.as_slice() {
+            [notice] => {
+                let n = notice.frame();
+                let buttons = form.buttons();
+                let top = buttons.iter().map(|(_, _, b)| b.frame().origin.y + b.frame().size.height).fold(0.0_f64, f64::max);
+                if n.origin.y + TOLERANCE < top {
+                    found.push(format!("tabbed form: the notice lies below the buttons ({:.0} < {top:.0})", n.origin.y));
+                }
+                if n.origin.y + n.size.height > tabs.frame().origin.y + TOLERANCE {
+                    found.push("tabbed form: the notice overlaps the tabs".into());
+                }
+            }
+            other => found.push(format!("tabbed form: the notice is shown {} times, expected once", other.len())),
+        }
+        // A refused value: its caption is in the error colour; the picture is an image view.
+        let red = NSColor::systemRedColor();
+        let caption_red = all.iter().any(|v| {
+            as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| {
+                !l.isEditable() && l.stringValue().to_string() == "Hoek" && l.textColor().is_some_and(|c| c.isEqual(Some(&red)))
+            })
+        });
+        if !caption_red {
+            found.push("tabbed form: the caption of a refused value is not in the error colour".into());
+        }
+        tabs.selectTabViewItemAtIndex(1);
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let picture_ok = all
+            .iter()
+            .any(|v| as_any(v).downcast_ref::<NSImageView>().is_some_and(|i| i.image().is_some()));
+        if !picture_ok {
+            found.push("tabbed form: the picture row shows no image".into());
+        }
+        let log_ok = form.values().iter().all(|(id, _)| *id != burnburn_host_models::form::FormId(5))
+            && all.iter().any(|v| {
+                as_any(v)
+                    .downcast_ref::<NSTextView>()
+                    .is_some_and(|t| !t.isEditable() && t.string().to_string().starts_with("een"))
+            });
+        if !log_ok {
+            found.push("tabbed form: the log row is not a read-only text with its lines".into());
+        }
+        let roles: Vec<ButtonRole> = form.buttons().iter().map(|(r, _, _)| *r).collect();
+        if roles != [ButtonRole::Destructive, ButtonRole::Primary] {
+            found.push(format!("tabbed form: buttons run {roles:?}, expected destructive then primary"));
         }
     }
 

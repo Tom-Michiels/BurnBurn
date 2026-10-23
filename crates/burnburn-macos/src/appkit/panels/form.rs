@@ -14,24 +14,33 @@ use burnburn_host_models::form::{ButtonRole, Control, FormId, FormSpec, Key, Pla
 use burnburn_host_models::style::{Space, StatusTone, TextRole};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::{MainThreadMarker, MainThreadOnly, Message};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
-    NSGridCellPlacement, NSGridRowAlignment, NSGridView, NSPopUpButton, NSScrollView, NSTextAlignment, NSTextField,
-    NSTextView, NSView,
+    NSGridCellPlacement, NSGridRowAlignment, NSGridView, NSImageScaling, NSImageView, NSPopUpButton, NSScrollView,
+    NSTabView, NSTabViewItem, NSTextAlignment, NSTextField, NSTextView, NSView,
 };
 use objc2_foundation::{NSArray, NSRange, NSSize, NSString};
 
+use crate::appkit::panels::image::show_bitmap;
 use crate::appkit::panels::widgets::{push_button, rect};
 
 /// The height of a multi-line text row.
 const MEMO_HEIGHT: f64 = 160.0;
+/// The height of a read-only scrolling text row.
+const LOG_HEIGHT: f64 = 120.0;
+/// A picture is drawn this high and wide.
+const PICTURE_SIZE: f64 = 96.0;
 /// The least width of a dialog button.
 const BUTTON_MIN_WIDTH: f64 = 80.0;
 /// The height of the button row.
 const BUTTON_HEIGHT: f64 = 24.0;
 /// The widest the caption column gets, as a share of the form.
 const CAPTION_SHARE: f64 = 0.4;
+/// Between the edge of the tab view and its content: the border of the tab view plus air.
+const TAB_INSET: f64 = 16.0;
+/// A tab page is this much taller than its grid, above and below.
+const TAB_PAD: f64 = 12.0;
 
 /// Where the controls report to: the target object and the action it answers.
 #[derive(Clone, Copy)]
@@ -49,6 +58,8 @@ enum Kind {
     Memo,
     Action,
     ReadOnly,
+    Log,
+    Picture,
 }
 
 /// The widgets of one row.
@@ -73,6 +84,9 @@ pub struct FormView {
     headings: Vec<Option<Retained<NSTextField>>>,
     /// Section reasons, by section.
     reasons: Vec<Option<Retained<NSTextField>>>,
+    /// The one notice of the form.
+    notice: Option<Retained<NSTextField>>,
+    tab_view: Option<Retained<NSTabView>>,
     buttons: Vec<(ButtonRole, FormId, Retained<NSButton>)>,
     shape: Vec<String>,
     size: NSSize,
@@ -103,6 +117,10 @@ fn wrapping(mtm: MainThreadMarker, text: &str, width: f64, role: TextRole) -> Re
     l
 }
 
+fn caption_color(invalid: bool) -> Retained<NSColor> {
+    if invalid { NSColor::systemRedColor() } else { NSColor::labelColor() }
+}
+
 fn error_text(text: &str) -> String {
     format!("{} {text}", StatusTone::Error.glyph())
 }
@@ -117,11 +135,15 @@ fn set_text(label: &NSTextField, text: &str) {
     }
 }
 
+#[allow(unsafe_code)]
 /// Builds the form for a view `width` points wide. `wiring` is set on every control and button.
 pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Option<Wiring<'_>>) -> FormView {
     let margin = Space::Group.points();
     let inner = width - 2.0 * margin;
     let col_gap = Space::Tight.points();
+    // A form with tabs draws its grids inside the tab view.
+    let tabbed = !spec.tabs().is_empty();
+    let inner_g = if tabbed { inner - 2.0 * TAB_INSET } else { inner };
 
     // Column widths: the widest caption (capped), the widest unit, the rest for the controls.
     let caption_probe = |text: &str| {
@@ -136,7 +158,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         .filter(|r| !matches!(r.control, Control::Check { .. }))
         .map(|r| caption_probe(&r.label))
         .fold(0.0_f64, f64::max)
-        .min(inner * CAPTION_SHARE);
+        .min(inner_g * CAPTION_SHARE);
     let unit_w = spec
         .sections
         .iter()
@@ -148,26 +170,44 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     let has_units = unit_w > 0.0;
     // Text labels and fields draw 2 pt outside their alignment rect: the grid keeps that inside.
     let edge_pad = 2.0;
-    let control_w = inner
+    let control_w = inner_g
         - edge_pad
         - if has_captions { caption_w + col_gap } else { 0.0 }
         - if has_units { unit_w + col_gap } else { 0.0 };
 
-    let grid = NSGridView::gridViewWithNumberOfColumns_rows(3, 0, mtm);
-    grid.setRowSpacing(Space::Hairline.points());
-    grid.setColumnSpacing(col_gap);
-    grid.setRowAlignment(NSGridRowAlignment::FirstBaseline);
+    let new_grid = || {
+        let grid = NSGridView::gridViewWithNumberOfColumns_rows(3, 0, mtm);
+        grid.setRowSpacing(Space::Hairline.points());
+        grid.setColumnSpacing(col_gap);
+        grid.setRowAlignment(NSGridRowAlignment::FirstBaseline);
+        grid
+    };
 
     let mut rows: Vec<RowWidgets> = Vec::new();
     let mut headings = Vec::new();
     let mut reasons = Vec::new();
     let empty = || NSGridCell::emptyContentView(mtm);
-    let mut first = true;
+    // Consecutive sections of one tab share a grid; a form without tabs has one.
+    let mut groups: Vec<(Option<String>, Vec<usize>)> = Vec::new();
     for (si, section) in spec.sections.iter().enumerate() {
+        match groups.last_mut() {
+            Some((tab, ids)) if *tab == section.tab => ids.push(si),
+            _ => groups.push((section.tab.clone(), vec![si])),
+        }
+    }
+    if groups.is_empty() {
+        groups.push((None, Vec::new()));
+    }
+    let mut grids: Vec<(Option<String>, Retained<NSGridView>)> = Vec::new();
+    for (tab_title, indices) in groups {
+    let grid = new_grid();
+    let mut first = true;
+    for si in indices {
+        let section = &spec.sections[si];
         let gap = if first { 0.0 } else { Space::Group.points() };
         let mut heading_label = None;
         if let Some(text) = &section.heading {
-            let l = wrapping(mtm, text, inner, TextRole::Heading);
+            let l = wrapping(mtm, text, inner_g, TextRole::Heading);
             let row = grid.addRowWithViews(&NSArray::from_slice(&[as_view(&l), &*empty(), &*empty()]));
             row.mergeCellsInRange(NSRange::new(0, 3));
             row.setRowAlignment(NSGridRowAlignment::None);
@@ -178,7 +218,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         headings.push(heading_label);
         let mut reason_label = None;
         if let Some(text) = &section.unavailable {
-            let l = wrapping(mtm, text, inner, TextRole::Caption);
+            let l = wrapping(mtm, text, inner_g, TextRole::Caption);
             l.setTextColor(Some(&NSColor::secondaryLabelColor()));
             let row = grid.addRowWithViews(&NSArray::from_slice(&[as_view(&l), &*empty(), &*empty()]));
             row.mergeCellsInRange(NSRange::new(0, 3));
@@ -241,12 +281,32 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                     let l = wrapping(mtm, value, control_w, TextRole::Body);
                     (Retained::into_super(Retained::into_super(l)), Kind::ReadOnly)
                 }
+                Control::Log { text } => {
+                    let scroll = NSTextView::scrollableTextView(mtm);
+                    scroll.setHasVerticalScroller(true);
+                    scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
+                    if let Some(tv) = memo_text_view(&scroll) {
+                        tv.setEditable(false);
+                        tv.setSelectable(true);
+                        tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
+                        tv.setString(&NSString::from_str(text));
+                    }
+                    (Retained::into_super(scroll), Kind::Log)
+                }
+                Control::Picture { image } => {
+                    let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, PICTURE_SIZE, PICTURE_SIZE));
+                    v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+                    v.setImageFrameStyle(objc2_app_kit::NSImageFrameStyle::GrayBezel);
+                    show_bitmap(&v, &mut None, Some(image));
+                    (Retained::into_super(Retained::into_super(v)), Kind::Picture)
+                }
             };
             let caption_view: Retained<NSView> = if matches!(kind, Kind::Check) || row.label.is_empty() {
                 empty()
             } else {
                 let l = wrapping(mtm, &row.label, caption_w, TextRole::Label);
                 l.setAlignment(NSTextAlignment::Right);
+                l.setTextColor(Some(&caption_color(row.invalid)));
                 let v = Retained::into_super(Retained::into_super(l.clone()));
                 caption = Some(l);
                 v
@@ -262,22 +322,28 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
             let grid_row = grid.addRowWithViews(&NSArray::from_slice(&[&*caption_view, &*control, &*unit_view]));
             grid_row.setTopPadding(if first { 0.0 } else { Space::Hairline.points() });
             first = false;
-            if matches!(kind, Kind::Memo) {
+            if matches!(kind, Kind::Memo | Kind::Log) {
                 grid_row.setRowAlignment(NSGridRowAlignment::None);
-                grid_row.setHeight(MEMO_HEIGHT);
+                grid_row.setHeight(if kind == Kind::Log { LOG_HEIGHT } else { MEMO_HEIGHT });
+            } else if kind == Kind::Picture {
+                grid_row.setRowAlignment(NSGridRowAlignment::None);
             }
             if let Some(cell) = grid.cellForView(&caption_view) {
                 cell.setXPlacement(NSGridCellPlacement::Trailing);
-                if matches!(kind, Kind::Memo) {
+                if matches!(kind, Kind::Memo | Kind::Log | Kind::Picture) {
                     cell.setYPlacement(NSGridCellPlacement::Top);
                 }
             }
             if let Some(cell) = grid.cellForView(&control) {
                 match kind {
                     Kind::Text | Kind::Choice => cell.setXPlacement(NSGridCellPlacement::Fill),
-                    Kind::Memo => {
+                    Kind::Memo | Kind::Log => {
                         cell.setXPlacement(NSGridCellPlacement::Fill);
                         cell.setYPlacement(NSGridCellPlacement::Fill);
+                    }
+                    Kind::Picture => {
+                        cell.setXPlacement(NSGridCellPlacement::Leading);
+                        cell.setYPlacement(NSGridCellPlacement::Top);
                     }
                     Kind::Check | Kind::Action | Kind::ReadOnly => cell.setXPlacement(NSGridCellPlacement::Leading),
                 }
@@ -308,7 +374,7 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                 kind,
                 pushed: pushed_of(&row.control),
                 control: match kind {
-                    Kind::Memo => memo_view(&control),
+                    Kind::Memo | Kind::Log => memo_view(&control),
                     _ => control,
                 },
                 caption,
@@ -329,7 +395,8 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         (if has_captions { &c0 } else { &c1 }).setLeadingPadding(edge_pad);
         c2.setHidden(!has_units);
     }
-    // Rows of a form without captions or units still leave the gap to the next column out.
+    grids.push((tab_title, grid));
+    }
 
     // Dialog buttons: help alone at the left, the rest right-aligned, primary rightmost.
     let ordered = spec.buttons.order(Platform::Mac);
@@ -349,12 +416,62 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         buttons.push((*role, spec_button.id, b));
     }
 
-    let fit = grid.fittingSize();
+    // The notice of the form: above the buttons, whatever tab is open.
+    let notice = spec.notice.as_ref().map(|text| {
+        let l = wrapping(mtm, &error_text(text), inner, TextRole::Caption);
+        l.setTextColor(Some(&NSColor::systemRedColor()));
+        l
+    });
+    let notice_h = notice.as_ref().map_or(0.0, |l| l.fittingSize().height.ceil() + Space::Control.points());
     let button_row = if buttons.is_empty() { 0.0 } else { BUTTON_HEIGHT + Space::Group.points() };
-    let height = margin + button_row + fit.height + margin;
+    let base = margin + button_row + notice_h;
+
+    let fits: Vec<NSSize> = grids.iter().map(|(_, g)| g.fittingSize()).collect();
+    let (body_h, tab_view) = if tabbed {
+        let fit_h = fits.iter().map(|f| f.height).fold(0.0_f64, f64::max);
+        let tv = NSTabView::initWithFrame(NSTabView::alloc(mtm), rect(0.0, 0.0, inner, 300.0));
+        for (title, grid) in &grids {
+            // SAFETY: a fresh item without an identifier object.
+            let item = unsafe { NSTabViewItem::initWithIdentifier(NSTabViewItem::alloc(), None) };
+            item.setLabel(&NSString::from_str(title.as_deref().unwrap_or("")));
+            item.setView(Some(&NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0))));
+            tv.addTabViewItem(&item);
+            let _ = grid;
+        }
+        // The border and the strip of tabs around the content, measured on the real control.
+        let content = tv.contentRect();
+        let chrome_h = 300.0 - content.size.height;
+        let page_w = content.size.width;
+        let page_h = fit_h + 2.0 * TAB_PAD;
+        for ((_, grid), item) in grids.iter().zip(tv.tabViewItems().iter()) {
+            let page = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, page_w, page_h));
+            let gh = grid.fittingSize().height;
+            grid.setFrame(rect((page_w - inner_g) / 2.0, page_h - TAB_PAD - gh, inner_g, gh));
+            page.addSubview(grid);
+            item.setView(Some(&page));
+        }
+        let tv_h = page_h + chrome_h;
+        tv.setFrame(rect(margin, base, inner, tv_h));
+        (tv_h, Some(tv))
+    } else {
+        (fits.first().map_or(0.0, |f| f.height), None)
+    };
+    let height = margin + button_row + notice_h + body_h + margin;
     let root = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, height));
-    grid.setFrame(rect(margin, margin + button_row, inner, fit.height));
-    root.addSubview(&grid);
+    match &tab_view {
+        Some(tv) => root.addSubview(tv),
+        None => {
+            if let Some((_, grid)) = grids.first() {
+                grid.setFrame(rect(margin, base, inner, body_h));
+                root.addSubview(grid);
+            }
+        }
+    }
+    if let Some(l) = &notice {
+        let h = notice_h - Space::Control.points();
+        l.setFrame(rect(margin, margin + button_row, inner, h));
+        root.addSubview(l);
+    }
     // Right to left from the edge; the help button keeps the left edge.
     let mut right = width - margin;
     for (role, _, b) in buttons.iter().rev() {
@@ -368,8 +485,10 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         }
         root.addSubview(b);
     }
-    grid.layoutSubtreeIfNeeded();
-    FormView { root, rows, headings, reasons, buttons, shape: spec.shape(), size: NSSize::new(width, height) }
+    for (_, grid) in &grids {
+        grid.layoutSubtreeIfNeeded();
+    }
+    FormView { root, rows, headings, reasons, notice, tab_view, buttons, shape: spec.shape(), size: NSSize::new(width, height) }
 }
 
 fn text_field(mtm: MainThreadMarker, value: &str, wiring: Option<Wiring<'_>>) -> Retained<NSTextField> {
@@ -409,6 +528,8 @@ fn pushed_of(control: &Control) -> String {
         Control::Check { on } => if *on { "1" } else { "0" }.to_owned(),
         Control::Memo { text } => text.clone(),
         Control::Action { title } => title.clone(),
+        Control::Log { text } => text.clone(),
+        Control::Picture { image } => format!("{}x{}", image.width, image.height),
     }
 }
 
@@ -432,6 +553,11 @@ impl FormView {
         self.size
     }
 
+    /// The tab view of a form with tabs.
+    pub fn tab_view(&self) -> Option<Retained<NSTabView>> {
+        self.tab_view.clone()
+    }
+
     /// The dialog buttons from left to right as they lie.
     pub fn buttons(&self) -> Vec<(ButtonRole, FormId, Retained<NSButton>)> {
         self.buttons.clone()
@@ -440,7 +566,7 @@ impl FormView {
     /// Every control and button with its id (a memo is its text view).
     pub fn controls(&self) -> Vec<(FormId, Retained<NSView>)> {
         let mut out: Vec<(FormId, Retained<NSView>)> =
-            self.rows.iter().filter(|r| r.kind != Kind::ReadOnly).map(|r| (r.id, r.control.clone())).collect();
+            self.rows.iter().filter(|r| !matches!(r.kind, Kind::ReadOnly | Kind::Log | Kind::Picture)).map(|r| (r.id, r.control.clone())).collect();
         out.extend(self.buttons.iter().map(|(_, id, b)| (*id, Retained::into_super(Retained::into_super(b.clone())))));
         out
     }
@@ -474,6 +600,9 @@ impl FormView {
         if !self.fits(spec) {
             return false;
         }
+        if let (Some(l), Some(text)) = (&self.notice, &spec.notice) {
+            set_text(l, &error_text(text));
+        }
         for (si, section) in spec.sections.iter().enumerate() {
             if let (Some(Some(l)), Some(text)) = (self.headings.get(si), &section.heading) {
                 set_text(l, text);
@@ -490,6 +619,7 @@ impl FormView {
             set_enabled(&widgets.control, widgets.kind, enabled);
             if let Some(c) = &widgets.caption {
                 set_text(c, &row.label);
+                c.setTextColor(Some(&caption_color(row.invalid)));
             }
             if let (Some(l), Some(t)) = (&widgets.help, &row.help) {
                 set_text(l, t);
@@ -556,6 +686,15 @@ impl FormView {
                         set_text(l, value);
                     }
                 }
+                (Control::Log { text }, _) => {
+                    if let Some(t) = any.downcast_ref::<NSTextView>()
+                        && widgets.pushed != *text
+                    {
+                        t.setString(&NSString::from_str(text));
+                        widgets.pushed = new;
+                    }
+                }
+                (Control::Picture { .. }, _) => {}
             }
         }
         for ((_, b), (_, _, widget)) in spec.buttons.order(Platform::Mac).into_iter().zip(&self.buttons) {
@@ -576,6 +715,9 @@ impl FormView {
         }
         for r in self.reasons.iter().flatten() {
             out.push(label(r));
+        }
+        if let Some(n) = &self.notice {
+            out.push(label(n));
         }
         for row in &self.rows {
             for l in [&row.caption, &row.help, &row.error].into_iter().flatten() {
@@ -625,7 +767,7 @@ impl FormView {
                     Kind::Check => any
                         .downcast_ref::<NSButton>()
                         .map(|b| (r.id, if b.state() == NSControlStateValueOn { "1" } else { "0" }.to_owned())),
-                    Kind::Action | Kind::ReadOnly => None,
+                    Kind::Action | Kind::ReadOnly | Kind::Log | Kind::Picture => None,
                 }
             })
             .collect()

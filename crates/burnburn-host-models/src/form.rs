@@ -375,7 +375,7 @@ impl FormSpec {
 
     /// What the form looks like without its values: the host rebuilds only when this changes.
     pub fn shape(&self) -> Vec<String> {
-        let mut out = Vec::new();
+        let mut out = vec![format!("notice={}", self.notice.is_some())];
         for (i, section) in self.sections.iter().enumerate() {
             out.push(format!(
                 "section {i} heading={} unavailable={} tab={}",
