@@ -379,11 +379,11 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
                     let need = action_need;
                     if need > wide {
                         grid_row.mergeCellsInRange(NSRange::new(0, 3));
-                        if need > inner_g {
-                            if let Some(b) = as_any(&control).downcast_ref::<NSButton>() {
-                                b.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
-                                b.setToolTip(Some(&b.title()));
-                            }
+                        if need > inner_g
+                            && let Some(b) = as_any(&control).downcast_ref::<NSButton>()
+                        {
+                            b.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+                            b.setToolTip(Some(&b.title()));
                         }
                     } else if need > control_w {
                         grid_row.mergeCellsInRange(NSRange::new(1, 2));

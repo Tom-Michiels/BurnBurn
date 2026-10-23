@@ -382,11 +382,11 @@ mod invariants {
         if titles != ["Algemeen", "Canvas"] {
             found.push(format!("tabbed form: tabs are {titles:?}, expected Algemeen and Canvas"));
         }
-        for index in 0..titles.len() {
+        for (index, title) in titles.iter().enumerate() {
             tabs.selectTabViewItemAtIndex(index as isize);
             window.displayIfNeeded();
             let mut mine = Vec::new();
-            walk_window(&window, &format!("tabbed form, tab {}", titles[index]), &mut mine);
+            walk_window(&window, &format!("tabbed form, tab {}", title), &mut mine);
             found.extend(mine);
         }
         let ids: Vec<u32> = form.controls().iter().map(|(id, _)| id.0).collect();

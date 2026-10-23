@@ -122,7 +122,7 @@ mod tests {
         prefs_panel(&h.controller().prefs_view(), locale)
     }
 
-    fn row<'a>(form: &'a PrefsForm, key: PrefKey) -> &'a crate::form::FormRow {
+    fn row(form: &PrefsForm, key: PrefKey) -> &crate::form::FormRow {
         let id = pref_form_id(key);
         form.spec.sections.iter().flat_map(|s| &s.rows).find(|r| r.id == id).expect("row")
     }
