@@ -371,7 +371,7 @@ fn tests() -> Result<(), String> {
         with_row(&s, doc, FOC, DialogField::FocusStart, |c, n| (c.isEnabled(), n.stringValue().to_string()))
             .ok_or("no row")?;
     // Look-and-feel Q6: the reason is said once above the fields, not beside each greyed field.
-    let reasons = s.app.with_cam_panel(doc, FOC, |p| p.reasons.stringValue().to_string()).ok_or("no panel")?;
+    let reasons = s.app.with_cam_panel(doc, FOC, |p| p.reasons.clone()).ok_or("no panel")?;
     expect(
         || format!("the field is greyed, with no note of its own: enabled {enabled}, note {note:?}"),
         !enabled && note.is_empty(),

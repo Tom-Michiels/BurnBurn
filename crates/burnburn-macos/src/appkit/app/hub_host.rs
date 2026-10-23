@@ -3,7 +3,7 @@
 //! module of `app`, so it can use the host's private state.
 
 use crate::appkit::panels::hub::{
-    TAG_CANCEL, TAG_CONFIRM, TAG_DEVICE, TAG_RECORD, TAG_REMOVE, TAG_REPEAT, TAG_SECTION, TAG_STOP, build_hub,
+    TAG_CANCEL, TAG_CONFIRM, TAG_DEVICE, TAG_RECORD, TAG_REMOVE, TAG_REPEAT, TAG_STOP, build_hub,
 };
 use crate::hub_panel::{HubEvent, hub_intent, hub_panel};
 
@@ -41,9 +41,6 @@ impl HostApp {
 
     /// A control of the hub window was used.
     pub(crate) fn hub_action(&self, tag: isize) {
-        if tag == TAG_SECTION {
-            return self.hub_section_changed();
-        }
         let vm = match self.controller.try_borrow() {
             Ok(c) => c.machine_hub_view(),
             Err(_) => return,
@@ -69,13 +66,9 @@ impl HostApp {
         }
     }
 
-    fn hub_section_changed(&self) {
-        self.with_panels(|p| {
-            if let Some(w) = p.hub.as_mut() {
-                let selected = w.section_selected();
-                w.section_popup_changed(selected);
-            }
-        });
+    /// The hub window, for tests that walk its tabs.
+    pub fn machine_hub_window(&self) -> Option<objc2::rc::Retained<objc2_app_kit::NSWindow>> {
+        self.app_panels.try_borrow().ok()?.hub.as_ref().map(|w| w.window.clone())
     }
 
     /// Whether the hub window exists (evidence for tests).

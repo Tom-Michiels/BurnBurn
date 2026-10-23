@@ -393,7 +393,9 @@ fn preferences() -> Result<(), String> {
     fire(&units)?;
     expect(|| format!("units {:?}", s.app.preferences().units), s.app.preferences().units == LengthUnit::Inches)?;
 
-    // A bare number is inches now: 2.5 in = 63.5 mm. The field gets the raw text.
+    // A bare number is inches now: 2.5 in = 63.5 mm. The field gets the raw text. (LF6c: the
+    // snapping preferences lie on the Canvas tab, so the test opens that tab like a user.)
+    expect(|| "the Tekenvlak tab exists".into(), s.app.select_prefs_tab("Tekenvlak"))?;
     let grid = field(&window, "Rasterafstand")?;
     grid.setStringValue(&NSString::from_str("2,5"));
     fire(&grid)?;
@@ -405,7 +407,8 @@ fn preferences() -> Result<(), String> {
     grid.setStringValue(&NSString::from_str("abc"));
     fire(&grid)?;
     let texts = text_fields(&window);
-    expect(|| format!("banner missing in {texts:?}"), texts.iter().any(|t| t == "Geen geldig getal."))?;
+    // LF6c: the notice carries a status glyph before its text.
+    expect(|| format!("banner missing in {texts:?}"), texts.iter().any(|t| t.contains("Geen geldig getal.")))?;
     expect(|| "value unchanged".into(), (s.app.preferences().grid_snap_mm - 63.5).abs() < 1e-9)?;
 
     // A checkbox and a pop-up with ids.
@@ -425,7 +428,9 @@ fn preferences() -> Result<(), String> {
         || format!("tolerance {}", s.app.display_tolerance_px()),
         (s.app.display_tolerance_px() - 1.0).abs() < 1e-9,
     )?;
-    let autosave = field(&*prefs_window(&s)?, "Automatisch bewaren (s, 0 = uit)")?;
+    // LF6c: the unit and "0 = uit" left the caption; autosave lies on the General tab.
+    expect(|| "the General tab exists".into(), s.app.select_prefs_tab("Algemeen"))?;
+    let autosave = field(&*prefs_window(&s)?, "Automatisch bewaren")?;
     autosave.setStringValue(&NSString::from_str("45"));
     fire(&autosave)?;
     expect(|| format!("autosave tick {:?}", s.app.autosave_interval_s()), s.app.autosave_interval_s() == Some(45.0))?;
@@ -546,8 +551,13 @@ fn shortcuts() -> Result<(), String> {
     s.pump(0.1);
     expect(|| "recorder takes H".into(), record("h", 4, NSEventModifierFlags::empty())?)?;
     s.pump(0.1);
-    let doc_window = s.app.window(doc).ok_or("no document window")?;
-    let tips: Vec<String> = controls(&doc_window).iter().filter_map(|v| v.toolTip().map(|t| t.to_string())).collect();
+    // The ribbon buttons live in toolbar items now (not in the content view): ask the strip.
+    let tips: Vec<String> = s
+        .app
+        .with_window(doc, |w| w.strip.button("select").and_then(|b| b.toolTip()).map(|t| t.to_string()))
+        .flatten()
+        .into_iter()
+        .collect();
     expect(
         || format!("the select tool's tooltip names H: {tips:?}"),
         tips.iter().any(|t| t.contains("(H)")) && !tips.iter().any(|t| t.contains("Selecteer (V)")),

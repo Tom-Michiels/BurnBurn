@@ -1,28 +1,42 @@
-//! The Mac form builder (LF5): turns a platform-free [`FormSpec`] into an `NSGridView` inside a
+//! The Mac form builder (LF5, LF6a): turns a platform-free [`FormSpec`] into an `NSGridView` inside a
 //! plain view, with the dialog buttons in a row below it. Captions are right-aligned in the first
 //! column and share the first baseline of their field (the grid's row alignment), the unit is a
-//! suffix label in the last column, help and errors sit under the field, the reason a section is
-//! not available is said once under its heading, and all spacing comes from the 4/8-pt grid of
-//! `burnburn_host_models::style::Space`. The primary button is rightmost and answers Return, the
-//! cancel button answers Escape.
+//! suffix label in the last column (small buttons beside a row stand there too), help and errors
+//! sit under the field, the reason a section is not available is said once under its heading, and
+//! all spacing comes from the 4/8-pt grid of `burnburn_host_models::style::Space`. The primary
+//! button is rightmost and answers Return, the cancel button answers Escape.
 //!
 //! The builder decides nothing about what the form says. [`FormView::update`] copies a new
 //! description of the same shape into the widgets in place (never over a field the user is typing
-//! in); a changed shape asks the caller to build again.
+//! in); a changed shape asks the caller to build again. A row can be hidden and an empty help,
+//! error, reason or read-only text shows nothing, so a form that keeps its shape can still come and
+//! go; a section with nothing to show loses its heading. A form can be capped in height: the rows
+//! then scroll above the button row.
+//!
+//! LF6c adds: tabs (sections with the same `tab` share a grid in an `NSTabView`; a form with tabs
+//! is as tall as its tallest tab), one notice for the whole form above the buttons, read-only
+//! scrolling text (`Control::Log`), pictures, a refused value in the error colour, wrapping check
+//! boxes, and buttons wider than the control column that take the columns beside them.
+//!
+//! LF6b adds: a note (`Control::Note`, a wrapping text that keeps room for its lines), a report, a
+//! preview picture and a row of buttons; rows and sections hidden by the host at run time
+//! ([`FormView::set_hidden`], [`FormView::set_section_hidden`]) for panels that keep their own
+//! widgets and copy a view model into them; and [`FormView::relayout`] to fit the form again.
 
-use burnburn_host_models::form::{ButtonRole, Control, FormId, FormSpec, Key, Platform};
+use burnburn_host_models::form::{ButtonRole, Control, FormId, FormRow, FormSection, FormSpec, Key, Platform};
 use burnburn_host_models::style::{Space, StatusTone, TextRole};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::{MainThreadMarker, MainThreadOnly, Message};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSAccessibility, NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
     NSGridCellPlacement, NSGridRow, NSGridRowAlignment, NSGridView, NSImageFrameStyle, NSImageScaling, NSImageView,
-    NSLayoutAttribute, NSLayoutConstraint, NSLayoutRelation, NSPopUpButton, NSScrollView, NSTextAlignment, NSTextField,
-    NSTextView, NSView,
+    NSLayoutAttribute, NSLayoutConstraint, NSLayoutRelation, NSLineBreakMode, NSPopUpButton, NSScrollView, NSStackView,
+    NSTabView, NSTabViewItem, NSTextAlignment, NSTextField, NSTextView, NSUserInterfaceLayoutOrientation, NSView,
 };
-use objc2_foundation::{NSArray, NSRange, NSSize, NSString};
+use objc2_foundation::{NSArray, NSPoint, NSRange, NSSize, NSString};
 
+use crate::appkit::panels::image::show_bitmap;
 use crate::appkit::panels::widgets::{push_button, rect};
 
 /// The height of a multi-line text row.
@@ -31,14 +45,37 @@ const MEMO_HEIGHT: f64 = 160.0;
 const BUTTON_MIN_WIDTH: f64 = 80.0;
 /// The height of the button row.
 const BUTTON_HEIGHT: f64 = 24.0;
+/// The width of a small button beside a row.
+const TOOL_WIDTH: f64 = 34.0;
 /// The widest the caption column gets, as a share of the form.
 const CAPTION_SHARE: f64 = 0.4;
+/// Between the edge of the tab view and its content: the border of the tab view plus air.
+const TAB_INSET: f64 = 16.0;
+/// A tab page is this much taller than its grid, above and below.
+const TAB_PAD: f64 = 12.0;
+/// The room kept for a notice that comes and goes: two lines of caption.
+const NOTICE_SLOT_HEIGHT: f64 = 32.0;
+/// The least height of a check box row.
+const CHECK_HEIGHT: f64 = 18.0;
+/// The height of a read-only scrolling text row.
+const LOG_HEIGHT: f64 = 120.0;
 
 /// Where the controls report to: the target object and the action it answers.
 #[derive(Clone, Copy)]
 pub struct Wiring<'a> {
     pub target: &'a AnyObject,
     pub action: Sel,
+}
+
+/// How tall a form is allowed to get.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FormLayout {
+    /// As tall as the rows need.
+    Natural,
+    /// As tall as the rows need, up to this height; the rows scroll above the button row beyond it.
+    Capped(f64),
+    /// Always this tall; the rows scroll above the button row when they do not fit.
+    Fixed(f64),
 }
 
 /// What a row holds, for reading and updating it.
@@ -50,6 +87,8 @@ enum Kind {
     Memo,
     Action,
     ReadOnly,
+    Log,
+    Picture,
     /// A wrapping read-only text (status, hint, issue).
     Note,
     /// A read-only multi-line text with a scroll bar.
@@ -64,41 +103,68 @@ enum Kind {
 struct RowWidgets {
     id: FormId,
     kind: Kind,
-    /// The view the user works in (the text view of a memo or report; the first button of a row of
-    /// buttons).
+    /// The view the user works in (the text view of a memo).
     control: Retained<NSView>,
     caption: Option<Retained<NSTextField>>,
+    unit: Option<Retained<NSTextField>>,
     help: Option<Retained<NSTextField>>,
     error: Option<Retained<NSTextField>>,
+    tools: Vec<(FormId, Retained<NSButton>)>,
+    /// The grid rows of the control and of its help and error lines.
+    row: Retained<NSGridRow>,
+    help_row: Option<Retained<NSGridRow>>,
+    error_row: Option<Retained<NSGridRow>>,
     /// The section the row belongs to.
     section: usize,
     /// What the model last put into the control.
     pushed: String,
-    /// The grid rows of the row: the row itself, then its help and error.
-    grid_rows: Vec<Retained<NSGridRow>>,
-    /// The buttons of a row of buttons (the container that places them, and the buttons).
+    /// The buttons of a row of buttons, and the view that places them.
     button_row: Option<(Retained<NSView>, Vec<Retained<NSButton>>)>,
-    hidden: bool,
+    /// Hidden by the host at run time, on top of what the description says.
+    forced_hidden: bool,
+    /// Whether the description hides the row.
+    spec_hidden: bool,
 }
 
-/// The grid rows of one section's heading and reason, and whether the whole section is hidden.
+/// The heading and the reason line of one section, with their grid rows.
+#[derive(Default)]
 struct SectionWidgets {
-    grid_rows: Vec<Retained<NSGridRow>>,
-    hidden: bool,
+    heading: Option<(Retained<NSTextField>, Retained<NSGridRow>)>,
+    reason: Option<(Retained<NSTextField>, Retained<NSGridRow>)>,
+    /// Hidden by the host at run time: heading, reason and every row.
+    forced_hidden: bool,
+}
+
+/// Where the grid lies.
+enum Body {
+    /// Straight in the root view.
+    Direct,
+    /// In a scroll view above the button row.
+    Scroll { scroll: Retained<NSScrollView>, document: Retained<NSView> },
 }
 
 /// A built form.
 pub struct FormView {
     root: Retained<NSView>,
-    grid: Retained<NSGridView>,
+    /// The grids: one, or one per tab.
+    grids: Vec<Retained<NSGridView>>,
+    body: Body,
+    /// The one notice of the form.
+    notice: Option<Retained<NSTextField>>,
+    notice_slot: bool,
+    tab_view: Option<Retained<NSTabView>>,
+    chrome_h: f64,
+    inner_g: f64,
+    mtm: MainThreadMarker,
+    layout: FormLayout,
     rows: Vec<RowWidgets>,
     sections: Vec<SectionWidgets>,
-    headings: Vec<Option<Retained<NSTextField>>>,
-    /// Section reasons, by section.
-    reasons: Vec<Option<Retained<NSTextField>>>,
     buttons: Vec<(ButtonRole, FormId, Retained<NSButton>)>,
     shape: Vec<String>,
     size: NSSize,
+    margin: f64,
+    inner: f64,
+    button_row: f64,
 }
 
 fn as_view<T: AsRef<NSView>>(v: &T) -> &NSView {
@@ -117,14 +183,11 @@ fn wire(control: &NSControl, wiring: Option<Wiring<'_>>) {
 }
 
 fn wrapping(mtm: MainThreadMarker, text: &str, width: f64, role: TextRole) -> Retained<NSTextField> {
-    wrapping_font(mtm, text, width, role.size(), role.bold())
-}
-
-fn wrapping_font(mtm: MainThreadMarker, text: &str, width: f64, size: f64, bold: bool) -> Retained<NSTextField> {
     let l = NSTextField::wrappingLabelWithString(&NSString::from_str(text), mtm);
     l.setSelectable(false);
     l.setPreferredMaxLayoutWidth(width);
-    let font = if bold { NSFont::boldSystemFontOfSize(size) } else { NSFont::systemFontOfSize(size) };
+    let size = role.size();
+    let font = if role.bold() { NSFont::boldSystemFontOfSize(size) } else { NSFont::systemFontOfSize(size) };
     l.setFont(Some(&font));
     l
 }
@@ -135,61 +198,38 @@ fn line_height(size: f64) -> f64 {
     (font.ascender() - font.descender() + font.leading()).ceil()
 }
 
-/// Asks `view` to be at least `height` points high (a note or a report keeps room for the lines it
-/// is promised, and grows with a longer text).
 #[allow(unsafe_code)]
-fn at_least_high(view: &NSView, height: f64) {
+fn constrain(view: &NSView, attribute: NSLayoutAttribute, relation: NSLayoutRelation, value: f64) {
     // SAFETY: a one-item constraint on a view that outlives it (the constraint belongs to the view).
     let constraint = unsafe {
         NSLayoutConstraint::constraintWithItem_attribute_relatedBy_toItem_attribute_multiplier_constant(
             view.as_ref(),
-            NSLayoutAttribute::Height,
-            NSLayoutRelation::GreaterThanOrEqual,
+            attribute,
+            relation,
             None,
             NSLayoutAttribute::NotAnAttribute,
             1.0,
-            height,
+            value,
         )
     };
     constraint.setActive(true);
+}
+
+/// Asks `view` to be at least `height` points high (a note or a report keeps room for the lines it
+/// is promised, and grows with a longer text).
+fn at_least_high(view: &NSView, height: f64) {
+    constrain(view, NSLayoutAttribute::Height, NSLayoutRelation::GreaterThanOrEqual, height);
 }
 
 /// Asks `view` to be exactly `width` points wide.
-#[allow(unsafe_code)]
 fn exactly_wide(view: &NSView, width: f64) {
-    // SAFETY: as in `at_least_high`.
-    let constraint = unsafe {
-        NSLayoutConstraint::constraintWithItem_attribute_relatedBy_toItem_attribute_multiplier_constant(
-            view.as_ref(),
-            NSLayoutAttribute::Width,
-            NSLayoutRelation::Equal,
-            None,
-            NSLayoutAttribute::NotAnAttribute,
-            1.0,
-            width,
-        )
-    };
-    constraint.setActive(true);
+    constrain(view, NSLayoutAttribute::Width, NSLayoutRelation::Equal, width);
 }
 
 /// Asks `view` to be exactly `width` by `height` points.
-#[allow(unsafe_code)]
 fn exactly_sized(view: &NSView, width: f64, height: f64) {
-    for (attribute, value) in [(NSLayoutAttribute::Width, width), (NSLayoutAttribute::Height, height)] {
-        // SAFETY: as in `at_least_high`.
-        let constraint = unsafe {
-            NSLayoutConstraint::constraintWithItem_attribute_relatedBy_toItem_attribute_multiplier_constant(
-                view.as_ref(),
-                attribute,
-                NSLayoutRelation::Equal,
-                None,
-                NSLayoutAttribute::NotAnAttribute,
-                1.0,
-                value,
-            )
-        };
-        constraint.setActive(true);
-    }
+    exactly_wide(view, width);
+    constrain(view, NSLayoutAttribute::Height, NSLayoutRelation::Equal, height);
 }
 
 fn tone_color(tone: StatusTone) -> Retained<NSColor> {
@@ -223,8 +263,16 @@ fn layout_buttons(buttons: &[Retained<NSButton>], width: f64) {
     }
 }
 
+fn as_any(v: &NSView) -> &AnyObject {
+    v.as_ref()
+}
+
+fn caption_color(invalid: bool) -> Retained<NSColor> {
+    if invalid { NSColor::systemRedColor() } else { NSColor::labelColor() }
+}
+
 fn error_text(text: &str) -> String {
-    format!("{} {text}", StatusTone::Error.glyph())
+    if text.is_empty() { String::new() } else { format!("{} {text}", StatusTone::Error.glyph()) }
 }
 
 fn text_width(label: &NSTextField) -> f64 {
@@ -237,13 +285,50 @@ fn set_text(label: &NSTextField, text: &str) {
     }
 }
 
+fn set_hidden(row: &NSGridRow, hidden: bool) {
+    if row.isHidden() != hidden {
+        row.setHidden(hidden);
+    }
+}
+
+/// A row that shows nothing: hidden by its description, or a read-only text without words.
+fn row_hidden(row: &FormRow) -> bool {
+    row.hidden || matches!(&row.control, Control::ReadOnly { value } if value.is_empty() && row.label.is_empty())
+}
+
+/// A section shows its heading when one of its rows shows something.
+fn section_visible(section: &FormSection) -> bool {
+    section.rows.is_empty()
+        || section.rows.iter().any(|r| !row_hidden(r) || (!r.hidden && r.error.as_ref().is_some_and(|e| !e.is_empty())))
+}
+
+fn section_reason(section: &FormSection) -> &str {
+    section.unavailable.as_deref().or(section.reason.as_deref()).unwrap_or("")
+}
+
 /// Builds the form for a view `width` points wide. `wiring` is set on every control and button.
 pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Option<Wiring<'_>>) -> FormView {
+    build_form_with(mtm, spec, width, wiring, FormLayout::Natural)
+}
+
+/// [`build_form`] with a limit on the height.
+pub fn build_form_with(
+    mtm: MainThreadMarker,
+    spec: &FormSpec,
+    width: f64,
+    wiring: Option<Wiring<'_>>,
+    layout: FormLayout,
+) -> FormView {
     let margin = Space::Group.points();
     let inner = width - 2.0 * margin;
     let col_gap = Space::Tight.points();
+    // A form with tabs draws its grids inside the tab view (and is as tall as its tallest tab).
+    let tabbed = !spec.tabs().is_empty();
+    let inner_g = if tabbed { inner - 2.0 * TAB_INSET } else { inner };
+    let layout = if tabbed { FormLayout::Natural } else { layout };
 
-    // Column widths: the widest caption (capped), the widest unit, the rest for the controls.
+    // Column widths: the widest caption (capped), the widest unit or row of small buttons, the rest
+    // for the controls.
     let caption_probe = |text: &str| {
         let l = NSTextField::labelWithString(&NSString::from_str(text), mtm);
         l.setFont(Some(&NSFont::systemFontOfSize(TextRole::Label.size())));
@@ -256,308 +341,472 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         .filter(|r| !matches!(r.control, Control::Check { .. }) && !r.label.is_empty())
         .map(|r| caption_probe(&r.label))
         .fold(0.0_f64, f64::max)
-        .min(inner * CAPTION_SHARE);
+        .min(inner_g * CAPTION_SHARE);
+    let tools_width =
+        |n: usize| if n == 0 { 0.0 } else { n as f64 * TOOL_WIDTH + (n as f64 - 1.0) * Space::Hairline.points() };
     let unit_w = spec
         .sections
         .iter()
         .flat_map(|s| &s.rows)
-        .filter_map(|r| r.suffix())
-        .map(caption_probe)
+        .map(|r| r.suffix().map_or(0.0, caption_probe).max(tools_width(r.tools.len())))
         .fold(0.0_f64, f64::max);
     let has_captions = caption_w > 0.0;
     let has_units = unit_w > 0.0;
     // Text labels and fields draw 2 pt outside their alignment rect: the grid keeps that inside.
     let edge_pad = 2.0;
-    let control_w = inner
+    let control_w = inner_g
         - edge_pad
         - if has_captions { caption_w + col_gap } else { 0.0 }
         - if has_units { unit_w + col_gap } else { 0.0 };
 
-    let grid = NSGridView::gridViewWithNumberOfColumns_rows(3, 0, mtm);
-    grid.setRowSpacing(Space::Hairline.points());
-    grid.setColumnSpacing(col_gap);
-    grid.setRowAlignment(NSGridRowAlignment::FirstBaseline);
+    let new_grid = || {
+        let grid = NSGridView::gridViewWithNumberOfColumns_rows(3, 0, mtm);
+        grid.setRowSpacing(Space::Hairline.points());
+        grid.setColumnSpacing(col_gap);
+        grid.setRowAlignment(NSGridRowAlignment::FirstBaseline);
+        grid
+    };
 
     let mut rows: Vec<RowWidgets> = Vec::new();
     let mut sections: Vec<SectionWidgets> = Vec::new();
-    let mut headings = Vec::new();
-    let mut reasons = Vec::new();
     let empty = || NSGridCell::emptyContentView(mtm);
     // A row that runs under the captions is one merged cell. Its content lives in the first cell of
     // the range, and a hidden column hides its cells' content: without captions the first column
     // is hidden, so the range starts at the control column then.
     let first_col: usize = if has_captions { 0 } else { 1 };
-    let merged_row = |view: &NSView| {
+    let merged_views = |view: &NSView| -> Vec<Retained<NSView>> {
+        let owned = Some(view.retain());
         let (a, b) = (empty(), empty());
-        let views: [&NSView; 3] = if first_col == 0 { [view, &*a, &*b] } else { [&*a, view, &*b] };
-        let r = grid.addRowWithViews(&NSArray::from_slice(&views));
-        r.mergeCellsInRange(NSRange::new(first_col, 3 - first_col));
-        r
+        match owned {
+            Some(v) if first_col == 0 => vec![v, a, b],
+            Some(v) => vec![a, v, b],
+            None => vec![a, b],
+        }
     };
-    let mut first = true;
+    // Consecutive sections of one tab share a grid; a form without tabs has one.
+    let mut groups: Vec<(Option<String>, Vec<usize>)> = Vec::new();
     for (si, section) in spec.sections.iter().enumerate() {
-        let gap = if first { 0.0 } else { Space::Group.points() };
-        let mut section_rows: Vec<Retained<NSGridRow>> = Vec::new();
-        let mut heading_label = None;
-        if let Some(text) = &section.heading {
-            let l = wrapping(mtm, text, inner, TextRole::Heading);
-            let row = merged_row(as_view(&l));
-            row.setRowAlignment(NSGridRowAlignment::None);
-            row.setTopPadding(gap + if first { 0.0 } else { Space::Hairline.points() });
-            first = false;
-            section_rows.push(row);
-            heading_label = Some(l);
+        match groups.last_mut() {
+            Some((tab, ids)) if *tab == section.tab => ids.push(si),
+            _ => groups.push((section.tab.clone(), vec![si])),
         }
-        headings.push(heading_label);
-        let mut reason_label = None;
-        if let Some(text) = &section.unavailable {
-            let l = wrapping(mtm, text, inner, TextRole::Caption);
-            l.setTextColor(Some(&NSColor::secondaryLabelColor()));
-            let row = merged_row(as_view(&l));
-            row.setRowAlignment(NSGridRowAlignment::None);
-            section_rows.push(row);
-            reason_label = Some(l);
-        }
-        reasons.push(reason_label);
-        for row in &section.rows {
-            let mut caption = None;
-            // A note, picture, report or button row without a caption runs under the captions too.
-            // A merged cell keeps its content at its own size, so a report and a button row are
-            // given the width of the span.
-            let wide = row.label.is_empty()
-                && matches!(
-                    row.control,
-                    Control::Note { .. } | Control::Preview { .. } | Control::Report { .. } | Control::Actions { .. }
-                );
-            let cw = if wide { inner - edge_pad } else { control_w };
-            let mut button_row = None;
-            let (control, kind): (Retained<NSView>, Kind) = match &row.control {
-                Control::Text { value, placeholder } => {
-                    let f = text_field(mtm, value, wiring);
-                    f.setPlaceholderString(Some(&NSString::from_str(placeholder)));
-                    (Retained::into_super(Retained::into_super(f)), Kind::Text)
-                }
-                Control::Number { value } => {
-                    let f = text_field(mtm, value, wiring);
-                    f.setAlignment(NSTextAlignment::Right);
-                    (Retained::into_super(Retained::into_super(f)), Kind::Text)
-                }
-                Control::Choice { options, selected } => {
-                    let p = NSPopUpButton::initWithFrame_pullsDown(
-                        NSPopUpButton::alloc(mtm),
-                        rect(0.0, 0.0, control_w, 26.0),
-                        false,
+    }
+    if groups.is_empty() {
+        groups.push((None, Vec::new()));
+    }
+    let mut grids: Vec<(Option<String>, Retained<NSGridView>)> = Vec::new();
+    for (tab_title, indices) in groups {
+        let grid = new_grid();
+        let mut first = true;
+        for si in indices {
+            let section = &spec.sections[si];
+            let gap = if first { 0.0 } else { Space::Group.points() };
+            let mut widgets = SectionWidgets::default();
+            if let Some(text) = &section.heading {
+                let l = wrapping(mtm, text, inner_g, TextRole::Heading);
+                let views = merged_views(as_view(&l));
+                let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
+                let row = grid.addRowWithViews(&NSArray::from_slice(&refs));
+                row.mergeCellsInRange(NSRange::new(first_col, 3 - first_col));
+                row.setRowAlignment(NSGridRowAlignment::None);
+                row.setTopPadding(gap + if first { 0.0 } else { Space::Hairline.points() });
+                first = false;
+                widgets.heading = Some((l, row));
+            }
+            if section.unavailable.is_some() || section.reason.is_some() {
+                let l = wrapping(mtm, section_reason(section), inner_g, TextRole::Caption);
+                l.setTextColor(Some(&NSColor::secondaryLabelColor()));
+                let views = merged_views(as_view(&l));
+                let refs: Vec<&NSView> = views.iter().map(|v| &**v).collect();
+                let row = grid.addRowWithViews(&NSArray::from_slice(&refs));
+                row.mergeCellsInRange(NSRange::new(first_col, 3 - first_col));
+                row.setRowAlignment(NSGridRowAlignment::None);
+                widgets.reason = Some((l, row));
+            }
+            sections.push(widgets);
+            for row in &section.rows {
+                let mut caption = None;
+                // A note, picture, report or button row without a caption runs under the captions
+                // too. A merged cell keeps its content at its own size, so a report and a button
+                // row are given the width of the span.
+                let wide = row.label.is_empty()
+                    && matches!(
+                        row.control,
+                        Control::Note { .. }
+                            | Control::Preview { .. }
+                            | Control::Report { .. }
+                            | Control::Actions { .. }
                     );
-                    for o in options {
-                        p.addItemWithTitle(&NSString::from_str(o));
+                let cw = if wide { inner_g - edge_pad } else { control_w };
+                let mut button_row = None;
+                let (control, kind): (Retained<NSView>, Kind) = match &row.control {
+                    Control::Text { value, placeholder } => {
+                        let f = text_field(mtm, value, wiring);
+                        f.setPlaceholderString(Some(&NSString::from_str(placeholder)));
+                        (Retained::into_super(Retained::into_super(f)), Kind::Text)
                     }
-                    if *selected < options.len() {
+                    Control::Number { value } => {
+                        let f = text_field(mtm, value, wiring);
+                        f.setAlignment(NSTextAlignment::Right);
+                        (Retained::into_super(Retained::into_super(f)), Kind::Text)
+                    }
+                    Control::Choice { options, selected } => {
+                        let p = NSPopUpButton::initWithFrame_pullsDown(
+                            NSPopUpButton::alloc(mtm),
+                            rect(0.0, 0.0, control_w, 26.0),
+                            false,
+                        );
+                        // Greyed entries are the model's to say, not AppKit's.
+                        p.setAutoenablesItems(false);
+                        for o in options {
+                            p.addItemWithTitle(&NSString::from_str(o));
+                        }
                         p.selectItemAtIndex(*selected as isize);
+                        wire(&p, wiring);
+                        (Retained::into_super(Retained::into_super(Retained::into_super(p))), Kind::Choice)
                     }
-                    wire(&p, wiring);
-                    (Retained::into_super(Retained::into_super(Retained::into_super(p))), Kind::Choice)
-                }
-                Control::Check { on } => {
-                    let b = check_box(mtm, &row.label);
-                    b.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff });
-                    wire(&b, wiring);
-                    (Retained::into_super(Retained::into_super(b)), Kind::Check)
-                }
-                Control::Memo { text } => {
-                    let scroll = NSTextView::scrollableTextView(mtm);
-                    scroll.setHasVerticalScroller(true);
-                    scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
-                    if let Some(tv) = memo_text_view(&scroll) {
-                        tv.setEditable(true);
-                        tv.setRichText(false);
-                        tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
-                        tv.setString(&NSString::from_str(text));
-                        // The grid shows the scroll view; the user works in its text view.
-                        let _ = tv;
+                    Control::Check { on } => {
+                        let b = check_box(mtm, &row.label);
+                        b.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff });
+                        wire(&b, wiring);
+                        (Retained::into_super(Retained::into_super(b)), Kind::Check)
                     }
-                    (Retained::into_super(scroll), Kind::Memo)
-                }
-                Control::Action { title } => {
-                    let b = push_button(mtm, title);
-                    wire(&b, wiring);
-                    (Retained::into_super(Retained::into_super(b)), Kind::Action)
-                }
-                Control::ReadOnly { value } => {
-                    let l = wrapping(mtm, value, control_w, TextRole::Body);
-                    (Retained::into_super(Retained::into_super(l)), Kind::ReadOnly)
-                }
-                Control::Note { value, lines, tone, strong } => {
-                    let size = TextRole::Body.size();
-                    let l = wrapping_font(mtm, value, cw, size, *strong);
-                    let color = if *strong { NSColor::labelColor() } else { tone_color(*tone) };
-                    l.setTextColor(Some(&color));
-                    at_least_high(&l, f64::from(*lines) * line_height(size));
-                    (Retained::into_super(Retained::into_super(l)), Kind::Note)
-                }
-                Control::Report { text, lines } => {
-                    let scroll = NSTextView::scrollableTextView(mtm);
-                    scroll.setHasVerticalScroller(true);
-                    scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
-                    if let Some(tv) = memo_text_view(&scroll) {
-                        tv.setEditable(false);
-                        tv.setSelectable(true);
-                        tv.setRichText(false);
-                        tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
-                        tv.setString(&NSString::from_str(text));
+                    Control::Memo { text } => {
+                        let scroll = NSTextView::scrollableTextView(mtm);
+                        scroll.setHasVerticalScroller(true);
+                        scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
+                        if let Some(tv) = memo_text_view(&scroll) {
+                            tv.setEditable(true);
+                            tv.setRichText(false);
+                            tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
+                            tv.setString(&NSString::from_str(text));
+                        }
+                        (Retained::into_super(scroll), Kind::Memo)
                     }
-                    at_least_high(&scroll, f64::from(*lines) * line_height(TextRole::Body.size()) + 8.0);
-                    if wide {
-                        exactly_wide(&scroll, cw);
+                    Control::Action { title } => {
+                        let b = push_button(mtm, title);
+                        wire(&b, wiring);
+                        (Retained::into_super(Retained::into_super(b)), Kind::Action)
                     }
-                    (Retained::into_super(scroll), Kind::Report)
-                }
-                Control::Preview { width, height } => {
-                    let (w, h) = (f64::from(*width), f64::from(*height));
-                    let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, w, h));
-                    v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
-                    v.setImageFrameStyle(NSImageFrameStyle::GrayBezel);
-                    // The gray bezel takes 3 pt on every side out of the alignment rect.
-                    exactly_sized(&v, w - 6.0, h - 6.0);
-                    (Retained::into_super(Retained::into_super(v)), Kind::Preview)
-                }
-                Control::Actions { titles } => {
-                    let container = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, cw, BUTTON_HEIGHT));
-                    let buttons: Vec<Retained<NSButton>> = titles
-                        .iter()
-                        .map(|title| {
-                            let b = push_button(mtm, title);
-                            wire(&b, wiring);
-                            container.addSubview(&b);
-                            b
-                        })
-                        .collect();
-                    layout_buttons(&buttons, cw);
-                    if wide {
-                        exactly_wide(&container, cw);
+                    Control::ReadOnly { value } => {
+                        // Words without a caption run over the whole width of the form.
+                        let spans = row.label.is_empty() && has_captions;
+                        // A wrapping label draws 2 pt outside its alignment rect on both sides.
+                        let l = wrapping(
+                            mtm,
+                            value,
+                            if spans { inner_g - edge_pad - 4.0 } else { control_w - 4.0 },
+                            TextRole::Body,
+                        );
+                        (Retained::into_super(Retained::into_super(l)), Kind::ReadOnly)
                     }
-                    button_row = Some((container.clone(), buttons));
-                    (container, Kind::Actions)
-                }
-            };
-            if matches!(kind, Kind::Text | Kind::Choice) && !row.label.is_empty() {
-                // The caption sits beside the field; VoiceOver reads it from the field itself.
-                control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
-            }
-            let caption_view: Retained<NSView> = if matches!(kind, Kind::Check) || row.label.is_empty() {
-                empty()
-            } else {
-                let l = wrapping(mtm, &row.label, caption_w, TextRole::Label);
-                l.setAlignment(NSTextAlignment::Right);
-                let v = Retained::into_super(Retained::into_super(l.clone()));
-                caption = Some(l);
-                v
-            };
-            let unit_view: Retained<NSView> = match row.suffix() {
-                Some(suffix) => {
-                    let l = NSTextField::labelWithString(&NSString::from_str(suffix), mtm);
-                    l.setTextColor(Some(&NSColor::secondaryLabelColor()));
-                    Retained::into_super(Retained::into_super(l))
-                }
-                None => empty(),
-            };
-            let grid_row = if wide {
-                merged_row(&control)
-            } else {
-                grid.addRowWithViews(&NSArray::from_slice(&[&*caption_view, &*control, &*unit_view]))
-            };
-            grid_row.setTopPadding(if first { 0.0 } else { Space::Hairline.points() });
-            first = false;
-            if matches!(kind, Kind::Memo) {
-                grid_row.setRowAlignment(NSGridRowAlignment::None);
-                grid_row.setHeight(MEMO_HEIGHT);
-            }
-            if matches!(kind, Kind::Actions) {
-                grid_row.setRowAlignment(NSGridRowAlignment::None);
-                grid_row.setHeight(BUTTON_HEIGHT);
-            }
-            if matches!(kind, Kind::Note | Kind::Report | Kind::Preview) {
-                grid_row.setRowAlignment(NSGridRowAlignment::None);
-            }
-            if !wide && let Some(cell) = grid.cellForView(&caption_view) {
-                cell.setXPlacement(NSGridCellPlacement::Trailing);
-                if matches!(kind, Kind::Memo | Kind::Report) {
-                    cell.setYPlacement(NSGridCellPlacement::Top);
-                }
-            }
-            if let Some(cell) = grid.cellForView(&control) {
-                match kind {
-                    Kind::Text | Kind::Choice => cell.setXPlacement(NSGridCellPlacement::Fill),
-                    Kind::Memo | Kind::Report | Kind::Actions => {
-                        // A wide one has its own width (see above); filling would fight it.
-                        cell.setXPlacement(if wide { NSGridCellPlacement::Leading } else { NSGridCellPlacement::Fill });
-                        cell.setYPlacement(NSGridCellPlacement::Fill);
+                    Control::Log { text } => {
+                        let scroll = NSTextView::scrollableTextView(mtm);
+                        scroll.setHasVerticalScroller(true);
+                        scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
+                        if let Some(tv) = memo_text_view(&scroll) {
+                            tv.setEditable(false);
+                            tv.setSelectable(true);
+                            tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
+                            tv.setString(&NSString::from_str(text));
+                        }
+                        (Retained::into_super(scroll), Kind::Log)
                     }
-                    Kind::Check | Kind::Action | Kind::ReadOnly | Kind::Note | Kind::Preview => {
+                    Control::Note { value, lines, tone, strong } => {
+                        let size = TextRole::Body.size();
+                        let l = wrapping(mtm, value, cw - 4.0, TextRole::Body);
+                        if *strong {
+                            l.setFont(Some(&NSFont::boldSystemFontOfSize(size)));
+                        }
+                        let color = if *strong { NSColor::labelColor() } else { tone_color(*tone) };
+                        l.setTextColor(Some(&color));
+                        at_least_high(&l, f64::from(*lines) * line_height(size));
+                        (Retained::into_super(Retained::into_super(l)), Kind::Note)
+                    }
+                    Control::Report { text, lines } => {
+                        let scroll = NSTextView::scrollableTextView(mtm);
+                        scroll.setHasVerticalScroller(true);
+                        scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
+                        if let Some(tv) = memo_text_view(&scroll) {
+                            tv.setEditable(false);
+                            tv.setSelectable(true);
+                            tv.setRichText(false);
+                            tv.setFont(Some(&NSFont::systemFontOfSize(TextRole::Body.size())));
+                            tv.setString(&NSString::from_str(text));
+                        }
+                        at_least_high(&scroll, f64::from(*lines) * line_height(TextRole::Body.size()) + 8.0);
+                        if wide {
+                            exactly_wide(&scroll, cw);
+                        }
+                        (Retained::into_super(scroll), Kind::Report)
+                    }
+                    Control::Preview { width, height } => {
+                        let (w, h) = (f64::from(*width), f64::from(*height));
+                        let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, w, h));
+                        v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+                        v.setImageFrameStyle(NSImageFrameStyle::GrayBezel);
+                        // The gray bezel takes 3 pt on every side out of the alignment rect.
+                        exactly_sized(&v, w - 6.0, h - 6.0);
+                        (Retained::into_super(Retained::into_super(v)), Kind::Preview)
+                    }
+                    Control::Actions { titles } => {
+                        let container = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, cw, BUTTON_HEIGHT));
+                        let buttons: Vec<Retained<NSButton>> = titles
+                            .iter()
+                            .map(|title| {
+                                let b = push_button(mtm, title);
+                                wire(&b, wiring);
+                                container.addSubview(&b);
+                                b
+                            })
+                            .collect();
+                        layout_buttons(&buttons, cw);
+                        if wide {
+                            exactly_wide(&container, cw);
+                        }
+                        button_row = Some((container.clone(), buttons));
+                        (container, Kind::Actions)
+                    }
+                    Control::Picture { image } => {
+                        let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, 96.0, 96.0));
+                        v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+                        v.setImageFrameStyle(objc2_app_kit::NSImageFrameStyle::GrayBezel);
+                        show_bitmap(&v, &mut None, Some(image));
+                        (Retained::into_super(Retained::into_super(v)), Kind::Picture)
+                    }
+                };
+                let spans = kind == Kind::ReadOnly && row.label.is_empty() && has_captions;
+                let caption_view: Retained<NSView> = if matches!(kind, Kind::Check) || row.label.is_empty() {
+                    empty()
+                } else {
+                    let l = wrapping(mtm, &row.label, caption_w, TextRole::Label);
+                    l.setAlignment(NSTextAlignment::Right);
+                    l.setTextColor(Some(&caption_color(row.invalid)));
+                    let v = Retained::into_super(Retained::into_super(l.clone()));
+                    caption = Some(l);
+                    v
+                };
+                // Label for the screen reader and the tooltip, on the control that is not a checkbox.
+                if !matches!(
+                    kind,
+                    Kind::Check
+                        | Kind::ReadOnly
+                        | Kind::Action
+                        | Kind::Log
+                        | Kind::Picture
+                        | Kind::Note
+                        | Kind::Report
+                        | Kind::Preview
+                        | Kind::Actions
+                ) && !row.label.is_empty()
+                {
+                    control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
+                }
+                if let Some(tip) = &row.tooltip {
+                    control.setToolTip(Some(&NSString::from_str(tip)));
+                }
+                let mut unit_label = None;
+                let mut tools: Vec<(FormId, Retained<NSButton>)> = Vec::new();
+                let unit_view: Retained<NSView> = if !row.tools.is_empty() {
+                    for t in &row.tools {
+                        let b = push_button(mtm, &t.title);
+                        b.setFrame(rect(0.0, 0.0, TOOL_WIDTH, BUTTON_HEIGHT));
+                        b.setAccessibilityLabel(Some(&NSString::from_str(&t.label)));
+                        b.setEnabled(t.enabled);
+                        wire(&b, wiring);
+                        tools.push((t.id, b));
+                    }
+                    let views: Vec<&NSView> = tools.iter().map(|(_, b)| as_view(&**b)).collect();
+                    let stack = NSStackView::stackViewWithViews(&NSArray::from_slice(&views), mtm);
+                    stack.setOrientation(NSUserInterfaceLayoutOrientation::Horizontal);
+                    stack.setSpacing(Space::Hairline.points());
+                    Retained::into_super(stack)
+                } else {
+                    match row.suffix() {
+                        Some(suffix) => {
+                            let l = NSTextField::labelWithString(&NSString::from_str(suffix), mtm);
+                            l.setTextColor(Some(&NSColor::secondaryLabelColor()));
+                            unit_label = Some(l.clone());
+                            Retained::into_super(Retained::into_super(l))
+                        }
+                        None => empty(),
+                    }
+                };
+                // A button wider than both columns beside its caption takes the whole row.
+                let beside_w = control_w + if has_units { col_gap + unit_w } else { 0.0 };
+                let action_need = if kind == Kind::Action { control.fittingSize().width.ceil() } else { 0.0 };
+                let whole_row = action_need > beside_w;
+                let check_need = if kind == Kind::Check {
+                    as_any(&control)
+                        .downcast_ref::<NSButton>()
+                        .and_then(|b| b.cell())
+                        .map_or(0.0, |c| c.cellSize().width.ceil())
+                } else {
+                    0.0
+                };
+                let merged;
+                let views: [&NSView; 3] = if wide {
+                    merged = merged_views(&control);
+                    [&*merged[0], &*merged[1], &*merged[2]]
+                } else if spans || whole_row {
+                    [&control, &*empty(), &*empty()]
+                } else {
+                    [&caption_view, &control, &unit_view]
+                };
+                let grid_row = grid.addRowWithViews(&NSArray::from_slice(&views));
+                grid_row.setTopPadding(if first { 0.0 } else { Space::Hairline.points() });
+                first = false;
+                if wide {
+                    grid_row.mergeCellsInRange(NSRange::new(first_col, 3 - first_col));
+                    grid_row.setRowAlignment(NSGridRowAlignment::None);
+                    if matches!(kind, Kind::Actions) {
+                        grid_row.setHeight(BUTTON_HEIGHT);
+                    }
+                    if let Some(cell) = grid.cellForView(&control) {
                         cell.setXPlacement(NSGridCellPlacement::Leading);
-                        if matches!(kind, Kind::Note | Kind::Preview) {
+                        cell.setYPlacement(if matches!(kind, Kind::Report | Kind::Actions) {
+                            NSGridCellPlacement::Fill
+                        } else {
+                            NSGridCellPlacement::Top
+                        });
+                    }
+                } else if whole_row {
+                    grid_row.mergeCellsInRange(NSRange::new(0, 3));
+                    grid_row.setRowAlignment(NSGridRowAlignment::None);
+                    if let Some(cell) = grid.cellForView(&control) {
+                        cell.setXPlacement(NSGridCellPlacement::Leading);
+                    }
+                    if action_need > inner_g
+                        && let Some(b) = as_any(&control).downcast_ref::<NSButton>()
+                    {
+                        // A title wider than the whole form is cut with a tooltip, never silently.
+                        b.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+                        b.setToolTip(Some(&b.title()));
+                    }
+                } else if spans {
+                    grid_row.mergeCellsInRange(NSRange::new(0, 3));
+                    grid_row.setRowAlignment(NSGridRowAlignment::None);
+                    if let Some(cell) = grid.cellForView(&control) {
+                        cell.setXPlacement(NSGridCellPlacement::Leading);
+                    }
+                } else {
+                    if matches!(kind, Kind::Note | Kind::Report | Kind::Preview | Kind::Actions) {
+                        grid_row.setRowAlignment(NSGridRowAlignment::None);
+                        if kind == Kind::Actions {
+                            grid_row.setHeight(BUTTON_HEIGHT);
+                        }
+                    } else if matches!(kind, Kind::Memo | Kind::Log) {
+                        grid_row.setRowAlignment(NSGridRowAlignment::None);
+                        grid_row.setHeight(if kind == Kind::Log { LOG_HEIGHT } else { MEMO_HEIGHT });
+                    } else if kind == Kind::Picture {
+                        grid_row.setRowAlignment(NSGridRowAlignment::None);
+                    } else if kind == Kind::Action && action_need > control_w {
+                        grid_row.mergeCellsInRange(NSRange::new(1, 2));
+                    } else if kind == Kind::Check && check_need > control_w - 2.0 {
+                        // A title that does not fit takes the control and the unit column and wraps there.
+                        if let Some(b) = as_any(&control).downcast_ref::<NSButton>() {
+                            b.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
+                            if let Some(cell) = b.cell() {
+                                cell.setWraps(true);
+                            }
+                        }
+                        grid_row.mergeCellsInRange(NSRange::new(1, 2));
+                        let wanted = as_any(&control)
+                            .downcast_ref::<NSButton>()
+                            .and_then(|b| b.cell())
+                            .map_or(0.0, |c| c.cellSizeForBounds(rect(0.0, 0.0, beside_w, 10_000.0)).height.ceil());
+                        grid_row.setHeight(wanted.max(CHECK_HEIGHT));
+                    }
+                    if let Some(cell) = grid.cellForView(&caption_view) {
+                        cell.setXPlacement(NSGridCellPlacement::Trailing);
+                        if matches!(kind, Kind::Memo | Kind::Log | Kind::Picture | Kind::Report | Kind::Preview) {
                             cell.setYPlacement(NSGridCellPlacement::Top);
                         }
                     }
+                    if let Some(cell) = grid.cellForView(&control) {
+                        match kind {
+                            Kind::Text | Kind::Choice => cell.setXPlacement(NSGridCellPlacement::Fill),
+                            Kind::Memo | Kind::Log | Kind::Report | Kind::Actions => {
+                                cell.setXPlacement(NSGridCellPlacement::Fill);
+                                cell.setYPlacement(NSGridCellPlacement::Fill);
+                            }
+                            Kind::Note | Kind::Preview => {
+                                cell.setXPlacement(NSGridCellPlacement::Leading);
+                                cell.setYPlacement(NSGridCellPlacement::Top);
+                            }
+                            Kind::Picture => {
+                                cell.setXPlacement(NSGridCellPlacement::Leading);
+                                cell.setYPlacement(NSGridCellPlacement::Top);
+                            }
+                            Kind::Check if check_need > control_w - 2.0 => {
+                                cell.setXPlacement(NSGridCellPlacement::Fill)
+                            }
+                            Kind::Check | Kind::Action | Kind::ReadOnly => {
+                                cell.setXPlacement(NSGridCellPlacement::Leading)
+                            }
+                        }
+                    }
+                    if let Some(cell) = grid.cellForView(&unit_view) {
+                        cell.setXPlacement(NSGridCellPlacement::Leading);
+                    }
                 }
-            }
-            if !wide && let Some(cell) = grid.cellForView(&unit_view) {
-                cell.setXPlacement(NSGridCellPlacement::Leading);
-            }
-            let mut grid_rows = vec![grid_row];
-            if !section.row_enabled(row) {
-                set_enabled(&control, kind, false);
-                if let Some((_, buttons)) = &button_row {
-                    buttons.iter().for_each(|b| b.setEnabled(false));
+                if !section.row_enabled(row) {
+                    set_enabled(&control, kind, false);
+                    if let Some((_, buttons)) = &button_row {
+                        buttons.iter().for_each(|b| b.setEnabled(false));
+                    }
                 }
-            }
-            let mut notes: [Option<Retained<NSTextField>>; 2] = [None, None];
-            for (slot, text) in [(0, row.help.clone()), (1, row.error.as_ref().map(|e| error_text(e)))] {
-                let Some(text) = text else { continue };
-                let l = wrapping(mtm, &text, control_w, TextRole::Caption);
-                let color = if slot == 1 { NSColor::systemRedColor() } else { NSColor::secondaryLabelColor() };
-                l.setTextColor(Some(&color));
-                let note = grid.addRowWithViews(&NSArray::from_slice(&[&*empty(), as_view(&l), &*empty()]));
-                note.mergeCellsInRange(NSRange::new(1, 2));
-                note.setRowAlignment(NSGridRowAlignment::None);
-                if let Some(cell) = grid.cellForView(as_view(&l)) {
-                    cell.setXPlacement(NSGridCellPlacement::Leading);
+                let mut notes: [Option<(Retained<NSTextField>, Retained<NSGridRow>)>; 2] = [None, None];
+                for (slot, text) in [(0, row.help.clone()), (1, row.error.as_ref().map(|e| error_text(e)))] {
+                    let Some(text) = text else { continue };
+                    let l = wrapping(mtm, &text, control_w - 4.0, TextRole::Caption);
+                    let color = if slot == 1 { NSColor::systemRedColor() } else { NSColor::secondaryLabelColor() };
+                    l.setTextColor(Some(&color));
+                    let note = grid.addRowWithViews(&NSArray::from_slice(&[&*empty(), as_view(&l), &*empty()]));
+                    note.mergeCellsInRange(NSRange::new(1, 2));
+                    note.setRowAlignment(NSGridRowAlignment::None);
+                    if let Some(cell) = grid.cellForView(as_view(&l)) {
+                        cell.setXPlacement(NSGridCellPlacement::Leading);
+                    }
+                    notes[slot] = Some((l, note));
                 }
-                grid_rows.push(note);
-                notes[slot] = Some(l);
+                let [help, error] = notes;
+                rows.push(RowWidgets {
+                    id: row.id,
+                    kind,
+                    pushed: pushed_of(&row.control),
+                    control: match kind {
+                        Kind::Memo | Kind::Log | Kind::Report => memo_view(&control),
+                        _ => control,
+                    },
+                    caption,
+                    unit: unit_label,
+                    help: help.as_ref().map(|(l, _)| l.clone()),
+                    error: error.as_ref().map(|(l, _)| l.clone()),
+                    tools,
+                    row: grid_row,
+                    help_row: help.map(|(_, r)| r),
+                    error_row: error.map(|(_, r)| r),
+                    section: si,
+                    button_row,
+                    forced_hidden: false,
+                    spec_hidden: false,
+                });
             }
-            let [help, error] = notes;
-            rows.push(RowWidgets {
-                id: row.id,
-                kind,
-                pushed: pushed_of(&row.control),
-                control: match kind {
-                    Kind::Memo | Kind::Report => memo_view(&control),
-                    _ => control,
-                },
-                caption,
-                help,
-                error,
-                section: si,
-                grid_rows: grid_rows.clone(),
-                button_row,
-                hidden: false,
-            });
-            section_rows.extend(grid_rows);
         }
-        sections.push(SectionWidgets { grid_rows: section_rows, hidden: false });
-    }
 
-    // Columns.
-    if grid.numberOfColumns() == 3 {
-        let (c0, c1, c2) = (grid.columnAtIndex(0), grid.columnAtIndex(1), grid.columnAtIndex(2));
-        c0.setWidth(caption_w);
-        c1.setWidth(control_w);
-        c2.setWidth(unit_w);
-        c0.setHidden(!has_captions);
-        (if has_captions { &c0 } else { &c1 }).setLeadingPadding(edge_pad);
-        c2.setHidden(!has_units);
+        // Columns.
+        if grid.numberOfColumns() == 3 {
+            let (c0, c1, c2) = (grid.columnAtIndex(0), grid.columnAtIndex(1), grid.columnAtIndex(2));
+            c0.setWidth(caption_w);
+            c1.setWidth(control_w);
+            c2.setWidth(unit_w);
+            c0.setHidden(!has_captions);
+            (if has_captions { &c0 } else { &c1 }).setLeadingPadding(edge_pad);
+            c2.setHidden(!has_units);
+        }
+        grids.push((tab_title, grid));
     }
-    // Rows of a form without captions or units still leave the gap to the next column out.
 
     // Dialog buttons: help alone at the left, the rest right-aligned, primary rightmost.
     let ordered = spec.buttons.order(Platform::Mac);
@@ -565,6 +814,9 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     for (role, spec_button) in &ordered {
         let b = push_button(mtm, &spec_button.title);
         b.setEnabled(spec_button.enabled);
+        if let Some(tip) = &spec_button.tooltip {
+            b.setToolTip(Some(&NSString::from_str(tip)));
+        }
         wire(&b, wiring);
         match role.key() {
             Some(Key::Return) => b.setKeyEquivalent(&NSString::from_str("\r")),
@@ -576,24 +828,98 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
         b.setFrame(rect(0.0, 0.0, w, BUTTON_HEIGHT));
         buttons.push((*role, spec_button.id, b));
     }
+    let button_row = if buttons.is_empty() { 0.0 } else { BUTTON_HEIGHT + Space::Group.points() };
 
-    let root = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 0.0));
-    root.addSubview(&grid);
-    for (_, _, b) in &buttons {
+    // The notice of the form: above the buttons, whatever tab is open. With a slot the room for
+    // two lines is kept while there is no notice.
+    let notice = (spec.notice.is_some() || spec.notice_slot).then(|| {
+        let text = spec.notice.as_deref().map(error_text).unwrap_or_default();
+        let l = wrapping(mtm, &text, inner, TextRole::Caption);
+        l.setTextColor(Some(&NSColor::systemRedColor()));
+        l
+    });
+
+    let root = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 1.0));
+    let mut chrome_h = 0.0;
+    let mut tab_view = None;
+    let body = if tabbed {
+        let tv = NSTabView::initWithFrame(NSTabView::alloc(mtm), rect(0.0, 0.0, inner, 300.0));
+        for (title, _) in &grids {
+            // SAFETY: a fresh item without an identifier object.
+            let item = unsafe { NSTabViewItem::initWithIdentifier(NSTabViewItem::alloc(), None) };
+            item.setLabel(&NSString::from_str(title.as_deref().unwrap_or("")));
+            item.setView(Some(&NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, 1.0, 1.0))));
+            tv.addTabViewItem(&item);
+        }
+        // The border and the strip of tabs around the content, measured on the real control.
+        chrome_h = 300.0 - tv.contentRect().size.height;
+        let page_w = tv.contentRect().size.width;
+        for ((_, grid), item) in grids.iter().zip(tv.tabViewItems().iter()) {
+            let page = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, page_w, 1.0));
+            page.addSubview(grid);
+            item.setView(Some(&page));
+        }
+        root.addSubview(&tv);
+        tab_view = Some(tv);
+        Body::Direct
+    } else if layout == FormLayout::Natural {
+        if let Some((_, grid)) = grids.first() {
+            root.addSubview(grid);
+        }
+        Body::Direct
+    } else {
+        let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(0.0, 0.0, width, 1.0));
+        scroll.setHasVerticalScroller(true);
+        scroll.setHasHorizontalScroller(false);
+        scroll.setAutohidesScrollers(true);
+        scroll.setDrawsBackground(false);
+        let document = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 1.0));
+        if let Some((_, grid)) = grids.first() {
+            document.addSubview(grid);
+        }
+        scroll.setDocumentView(Some(&document));
+        root.addSubview(&scroll);
+        Body::Scroll { scroll, document }
+    };
+    if let Some(l) = &notice {
+        root.addSubview(l);
+    }
+    // Right to left from the edge; the help button keeps the left edge.
+    let mut right = width - margin;
+    for (role, _, b) in buttons.iter().rev() {
+        let w = b.frame().size.width;
+        if *role == ButtonRole::Help {
+            b.setFrameOrigin(NSPoint::new(margin, margin));
+        } else {
+            right -= w;
+            b.setFrameOrigin(NSPoint::new(right, margin));
+            right -= Space::Control.points();
+        }
         root.addSubview(b);
     }
     let mut view = FormView {
         root,
-        grid,
+        grids: grids.into_iter().map(|(_, g)| g).collect(),
+        body,
+        notice,
+        notice_slot: spec.notice_slot,
+        tab_view,
+        chrome_h,
+        inner_g,
+        mtm,
+        layout,
         rows,
         sections,
-        headings,
-        reasons,
         buttons,
         shape: spec.shape(),
-        size: NSSize::new(width, 0.0),
+        size: NSSize::new(width, 1.0),
+        margin,
+        inner,
+        button_row,
     };
+    view.apply_state(spec, true);
     view.relayout(0.0);
+    view.scroll_to_top();
     view
 }
 
@@ -634,6 +960,8 @@ fn pushed_of(control: &Control) -> String {
         Control::Check { on } => if *on { "1" } else { "0" }.to_owned(),
         Control::Memo { text } => text.clone(),
         Control::Action { title } => title.clone(),
+        Control::Log { text } => text.clone(),
+        Control::Picture { image } => format!("{}x{}", image.width, image.height),
         Control::Note { value, .. } => value.clone(),
         Control::Report { text, .. } => text.clone(),
         Control::Preview { .. } | Control::Actions { .. } => String::new(),
@@ -645,12 +973,100 @@ fn set_enabled(control: &NSView, kind: Kind, enabled: bool) {
     if let Some(c) = any.downcast_ref::<NSControl>() {
         c.setEnabled(enabled);
     } else if let Some(t) = any.downcast_ref::<NSTextView>() {
-        t.setEditable(enabled);
-        t.setSelectable(enabled || kind == Kind::Memo);
+        // A log is read-only whatever the row says; its text stays selectable.
+        t.setEditable(enabled && kind != Kind::Log);
+        t.setSelectable(enabled || matches!(kind, Kind::Memo | Kind::Log));
     }
 }
 
 impl FormView {
+    /// The widget of a row (a memo is its text view), of any kind.
+    pub fn control(&self, id: FormId) -> Option<Retained<NSView>> {
+        if let Some(r) = self.rows.iter().find(|r| r.id == id) {
+            return match &r.button_row {
+                Some((_, buttons)) => buttons.first().map(|b| Retained::into_super(Retained::into_super(b.clone()))),
+                None => Some(r.control.clone()),
+            };
+        }
+        // A row of buttons answers its first button as `id` and the next ones as `id + 1`, ….
+        self.rows.iter().find_map(|r| {
+            let (_, buttons) = r.button_row.as_ref()?;
+            let index = usize::try_from(id.0.checked_sub(r.id.0)?).ok()?;
+            buttons.get(index).map(|b| Retained::into_super(Retained::into_super(b.clone())))
+        })
+    }
+
+    /// The caption of a row, when it has one.
+    pub fn caption(&self, id: FormId) -> Option<Retained<NSTextField>> {
+        self.rows.iter().find(|r| r.id == id).and_then(|r| r.caption.clone())
+    }
+
+    /// Hides or shows a row with its caption, unit, help and error, on top of what the description
+    /// says. The space comes back only after [`FormView::relayout`].
+    pub fn set_hidden(&mut self, id: FormId, hidden: bool) {
+        if let Some(r) = self.rows.iter_mut().find(|r| r.id == id) {
+            r.forced_hidden = hidden;
+        }
+        self.apply_forced();
+    }
+
+    /// Hides or shows a whole section: heading, reason and rows.
+    pub fn set_section_hidden(&mut self, section: usize, hidden: bool) {
+        if let Some(s) = self.sections.get_mut(section) {
+            s.forced_hidden = hidden;
+        }
+        self.apply_forced();
+    }
+
+    /// Puts the run-time hiding over the grid rows, and gives a row back what its description says.
+    fn apply_forced(&self) {
+        for (si, s) in self.sections.iter().enumerate() {
+            let any_shown = self.rows.iter().filter(|r| r.section == si).any(|r| !r.spec_hidden);
+            if let Some((_, row)) = &s.heading {
+                set_hidden(row, s.forced_hidden || !any_shown);
+            }
+            if let Some((l, row)) = &s.reason {
+                set_hidden(row, s.forced_hidden || !any_shown || l.stringValue().to_string().is_empty());
+            }
+        }
+        for r in &self.rows {
+            let section_hidden = self.sections.get(r.section).is_some_and(|s| s.forced_hidden);
+            let hide = r.forced_hidden || section_hidden;
+            set_hidden(&r.row, hide || r.spec_hidden);
+            if let (Some(l), Some(row)) = (&r.help, &r.help_row) {
+                set_hidden(row, hide || l.stringValue().to_string().is_empty());
+            }
+            if let (Some(l), Some(row)) = (&r.error, &r.error_row) {
+                set_hidden(row, hide || l.stringValue().to_string().is_empty());
+            }
+        }
+    }
+
+    /// The help line under a row, even when it is empty and hidden.
+    pub fn help_label(&self, id: FormId) -> Option<Retained<NSTextField>> {
+        self.rows.iter().find(|r| r.id == id).and_then(|r| r.help.clone())
+    }
+
+    /// The error line under a row, even when it is empty and hidden.
+    pub fn error_label(&self, id: FormId) -> Option<Retained<NSTextField>> {
+        self.rows.iter().find(|r| r.id == id).and_then(|r| r.error.clone())
+    }
+
+    /// The heading of a section.
+    pub fn heading_label(&self, section: usize) -> Option<Retained<NSTextField>> {
+        self.sections.get(section).and_then(|s| s.heading.as_ref().map(|(l, _)| l.clone()))
+    }
+
+    /// The line that says why rows of a section are greyed.
+    pub fn reason_label(&self, section: usize) -> Option<Retained<NSTextField>> {
+        self.sections.get(section).and_then(|s| s.reason.as_ref().map(|(l, _)| l.clone()))
+    }
+
+    /// A small button beside a row.
+    pub fn tool(&self, id: FormId) -> Option<Retained<NSButton>> {
+        self.rows.iter().flat_map(|r| &r.tools).find(|(i, _)| *i == id).map(|(_, b)| b.clone())
+    }
+
     /// The view to put in a window or panel.
     pub fn root(&self) -> &NSView {
         &self.root
@@ -667,110 +1083,35 @@ impl FormView {
 
     /// Every control and button with its id (a memo is its text view).
     pub fn controls(&self) -> Vec<(FormId, Retained<NSView>)> {
-        let mut out: Vec<(FormId, Retained<NSView>)> = Vec::new();
+        let mut out: Vec<(FormId, Retained<NSView>)> = self
+            .rows
+            .iter()
+            .filter(|r| {
+                !matches!(
+                    r.kind,
+                    Kind::ReadOnly
+                        | Kind::Log
+                        | Kind::Picture
+                        | Kind::Note
+                        | Kind::Report
+                        | Kind::Preview
+                        | Kind::Actions
+                )
+            })
+            .map(|r| (r.id, r.control.clone()))
+            .collect();
         for r in &self.rows {
-            match (&r.button_row, r.kind) {
-                (Some((_, buttons)), _) => out.extend(buttons.iter().enumerate().map(|(i, b)| {
+            if let Some((_, buttons)) = &r.button_row {
+                out.extend(buttons.iter().enumerate().map(|(i, b)| {
                     (
                         FormId(r.id.0 + u32::try_from(i).unwrap_or(0)),
                         Retained::into_super(Retained::into_super(b.clone())),
                     )
-                })),
-                (None, Kind::ReadOnly | Kind::Note | Kind::Preview) => {}
-                (None, _) => out.push((r.id, r.control.clone())),
+                }));
             }
         }
         out.extend(self.buttons.iter().map(|(_, id, b)| (*id, Retained::into_super(Retained::into_super(b.clone())))));
         out
-    }
-
-    /// The control of a row: a text field, pop-up, check box or button; a memo or report is its
-    /// text view; a picture is its image view. A row of buttons answers its first button as `id`
-    /// and the next ones as `id + 1`, ….
-    pub fn control(&self, id: FormId) -> Option<Retained<NSView>> {
-        if let Some(r) = self.rows.iter().find(|r| r.id == id) {
-            return match &r.button_row {
-                Some((_, buttons)) => buttons.first().map(|b| Retained::into_super(Retained::into_super(b.clone()))),
-                None => Some(r.control.clone()),
-            };
-        }
-        self.rows.iter().find_map(|r| {
-            let (_, buttons) = r.button_row.as_ref()?;
-            let index = usize::try_from(id.0.checked_sub(r.id.0)?).ok()?;
-            buttons.get(index).map(|b| Retained::into_super(Retained::into_super(b.clone())))
-        })
-    }
-
-    /// The caption of a row, when it has one.
-    pub fn caption(&self, id: FormId) -> Option<Retained<NSTextField>> {
-        self.rows.iter().find(|r| r.id == id).and_then(|r| r.caption.clone())
-    }
-
-    /// Hides or shows a row with its caption, unit, help and error. The space comes back only
-    /// after [`FormView::relayout`].
-    pub fn set_hidden(&mut self, id: FormId, hidden: bool) {
-        if let Some(r) = self.rows.iter_mut().find(|r| r.id == id) {
-            r.hidden = hidden;
-        }
-        self.apply_hidden();
-    }
-
-    /// Hides or shows a whole section: heading, reason and rows.
-    pub fn set_section_hidden(&mut self, section: usize, hidden: bool) {
-        if let Some(s) = self.sections.get_mut(section) {
-            s.hidden = hidden;
-        }
-        self.apply_hidden();
-    }
-
-    fn apply_hidden(&self) {
-        for s in &self.sections {
-            for row in &s.grid_rows {
-                row.setHidden(s.hidden);
-            }
-        }
-        for r in &self.rows {
-            let section_hidden = self.sections.get(r.section).is_some_and(|s| s.hidden);
-            for row in &r.grid_rows {
-                row.setHidden(r.hidden || section_hidden);
-            }
-        }
-    }
-
-    /// Fits the form to its content again (after a text grew, a title changed or a row was hidden).
-    /// A `min_height` taller than the content keeps the buttons at the bottom and the content at
-    /// the top.
-    pub fn relayout(&mut self, min_height: f64) -> NSSize {
-        let margin = Space::Group.points();
-        let width = self.size.width;
-        let inner = width - 2.0 * margin;
-        for r in &self.rows {
-            if let Some((container, buttons)) = &r.button_row {
-                layout_buttons(buttons, container.frame().size.width);
-            }
-        }
-        self.grid.setFrame(rect(margin, margin, inner, 0.0));
-        self.grid.layoutSubtreeIfNeeded();
-        let fit = self.grid.fittingSize();
-        let button_row = if self.buttons.is_empty() { 0.0 } else { BUTTON_HEIGHT + Space::Group.points() };
-        let height = (margin + button_row + fit.height + margin).max(min_height);
-        self.root.setFrame(rect(0.0, 0.0, width, height));
-        self.grid.setFrame(rect(margin, height - margin - fit.height, inner, fit.height));
-        // Right to left from the edge; the help button keeps the left edge.
-        let mut right = width - margin;
-        for (role, _, b) in self.buttons.iter().rev() {
-            let w = b.frame().size.width;
-            if *role == ButtonRole::Help {
-                b.setFrameOrigin(objc2_foundation::NSPoint::new(margin, margin));
-            } else {
-                right -= w;
-                b.setFrameOrigin(objc2_foundation::NSPoint::new(right, margin));
-                right -= Space::Control.points();
-            }
-        }
-        self.grid.layoutSubtreeIfNeeded();
-        self.size = NSSize::new(width, height);
-        self.size
     }
 
     /// Nil every target (they are weak) before the target object goes.
@@ -782,14 +1123,15 @@ impl FormView {
             if let Some(c) = any.downcast_ref::<NSControl>() {
                 controls.push(Message::retain(c));
             }
-        }
-        for (_, _, b) in &self.buttons {
-            controls.push(Retained::into_super(b.clone()));
-        }
-        for r in &self.rows {
+            for (_, b) in &r.tools {
+                controls.push(Retained::into_super(b.clone()));
+            }
             if let Some((_, buttons)) = &r.button_row {
                 controls.extend(buttons.iter().map(|b| Retained::into_super(b.clone())));
             }
+        }
+        for (_, _, b) in &self.buttons {
+            controls.push(Retained::into_super(b.clone()));
         }
         for c in controls {
             // SAFETY: a nil target cannot dangle.
@@ -802,56 +1144,115 @@ impl FormView {
         spec.shape() == self.shape
     }
 
+    /// Scrolls the rows to their top.
+    pub fn scroll_to_top(&self) {
+        if let Body::Scroll { document, .. } = &self.body {
+            document.scrollPoint(NSPoint::new(0.0, document.frame().size.height));
+        }
+    }
+
     /// Copies `spec` into the widgets. Returns `false` (and changes nothing) when its shape differs.
     pub fn update(&mut self, spec: &FormSpec) -> bool {
         if !self.fits(spec) {
             return false;
         }
+        self.apply_state(spec, false);
+        self.relayout(0.0);
+        true
+    }
+
+    /// Puts every value of `spec` into the controls, also over what the user typed (a dialog that
+    /// opens again). Returns `false` and changes nothing when the shape differs.
+    pub fn load(&mut self, spec: &FormSpec) -> bool {
+        if !self.fits(spec) {
+            return false;
+        }
+        self.apply_state(spec, true);
+        self.relayout(0.0);
+        true
+    }
+
+    /// Texts, values, enablement and what shows, from `spec`. `force` also replaces what the user
+    /// typed.
+    fn apply_state(&mut self, spec: &FormSpec, force: bool) {
+        if let Some(l) = &self.notice {
+            set_text(l, &spec.notice.as_deref().map(error_text).unwrap_or_default());
+        }
         for (si, section) in spec.sections.iter().enumerate() {
-            if let (Some(Some(l)), Some(text)) = (self.headings.get(si), &section.heading) {
+            let visible = section_visible(section);
+            let Some(widgets) = self.sections.get(si) else { continue };
+            if let (Some((l, row)), Some(text)) = (&widgets.heading, &section.heading) {
                 set_text(l, text);
+                set_hidden(row, !visible);
             }
-            if let (Some(Some(l)), Some(text)) = (self.reasons.get(si), &section.unavailable) {
+            if let Some((l, row)) = &widgets.reason {
+                let text = section_reason(section);
                 set_text(l, text);
+                set_hidden(row, !visible || text.is_empty());
             }
         }
-        let specs: Vec<(usize, &burnburn_host_models::form::FormRow)> =
+        let specs: Vec<(usize, &FormRow)> =
             spec.sections.iter().enumerate().flat_map(|(si, s)| s.rows.iter().map(move |r| (si, r))).collect();
         for (widgets, (si, row)) in self.rows.iter_mut().zip(specs) {
             debug_assert_eq!(widgets.section, si);
             let enabled = spec.sections[si].row_enabled(row);
             set_enabled(&widgets.control, widgets.kind, enabled);
+            widgets.spec_hidden = row_hidden(row);
+            let forced = widgets.forced_hidden || self.sections.get(si).is_some_and(|s| s.forced_hidden);
+            set_hidden(&widgets.row, widgets.spec_hidden || forced);
             if let Some(c) = &widgets.caption {
                 set_text(c, &row.label);
+                c.setTextColor(Some(&caption_color(row.invalid)));
             }
-            if let (Some(l), Some(t)) = (&widgets.help, &row.help) {
-                set_text(l, t);
+            if let (Some(l), Some(suffix)) = (&widgets.unit, row.suffix()) {
+                set_text(l, suffix);
             }
-            if let (Some(l), Some(t)) = (&widgets.error, &row.error) {
-                set_text(l, &error_text(t));
+            if let (Some(l), Some(r)) = (&widgets.help, &widgets.help_row) {
+                let text = row.help.clone().unwrap_or_default();
+                set_text(l, &text);
+                set_hidden(r, row.hidden || text.is_empty() || forced);
             }
+            if let (Some(l), Some(r)) = (&widgets.error, &widgets.error_row) {
+                let text = row.error.as_deref().map(error_text).unwrap_or_default();
+                set_text(l, &text);
+                set_hidden(r, row.hidden || text.is_empty() || forced);
+            }
+            for (tool, (_, button)) in row.tools.iter().zip(&widgets.tools) {
+                button.setEnabled(tool.enabled);
+                if button.accessibilityLabel().map(|a| a.to_string()).as_deref() != Some(tool.label.as_str()) {
+                    button.setAccessibilityLabel(Some(&NSString::from_str(&tool.label)));
+                }
+            }
+            let tip = row.tooltip.as_deref().map(NSString::from_str);
+            widgets.control.setToolTip(tip.as_deref());
             let new = pushed_of(&row.control);
             let any: &AnyObject = widgets.control.as_ref();
             match (&row.control, widgets.kind) {
                 (Control::Text { value, .. } | Control::Number { value }, _) => {
+                    // A refused value stays visible in its field until it is accepted.
                     if let Some(f) = any.downcast_ref::<NSTextField>()
-                        && widgets.pushed != *value
-                        && f.currentEditor().is_none()
+                        && (force || (widgets.pushed != *value && f.currentEditor().is_none() && !row.invalid))
                     {
-                        f.setStringValue(&NSString::from_str(value));
+                        if f.stringValue().to_string() != *value {
+                            f.setStringValue(&NSString::from_str(value));
+                        }
                         widgets.pushed = new;
                     }
                 }
                 (Control::Choice { options, selected }, _) => {
                     if let Some(p) = any.downcast_ref::<NSPopUpButton>() {
                         for (i, o) in options.iter().enumerate() {
-                            if let Some(item) = p.itemAtIndex(i as isize)
-                                && item.title().to_string() != *o
-                            {
-                                item.setTitle(&NSString::from_str(o));
+                            if let Some(item) = p.itemAtIndex(i as isize) {
+                                if item.title().to_string() != *o {
+                                    item.setTitle(&NSString::from_str(o));
+                                }
+                                let disabled = row.disabled_options.iter().find(|(d, _)| *d == i);
+                                item.setEnabled(disabled.is_none());
+                                let tip = disabled.and_then(|(_, r)| r.as_deref()).map(NSString::from_str);
+                                item.setToolTip(tip.as_deref());
                             }
                         }
-                        if widgets.pushed != new {
+                        if force || widgets.pushed != new {
                             p.selectItemAtIndex(*selected as isize);
                             widgets.pushed = new;
                         }
@@ -859,7 +1260,7 @@ impl FormView {
                 }
                 (Control::Check { on }, _) => {
                     if let Some(b) = any.downcast_ref::<NSButton>() {
-                        if widgets.pushed != new {
+                        if force || widgets.pushed != new {
                             b.setState(if *on { NSControlStateValueOn } else { NSControlStateValueOff });
                             widgets.pushed = new;
                         }
@@ -871,7 +1272,7 @@ impl FormView {
                 (Control::Memo { text }, _) => {
                     // What the user typed stays until the stored text changes.
                     if let Some(t) = any.downcast_ref::<NSTextView>()
-                        && widgets.pushed != *text
+                        && (force || widgets.pushed != *text)
                     {
                         t.setString(&NSString::from_str(text));
                         widgets.pushed = new;
@@ -884,7 +1285,21 @@ impl FormView {
                         b.setTitle(&NSString::from_str(title));
                     }
                 }
-                (Control::ReadOnly { value } | Control::Note { value, .. }, _) => {
+                (Control::ReadOnly { value }, _) => {
+                    if let Some(l) = any.downcast_ref::<NSTextField>() {
+                        set_text(l, value);
+                    }
+                }
+                (Control::Log { text }, _) => {
+                    if let Some(t) = any.downcast_ref::<NSTextView>()
+                        && (force || widgets.pushed != *text)
+                    {
+                        t.setString(&NSString::from_str(text));
+                        widgets.pushed = new;
+                    }
+                }
+                (Control::Picture { .. }, _) => {}
+                (Control::Note { value, .. }, _) => {
                     if let Some(l) = any.downcast_ref::<NSTextField>() {
                         set_text(l, value);
                     }
@@ -913,25 +1328,109 @@ impl FormView {
                 widget.setTitle(&NSString::from_str(&b.title));
             }
             widget.setEnabled(b.enabled);
+            let tip = b.tooltip.as_deref().map(NSString::from_str);
+            widget.setToolTip(tip.as_deref());
         }
-        true
+    }
+
+    /// Sizes the grids to their rows and the root to the grids (or to its limit); the rows scroll
+    /// when they do not fit. With tabs the tab view is as tall as its tallest tab.
+    pub fn relayout(&mut self, min_height: f64) -> NSSize {
+        for r in &self.rows {
+            if let Some((container, buttons)) = &r.button_row {
+                layout_buttons(buttons, container.frame().size.width);
+            }
+        }
+        let (margin, width) = (self.margin, self.root.frame().size.width);
+        let notice_h = match (&self.notice, self.notice_slot) {
+            (None, _) => 0.0,
+            (Some(_), true) => NOTICE_SLOT_HEIGHT + Space::Control.points(),
+            (Some(l), false) => {
+                l.setPreferredMaxLayoutWidth(self.inner);
+                l.fittingSize().height.ceil() + Space::Control.points()
+            }
+        };
+        let bottom = margin + self.button_row + notice_h;
+        if let Some(l) = &self.notice {
+            l.setFrame(rect(
+                margin,
+                margin + self.button_row,
+                self.inner,
+                (notice_h - Space::Control.points()).max(0.0),
+            ));
+        }
+        if let Some(tv) = &self.tab_view {
+            let grid_w = self.inner_g;
+            for g in &self.grids {
+                g.setFrame(rect(0.0, 0.0, grid_w, 1.0));
+                g.layoutSubtreeIfNeeded();
+            }
+            let fit_h = self.grids.iter().map(|g| g.fittingSize().height).fold(0.0_f64, f64::max);
+            let page_h = fit_h + 2.0 * TAB_PAD;
+            for (grid, item) in self.grids.iter().zip(tv.tabViewItems().iter()) {
+                let Some(page) = item.view(self.mtm) else { continue };
+                let page_w = page.frame().size.width;
+                page.setFrameSize(NSSize::new(page_w, page_h));
+                let gh = grid.fittingSize().height;
+                grid.setFrame(rect((page_w - grid_w) / 2.0, page_h - TAB_PAD - gh, grid_w, gh));
+            }
+            let tv_h = page_h + self.chrome_h;
+            tv.setFrame(rect(margin, bottom, self.inner, tv_h));
+            let height = (bottom + tv_h + margin).max(min_height);
+            self.root.setFrameSize(NSSize::new(width, height));
+            self.size = NSSize::new(width, height);
+            return self.size;
+        }
+        let Some(grid) = self.grids.first() else { return self.size };
+        grid.setFrame(rect(margin, bottom, self.inner, 1.0));
+        grid.layoutSubtreeIfNeeded();
+        let fit = grid.fittingSize().height;
+        let natural = bottom + fit + margin;
+        let height = match self.layout {
+            FormLayout::Natural => natural.max(min_height),
+            FormLayout::Capped(max) => natural.min(max),
+            FormLayout::Fixed(h) => h,
+        };
+        self.root.setFrameSize(NSSize::new(width, height));
+        match &self.body {
+            // Content at the top, buttons at the bottom: the same when the form is as tall as its rows.
+            Body::Direct => grid.setFrame(rect(margin, height - margin - fit, self.inner, fit)),
+            Body::Scroll { scroll, document } => {
+                let visible = height - bottom;
+                scroll.setFrame(rect(0.0, bottom, width, visible));
+                let doc_h = (fit + margin).max(visible);
+                document.setFrame(rect(0.0, 0.0, width, doc_h));
+                grid.setFrame(rect(margin, doc_h - margin - fit, self.inner, fit));
+            }
+        }
+        grid.layoutSubtreeIfNeeded();
+        self.size = NSSize::new(width, height);
+        self.size
     }
 
     /// The texts the form shows (headings, reasons, captions, help, errors), for tests.
     pub fn texts(&self) -> Vec<String> {
         let mut out = Vec::new();
         let label = |l: &NSTextField| l.stringValue().to_string();
-        for h in self.headings.iter().flatten() {
-            out.push(label(h));
+        for s in &self.sections {
+            if let Some((h, _)) = &s.heading {
+                out.push(label(h));
+            }
         }
-        for r in self.reasons.iter().flatten() {
-            out.push(label(r));
+        for s in &self.sections {
+            if let Some((r, _)) = &s.reason {
+                out.push(label(r));
+            }
+        }
+        if let Some(n) = &self.notice {
+            out.push(label(n));
         }
         for row in &self.rows {
             for l in [&row.caption, &row.help, &row.error].into_iter().flatten() {
                 out.push(label(l));
             }
         }
+        out.retain(|t| !t.is_empty());
         out
     }
 
@@ -960,6 +1459,23 @@ impl FormView {
         row.pushed = pushed.to_owned();
     }
 
+    /// The tab view of a form with tabs.
+    pub fn tab_view(&self) -> Option<Retained<NSTabView>> {
+        self.tab_view.clone()
+    }
+
+    /// Chooses item `index` in the pop-up row `id` of a rebuilt form.
+    pub fn restore_choice(&mut self, id: FormId, index: usize) {
+        let Some(row) = self.rows.iter_mut().find(|r| r.id == id) else { return };
+        let any: &AnyObject = row.control.as_ref();
+        if let Some(p) = any.downcast_ref::<NSPopUpButton>()
+            && (index as isize) < p.numberOfItems()
+        {
+            p.selectItemAtIndex(index as isize);
+            row.pushed = index.to_string();
+        }
+    }
+
     /// What the user has typed and chosen: text, the chosen index, `1`/`0` for a checkbox.
     pub fn values(&self) -> Vec<(FormId, String)> {
         self.rows
@@ -975,9 +1491,33 @@ impl FormView {
                     Kind::Check => any
                         .downcast_ref::<NSButton>()
                         .map(|b| (r.id, if b.state() == NSControlStateValueOn { "1" } else { "0" }.to_owned())),
-                    Kind::Action | Kind::ReadOnly | Kind::Note | Kind::Report | Kind::Preview | Kind::Actions => None,
+                    Kind::Action
+                    | Kind::ReadOnly
+                    | Kind::Log
+                    | Kind::Picture
+                    | Kind::Note
+                    | Kind::Report
+                    | Kind::Preview
+                    | Kind::Actions => None,
                 }
             })
             .collect()
     }
+}
+
+/// Puts `view` in `panel`: as the content view when it fits `max_height`, else in a scroll view
+/// of that height that starts at the top. Returns the content size the panel needs.
+pub fn install_form(mtm: MainThreadMarker, panel: &objc2_app_kit::NSPanel, view: &FormView, max_height: f64) -> NSSize {
+    let size = view.size();
+    if size.height <= max_height {
+        panel.setContentView(Some(view.root()));
+        return size;
+    }
+    let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), rect(0.0, 0.0, size.width, max_height));
+    scroll.setHasVerticalScroller(true);
+    scroll.setDrawsBackground(false);
+    scroll.setDocumentView(Some(view.root()));
+    view.root().scrollPoint(NSPoint::new(0.0, size.height));
+    panel.setContentView(Some(&scroll));
+    NSSize::new(size.width, max_height)
 }

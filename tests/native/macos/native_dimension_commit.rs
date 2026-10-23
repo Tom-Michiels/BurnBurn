@@ -78,7 +78,7 @@ fn scenario() -> Result<(), String> {
     s.key(doc, "\r", 36)?;
     s.pump(0.1);
     let status = s.app.with_window(doc, |w| w.status_label.stringValue().to_string()).unwrap_or_default();
-    expect(|| format!("error shown, got {status:?}"), status == "Geen geldig getal.")?;
+    expect(|| format!("error shown, got {status:?}"), status == "\u{2716} Geen geldig getal.")?;
     expect(|| "an invalid value changes nothing".into(), width(&s).as_deref() == Some("150"))?;
 
     // Menu Undo: the same controller's undo stack.

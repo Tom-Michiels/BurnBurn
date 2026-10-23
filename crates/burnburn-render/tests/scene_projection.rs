@@ -48,6 +48,7 @@ fn scene(
                 path,
                 transform: Affine::IDENTITY,
                 role,
+                fill_slot: None,
             })
             .collect(),
         overlays,

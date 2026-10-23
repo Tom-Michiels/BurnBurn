@@ -21,6 +21,16 @@ pub fn opened_with(paths: Vec<Path>) -> (HeadlessEditorHarness, DocumentId, Vec<
 
 pub fn opened_with_kinds(paths: Vec<(Path, ObjectKind)>) -> (HeadlessEditorHarness, DocumentId, Vec<GeometryId>) {
     let mut h = HeadlessEditorHarness::new();
+    let (doc, ids) = open_kinds_in(&mut h, paths);
+    (h, doc, ids)
+}
+
+/// Opens a fixture project with these paths in an existing harness (e.g. one with a machine profile).
+pub fn open_in(h: &mut HeadlessEditorHarness, paths: Vec<Path>) -> DocumentId {
+    open_kinds_in(h, paths.into_iter().map(|p| (p, ObjectKind::Path)).collect()).0
+}
+
+fn open_kinds_in(h: &mut HeadlessEditorHarness, paths: Vec<(Path, ObjectKind)>) -> (DocumentId, Vec<GeometryId>) {
     h.fs().create_dir_all_for_test(FsPath::new("/work"));
     let objects: Vec<_> = paths
         .into_iter()
@@ -44,8 +54,8 @@ pub fn opened_with_kinds(paths: Vec<(Path, ObjectKind)>) -> (HeadlessEditorHarne
             _ => None,
         })
         .expect("opened");
-    let ids = view(&h, doc).objects.iter().map(|o| o.id).collect();
-    (h, doc, ids)
+    let ids = view(h, doc).objects.iter().map(|o| o.id).collect();
+    (doc, ids)
 }
 
 pub fn square(x: f64, y: f64, size: f64) -> Path {

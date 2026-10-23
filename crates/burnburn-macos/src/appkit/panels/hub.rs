@@ -1,28 +1,26 @@
-//! The machine hub window (G5-machine-rest): a floating utility window with four sections (device,
-//! production, history, calibration) chosen in a pop-up. It copies `crate::hub_panel::HubPanel` into
-//! widgets and reports each use of a control as a tag; the host turns the tag into a
-//! `HubEvent`. It decides nothing.
+//! The machine hub window (G5-machine-rest, LF6c): a floating utility window with a tab per
+//! subject (device, production, history, calibration), built by the form builder from
+//! `crate::hub_form::hub_form`. It copies `crate::hub_panel::HubPanel` into the form and reports
+//! each use of a control as a tag (the form id); the host turns the tag into a `HubEvent`. It
+//! decides nothing.
 
 use std::rc::Weak;
 
+use burnburn_host_models::form::FormId;
+use burnburn_host_models::hub_form::{ID_DEVICE, ID_FIELD_FIRST, ID_HISTORY, ID_KIND, ID_PROOFS, hub_form};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{
-    NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControl, NSFloatingWindowLevel, NSPopUpButton,
-    NSScrollView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
-};
+use objc2_app_kit::{NSBackingStoreType, NSControl, NSFloatingWindowLevel, NSWindow, NSWindowStyleMask};
 use objc2_foundation::{NSObject, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::image::{caption, note};
-use crate::appkit::panels::widgets::{button, field, rect, set_text};
-use crate::hub_panel::{HubPanel, PROOF_KINDS, ProofForm, proof_kind_title};
+use crate::appkit::panels::form::{FormView, Wiring, build_form};
+use crate::appkit::panels::widgets::rect;
+use crate::hub_panel::{HubPanel, ProofForm};
 use crate::l10n::Locale;
-use crate::l10n_machine::{MachineText as T, machine_text};
 
-pub(crate) const TAG_SECTION: isize = 1;
 pub(crate) const TAG_DEVICE: isize = 2;
 pub(crate) const TAG_STOP: isize = 3;
 pub(crate) const TAG_REPEAT: isize = 4;
@@ -66,271 +64,92 @@ impl HubTarget {
 
 pub(crate) struct HubWindow {
     pub(crate) window: Retained<NSWindow>,
-    _target: Retained<HubTarget>,
-    chooser: Retained<NSPopUpButton>,
-    sections: Vec<Retained<NSView>>,
-    devices: Retained<NSPopUpButton>,
-    support: Retained<NSTextView>,
-    upload: Retained<NSTextField>,
-    stop: Retained<NSButton>,
-    queue_counts: Retained<NSTextField>,
-    queue: Retained<NSTextView>,
-    history: Retained<NSPopUpButton>,
-    repeat_button: Retained<NSButton>,
-    repeat_text: Retained<NSTextView>,
-    confirm: Retained<NSButton>,
-    cancel: Retained<NSButton>,
-    kind: Retained<NSPopUpButton>,
-    fields: [Retained<NSTextField>; 6],
-    problem: Retained<NSTextField>,
-    proofs: Retained<NSPopUpButton>,
-    remove: Retained<NSButton>,
-    pushed: Pushed,
+    target: Retained<HubTarget>,
+    mtm: MainThreadMarker,
+    locale: Locale,
+    view: FormView,
 }
 
-/// What the pop-ups hold now, so a refresh does not rebuild a menu the user may have open.
-#[derive(Default)]
-struct Pushed {
-    devices: Vec<String>,
-    history: Vec<String>,
-    proofs: Vec<String>,
-}
+const W: f64 = 680.0;
 
-const W: f64 = 760.0;
-const H: f64 = 560.0;
-
-fn text_area(mtm: MainThreadMarker, parent: &NSView, frame: objc2_foundation::NSRect) -> Retained<NSTextView> {
-    let scroll: Retained<NSScrollView> = NSTextView::scrollableTextView(mtm);
-    scroll.setFrame(frame);
-    scroll.setHasVerticalScroller(true);
-    let view = scroll
-        .documentView()
-        .and_then(|v| v.downcast::<NSTextView>().ok())
-        .unwrap_or_else(|| NSTextView::initWithFrame(NSTextView::alloc(mtm), frame));
-    view.setEditable(false);
-    view.setSelectable(true);
-    parent.addSubview(&scroll);
+/// Builds the form and puts the form id on every control as its tag (what `hubAction:` reports).
+fn build(mtm: MainThreadMarker, target: &HubTarget, panel: &HubPanel, locale: Locale) -> FormView {
+    let t: &AnyObject = target;
+    let view = build_form(mtm, &hub_form(panel, locale), W, Some(Wiring { target: t, action: sel!(hubAction:) }));
+    for (id, control) in view.controls() {
+        let any: &AnyObject = control.as_ref();
+        if let Some(c) = any.downcast_ref::<NSControl>() {
+            c.setTag(id.0 as isize);
+        }
+    }
     view
 }
 
-fn set_view_text(view: &NSTextView, text: &str) {
-    if view.string().to_string() != text {
-        view.setString(&NSString::from_str(text));
-    }
-}
-
-fn set_items(popup: &NSPopUpButton, items: &[String], selected: Option<usize>, last: &mut Vec<String>) {
-    if last != items {
-        popup.removeAllItems();
-        for item in items {
-            popup.addItemWithTitle(&NSString::from_str(item));
-        }
-        *last = items.to_vec();
-    }
-    if let Some(i) = selected
-        && popup.indexOfSelectedItem() != i as isize
-    {
-        popup.selectItemAtIndex(i as isize);
-    }
-}
-
-#[allow(unsafe_code)]
 pub(crate) fn build_hub(mtm: MainThreadMarker, app: Weak<HostApp>, locale: Locale, float: bool) -> HubWindow {
-    let text = |t| machine_text(t, locale);
+    let target = HubTarget::new(mtm, app);
+    let panel = HubPanel::default();
+    let view = build(mtm, &target, &panel, locale);
     let style = NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
+    let size = view.size();
     // SAFETY: a freshly allocated window with a valid rect, style and the buffered backing.
+    #[allow(unsafe_code)]
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             NSWindow::alloc(mtm),
-            rect(0.0, 0.0, W, H),
+            rect(0.0, 0.0, size.width, size.height),
             style,
             NSBackingStoreType::Buffered,
             false,
         )
     };
     // SAFETY: ownership stays with the caller's Retained.
-    unsafe { window.setReleasedWhenClosed(false) };
-    window.setTitle(&NSString::from_str(text(T::HubTitle)));
+    #[allow(unsafe_code)]
+    unsafe {
+        window.setReleasedWhenClosed(false)
+    };
+    window.setTitle(&NSString::from_str(&hub_form(&panel, locale).title));
     if float {
         window.setLevel(NSFloatingWindowLevel);
     }
-    let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, W, H));
-    window.setContentView(Some(&content));
+    window.setContentView(Some(view.root()));
     window.center();
-    let target = HubTarget::new(mtm, app);
-    let t: &AnyObject = &target;
-    let wire = |c: &NSControl, tag: isize| c.setTag(tag);
-
-    // Section chooser.
-    let chooser =
-        NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), rect(16.0, H - 40.0, 220.0, 26.0), false);
-    for s in [T::TabDevice, T::TabProduction, T::TabHistory, T::TabCalibration] {
-        chooser.addItemWithTitle(&NSString::from_str(text(s)));
-    }
-    chooser.setAccessibilityLabel(Some(&NSString::from_str(text(T::HubTitle))));
-    wire(&chooser, TAG_SECTION);
-    // SAFETY: `hubAction:` takes the sender (`v@:@`); the target is kept by `HubWindow`.
-    unsafe { chooser.setTarget(Some(t)) };
-    // SAFETY: as above.
-    unsafe { chooser.setAction(Some(sel!(hubAction:))) };
-    content.addSubview(&chooser);
-
-    let section = || {
-        let v = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, W, H - 52.0));
-        content.addSubview(&v);
-        v
-    };
-    let action = |title: &str, tag: isize, frame| {
-        let b = button(mtm, title, t, sel!(hubAction:), frame);
-        b.setTag(tag);
-        b
-    };
-    let pop = |tag: isize, frame| {
-        let p = NSPopUpButton::initWithFrame_pullsDown(NSPopUpButton::alloc(mtm), frame, false);
-        wire(&p, tag);
-        // SAFETY: as above.
-        unsafe { p.setTarget(Some(t)) };
-        // SAFETY: as above.
-        unsafe { p.setAction(Some(sel!(hubAction:))) };
-        p
-    };
-    let area_h = H - 52.0;
-
-    // 0: device.
-    let s0 = section();
-    caption(mtm, &s0, text(T::DeviceLabel), rect(16.0, area_h - 30.0, 140.0, 20.0));
-    let devices = pop(TAG_DEVICE, rect(160.0, area_h - 34.0, 420.0, 26.0));
-    s0.addSubview(&devices);
-    let hint = note(mtm, &s0, rect(16.0, area_h - 84.0, W - 32.0, 44.0), &NSColor::secondaryLabelColor());
-    set_text(&hint, text(T::DeviceNote));
-    caption(mtm, &s0, text(T::SupportHeader), rect(16.0, area_h - 110.0, W - 32.0, 20.0));
-    let support = text_area(mtm, &s0, rect(16.0, 16.0, W - 32.0, area_h - 130.0));
-
-    // 1: production.
-    let s1 = section();
-    caption(mtm, &s1, text(T::UploadHeader), rect(16.0, area_h - 30.0, 200.0, 20.0));
-    let upload = note(mtm, &s1, rect(16.0, area_h - 90.0, W - 200.0, 56.0), &NSColor::controlTextColor());
-    let stop = action(text(T::StopUpload), TAG_STOP, rect(W - 170.0, area_h - 60.0, 154.0, 28.0));
-    s1.addSubview(&stop);
-    caption(mtm, &s1, text(T::QueueHeader), rect(16.0, area_h - 120.0, W - 32.0, 20.0));
-    let queue_counts = note(mtm, &s1, rect(16.0, area_h - 170.0, W - 32.0, 44.0), &NSColor::controlTextColor());
-    let queue_note = note(mtm, &s1, rect(16.0, area_h - 206.0, W - 32.0, 32.0), &NSColor::secondaryLabelColor());
-    set_text(&queue_note, text(T::QueueNote));
-    let queue = text_area(mtm, &s1, rect(16.0, 16.0, W - 32.0, area_h - 224.0));
-
-    // 2: history.
-    let s2 = section();
-    caption(mtm, &s2, text(T::HistoryHeader), rect(16.0, area_h - 30.0, 300.0, 20.0));
-    let history = pop(0, rect(16.0, area_h - 62.0, W - 200.0, 26.0));
-    s2.addSubview(&history);
-    let repeat_button = action(text(T::RepeatButton), TAG_REPEAT, rect(W - 170.0, area_h - 62.0, 154.0, 28.0));
-    s2.addSubview(&repeat_button);
-    let repeat_text = text_area(mtm, &s2, rect(16.0, 60.0, W - 32.0, area_h - 140.0));
-    let confirm = action(text(T::RepeatConfirm), TAG_CONFIRM, rect(16.0, 16.0, 220.0, 28.0));
-    let cancel = action(text(T::RepeatCancel), TAG_CANCEL, rect(244.0, 16.0, 120.0, 28.0));
-    s2.addSubview(&confirm);
-    s2.addSubview(&cancel);
-    let repeat_note = note(mtm, &s2, rect(372.0, 8.0, W - 388.0, 44.0), &NSColor::secondaryLabelColor());
-    set_text(&repeat_note, text(T::RepeatNote));
-
-    // 3: calibration.
-    let s3 = section();
-    caption(mtm, &s3, text(T::CalibrationHeader), rect(16.0, area_h - 30.0, 300.0, 20.0));
-    let kind = pop(0, rect(160.0, area_h - 64.0, 300.0, 26.0));
-    for k in PROOF_KINDS {
-        kind.addItemWithTitle(&NSString::from_str(proof_kind_title(k, locale)));
-    }
-    caption(mtm, &s3, text(T::LabelKind), rect(16.0, area_h - 60.0, 140.0, 20.0));
-    s3.addSubview(&kind);
-    let mut y = area_h - 96.0;
-    let mut fields = Vec::new();
-    for (i, label_text) in
-        [T::LabelMaterial, T::LabelSpeed, T::LabelValue, T::LabelValueY, T::LabelMethod, T::LabelDate]
-            .into_iter()
-            .enumerate()
-    {
-        let (col, row) = (i / 3, i % 3);
-        let x = 16.0 + col as f64 * 370.0;
-        y = area_h - 96.0 - row as f64 * 30.0;
-        caption(mtm, &s3, text(label_text), rect(x, y, 140.0, 20.0));
-        let f = field(mtm, rect(x + 144.0, y - 2.0, 200.0, 24.0));
-        f.setAccessibilityLabel(Some(&NSString::from_str(text(label_text))));
-        s3.addSubview(&f);
-        fields.push(f);
-    }
-    let record = action(text(T::RecordProof), TAG_RECORD, rect(16.0, y - 40.0, 180.0, 28.0));
-    s3.addSubview(&record);
-    let problem = note(mtm, &s3, rect(204.0, y - 44.0, W - 220.0, 36.0), &NSColor::systemRedColor());
-    let proofs = pop(0, rect(16.0, y - 84.0, W - 200.0, 26.0));
-    s3.addSubview(&proofs);
-    let remove = action(text(T::RemoveProof), TAG_REMOVE, rect(W - 170.0, y - 84.0, 154.0, 28.0));
-    s3.addSubview(&remove);
-    let calibration_note = note(mtm, &s3, rect(16.0, 16.0, W - 32.0, 60.0), &NSColor::secondaryLabelColor());
-    set_text(&calibration_note, text(T::CalibrationNote));
-
-    let fields: [Retained<NSTextField>; 6] = fields.try_into().unwrap_or_else(|_: Vec<Retained<NSTextField>>| {
-        // Six fields were pushed above; keep the fixed-size array honest without a panic.
-        std::array::from_fn(|_| field(mtm, rect(0.0, 0.0, 0.0, 0.0)))
-    });
-    let mut w = HubWindow {
-        window,
-        _target: target,
-        chooser,
-        sections: vec![s0, s1, s2, s3],
-        devices,
-        support,
-        upload,
-        stop,
-        queue_counts,
-        queue,
-        history,
-        repeat_button,
-        repeat_text,
-        confirm,
-        cancel,
-        kind,
-        fields,
-        problem,
-        proofs,
-        remove,
-        pushed: Pushed::default(),
-    };
-    w.show_section(0);
-    w
+    HubWindow { window, target, mtm, locale, view }
 }
 
 impl HubWindow {
-    pub(crate) fn show_section(&mut self, index: usize) {
-        for (i, s) in self.sections.iter().enumerate() {
-            s.setHidden(i != index);
-        }
+    fn value(&self, id: u32) -> Option<String> {
+        self.view.values().into_iter().find(|(i, _)| i.0 == id).map(|(_, v)| v)
     }
 
-    pub(crate) fn section_popup_changed(&mut self, selected: isize) {
-        self.show_section(usize::try_from(selected).unwrap_or(0));
+    fn selected(&self, id: u32) -> Option<usize> {
+        self.value(id)?.parse().ok()
     }
 
     pub(crate) fn selected_device(&self) -> Option<usize> {
-        usize::try_from(self.devices.indexOfSelectedItem()).ok()
-    }
-
-    pub(crate) fn section_selected(&self) -> isize {
-        self.chooser.indexOfSelectedItem()
+        self.selected(ID_DEVICE)
     }
 
     pub(crate) fn selected_history(&self) -> Option<usize> {
-        usize::try_from(self.history.indexOfSelectedItem()).ok()
+        self.selected(ID_HISTORY)
     }
 
     pub(crate) fn selected_proof(&self) -> Option<usize> {
-        usize::try_from(self.proofs.indexOfSelectedItem()).ok()
+        self.selected(ID_PROOFS)
+    }
+
+    /// The index of the open tab.
+    pub(crate) fn section_selected(&self) -> isize {
+        self.view
+            .tab_view()
+            .and_then(|t| t.selectedTabViewItem().and_then(|i| t.indexOfTabViewItem(&i).into()))
+            .unwrap_or(0)
     }
 
     /// The form as typed.
     pub(crate) fn form(&self) -> ProofForm {
-        let s = |i: usize| self.fields[i].stringValue().to_string();
+        let s = |i: u32| self.value(ID_FIELD_FIRST + i).unwrap_or_default();
         ProofForm {
-            kind: usize::try_from(self.kind.indexOfSelectedItem()).unwrap_or(usize::MAX),
+            kind: self.selected(ID_KIND).unwrap_or(usize::MAX),
             material: s(0),
             speed: s(1),
             value: s(2),
@@ -340,36 +159,40 @@ impl HubWindow {
         }
     }
 
+    /// Copies the panel into the form in place; a change of shape (a problem appearing) builds the
+    /// form again and keeps what the user typed, chose and the tab that was open.
     pub(crate) fn apply(&mut self, p: &HubPanel, locale: Locale) {
-        let text = |t| machine_text(t, locale);
-        let none = |v: &[String], t| if v.is_empty() { vec![text(t).to_owned()] } else { v.to_vec() };
-        let (devices, history, proofs) =
-            (none(&p.devices, T::NoDevices), none(&p.history, T::HistoryNone), none(&p.proofs, T::ProofNone));
-        set_items(&self.devices, &devices, p.active_device, &mut self.pushed.devices);
-        self.devices.setEnabled(!p.devices.is_empty());
-        set_view_text(&self.support, &p.support.join("\n"));
-        set_text(&self.upload, &p.upload);
-        self.stop.setEnabled(p.stop_enabled);
-        set_text(&self.queue_counts, &p.queue_counts);
-        set_view_text(&self.queue, &p.queue.join("\n"));
-        set_items(&self.history, &history, None, &mut self.pushed.history);
-        self.history.setEnabled(!p.history.is_empty());
-        self.repeat_button.setEnabled(!p.history.is_empty());
-        let (shown, can_confirm) = match &p.repeat {
-            Some(r) => {
-                let mut lines = vec![r.header.clone()];
-                lines.extend(r.changes.iter().map(|c| format!("  {c}")));
-                lines.extend(r.refusal.clone());
-                (lines.join("\n"), r.can_confirm)
+        self.locale = locale;
+        let spec = hub_form(p, locale);
+        if self.view.update(&spec) {
+            let size = self.view.size();
+            if (self.window.contentView().map_or(0.0, |v| v.frame().size.height) - size.height).abs() > 0.5 {
+                self.window.setContentSize(size);
             }
-            None => (String::new(), false),
-        };
-        set_view_text(&self.repeat_text, &shown);
-        self.confirm.setEnabled(can_confirm);
-        self.cancel.setEnabled(p.repeat.is_some());
-        set_items(&self.proofs, &proofs, None, &mut self.pushed.proofs);
-        self.proofs.setEnabled(!p.proofs.is_empty());
-        self.remove.setEnabled(!p.proofs.is_empty());
-        set_text(&self.problem, &p.proof_problem);
+            return;
+        }
+        let edits = self.view.edits();
+        let choices: Vec<(FormId, String)> = self
+            .view
+            .values()
+            .into_iter()
+            .filter(|(id, _)| matches!(id.0, ID_DEVICE | ID_HISTORY | ID_PROOFS | ID_KIND))
+            .collect();
+        let tab = self.section_selected();
+        self.view.clear_targets();
+        let mut view = build(self.mtm, &self.target, p, locale);
+        for (id, typed, pushed) in edits {
+            view.restore(id, &typed, &pushed);
+        }
+        for (id, index) in choices {
+            if let Ok(i) = index.parse::<usize>() {
+                view.restore_choice(id, i);
+            }
+        }
+        if let Some(tabs) = view.tab_view() {
+            tabs.selectTabViewItemAtIndex(tab);
+        }
+        self.window.setContentView(Some(view.root()));
+        self.view = view;
     }
 }

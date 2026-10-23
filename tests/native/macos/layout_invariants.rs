@@ -51,10 +51,10 @@ mod invariants {
     use objc2::runtime::AnyObject;
     use objc2::{MainThreadOnly, Message};
     use objc2_app_kit::{
-        NSApplication, NSButton, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSegmentedControl,
-        NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
+        NSAccessibility, NSApplication, NSButton, NSColor, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView,
+        NSSegmentedControl, NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
     };
-    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     use crate::common::windows;
     use crate::common::{Session, start_with};
@@ -72,6 +72,8 @@ mod invariants {
         baseline_self_test(&s, &mut found);
         form_builder_test(&s, &mut found);
         form_builder_extension_test(&s, &mut found);
+        form_builder_extras_test(&s, &mut found);
+        tabbed_form_test(&s, &mut found);
         let doc = s.new_document()?;
         check_document(&s, doc, "document (empty)", &mut found)?;
         s.app.dispatch(UiIntent::SetMachineProfile {
@@ -109,6 +111,12 @@ mod invariants {
                 continue;
             }
             check_new_windows(&s, doc, step, &mut found);
+        }
+        // LF6c: a window with tabs passes the invariants on every tab, not only the open one.
+        for (name, window) in [("preferences", s.app.prefs_window()), ("machine-hub", s.app.machine_hub_window())] {
+            if let Some(window) = window {
+                check_tabs(&window, name, &mut found);
+            }
         }
         // The dialog sheets are built with the window, shown or not.
         let sheets: Vec<(&str, Retained<NSWindow>)> = s
@@ -230,6 +238,7 @@ mod invariants {
                 help: Some(FormButton::new(12, "Hulp")),
                 destructive: None,
             },
+            ..FormSpec::default()
         };
         let form = build_form(s.mtm, &spec, 440.0, None);
         let window = scratch_window(s);
@@ -310,6 +319,365 @@ mod invariants {
         }
     }
 
+    /// LF6a: what the CAM dialogs and the Cut Settings sheet need of the builder. A hidden row is
+    /// hidden and comes back in place; small buttons stand after the control on its line; a choice
+    /// greys single entries with their reason; the reason of a section is one line under its heading
+    /// and an empty one, an empty help or error and an empty read-only text show nothing (a section
+    /// of nothing loses its heading); `update` keeps what the user typed and `load` replaces it; a
+    /// capped form scrolls its rows above the button row.
+    fn form_builder_extras_test(s: &Session, found: &mut Vec<String>) {
+        use burnburn_host_models::form::{
+            Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, FormTool,
+        };
+        use burnburn_host_models::format::Quantity;
+        use burnburn_macos::appkit::form::{FormLayout, build_form_with};
+        let spec = |show: bool, speed: &str| FormSpec {
+            title: "Apparaat".into(),
+            sections: vec![
+                FormSection::new(
+                    Some("Rotary"),
+                    vec![
+                        FormRow::new(1, "Rotary gebruiken", Control::Check { on: show }),
+                        FormRow::new(2, "Diameter", Control::Number { value: "80".into() })
+                            .unit(Quantity::Millimeters)
+                            .hidden(!show),
+                        FormRow::new(3, "Laag", Control::Check { on: true })
+                            .tool(FormTool::new(30, "↑", "Laag omhoog"))
+                            .tool(FormTool::new(31, "↓", "Laag omlaag")),
+                        FormRow::new(
+                            4,
+                            "Modus",
+                            Control::Choice {
+                                options: vec!["Lijn".into(), "Vulling".into(), "Offset".into()],
+                                selected: 0,
+                            },
+                        )
+                        .disabled_option(2, Some("Niet ondersteund door dit profiel"))
+                        .tooltip("Kies de modus"),
+                        FormRow::new(5, "Snelheid", Control::Number { value: speed.into() })
+                            .unit(Quantity::MillimetersPerSecond)
+                            .help("")
+                            .error(""),
+                    ],
+                )
+                .reason("Rotary staat uit"),
+                FormSection::new(
+                    Some("Opmerkingen"),
+                    vec![FormRow::new(6, "", Control::ReadOnly { value: String::new() })],
+                ),
+            ],
+            buttons: DialogButtons {
+                cancel: Some(FormButton::new(10, "Sluiten")),
+                primary: Some(FormButton::new(11, "Pas toe")),
+                ..DialogButtons::default()
+            },
+            ..FormSpec::default()
+        };
+        let mut form = build_form_with(s.mtm, &spec(false, "100"), 460.0, None, FormLayout::Natural);
+        let window = scratch_window(s);
+        window.setContentSize(form.size());
+        let Some(content) = window.contentView() else { return };
+        content.addSubview(form.root());
+        form.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+        window.displayIfNeeded();
+        let mut mine = Vec::new();
+        walk_window(&window, "form builder extras", &mut mine);
+        found.extend(mine);
+        let shown = |v: Option<Retained<NSView>>| v.is_some_and(|v| !v.isHidden());
+        if shown(form.control(FormId(2))) {
+            found.push("form builder extras: a hidden row is shown".into());
+        }
+        if !shown(form.control(FormId(1))) {
+            found.push("form builder extras: a row that is not hidden is not shown (or has no control)".into());
+        }
+        // Small buttons: after the control, on its line, with their accessibility label.
+        match (form.control(FormId(3)), form.tool(FormId(30)), form.tool(FormId(31))) {
+            (Some(control), Some(up), Some(down)) => {
+                // Frames in the coordinates of the form: the small buttons lie inside a stack.
+                let in_form = |v: &NSView| v.convertRect_toView(v.bounds(), Some(form.root()));
+                let (c, u, d) = (in_form(&control), in_form(&up), in_form(&down));
+                if u.origin.x < c.origin.x + c.size.width - TOLERANCE
+                    || d.origin.x < u.origin.x + u.size.width - TOLERANCE
+                {
+                    found.push(format!(
+                        "form builder extras: the small buttons do not follow the control: {c:?} {u:?} {d:?}"
+                    ));
+                }
+                if (u.origin.y - d.origin.y).abs() > TOLERANCE
+                    || (u.origin.y + u.size.height / 2.0 - (c.origin.y + c.size.height / 2.0)).abs() > 6.0
+                {
+                    found.push("form builder extras: the small buttons are not on the line of their control".into());
+                }
+                if up.accessibilityLabel().map(|l| l.to_string()).as_deref() != Some("Laag omhoog") {
+                    found.push("form builder extras: a small button has no accessibility label".into());
+                }
+            }
+            _ => found.push("form builder extras: the small buttons of row 3 are missing".into()),
+        }
+        // A choice greys one entry, with its reason as tooltip; the control has its tooltip.
+        match form.control(FormId(4)) {
+            Some(control) => {
+                let any = as_any(&control);
+                match any.downcast_ref::<NSPopUpButton>().and_then(|p| p.itemAtIndex(2)) {
+                    Some(item) => {
+                        if item.isEnabled() {
+                            found.push("form builder extras: a disabled option can be chosen".into());
+                        }
+                        let tip = item.toolTip().map(|t| t.to_string()).unwrap_or_default();
+                        if !tip.contains("Niet ondersteund") {
+                            found.push(format!(
+                                "form builder extras: a disabled option has no reason as tooltip: {tip:?}"
+                            ));
+                        }
+                    }
+                    None => found.push("form builder extras: the choice has no third entry".into()),
+                }
+                let tip = control.toolTip().map(|t| t.to_string()).unwrap_or_default();
+                if tip != "Kies de modus" {
+                    found.push(format!("form builder extras: the control tooltip is {tip:?}"));
+                }
+            }
+            None => found.push("form builder extras: no choice control".into()),
+        }
+        // Empty lines show nothing; the empty section loses its heading; the reason is one line.
+        for (what, label) in [("help", form.help_label(FormId(5))), ("error", form.error_label(FormId(5)))] {
+            match label {
+                Some(l) if l.isHidden() || !description_shows(&l) => {}
+                Some(_) => found.push(format!("form builder extras: an empty {what} line is shown")),
+                None => found.push(format!("form builder extras: an empty {what} line has no label to fill later")),
+            }
+        }
+        if form.heading_label(1).is_none_or(|h| !(h.isHidden() || !description_shows(&h))) {
+            found.push("form builder extras: the heading of a section without anything to say is shown".into());
+        }
+        if !form.reason_label(0).is_some_and(|l| !l.isHidden() && l.stringValue().to_string() == "Rotary staat uit") {
+            found.push("form builder extras: the reason of the section is not shown once under its heading".into());
+        }
+        // A tick shows the row and the form grows; typing survives `update`, `load` replaces it.
+        let before = form.size().height;
+        if let Some(f) = form.control(FormId(5))
+            && let Some(t) = as_any(&f).downcast_ref::<NSTextField>()
+        {
+            t.setStringValue(&objc2_foundation::NSString::from_str("250"));
+        }
+        if !form.update(&spec(true, "100")) {
+            found.push("form builder extras: update refused a form of the same shape".into());
+        }
+        window.displayIfNeeded();
+        if !shown(form.control(FormId(2))) {
+            found.push("form builder extras: a row that became visible is still hidden".into());
+        }
+        if form.size().height <= before {
+            found.push(format!(
+                "form builder extras: the form did not grow when a row appeared: {before} -> {}",
+                form.size().height
+            ));
+        }
+        let typed = |form: &burnburn_macos::appkit::form::FormView| {
+            form.values().into_iter().find(|(id, _)| id.0 == 5).map(|(_, v)| v)
+        };
+        if typed(&form).as_deref() != Some("250") {
+            found.push(format!("form builder extras: update replaced what the user typed: {:?}", typed(&form)));
+        }
+        if !form.load(&spec(true, "100")) || typed(&form).as_deref() != Some("100") {
+            found.push(format!("form builder extras: load did not replace the typed value: {:?}", typed(&form)));
+        }
+        // Capped: the rows scroll above the buttons.
+        let capped = build_form_with(s.mtm, &spec(true, "100"), 460.0, None, FormLayout::Capped(180.0));
+        if capped.size().height > 180.0 + TOLERANCE {
+            found.push(format!("form builder extras: a capped form is {} high", capped.size().height));
+        }
+        let mut all = Vec::new();
+        descendants(capped.root(), &mut all);
+        if !all.iter().any(|v| as_any(v).downcast_ref::<NSScrollView>().is_some()) {
+            found.push("form builder extras: a capped form has no scroll view".into());
+        }
+        let fixed = build_form_with(s.mtm, &spec(false, "100"), 460.0, None, FormLayout::Fixed(400.0));
+        if (fixed.size().height - 400.0).abs() > TOLERANCE {
+            found.push(format!("form builder extras: a fixed form is {} high, expected 400", fixed.size().height));
+        }
+        let window = scratch_window(s);
+        window.setContentSize(capped.size());
+        if let Some(content) = window.contentView() {
+            content.addSubview(capped.root());
+            capped.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+            capped.scroll_to_top();
+            window.displayIfNeeded();
+            let mut mine = Vec::new();
+            walk_window(&window, "form builder capped", &mut mine);
+            found.extend(mine);
+        }
+    }
+
+    /// Whether a label would draw anything.
+    fn description_shows(label: &NSTextField) -> bool {
+        !label.stringValue().to_string().trim().is_empty()
+    }
+
+    /// LF6c: a form with tabs, a notice, a refused value, a picture and a log. Every tab passes the
+    /// invariants when it is the selected one, all rows are reachable, the notice is shown once
+    /// above the buttons whatever tab is open.
+    fn tabbed_form_test(s: &Session, found: &mut Vec<String>) {
+        use burnburn_host_models::form::{
+            ButtonRole, Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec,
+        };
+        use burnburn_host_models::format::Quantity;
+        use burnburn_host_models::panels_image::BitmapImage;
+        use burnburn_macos::appkit::form::build_form;
+        use objc2_app_kit::{NSImageView, NSTabView};
+        let text = |id: u32, label: &str, value: &str| {
+            FormRow::new(id, label, Control::Text { value: value.into(), placeholder: String::new() })
+        };
+        let picture = BitmapImage { width: 24, height: 24, rgba: vec![200; 24 * 24 * 4] };
+        let spec = FormSpec {
+            title: "Instellingen".into(),
+            sections: vec![
+                FormSection::new(
+                    Some("Eenheden"),
+                    vec![
+                        FormRow::new(
+                            1,
+                            "Eenheden",
+                            Control::Choice { options: vec!["Millimeter".into(), "Inch".into()], selected: 0 },
+                        ),
+                        text(2, "Hoek", "x").unit(Quantity::Degrees).invalid(true),
+                    ],
+                )
+                .on_tab("Algemeen"),
+                FormSection::new(None, vec![FormRow::new(3, "Vangen aan raster", Control::Check { on: true })])
+                    .on_tab("Canvas"),
+                FormSection::new(
+                    Some("Voorbeeld"),
+                    vec![
+                        FormRow::new(4, "", Control::Picture { image: picture }),
+                        FormRow::new(5, "Regels", Control::Log { text: "een\ntwee\ndrie".into() }),
+                    ],
+                )
+                .on_tab("Canvas"),
+            ],
+            notice: Some("Geen geldig getal".into()),
+            notice_slot: false,
+            buttons: DialogButtons {
+                destructive: Some(FormButton::new(10, "Standaardwaarden")),
+                primary: Some(FormButton::new(11, "Gereed")),
+                ..DialogButtons::default()
+            },
+        };
+        let form = build_form(s.mtm, &spec, 480.0, None);
+        let window = scratch_window(s);
+        window.setContentSize(form.size());
+        let Some(content) = window.contentView() else { return };
+        content.addSubview(form.root());
+        form.root().setFrameOrigin(NSPoint::new(0.0, 0.0));
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let Some(tabs) = all.iter().find_map(|v| as_any(v).downcast_ref::<NSTabView>().map(|t| t.retain())) else {
+            found.push("tabbed form: no tab view".into());
+            return;
+        };
+        let titles: Vec<String> = tabs.tabViewItems().iter().map(|i| i.label().to_string()).collect();
+        if titles != ["Algemeen", "Canvas"] {
+            found.push(format!("tabbed form: tabs are {titles:?}, expected Algemeen and Canvas"));
+        }
+        for (index, title) in titles.iter().enumerate() {
+            tabs.selectTabViewItemAtIndex(index as isize);
+            window.displayIfNeeded();
+            let mut mine = Vec::new();
+            walk_window(&window, &format!("tabbed form, tab {}", title), &mut mine);
+            found.extend(mine);
+        }
+        let ids: Vec<u32> = form.controls().iter().map(|(id, _)| id.0).collect();
+        for want in [1, 2, 3, 10, 11] {
+            if !ids.contains(&want) {
+                found.push(format!("tabbed form: control {want} is not reachable (have {ids:?})"));
+            }
+        }
+        // The notice: once, above the buttons, below the tabs, red. The checks below read the first
+        // tab (the views of the other tab hang outside the window while it is not selected).
+        tabs.selectTabViewItemAtIndex(0);
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let notices: Vec<&Retained<NSView>> = all
+            .iter()
+            .filter(|v| {
+                as_any(v)
+                    .downcast_ref::<NSTextField>()
+                    .is_some_and(|l| l.stringValue().to_string().contains("Geen geldig getal"))
+            })
+            .collect();
+        match notices.as_slice() {
+            [notice] => {
+                let n = notice.frame();
+                let buttons = form.buttons();
+                let top =
+                    buttons.iter().map(|(_, _, b)| b.frame().origin.y + b.frame().size.height).fold(0.0_f64, f64::max);
+                if n.origin.y + TOLERANCE < top {
+                    found
+                        .push(format!("tabbed form: the notice lies below the buttons ({:.0} < {top:.0})", n.origin.y));
+                }
+                if n.origin.y + n.size.height > tabs.frame().origin.y + TOLERANCE {
+                    found.push("tabbed form: the notice overlaps the tabs".into());
+                }
+            }
+            other => found.push(format!("tabbed form: the notice is shown {} times, expected once", other.len())),
+        }
+        // A refused value: its caption is in the error colour; the picture is an image view.
+        let red = NSColor::systemRedColor();
+        let caption_red = all.iter().any(|v| {
+            as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| {
+                !l.isEditable()
+                    && l.stringValue().to_string() == "Hoek"
+                    && l.textColor().is_some_and(|c| c.isEqual(Some(&red)))
+            })
+        });
+        if !caption_red {
+            found.push("tabbed form: the caption of a refused value is not in the error colour".into());
+        }
+        tabs.selectTabViewItemAtIndex(1);
+        let mut all = Vec::new();
+        descendants(form.root(), &mut all);
+        let picture_ok =
+            all.iter().any(|v| as_any(v).downcast_ref::<NSImageView>().is_some_and(|i| i.image().is_some()));
+        if !picture_ok {
+            found.push("tabbed form: the picture row shows no image".into());
+        }
+        let log_ok = form.values().iter().all(|(id, _)| *id != burnburn_host_models::form::FormId(5))
+            && all.iter().any(|v| {
+                as_any(v)
+                    .downcast_ref::<NSTextView>()
+                    .is_some_and(|t| !t.isEditable() && t.string().to_string().starts_with("een"))
+            });
+        if !log_ok {
+            found.push("tabbed form: the log row is not a read-only text with its lines".into());
+        }
+        let roles: Vec<ButtonRole> = form.buttons().iter().map(|(r, _, _)| *r).collect();
+        if roles != [ButtonRole::Destructive, ButtonRole::Primary] {
+            found.push(format!("tabbed form: buttons run {roles:?}, expected destructive then primary"));
+        }
+    }
+
+    /// Opens each tab of the tab view in `window` and walks the window.
+    fn check_tabs(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        use objc2_app_kit::NSTabView;
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let Some(tabs) = all.iter().find_map(|v| as_any(v).downcast_ref::<NSTabView>().map(|t| t.retain())) else {
+            found.push(format!("{name}: no tab view"));
+            return;
+        };
+        let count = tabs.numberOfTabViewItems();
+        if count < 2 {
+            found.push(format!("{name}: {count} tabs, expected several"));
+        }
+        for index in 0..count {
+            tabs.selectTabViewItemAtIndex(index);
+            window.displayIfNeeded();
+            walk_window(window, &format!("{name} (tab {index})"), found);
+        }
+        tabs.selectTabViewItemAtIndex(0);
+    }
+
     /// LF6b: the control kinds of the file panels (note, report, preview, button row), hiding a row
     /// or a section, and growing back to the fitted size afterwards.
     fn form_builder_extension_test(s: &Session, found: &mut Vec<String>) {
@@ -347,6 +715,7 @@ mod invariants {
                 ),
             ],
             buttons: DialogButtons { cancel: Some(FormButton::new(10, "Sluit")), ..DialogButtons::default() },
+            ..FormSpec::default()
         };
         let mut form = build_form(s.mtm, &spec, 440.0, None);
         let window = scratch_window(s);
@@ -517,6 +886,9 @@ mod invariants {
     fn check_window(s: &Session, window: &NSWindow, name: &str, found: &mut Vec<String>) {
         window.displayIfNeeded();
         walk_window(window, &format!("{name}, as opened"), found);
+        if name.starts_with("barcode") || name.starts_with("round-corners") {
+            check_units_are_suffixes(window, name, found);
+        }
         if window.styleMask().contains(NSWindowStyleMask::Resizable)
             && let Some(content) = window.contentView()
         {
@@ -530,6 +902,30 @@ mod invariants {
             // user scrolls back, so the next check starts from the top like a fresh window.
             scroll_to_top(&content);
             s.pump(0.1);
+        }
+    }
+
+    /// LF6c: the unit of a field is a suffix label after it, never part of the caption.
+    fn check_units_are_suffixes(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let mut suffixes = 0;
+        for v in &all {
+            let Some(l) = as_any(v).downcast_ref::<NSTextField>() else { continue };
+            if l.isEditable() || l.isBezeled() {
+                continue;
+            }
+            let text = l.stringValue().to_string();
+            if ["(mm", "(°", "(%", "(px", "(s)", "(s,"].iter().any(|u| text.contains(u)) && text.chars().count() < 60 {
+                found.push(format!("{name}: a caption holds its unit: '{text}'"));
+            }
+            if matches!(text.as_str(), "mm" | "°" | "%" | "px" | "s") {
+                suffixes += 1;
+            }
+        }
+        if suffixes == 0 {
+            found.push(format!("{name}: no unit suffix label after any field"));
         }
     }
 
@@ -717,7 +1113,15 @@ mod invariants {
             if any.downcast_ref::<NSPopUpButton>().is_some() {
                 return None;
             }
-            let need = b.cell()?.cellSize();
+            let cell = b.cell()?;
+            if cell.wraps() {
+                // A wrapping title (a check box with a long sentence) fits when it fits the height.
+                let need =
+                    cell.cellSizeForBounds(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(f.size.width, 10_000.0)));
+                return (need.height > f.size.height + TOLERANCE)
+                    .then(|| format!("wrapped title needs {:.0} pt of height, has {:.0}", need.height, f.size.height));
+            }
+            let need = cell.cellSize();
             let tip = b.toolTip().is_some_and(|tip| !tip.to_string().is_empty());
             (need.width > f.size.width + TOLERANCE && !tip)
                 .then(|| format!("title needs {:.0} pt of width, has {:.0}", need.width, f.size.width))
@@ -763,33 +1167,7 @@ mod invariants {
     /// Window titles (the step names of `common::windows::steps()`, `document`, `cut-settings`,
     /// `sheet`) whose hand-laid captions do not yet share a baseline with their field. LF6 migrates
     /// them to the form builder and empties this list.
-    const BASELINE_PENDING: &[&str] = &[
-        "document",
-        // The sheets of LF6a (cut-settings) and LF6c (geometry) stay; the file, import, image and
-        // tracer sheets (LF6b) are migrated and no longer listed.
-        "sheet cut-settings",
-        "sheet geometry",
-        "cut-settings",
-        "preferences",
-        "machine-hub",
-        "laser",
-        "schikken",
-        "offset",
-        "structure",
-        "recognition",
-        "remnants",
-        "search",
-        "generator",
-        "cam-optimization",
-        "cam-device",
-        "cam-array",
-        "cam-material-test",
-        "cam-interval-test",
-        "cam-focus-test",
-        "cam-feeder",
-        "round-corners",
-        "barcode",
-    ];
+    const BASELINE_PENDING: &[&str] = &["document", "laser"];
 
     /// The y of the first text baseline of `view` in its parent's own coordinates.
     #[allow(unsafe_code)]

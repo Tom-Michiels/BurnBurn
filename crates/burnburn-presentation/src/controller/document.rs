@@ -61,6 +61,7 @@ impl AppController {
                 session.snap = self.app.prefs.snap_settings();
                 self.sessions.insert(document, session);
                 self.active = Some(document);
+                self.frame_new_view(document);
                 self.warm_images(document);
                 AppUpdate {
                     effects: vec![HostEffect::OpenWindow { document }],
@@ -109,6 +110,29 @@ impl AppController {
 }
 
 impl AppController {
+    /// The machine bed as a rectangle from the origin (None without a machine profile).
+    pub(super) fn bed_bounds(&self) -> Option<burnburn_geometry::Bounds> {
+        self.machine.as_ref().map(|m| {
+            let frame = m.profile.frame();
+            burnburn_geometry::Bounds::from_corners(
+                burnburn_geometry::Point::new(0.0, 0.0),
+                burnburn_geometry::Point::new(frame.width_mm(), frame.height_mm()),
+            )
+        })
+    }
+
+    /// A fresh window frames the bed (without a machine the default camera stays) at once; the first real
+    /// canvas size then repeats it (see `CameraIntent::Resized`).
+    fn frame_new_view(&mut self, document: DocumentId) {
+        let bed = self.bed_bounds();
+        if let Some(s) = self.sessions.get_mut(&document) {
+            if let Some(bed) = bed {
+                let _ = super::arrange::fit_to(s, document, bed);
+            }
+            s.fit_pending = true;
+        }
+    }
+
     pub(super) fn new_document(&mut self) -> AppUpdate {
         let Some(id) = self.next_id::<DocumentId>() else {
             return error(None, MessageKey::CommandRejected);
@@ -124,6 +148,7 @@ impl AppController {
         session.snap = self.app.prefs.snap_settings();
         self.sessions.insert(id, session);
         self.active = Some(id);
+        self.frame_new_view(id);
         AppUpdate {
             effects: vec![HostEffect::OpenWindow { document: id }],
             view_changed: true,

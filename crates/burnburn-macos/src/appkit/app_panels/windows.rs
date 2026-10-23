@@ -16,13 +16,15 @@ use objc2_foundation::NSString;
 
 use super::target::{AppPanelTarget, HISTORY_TABLE, KeyRecorder, PreviewView, RD_TABLE, SHORTCUT_TABLE};
 use crate::app_text::{AppText, app_text};
-use crate::app_view::{PrefsControl, PrefsPanel, PreviewPanel, RdPanel};
+use crate::app_view::{PrefsPanel, PreviewPanel, RdPanel};
 use crate::appkit::app::HostApp;
-use crate::appkit::panels::image::{caption, mark_field, note, show_bitmap};
+use crate::appkit::panels::form::{FormView, Wiring, build_form};
+use crate::appkit::panels::image::{caption, note, show_bitmap};
 use crate::appkit::panels::widgets::{button, rect, set_text};
 use crate::appkit::symbols::{self, Symbol};
 use crate::l10n::Locale;
 use crate::panels_image::BitmapImage;
+use crate::prefs_form::{RESET_ID, prefs_form};
 
 /// Pinned to the bottom (left, or right): the flexible side is above and beside.
 const BOTTOM_LEFT: NSAutoresizingMaskOptions = NSAutoresizingMaskOptions::ViewMaxYMargin;
@@ -128,18 +130,19 @@ fn set_checked(b: &NSButton, on: bool) {
 
 // ---- preferences ------------------------------------------------------------------------------
 
-enum PrefWidget {
-    Choice(Retained<NSPopUpButton>),
-    Check(Retained<NSButton>),
-    Field(Retained<NSTextField>, Retained<NSTextField>),
-}
+/// The tag of the "restore defaults" button (the other controls carry the index of their
+/// preference in `PrefKey::ALL`).
+pub(crate) const PREFS_RESET_TAG: isize = 1000;
 
 pub(crate) struct PrefsWindow {
     pub(crate) window: Retained<NSWindow>,
-    widgets: Vec<PrefWidget>,
-    banner: Retained<NSTextField>,
+    view: FormView,
+    locale: Locale,
 }
 
+/// The preferences window (LF6c): a form with a tab per group, built from
+/// `crate::prefs_form::prefs_form`; every control reports through `prefControl:` with the tag of
+/// its preference.
 pub(crate) fn build_prefs(
     mtm: MainThreadMarker,
     target: &AppPanelTarget,
@@ -147,64 +150,22 @@ pub(crate) fn build_prefs(
     panel: &PrefsPanel,
     float: bool,
 ) -> PrefsWindow {
-    const ROW: f64 = 30.0;
-    let (w, h) = (500.0, 70.0 + 34.0 + ROW * panel.rows.len() as f64 + 90.0);
-    let (window, content) = utility_window(mtm, app_text(AppText::PrefsTitle, locale), (w, h), false, float);
+    let form = prefs_form(panel, locale);
     let t: &AnyObject = target;
-    let mut y = h - 16.0;
-    let mut widgets = Vec::new();
-    for row in &panel.rows {
-        y -= ROW;
-        match &row.control {
-            PrefsControl::Choice { titles, selected, .. } => {
-                caption(mtm, &content, &row.caption, rect(16.0, y + 4.0, 250.0, 20.0));
-                let p = NSPopUpButton::initWithFrame_pullsDown(
-                    NSPopUpButton::alloc(mtm),
-                    rect(274.0, y, 200.0, 26.0),
-                    false,
-                );
-                for title in titles {
-                    p.addItemWithTitle(&NSString::from_str(title));
-                }
-                p.selectItemAtIndex(*selected as isize);
-                p.setAccessibilityLabel(Some(&NSString::from_str(&row.caption)));
-                wire(&p, t, sel!(prefChoice:), pref_tag(row.key));
-                content.addSubview(&p);
-                widgets.push(PrefWidget::Choice(p));
-            }
-            PrefsControl::Check(on) => {
-                // SAFETY: no target or action yet; `wire` sets both right below.
-                #[allow(unsafe_code)]
-                let b = unsafe {
-                    NSButton::checkboxWithTitle_target_action(&NSString::from_str(&row.caption), None, None, mtm)
-                };
-                b.setFrame(rect(16.0, y + 2.0, 460.0, 22.0));
-                set_checked(&b, *on);
-                wire(&b, t, sel!(prefCheck:), pref_tag(row.key));
-                content.addSubview(&b);
-                widgets.push(PrefWidget::Check(b));
-            }
-            PrefsControl::Field { text, suffix, .. } => {
-                caption(mtm, &content, &row.caption, rect(16.0, y + 4.0, 250.0, 20.0));
-                let f = crate::appkit::panels::widgets::field(mtm, rect(274.0, y + 1.0, 110.0, 24.0));
-                f.setStringValue(&NSString::from_str(text));
-                f.setAccessibilityLabel(Some(&NSString::from_str(&row.caption)));
-                wire(&f, t, sel!(prefText:), pref_tag(row.key));
-                content.addSubview(&f);
-                let unit = caption(mtm, &content, suffix, rect(392.0, y + 4.0, 60.0, 20.0));
-                widgets.push(PrefWidget::Field(f, unit));
-            }
+    let view = build_form(mtm, &form.spec, 520.0, Some(Wiring { target: t, action: sel!(prefControl:) }));
+    for (id, control) in view.controls() {
+        let any: &AnyObject = control.as_ref();
+        let Some(c) = any.downcast_ref::<objc2_app_kit::NSControl>() else { continue };
+        if id == RESET_ID {
+            c.setTag(PREFS_RESET_TAG);
+        } else if let Some((_, key)) = form.keys.iter().find(|(i, _)| *i == id) {
+            c.setTag(pref_tag(*key));
         }
     }
-    y -= 10.0;
-    let banner = note(mtm, &content, rect(16.0, y - 40.0, w - 32.0, 40.0), &NSColor::systemRedColor());
-    let hint = note(mtm, &content, rect(16.0, 44.0, w - 250.0, 52.0), &NSColor::secondaryLabelColor());
-    hint.setFont(Some(&NSFont::systemFontOfSize(11.0)));
-    set_text(&hint, app_text(AppText::PrefsNote, locale));
-    let reset =
-        button(mtm, app_text(AppText::PrefsReset, locale), t, sel!(prefsReset:), rect(w - 226.0, 16.0, 210.0, 28.0));
-    content.addSubview(&reset);
-    PrefsWindow { window, widgets, banner }
+    let size = view.size();
+    let (window, _) = utility_window(mtm, &form.spec.title, (size.width, size.height), false, float);
+    window.setContentView(Some(view.root()));
+    PrefsWindow { window, view, locale }
 }
 
 /// The tag of a pref control: its index in `PrefKey::ALL`.
@@ -212,27 +173,23 @@ fn pref_tag(key: burnburn_presentation::PrefKey) -> isize {
     burnburn_presentation::PrefKey::ALL.iter().position(|k| *k == key).map_or(-1, |i| i as isize)
 }
 
-pub(crate) fn refresh_prefs(w: &PrefsWindow, panel: &PrefsPanel) {
-    for (widget, row) in w.widgets.iter().zip(&panel.rows) {
-        match (widget, &row.control) {
-            (PrefWidget::Choice(p), PrefsControl::Choice { selected, .. }) => {
-                if p.indexOfSelectedItem() != *selected as isize {
-                    p.selectItemAtIndex(*selected as isize);
-                }
-            }
-            (PrefWidget::Check(b), PrefsControl::Check(on)) => set_checked(b, *on),
-            (PrefWidget::Field(f, unit), PrefsControl::Field { text, suffix, invalid }) => {
-                // A field being typed in keeps what the user has; a refused value stays visible.
-                if f.currentEditor().is_none() && f.stringValue().to_string() != *text && !*invalid {
-                    f.setStringValue(&NSString::from_str(text));
-                }
-                mark_field(f, *invalid);
-                set_text(unit, suffix);
-            }
-            _ => {}
+pub(crate) fn refresh_prefs(w: &mut PrefsWindow, panel: &PrefsPanel) {
+    let form = prefs_form(panel, w.locale);
+    // The notice has a slot, so the shape stays; a refused value stays visible in its field.
+    w.view.update(&form.spec);
+}
+
+/// Selects the tab called `title` (for tests that drive the window like a user).
+pub(crate) fn select_prefs_tab(w: &PrefsWindow, title: &str) -> bool {
+    let Some(tabs) = w.view.tab_view() else { return false };
+    let index = tabs.tabViewItems().iter().position(|i| i.label().to_string() == title);
+    match index {
+        Some(i) => {
+            tabs.selectTabViewItemAtIndex(i as isize);
+            true
         }
+        None => false,
     }
-    set_text(&w.banner, panel.banner.as_deref().unwrap_or(""));
 }
 
 // ---- shortcut editor --------------------------------------------------------------------------

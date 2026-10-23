@@ -8,7 +8,7 @@
 
 use burnburn_presentation::TracePreset;
 
-use crate::form::{Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec};
+use crate::form::{Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec, split_caption};
 use crate::format::{Quantity, unit_label};
 use crate::l10n::{HostText, Locale, host_text};
 use crate::l10n_files::{FilesText as T, files_text};
@@ -167,27 +167,22 @@ pub mod tracer {
 // Row helpers.
 // ---------------------------------------------------------------------------------------------
 
-/// `text` without a trailing bracket: the caption, and the bracket's content when it is not the
-/// unit the row already shows as its suffix (a range such as `−1…1` stays as the row's help).
-/// `Lijndikte (mm):` is `Lijndikte:` with the unit as the suffix; `Contrast (0…10)` is `Contrast`
-/// with the help `0…10`.
-fn split_caption(text: &str, unit: Option<Quantity>) -> (String, Option<String>) {
+/// `text` as the caption (a trailing colon stays) and the hint: the bracket of the form's one
+/// `split_caption`, unless it names the unit the row shows as its suffix (`Lijndikte (mm):` is
+/// `Lijndikte:` with the suffix `mm`; `Contrast (0…10)` is `Contrast` with the help `0…10`).
+fn caption_parts(text: &str, unit: Option<Quantity>) -> (String, Option<String>) {
     let trimmed = text.trim_end();
     let (body, colon) = match trimmed.strip_suffix(':') {
         Some(rest) => (rest.trim_end(), ":"),
         None => (trimmed, ""),
     };
-    if let (Some(open), true) = (body.rfind(" ("), body.ends_with(')')) {
-        let inside = &body[open + 2..body.len() - 1];
-        let caption = format!("{}{colon}", &body[..open]);
-        let is_unit = unit.is_some_and(|u| unit_label(u) == inside);
-        return (caption, (!is_unit).then(|| inside.to_owned()));
-    }
-    (trimmed.to_owned(), None)
+    let parts = split_caption(body);
+    let hint = parts.hint.filter(|h| !unit.is_some_and(|u| unit_label(u).eq_ignore_ascii_case(h)));
+    (format!("{}{colon}", parts.label), hint)
 }
 
 fn text_row(id: u32, label: &str, unit: Option<Quantity>) -> FormRow {
-    let (caption, hint) = split_caption(label, unit);
+    let (caption, hint) = caption_parts(label, unit);
     let mut row = FormRow::new(id, &caption, Control::Text { value: String::new(), placeholder: String::new() });
     row.unit = unit;
     row.help = hint;
@@ -195,7 +190,7 @@ fn text_row(id: u32, label: &str, unit: Option<Quantity>) -> FormRow {
 }
 
 fn number_row(id: u32, label: &str, unit: Option<Quantity>) -> FormRow {
-    let (caption, hint) = split_caption(label, unit);
+    let (caption, hint) = caption_parts(label, unit);
     let mut row = FormRow::new(id, &caption, Control::Number { value: String::new() });
     row.unit = unit;
     row.help = hint;
@@ -207,7 +202,7 @@ fn choice_row(id: u32, label: &str, options: Vec<String>) -> FormRow {
 }
 
 fn check_row(id: u32, title: &str) -> FormRow {
-    let (caption, hint) = split_caption(title, None);
+    let (caption, hint) = caption_parts(title, None);
     let mut row = FormRow::new(id, &caption, Control::Check { on: false });
     row.help = hint;
     row
@@ -283,6 +278,7 @@ pub fn export_form(locale: Locale) -> FormSpec {
             ),
         ],
         buttons: buttons((export::CLOSE, t(T::ButtonClose)), Some((export::EXPORT, t(T::ButtonExport)))),
+        ..FormSpec::default()
     }
 }
 
@@ -308,6 +304,7 @@ pub fn bundle_form(locale: Locale) -> FormSpec {
             section(Some(t(T::SectionBundlePreview)), import_rows),
         ],
         buttons: buttons((bundle::CLOSE, t(T::ButtonClose)), Some((bundle::PRIMARY, t(T::ButtonExport)))),
+        ..FormSpec::default()
     }
 }
 
@@ -352,6 +349,7 @@ pub fn material_form(locale: Locale) -> FormSpec {
             ),
         ],
         buttons: buttons((material::CLOSE, t(T::ButtonClose)), None),
+        ..FormSpec::default()
     }
 }
 
@@ -402,6 +400,7 @@ pub fn art_form(locale: Locale) -> FormSpec {
             ),
         ],
         buttons: buttons((art::CLOSE, t(T::ButtonClose)), None),
+        ..FormSpec::default()
     }
 }
 
@@ -438,6 +437,7 @@ pub fn import_form(locale: Locale) -> FormSpec {
             (import::CANCEL, h(HostText::ImportCancel)),
             Some((import::COMMIT, h(HostText::ImportCommit))),
         ),
+        ..FormSpec::default()
     }
 }
 
@@ -469,6 +469,7 @@ pub fn image_import_form(locale: Locale) -> FormSpec {
             (image_import::CANCEL, h(HostText::ImageImportCancel)),
             Some((image_import::COMMIT, h(HostText::ImageImportCommit))),
         ),
+        ..FormSpec::default()
     }
 }
 
@@ -525,6 +526,7 @@ pub fn image_adjust_forms(locale: Locale) -> (FormSpec, FormSpec) {
             section(Some(f(T::SectionImageCrop)), crop_rows),
         ],
         buttons: DialogButtons::default(),
+        ..FormSpec::default()
     };
     let right = FormSpec {
         title: h(HostText::ImageAdjustTitle).to_owned(),
@@ -539,6 +541,7 @@ pub fn image_adjust_forms(locale: Locale) -> (FormSpec, FormSpec) {
             (image_adjust::CANCEL, h(HostText::ImageAdjustCancel)),
             Some((image_adjust::APPLY, h(HostText::ImageAdjustApply))),
         ),
+        ..FormSpec::default()
     };
     (left, right)
 }
@@ -586,6 +589,7 @@ pub fn tracer_forms(locale: Locale) -> (FormSpec, FormSpec) {
             ),
         ],
         buttons: DialogButtons::default(),
+        ..FormSpec::default()
     };
     let right = FormSpec {
         title: h(HostText::TracerTitle).to_owned(),
@@ -600,6 +604,7 @@ pub fn tracer_forms(locale: Locale) -> (FormSpec, FormSpec) {
             ],
         )],
         buttons: buttons((tracer::CLOSE, h(HostText::TracerClose)), Some((tracer::APPLY, h(HostText::TracerApply)))),
+        ..FormSpec::default()
     };
     (left, right)
 }

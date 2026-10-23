@@ -174,6 +174,7 @@ fn bed_scene(origin: BedOrigin, items: Vec<(Arc<Path>, StyleRole)>) -> SceneSnap
                 path,
                 transform: Affine::IDENTITY,
                 role,
+                fill_slot: None,
             })
             .collect(),
         overlays: vec![

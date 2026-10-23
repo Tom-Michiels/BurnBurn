@@ -245,6 +245,10 @@ struct Session {
     /// The plate Compile uses, and the plate each compile in flight was started for (P06).
     compile_plate: Option<burnburn_document::structure::PlateId>,
     compile_plates: BTreeMap<TaskId, Option<burnburn_document::structure::PlateId>>,
+    /// The job clock when each compile in flight was started (the plan shows it).
+    compile_clocks: BTreeMap<TaskId, Option<burnburn_generators::JobClock>>,
+    /// When the plan in `compiled` was compiled.
+    plan_compiled_at: Option<burnburn_generators::JobClock>,
     /// The plate the plan in `compiled` was made for.
     plan_plate: Option<burnburn_document::structure::PlateId>,
     /// The open repair preview (E09; window state).
@@ -271,6 +275,9 @@ struct Session {
     selection: Selection,
     camera: Camera,
     viewport: Viewport,
+    /// Whether the camera still has to frame the bed once the real canvas size is known (opens and
+    /// new documents); any user pan/zoom or explicit zoom command clears it.
+    fit_pending: bool,
     title: String,
     path: Option<PathBuf>,
     field_errors: BTreeMap<FieldKey, MessageKey>,
@@ -360,6 +367,8 @@ impl Session {
             notes_open: false,
             compile_plate: None,
             compile_plates: BTreeMap::new(),
+            compile_clocks: BTreeMap::new(),
+            plan_compiled_at: None,
             plan_plate: None,
             repair: repair_preview::RepairState::default(),
             offset: offset_preview::OffsetState::default(),
@@ -367,6 +376,7 @@ impl Session {
             selection: Selection::default(),
             camera,
             viewport,
+            fit_pending: true,
             title,
             path,
             field_errors: BTreeMap::new(),

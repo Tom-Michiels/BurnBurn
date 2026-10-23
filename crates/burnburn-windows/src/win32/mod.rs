@@ -49,10 +49,13 @@ use burnburn_render::surface::SurfaceCanvas;
 use burnburn_render::{Theme, build_packet};
 use burnburn_types::{DocumentId, OperationId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::{COLOR_BTNFACE, GetSysColorBrush, ScreenToClient};
+use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    COLOR_BTNFACE, GetSysColor, GetSysColorBrush, HDC, InvalidateRect, ScreenToClient, SetBkColor, SetTextColor,
+};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
@@ -62,11 +65,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DefWindowProcW, DestroyWindow, DispatchMessageW, FALT, FCONTROL, FSHIFT, FVIRTKEY, GA_ROOT, GWLP_USERDATA,
     GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetMessageTime, GetMessageW, GetWindowLongPtrW, HACCEL,
     HMENU, IDC_ARROW, IsDialogMessageW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL,
-    LBS_NOTIFY, LoadCursorW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
+    LBS_NOTIFY, LoadCursorW, LoadIconW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
     SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
-    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_TIMER, WM_VSCROLL, WNDCLASSEXW,
-    WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WINDOW_EX_STYLE, WM_APP, WM_CTLCOLORSTATIC, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY,
+    WM_SETTINGCHANGE, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
@@ -74,6 +78,9 @@ use crate::adapter::{
     CharDecoder, Control, MessageContext, Reaction, accelerators, close_guard, message_text, msg, object_labels,
     on_close_box, on_guard_box, on_message, on_open_dialog, on_recovery_box, on_save_dialog, recovery_box_text,
     recovery_dir, selected_rows, window_title, window_title_localized,
+};
+use crate::appearance::{
+    APPS_USE_LIGHT_THEME, Appearance, PERSONALIZE_KEY, appearance_from_apps_use_light_theme, is_theme_change,
 };
 use crate::forms::toolstrip::{StripAction, strip, tool_intent, variant_intent};
 use crate::forms::{
@@ -105,6 +112,8 @@ struct DocWin {
     canvas: HWND,
     list: HWND,
     status: HWND,
+    /// The colour of the status line (`COLORREF`), after the tone of its message.
+    status_color: u32,
     syncing: bool,
     /// Panels of this window: docked ones in the columns, floating ones as tool windows.
     forms: Vec<FormWin>,
@@ -130,6 +139,8 @@ struct Host {
     automation: Option<crate::automation_host::Automation>,
     /// The clock the automation pump measures its time limit with.
     started: std::time::Instant,
+    /// The system's app theme: the canvas is drawn in `Theme::dark()` or `Theme::light()` after it.
+    appearance: Appearance,
 }
 
 thread_local! {
@@ -302,10 +313,18 @@ fn apply(update: AppUpdate) {
             HostEffect::ShowError { document, message } => {
                 let text = message_text(*message, system_locale());
                 eprintln!("burnburn-win: {text}");
-                if let Some(status) =
-                    document.and_then(|d| with_host(|h| h.windows.get(&d).map(|w| w.status)).flatten())
-                {
-                    set_text(status, &text);
+                let line = crate::status_line::StatusLine::message(*message, system_locale());
+                let shown = document.and_then(|d| {
+                    with_host(|h| {
+                        h.windows.get_mut(&d).map(|w| {
+                            set_status_color(w, line.colorref());
+                            w.status
+                        })
+                    })
+                    .flatten()
+                });
+                if let Some(status) = shown {
+                    set_text(status, &line.text);
                 }
             }
             HostEffect::Redraw { document } => redraw(*document),
@@ -379,15 +398,9 @@ fn refresh() {
         for (document, w) in h.windows.iter_mut() {
             let Some(doc) = vm.document(*document) else { continue };
             set_text(w.frame, &window_title_localized(&vm, *document, locale));
-            let message = doc
-                .inspector
-                .as_ref()
-                .and_then(|i| i.fields.iter().find_map(|f| f.error))
-                .or(doc.messages.last().map(|m| m.key))
-                .map(|m| message_text(m, locale))
-                .or_else(|| doc.tool_measurement.as_ref().map(|m| crate::toolbar::measurement_text(m, locale)))
-                .unwrap_or_default();
-            set_text(w.status, &message);
+            let line = crate::status_line::status_line(doc, locale);
+            set_text(w.status, &line.text);
+            set_status_color(w, line.colorref());
             w.syncing = true;
             send(w.list, LB_RESETCONTENT, 0, 0);
             for label in object_labels(&vm, *document) {
@@ -435,10 +448,82 @@ fn sync_forms(h: &mut Host, document: DocumentId, wanted: &[crate::forms::Form],
     w.cut_op = open_cut;
 }
 
+/// The system's app theme from `HKCU\...\Personalize\AppsUseLightTheme` (light when it is unreadable).
+fn system_appearance() -> Appearance {
+    let key: Vec<u16> = PERSONALIZE_KEY.encode_utf16().chain(Some(0)).collect();
+    let name: Vec<u16> = APPS_USE_LIGHT_THEME.encode_utf16().chain(Some(0)).collect();
+    let mut data = 0u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: NUL-terminated key and value names that outlive the call; `data` and `size` are a valid
+    // writable DWORD and its byte length, as RRF_RT_REG_DWORD requires.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(std::ptr::from_mut(&mut data).cast()),
+            Some(&mut size),
+        )
+    };
+    appearance_from_apps_use_light_theme((status == ERROR_SUCCESS).then_some(data))
+}
+
+/// Stores the status colour and repaints the line when it changed.
+fn set_status_color(w: &mut DocWin, colorref: u32) {
+    if w.status_color != colorref {
+        w.status_color = colorref;
+        // SAFETY: repaint request for our own status control.
+        let _ = unsafe { InvalidateRect(Some(w.status), None, true) };
+    }
+}
+
+/// `WM_CTLCOLORSTATIC` for a document's status line: the text in the colour of the message's tone on
+/// the dialog background. Any other static control keeps the default.
+fn status_paint(wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    let control = HWND(lparam.0 as *mut _);
+    let colorref = with_host(|h| h.windows.values().find(|w| w.status == control).map(|w| w.status_color)).flatten()?;
+    let hdc = HDC(wparam.0 as *mut _);
+    // SAFETY: the device context the system passed for this message, valid while it is handled.
+    let _ = unsafe { SetTextColor(hdc, COLORREF(colorref)) };
+    // SAFETY: a system colour index (no pointers).
+    let face = unsafe { GetSysColor(COLOR_BTNFACE) };
+    // SAFETY: as above, the device context of this message.
+    let _ = unsafe { SetBkColor(hdc, COLORREF(face)) };
+    // SAFETY: a shared system brush (not owned, never deleted).
+    let brush = unsafe { GetSysColorBrush(COLOR_BTNFACE) };
+    Some(LRESULT(brush.0 as isize))
+}
+
+/// `WM_SETTINGCHANGE`: reads the theme again when the broadcast says it changed, then redraws.
+fn theme_changed(lparam: LPARAM) {
+    let setting = if lparam.0 == 0 {
+        None
+    } else {
+        // SAFETY: for WM_SETTINGCHANGE a non-zero lParam is a NUL-terminated UTF-16 string that
+        // lives for the duration of the message.
+        unsafe { PCWSTR(lparam.0 as *const u16).to_string() }.ok()
+    };
+    if !is_theme_change(setting.as_deref()) {
+        return;
+    }
+    let appearance = system_appearance();
+    let documents = with_host(|h| {
+        h.appearance = appearance;
+        h.windows.keys().copied().collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    for document in documents {
+        redraw(document);
+    }
+}
+
 fn redraw(document: DocumentId) {
     with_host(|h| {
         let Some(scene) = h.controller.scene(document) else { return };
-        let packet = build_packet(&scene, &Theme::light());
+        let theme = if h.appearance == Appearance::Dark { Theme::dark() } else { Theme::light() };
+        let packet = build_packet(&scene, &theme);
         if let Some(canvas) = h.windows.get_mut(&document).and_then(|w| w.canvas_surface.as_mut())
             && let Err(e) = canvas.draw(&packet)
         {
@@ -546,6 +631,7 @@ fn open_window(document: DocumentId) {
                 canvas,
                 list,
                 status,
+                status_color: crate::status_line::StatusLine::toned("", crate::style::StatusTone::Neutral).colorref(),
                 syncing: false,
                 forms: Vec::new(),
                 strip: StripWin::new(),
@@ -648,6 +734,15 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 layout(hwnd);
                 return LRESULT(0);
             }
+            // The status line is a STATIC control: its parent paints its text in the tone's colour.
+            WM_CTLCOLORSTATIC => {
+                if let Some(brush) = status_paint(wparam, lparam) {
+                    return brush;
+                }
+            }
+            // The user switched between light and dark: the canvas follows (the broadcast reaches
+            // every top-level window; the first one updates the host).
+            WM_SETTINGCHANGE => theme_changed(lparam),
             // Closing the last window quits: while the machine is busy that needs a confirmation
             // (X07 update gate, same reason and words as the macOS alert).
             msg::WM_CLOSE if !quit_allowed(hwnd) => return LRESULT(0),
@@ -1016,14 +1111,28 @@ fn random_uuid() -> burnburn_io::ProjectUuid {
     burnburn_io::ProjectUuid::from_bytes(bytes)
 }
 
+/// Resource id of the application icon group that `build.rs` embeds (`APP_ICON_ID` in
+/// `build/ico_res.rs`; the lowest id, so Explorer shows it too).
+const APP_ICON_RESOURCE_ID: usize = 1;
+
+/// The embedded application icon (title bar, taskbar, Alt+Tab), or none when the executable has no
+/// such resource (the system then shows its default icon).
+fn app_icon(instance: HINSTANCE) -> windows::Win32::UI::WindowsAndMessaging::HICON {
+    // SAFETY: loads the icon group of this executable by its integer resource id; the handle is shared
+    // and owned by the module (never destroyed).
+    unsafe { LoadIconW(Some(instance), PCWSTR(APP_ICON_RESOURCE_ID as *const u16)) }.unwrap_or_default()
+}
+
 fn register(instance: HINSTANCE, name: PCWSTR, proc_: windows::Win32::UI::WindowsAndMessaging::WNDPROC) -> bool {
     // SAFETY: loads the shared system arrow cursor (no ownership).
     let cursor = unsafe { LoadCursorW(None, IDC_ARROW) }.unwrap_or_default();
+    let icon = app_icon(instance);
     let class = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
         style: CS_HREDRAW | CS_VREDRAW,
         lpfnWndProc: proc_,
         hInstance: instance,
+        hIcon: icon,
         hCursor: cursor,
         lpszClassName: name,
         ..Default::default()
@@ -1150,6 +1259,7 @@ pub fn run_app(args: Vec<std::ffi::OsString>) -> ExitCode {
                 chars: CharDecoder::default(),
                 automation: Some(automation),
                 started: std::time::Instant::now(),
+                appearance: system_appearance(),
             });
         }
     });

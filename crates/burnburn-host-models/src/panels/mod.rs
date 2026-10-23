@@ -13,8 +13,10 @@ use burnburn_presentation::{AppViewModel, CommandKey, FieldKey};
 use crate::l10n::{HostText, Locale, host_text};
 
 mod cam;
+mod cam_form;
 mod camera;
 mod camera_workspace;
+mod cut_form;
 mod cut_settings;
 pub mod files_form;
 mod g5;
@@ -32,13 +34,17 @@ mod machine;
 mod operations;
 mod plan;
 mod schikken;
+mod schikken_form;
 mod shapes;
 mod sketch;
+mod status_bar;
 mod text;
 
 pub use cam::*;
+pub use cam_form::{CamForm, CamTarget, CaptionParts, arrow_label, cam_form, split_caption};
 pub use camera::*;
 pub use camera_workspace::*;
+pub use cut_form::{CutForm, CutTarget, CutTop, cut_form};
 pub use cut_settings::*;
 pub use g5::*;
 pub use g5_form::{G5Form, dialog_role, g5_form};
@@ -52,8 +58,10 @@ pub use machine::*;
 pub use operations::*;
 pub use plan::*;
 pub use schikken::*;
+pub use schikken_form::{SchikkenForm, schikken_dialog_role, schikken_form};
 pub use shapes::*;
 pub use sketch::*;
+pub use status_bar::*;
 pub use text::*;
 
 /// Segments of the toolbar's Schets control (momentary), left to right.

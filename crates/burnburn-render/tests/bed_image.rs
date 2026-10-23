@@ -46,6 +46,7 @@ fn rect_item(x: f64, y: f64, w: f64, h: f64) -> SceneItem {
         )),
         transform: Affine::IDENTITY,
         role: StyleRole::Design,
+        fill_slot: None,
     }
 }
 

@@ -34,6 +34,9 @@ pub struct SceneItem {
     pub path: Arc<Path>,
     pub transform: Affine,
     pub role: StyleRole,
+    /// The layer-palette slot of the Fill / Offset Fill operation that fills this object: the canvas
+    /// draws a light fill in that colour. `None` for line-only objects.
+    pub fill_slot: Option<u16>,
 }
 
 /// Which variant of an A/B comparison an outline belongs to.
@@ -267,6 +270,7 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
                 path: Arc::clone(obj.path()),
                 transform: Affine::IDENTITY,
                 role: if req.selection.contains(id) { StyleRole::Selected } else { StyleRole::Design },
+                fill_slot: None,
             })
         })
         .collect();

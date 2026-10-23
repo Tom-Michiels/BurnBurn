@@ -135,6 +135,7 @@ pub(crate) struct ShapesSection {
     dialog_title: Retained<NSTextField>,
     dialog_label: Retained<NSTextField>,
     dialog_field: Retained<NSTextField>,
+    dialog_unit: Retained<NSTextField>,
     dialog_error: Retained<NSTextField>,
     dialog_ok: Retained<NSButton>,
     dialog_cancel: Retained<NSButton>,
@@ -211,6 +212,9 @@ pub(crate) fn shapes_section(
     dialog_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
     let dialog_label = label(mtm, "", rect(16.0, DIALOG_HEIGHT - 70.0, 200.0, 22.0));
     let dialog_field = field(mtm, rect(222.0, DIALOG_HEIGHT - 72.0, DIALOG_WIDTH - 238.0, 24.0));
+    let dialog_unit = label(mtm, "", rect(0.0, 0.0, 40.0, 20.0));
+    dialog_unit.setTextColor(Some(&NSColor::secondaryLabelColor()));
+    dialog_unit.setHidden(true);
     let dialog_error = label(mtm, "", rect(16.0, 52.0, DIALOG_WIDTH - 32.0, 34.0));
     dialog_error.setTextColor(Some(&NSColor::systemRedColor()));
     dialog_error.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
@@ -220,7 +224,15 @@ pub(crate) fn shapes_section(
     let dialog_ok = push_button(mtm, t(HostText::GeometryOk));
     dialog_ok.setFrame(rect(DIALOG_WIDTH - 116.0, 12.0, 104.0, 28.0));
     dialog_ok.setKeyEquivalent(&NSString::from_str("\r"));
-    for v in [&dialog_title as &NSView, &dialog_label, &dialog_field, &dialog_error, &dialog_cancel, &dialog_ok] {
+    for v in [
+        &dialog_title as &NSView,
+        &dialog_label,
+        &dialog_field,
+        &dialog_unit,
+        &dialog_error,
+        &dialog_cancel,
+        &dialog_ok,
+    ] {
         sheet_content.addSubview(v);
     }
     dialog_field.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::GeometryOk))));
@@ -267,6 +279,7 @@ pub(crate) fn shapes_section(
         dialog_title,
         dialog_label,
         dialog_field,
+        dialog_unit,
         dialog_error,
         dialog_ok,
         dialog_cancel,
@@ -445,7 +458,27 @@ impl DocWindow {
         }
         // Filled once per opening, so a refused OK keeps what the user typed.
         set_text(&s.dialog_title, &d.title);
-        set_text(&s.dialog_label, &d.label);
+        // The unit of the caption (`Straal (mm)`) is a suffix after the field, on its baseline.
+        let split = burnburn_host_models::form::split_caption(&d.label);
+        set_text(&s.dialog_label, &split.label);
+        let field_x = 222.0;
+        let full_w = DIALOG_WIDTH - 238.0;
+        match split.unit {
+            Some(unit) => {
+                set_text(&s.dialog_unit, burnburn_host_models::format::unit_label(unit));
+                let w = s.dialog_unit.cell().map_or(24.0, |c| c.cellSize().width.ceil()) + 4.0;
+                s.dialog_field.setFrame(rect(field_x, DIALOG_HEIGHT - 72.0, full_w - w - 4.0, 24.0));
+                s.dialog_unit.setFrame(rect(field_x + full_w - w, DIALOG_HEIGHT - 72.0, w, 20.0));
+                s.dialog_unit.setHidden(false);
+                crate::appkit::panels::widgets::align_baseline(&s.dialog_unit, &s.dialog_field);
+            }
+            None => {
+                s.dialog_field.setFrame(rect(field_x, DIALOG_HEIGHT - 72.0, full_w, 24.0));
+                s.dialog_unit.setHidden(true);
+            }
+        }
+        s.dialog_label.setFrame(rect(16.0, DIALOG_HEIGHT - 70.0, 200.0, 22.0));
+        crate::appkit::panels::widgets::align_baseline(&s.dialog_label, &s.dialog_field);
         s.dialog_field.setStringValue(&NSString::from_str(&d.text));
         s.dialog_field.setAccessibilityLabel(Some(&NSString::from_str(&d.label)));
         s.sheet.setTitle(&NSString::from_str(&d.title));

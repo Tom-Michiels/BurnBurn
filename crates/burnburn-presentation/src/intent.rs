@@ -1057,6 +1057,8 @@ pub enum CommandKey {
     IsolateSelection,
     /// Weergave ▸ Zoom naar het werkblad (bed van de machine, anders alle objecten).
     ZoomPage,
+    /// Weergave ▸ Zoom naar bed: kadert het bed van de machine met marge (zonder machine: niets).
+    ZoomBed,
     /// Weergave ▸ Zoom naar de selectie.
     ZoomSelection,
     /// Weergave ▸ Zoom in.
@@ -1247,6 +1249,7 @@ impl CommandKey {
         CommandKey::SelectSameType,
         CommandKey::IsolateSelection,
         CommandKey::ZoomPage,
+        CommandKey::ZoomBed,
         CommandKey::ZoomSelection,
         CommandKey::ZoomIn,
         CommandKey::ZoomOut,

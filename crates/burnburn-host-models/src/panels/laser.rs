@@ -565,3 +565,41 @@ pub mod key_codes {
     pub const DOWN: u16 = 125;
     pub const UP: u16 = 126;
 }
+
+/// Height the laser window gets when no screen is known (the former fixed value).
+pub const LASER_FALLBACK_WINDOW_HEIGHT_PT: f64 = 700.0;
+/// Smallest content height the laser window can be resized to.
+pub const LASER_MIN_WINDOW_HEIGHT_PT: f64 = 240.0;
+/// Title bar plus breathing room that the window needs on top of its content on the visible screen.
+pub const LASER_WINDOW_CHROME_PT: f64 = 60.0;
+
+/// Where the laser window's top-left corner goes so that the whole window (`size` = width, height
+/// including the title bar) lies inside the `visible` screen rectangle (x, y, width, height; y up,
+/// like AppKit): `wanted` is moved the shortest way, and a window larger than the screen is pinned to
+/// the top-left of the visible area.
+pub fn laser_window_top_left(wanted: (f64, f64), size: (f64, f64), visible: (f64, f64, f64, f64)) -> (f64, f64) {
+    let (vx, vy, vw, vh) = visible;
+    let finite = [wanted.0, wanted.1, size.0, size.1, vx, vy, vw, vh].iter().all(|v| v.is_finite());
+    if !finite {
+        return wanted;
+    }
+    let x = if size.0 >= vw { vx } else { wanted.0.clamp(vx, vx + vw - size.0) };
+    let top_max = vy + vh;
+    let y = if size.1 >= vh { top_max } else { wanted.1.clamp(vy + size.1, top_max) };
+    (x, y)
+}
+
+/// The content height of the laser window on a screen whose usable (menu bar and Dock excluded)
+/// height is `screen_visible_height_pt`: as tall as the content (`content_height_pt`) allows but never
+/// taller than the screen shows; the panel scrolls what does not fit.
+pub fn laser_window_height(screen_visible_height_pt: f64, content_height_pt: f64) -> f64 {
+    let content = if content_height_pt.is_finite() && content_height_pt > 0.0 {
+        content_height_pt
+    } else {
+        LASER_FALLBACK_WINDOW_HEIGHT_PT
+    };
+    if !(screen_visible_height_pt.is_finite() && screen_visible_height_pt > 0.0) {
+        return LASER_FALLBACK_WINDOW_HEIGHT_PT.min(content);
+    }
+    (screen_visible_height_pt - LASER_WINDOW_CHROME_PT).clamp(LASER_MIN_WINDOW_HEIGHT_PT.min(content), content)
+}

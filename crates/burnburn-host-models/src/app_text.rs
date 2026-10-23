@@ -80,6 +80,9 @@ app_texts! {
     SuffixInch => ("in", "in"),
     SuffixPx => ("px", "px"),
     SuffixSeconds => ("s", "s"),
+    PrefsTabGeneral => ("Algemeen", "General"),
+    PrefsTabCanvas => ("Tekenvlak", "Canvas"),
+    PrefsTabNudge => ("Verplaatsen", "Nudging"),
     PrefsReset => ("Standaardwaarden herstellen", "Restore Defaults"),
     PrefsNote => (
         "Instellingen staan in je gebruikersmap, nooit in een project. De taal geldt vanaf de volgende start; snapping geldt voor nieuwe vensters.",
