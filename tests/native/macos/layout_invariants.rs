@@ -47,9 +47,9 @@ mod invariants {
     use burnburn_macos::appkit::HostOptions;
     use burnburn_presentation::{CommandKey, UiIntent};
     use burnburn_types::DocumentId;
-    use objc2::{Message, MainThreadOnly};
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
+    use objc2::{MainThreadOnly, Message};
     use objc2_app_kit::{
         NSApplication, NSButton, NSControl, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSegmentedControl,
         NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
@@ -122,7 +122,10 @@ mod invariants {
             let before = found.len();
             found.retain(|m| !(m.contains(": baseline") && BASELINE_PENDING.iter().any(|p| m.starts_with(p))));
             if found.len() < before {
-                eprintln!("layout_invariants: {} pending baseline violations skipped (BASELINE_PENDING)", before - found.len());
+                eprintln!(
+                    "layout_invariants: {} pending baseline violations skipped (BASELINE_PENDING)",
+                    before - found.len()
+                );
             }
         }
         if found.is_empty() {
@@ -154,7 +157,7 @@ mod invariants {
             f
         };
         let (bad_label, bad_field) = (label(46.0), field(40.0));
-        
+
         content.addSubview(&bad_label);
         content.addSubview(&bad_field);
         let mut mine = Vec::new();
@@ -262,14 +265,24 @@ mod invariants {
         let mut all = Vec::new();
         descendants(form.root(), &mut all);
         let label_with = |t: &str| {
-            all.iter().find(|v| as_any(v).downcast_ref::<NSTextField>().is_some_and(|l| !l.isEditable() && l.stringValue().to_string() == t)).cloned()
+            all.iter()
+                .find(|v| {
+                    as_any(v)
+                        .downcast_ref::<NSTextField>()
+                        .is_some_and(|l| !l.isEditable() && l.stringValue().to_string() == t)
+                })
+                .cloned()
         };
         let field = form.controls().into_iter().find(|(id, _)| id.0 == 1).map(|(_, v)| v);
         match (label_with("mm/s"), field, label_with("Snelheid")) {
             (Some(unit), Some(field), Some(caption)) => {
                 let (u, f) = (unit.frame(), field.frame());
                 if u.origin.x + TOLERANCE < f.origin.x + f.size.width {
-                    found.push(format!("form builder: the unit is not after the field: {}  /  {}", describe(&unit), describe(&field)));
+                    found.push(format!(
+                        "form builder: the unit is not after the field: {}  /  {}",
+                        describe(&unit),
+                        describe(&field)
+                    ));
                 }
                 if (baseline(&unit) - baseline(&field)).abs() > TOLERANCE {
                     found.push("form builder: the unit is not on the baseline of its field".into());
@@ -303,11 +316,11 @@ mod invariants {
         // SAFETY: a freshly allocated window on the main thread; released with the Retained.
         let window = unsafe {
             NSWindow::initWithContentRect_styleMask_backing_defer(
-            NSWindow::alloc(s.mtm),
-            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(300.0, 120.0)),
-            NSWindowStyleMask::Titled,
-            NSBackingStoreType::Buffered,
-            false,
+                NSWindow::alloc(s.mtm),
+                NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(300.0, 120.0)),
+                NSWindowStyleMask::Titled,
+                NSBackingStoreType::Buffered,
+                false,
             )
         };
         window.setAlphaValue(0.0);
@@ -623,10 +636,31 @@ mod invariants {
     /// `sheet`) whose hand-laid captions do not yet share a baseline with their field. LF6 migrates
     /// them to the form builder and empties this list.
     const BASELINE_PENDING: &[&str] = &[
-        "document", "sheet", "cut-settings", "preferences", "machine-hub", "laser", "material-library", "art-library",
-        "notes", "schikken", "offset", "structure", "recognition", "remnants", "search", "generator",
-        "cam-optimization", "cam-device", "cam-array", "cam-material-test", "cam-interval-test", "cam-focus-test",
-        "cam-feeder", "round-corners", "barcode", "export-svg",
+        "document",
+        "sheet",
+        "cut-settings",
+        "preferences",
+        "machine-hub",
+        "laser",
+        "material-library",
+        "art-library",
+        "schikken",
+        "offset",
+        "structure",
+        "recognition",
+        "remnants",
+        "search",
+        "generator",
+        "cam-optimization",
+        "cam-device",
+        "cam-array",
+        "cam-material-test",
+        "cam-interval-test",
+        "cam-focus-test",
+        "cam-feeder",
+        "round-corners",
+        "barcode",
+        "export-svg",
     ];
 
     /// The y of the first text baseline of `view` in its parent's own coordinates.
@@ -653,9 +687,7 @@ mod invariants {
             let l = label_view.frame();
             for field_view in items {
                 let any = as_any(field_view);
-                let is_field = any
-                    .downcast_ref::<NSTextField>()
-                    .is_some_and(|t| t.isEditable() && t.isBezeled())
+                let is_field = any.downcast_ref::<NSTextField>().is_some_and(|t| t.isEditable() && t.isBezeled())
                     || any.downcast_ref::<NSPopUpButton>().is_some();
                 if !is_field {
                     continue;

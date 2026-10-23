@@ -25,12 +25,14 @@ use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
+use crate::appkit::panels::form::{FormView, Wiring, build_form};
 use crate::appkit::panels::image::{image_view, show_bitmap};
 use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
-use crate::panels::{G5Control, G5Line, G5Panel, g5_opens_by_itself, g5_panel};
+use crate::panels::{G5Control, G5Line, G5Panel, G5PanelModel, g5_form, g5_opens_by_itself, g5_panel};
 use crate::panels_image::BitmapImage;
+use burnburn_host_models::form::FormId;
 
 const PANEL_WIDTH: f64 = 440.0;
 const MARGIN: f64 = 12.0;
@@ -183,6 +185,20 @@ pub(crate) struct G5Section {
     /// `Some`: the panel is a section of the inspector column of the document window (the stack of
     /// the selection, G9-editor, E06): where it lies, and not a floating panel.
     embedded: Option<Embedded>,
+    /// `Some`: the panel is a form built by the LF5 form builder (the notes panel; LF6 moves the
+    /// others), not hand-laid lines.
+    form: Option<FormState>,
+}
+
+/// A panel drawn by the form builder, and which panel control each form id is.
+struct FormState {
+    view: FormView,
+    ids: Vec<(FormId, G5Control)>,
+}
+
+/// The panels that are forms.
+fn is_form_panel(kind: G5Panel) -> bool {
+    kind == G5Panel::Notes
 }
 
 /// Where an embedded section lies in its host view.
@@ -241,6 +257,7 @@ pub(crate) fn g5_section(
         width: PANEL_WIDTH,
         caption_width: CAPTION_WIDTH,
         embedded: None,
+        form: None,
     }
 }
 
@@ -294,6 +311,9 @@ impl G5Section {
     /// Nil the targets (weak references) before the section goes: nothing can call a dead object.
     #[allow(unsafe_code)]
     pub(crate) fn clear_targets(&self) {
+        if let Some(form) = &self.form {
+            form.view.clear_targets();
+        }
         let controls: Vec<&NSControl> = self
             .widgets
             .iter()
@@ -325,6 +345,46 @@ impl G5Section {
         }
     }
 
+    /// Shows `model` as a form: updates the widgets in place while its shape stays, builds a new
+    /// form (keeping what the user typed) when it changes. Returns the size the panel needs.
+    #[allow(unsafe_code)]
+    fn show_form(&mut self, mtm: MainThreadMarker, model: &G5PanelModel) -> NSSize {
+        let form = g5_form(&model.title, &model.lines);
+        if let Some(state) = &mut self.form
+            && state.view.update(&form.spec)
+        {
+            state.ids = form.controls;
+            return state.view.size();
+        }
+        let typed = self.form.as_ref().map(|s| (s.view.edits(), s.ids.clone())).unwrap_or_default();
+        self.clear_targets();
+        let any: &AnyObject = self.target.as_ref();
+        let wiring = Wiring { target: any, action: sel!(g5Control:) };
+        let mut view = build_form(mtm, &form.spec, PANEL_WIDTH, Some(wiring));
+        // What the user typed survives a rebuild (a problem line appearing changes the shape of the
+        // panel, not the field), together with what the model last put there.
+        let (edits, old_ids) = typed;
+        for (old_id, text, pushed) in edits {
+            if let Some(control) = old_ids.iter().find(|(id, _)| *id == old_id).map(|(_, c)| *c)
+                && let Some(new_id) = form.controls.iter().find(|(_, c)| *c == control).map(|(id, _)| *id)
+            {
+                view.restore(new_id, &text, &pushed);
+            }
+        }
+        let controls: Vec<(G5Control, Retained<NSView>)> = view
+            .controls()
+            .into_iter()
+            .filter_map(|(id, v)| form.controls.iter().find(|(i, _)| *i == id).map(|(_, c)| (*c, v)))
+            .collect();
+        if let Ok(mut slot) = self.target.ivars().controls.try_borrow_mut() {
+            *slot = controls;
+        }
+        self.panel.setContentView(Some(view.root()));
+        let size = view.size();
+        self.form = Some(FormState { view, ids: form.controls });
+        size
+    }
+
     /// Makes the section part of `host` instead of a floating panel (G9-editor, E06).
     fn embed(&mut self, mtm: MainThreadMarker, host: &NSView, at: Embedded, width: f64) {
         self.width = width;
@@ -348,6 +408,9 @@ impl G5Section {
     }
 
     pub(crate) fn labels(&self) -> Vec<String> {
+        if let Some(form) = &self.form {
+            return form.view.texts();
+        }
         self.widgets
             .iter()
             .filter_map(|w| match w {
@@ -678,6 +741,29 @@ impl DocWindow {
                 section.hide();
                 continue;
             };
+            if is_form_panel(kind) {
+                let was_shown = section.shown;
+                section.shown = true;
+                let size = section.show_form(mtm, &model);
+                if section.panel.title().to_string() != model.title {
+                    section.panel.setTitle(&NSString::from_str(&model.title));
+                }
+                let panel = section.panel.clone();
+                if let Err(e) = crate::appkit::objc_try("showing a form panel", || {
+                    panel.setContentSize(size);
+                    if !was_shown {
+                        let stagger = 28.0 * slot as f64;
+                        panel.setFrameTopLeftPoint(NSPoint::new(
+                            window_frame.origin.x + window_frame.size.width - size.width - 24.0 - stagger,
+                            window_frame.origin.y + window_frame.size.height - 60.0 - stagger,
+                        ));
+                        panel.orderFront(None);
+                    }
+                }) {
+                    eprintln!("burnburn: {e}");
+                }
+                continue;
+            }
             let shape: Vec<Shape> = model.lines.iter().map(shape_of).collect();
             if shape != section.shape {
                 section.rebuild(mtm, &model.lines);

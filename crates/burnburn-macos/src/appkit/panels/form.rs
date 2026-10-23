@@ -149,7 +149,8 @@ pub fn build_form(mtm: MainThreadMarker, spec: &FormSpec, width: f64, wiring: Op
     let has_units = unit_w > 0.0;
     // Text labels and fields draw 2 pt outside their alignment rect: the grid keeps that inside.
     let edge_pad = 2.0;
-    let control_w = inner - edge_pad
+    let control_w = inner
+        - edge_pad
         - if has_captions { caption_w + col_gap } else { 0.0 }
         - if has_units { unit_w + col_gap } else { 0.0 };
 
@@ -482,12 +483,8 @@ impl FormView {
                 set_text(l, text);
             }
         }
-        let specs: Vec<(usize, &burnburn_host_models::form::FormRow)> = spec
-            .sections
-            .iter()
-            .enumerate()
-            .flat_map(|(si, s)| s.rows.iter().map(move |r| (si, r)))
-            .collect();
+        let specs: Vec<(usize, &burnburn_host_models::form::FormRow)> =
+            spec.sections.iter().enumerate().flat_map(|(si, s)| s.rows.iter().map(move |r| (si, r))).collect();
         for (widgets, (si, row)) in self.rows.iter_mut().zip(specs) {
             debug_assert_eq!(widgets.section, si);
             let enabled = spec.sections[si].row_enabled(row);
@@ -587,6 +584,31 @@ impl FormView {
             }
         }
         out
+    }
+
+    /// For each text or memo row the text now in the control and what the model last put there.
+    pub fn edits(&self) -> Vec<(FormId, String, String)> {
+        let now = self.values();
+        self.rows
+            .iter()
+            .filter(|r| matches!(r.kind, Kind::Text | Kind::Memo))
+            .filter_map(|r| now.iter().find(|(id, _)| *id == r.id).map(|(_, v)| (r.id, v.clone(), r.pushed.clone())))
+            .collect()
+    }
+
+    /// Puts what the user typed into a text or memo row of a rebuilt form, and remembers what the
+    /// model had put there, so the next `update` leaves the typing alone.
+    pub fn restore(&mut self, id: FormId, typed: &str, pushed: &str) {
+        let Some(row) = self.rows.iter_mut().find(|r| r.id == id) else { return };
+        let any: &AnyObject = row.control.as_ref();
+        if let Some(f) = any.downcast_ref::<NSTextField>() {
+            f.setStringValue(&NSString::from_str(typed));
+        } else if let Some(t) = any.downcast_ref::<NSTextView>() {
+            t.setString(&NSString::from_str(typed));
+        } else {
+            return;
+        }
+        row.pushed = pushed.to_owned();
     }
 
     /// What the user has typed and chosen: text, the chosen index, `1`/`0` for a checkbox.
