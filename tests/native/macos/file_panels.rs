@@ -215,8 +215,36 @@ fn scenario() -> Result<(), String> {
     s.pump(0.3);
     let chosen = s.app.with_window(doc, |w| w.files.export_unit.titleOfSelectedItem().map(|t| t.to_string())).flatten();
     expect(|| format!("the unit choice is kept: {chosen:?}"), chosen.as_deref() == Some("inch"))?;
+    let svg = s
+        .app
+        .with_window(doc, |w| {
+            (w.files.export_stroke.isHidden(), w.window.attachedSheet().map(|sheet| sheet.frame().size.height))
+        })
+        .unwrap_or_default();
     s.app.dispatch(UiIntent::Files(FilesIntent::CloseExport { document: doc }));
     s.wait(3.0, "the export sheet to close", || {
+        s.app.with_window(doc, |w| w.window.attachedSheet().is_none()).unwrap_or(false)
+    })?;
+
+    // ---- DXF has no line width: that row of the form is hidden, and the sheet is fitted to the rows
+    // that are left (LF6b: the options are rows of a form, hidden per format).
+    s.menu(MenuItem::Command(CommandKey::ExportDxf))?;
+    s.wait(5.0, "the DXF export sheet", || {
+        s.app.with_window(doc, |w| w.files.export_sheet.is_some() && w.window.attachedSheet().is_some()).unwrap_or(false)
+    })?;
+    let dxf = s
+        .app
+        .with_window(doc, |w| {
+            (w.files.export_stroke.isHidden(), w.window.attachedSheet().map(|sheet| sheet.frame().size.height))
+        })
+        .unwrap_or_default();
+    expect(|| format!("SVG shows the line width, DXF hides it: svg {svg:?}, dxf {dxf:?}"), !svg.0 && dxf.0)?;
+    expect(
+        || format!("the two sheets are fitted to different rows: svg {svg:?}, dxf {dxf:?}"),
+        svg.1.is_some() && dxf.1.is_some() && svg.1 != dxf.1,
+    )?;
+    s.app.dispatch(UiIntent::Files(FilesIntent::CloseExport { document: doc }));
+    s.wait(3.0, "the DXF export sheet to close", || {
         s.app.with_window(doc, |w| w.window.attachedSheet().is_none()).unwrap_or(false)
     })?;
 

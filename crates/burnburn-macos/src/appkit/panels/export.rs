@@ -260,6 +260,7 @@ impl DocWindow {
         }
         set_check(&e.acknowledge, if model.acknowledged { CheckState::On } else { CheckState::Off });
         set_text(&e.status, &model.status);
+        e.surface.set_hidden(id::STATUS, model.status.is_empty());
         e.primary.setEnabled(model.can_export);
         e.surface.fit_window(&e.sheet);
         if !e.shown {

@@ -180,6 +180,7 @@ impl DocWindow {
         b.sheet.setTitle(&NSString::from_str(&model.title));
         set_text(&b.title, &model.title);
         set_text(&b.status, &model.status);
+        b.surface.set_hidden(id::STATUS, model.status.is_empty());
         let export = !model.import;
         b.surface.set_section_hidden(0, id::EXPORT_SECTION, !export);
         b.surface.set_section_hidden(0, id::IMPORT_SECTION, export);
@@ -217,6 +218,7 @@ impl DocWindow {
             }
         }
         set_text(&b.report, &model.report);
+        b.surface.set_hidden(id::REPORT, model.report.is_empty());
         b.primary.setEnabled(if export { model.can_export } else { model.can_apply });
         let title = if export { files_text(T::ButtonExport, locale) } else { files_text(T::ButtonApplyBundle, locale) };
         if b.primary.title().to_string() != title {
