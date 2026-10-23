@@ -20,6 +20,7 @@ pub mod forms;
 pub mod menus;
 pub mod persist;
 pub mod startup;
+pub mod status_line;
 pub mod tasks;
 
 #[cfg(windows)]

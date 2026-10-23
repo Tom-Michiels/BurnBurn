@@ -49,8 +49,10 @@ use burnburn_render::surface::SurfaceCanvas;
 use burnburn_render::{Theme, build_packet};
 use burnburn_types::{DocumentId, OperationId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
-use windows::Win32::Foundation::{ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::{COLOR_BTNFACE, GetSysColorBrush, ScreenToClient};
+use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    COLOR_BTNFACE, GetSysColor, GetSysColorBrush, HDC, InvalidateRect, ScreenToClient, SetBkColor, SetTextColor,
+};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
@@ -66,9 +68,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LBS_NOTIFY, LoadCursorW, LoadIconW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
     SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
-    WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY, WM_SETTINGCHANGE, WM_TIMER,
-    WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE,
-    WS_VSCROLL,
+    WINDOW_EX_STYLE, WM_APP, WM_CTLCOLORSTATIC, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY,
+    WM_SETTINGCHANGE, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW,
+    WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows::core::{BOOL, HSTRING, PCWSTR, w};
 
@@ -110,6 +112,8 @@ struct DocWin {
     canvas: HWND,
     list: HWND,
     status: HWND,
+    /// The colour of the status line (`COLORREF`), after the tone of its message.
+    status_color: u32,
     syncing: bool,
     /// Panels of this window: docked ones in the columns, floating ones as tool windows.
     forms: Vec<FormWin>,
@@ -309,10 +313,18 @@ fn apply(update: AppUpdate) {
             HostEffect::ShowError { document, message } => {
                 let text = message_text(*message, system_locale());
                 eprintln!("burnburn-win: {text}");
-                if let Some(status) =
-                    document.and_then(|d| with_host(|h| h.windows.get(&d).map(|w| w.status)).flatten())
-                {
-                    set_text(status, &text);
+                let line = crate::status_line::StatusLine::message(*message, system_locale());
+                let shown = document.and_then(|d| {
+                    with_host(|h| {
+                        h.windows.get_mut(&d).map(|w| {
+                            set_status_color(w, line.colorref());
+                            w.status
+                        })
+                    })
+                    .flatten()
+                });
+                if let Some(status) = shown {
+                    set_text(status, &line.text);
                 }
             }
             HostEffect::Redraw { document } => redraw(*document),
@@ -386,15 +398,9 @@ fn refresh() {
         for (document, w) in h.windows.iter_mut() {
             let Some(doc) = vm.document(*document) else { continue };
             set_text(w.frame, &window_title_localized(&vm, *document, locale));
-            let message = doc
-                .inspector
-                .as_ref()
-                .and_then(|i| i.fields.iter().find_map(|f| f.error))
-                .or(doc.messages.last().map(|m| m.key))
-                .map(|m| message_text(m, locale))
-                .or_else(|| doc.tool_measurement.as_ref().map(|m| crate::toolbar::measurement_text(m, locale)))
-                .unwrap_or_default();
-            set_text(w.status, &message);
+            let line = crate::status_line::status_line(doc, locale);
+            set_text(w.status, &line.text);
+            set_status_color(w, line.colorref());
             w.syncing = true;
             send(w.list, LB_RESETCONTENT, 0, 0);
             for label in object_labels(&vm, *document) {
@@ -462,6 +468,32 @@ fn system_appearance() -> Appearance {
         )
     };
     appearance_from_apps_use_light_theme((status == ERROR_SUCCESS).then_some(data))
+}
+
+/// Stores the status colour and repaints the line when it changed.
+fn set_status_color(w: &mut DocWin, colorref: u32) {
+    if w.status_color != colorref {
+        w.status_color = colorref;
+        // SAFETY: repaint request for our own status control.
+        let _ = unsafe { InvalidateRect(Some(w.status), None, true) };
+    }
+}
+
+/// `WM_CTLCOLORSTATIC` for a document's status line: the text in the colour of the message's tone on
+/// the dialog background. Any other static control keeps the default.
+fn status_paint(wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    let control = HWND(lparam.0 as *mut _);
+    let colorref = with_host(|h| h.windows.values().find(|w| w.status == control).map(|w| w.status_color)).flatten()?;
+    let hdc = HDC(wparam.0 as *mut _);
+    // SAFETY: the device context the system passed for this message, valid while it is handled.
+    let _ = unsafe { SetTextColor(hdc, COLORREF(colorref)) };
+    // SAFETY: a system colour index (no pointers).
+    let face = unsafe { GetSysColor(COLOR_BTNFACE) };
+    // SAFETY: as above, the device context of this message.
+    let _ = unsafe { SetBkColor(hdc, COLORREF(face)) };
+    // SAFETY: a shared system brush (not owned, never deleted).
+    let brush = unsafe { GetSysColorBrush(COLOR_BTNFACE) };
+    Some(LRESULT(brush.0 as isize))
 }
 
 /// `WM_SETTINGCHANGE`: reads the theme again when the broadcast says it changed, then redraws.
@@ -599,6 +631,7 @@ fn open_window(document: DocumentId) {
                 canvas,
                 list,
                 status,
+                status_color: crate::status_line::StatusLine::toned("", crate::style::StatusTone::Neutral).colorref(),
                 syncing: false,
                 forms: Vec::new(),
                 strip: StripWin::new(),
@@ -700,6 +733,12 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
             msg::WM_SIZE => {
                 layout(hwnd);
                 return LRESULT(0);
+            }
+            // The status line is a STATIC control: its parent paints its text in the tone's colour.
+            WM_CTLCOLORSTATIC => {
+                if let Some(brush) = status_paint(wparam, lparam) {
+                    return brush;
+                }
             }
             // The user switched between light and dark: the canvas follows (the broadcast reaches
             // every top-level window; the first one updates the host).
