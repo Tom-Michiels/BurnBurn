@@ -1839,6 +1839,7 @@ fn main_menu(mtm: MainThreadMarker, target: &MenuTarget, locale: Locale) -> Menu
         t(HostText::MenuView),
         vec![
             item(c(CommandKey::ZoomPage), "0", false),
+            plain(CommandKey::ZoomBed),
             item(c(CommandKey::ZoomSelection), "0", true),
             item(c(CommandKey::ZoomIn), "=", false),
             item(c(CommandKey::ZoomOut), "-", false),

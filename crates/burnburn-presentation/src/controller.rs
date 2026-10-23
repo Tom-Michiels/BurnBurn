@@ -271,6 +271,9 @@ struct Session {
     selection: Selection,
     camera: Camera,
     viewport: Viewport,
+    /// Whether the camera still has to frame the bed once the real canvas size is known (opens and
+    /// new documents); any user pan/zoom or explicit zoom command clears it.
+    fit_pending: bool,
     title: String,
     path: Option<PathBuf>,
     field_errors: BTreeMap<FieldKey, MessageKey>,
@@ -367,6 +370,7 @@ impl Session {
             selection: Selection::default(),
             camera,
             viewport,
+            fit_pending: true,
             title,
             path,
             field_errors: BTreeMap::new(),
