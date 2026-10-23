@@ -16,7 +16,11 @@
 //! (g) an editable field says what it is: a caption beside or above it, or a placeholder.
 //!
 //! Dialog sheets that are built but not open (import, image, tracer, export, bundle) are walked
-//! too. Baselines of labels and fields are not checked yet.
+//! too.
+//!
+//! (h) a caption and the field it labels share a baseline (within one point). The panels laid out by
+//! hand that still fail this are listed in `BASELINE_PENDING` (LF6 empties the list); the forms the
+//! LF5 builder makes must pass it. `BURNBURN_BASELINE_ALL=1` shows the pending ones too.
 
 use std::process::ExitCode;
 
@@ -43,7 +47,7 @@ mod invariants {
     use burnburn_macos::appkit::HostOptions;
     use burnburn_presentation::{CommandKey, UiIntent};
     use burnburn_types::DocumentId;
-    use objc2::Message;
+    use objc2::{Message, MainThreadOnly};
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{
@@ -65,6 +69,7 @@ mod invariants {
             o.locale = Some(burnburn_macos::l10n::Locale::Nl);
         })?;
         let mut found: Vec<String> = Vec::new();
+        baseline_self_test(&s, &mut found);
         let doc = s.new_document()?;
         check_document(&s, doc, "document (empty)", &mut found)?;
         s.app.dispatch(UiIntent::SetMachineProfile {
@@ -112,6 +117,13 @@ mod invariants {
             walk_window(sheet, &format!("sheet {name}, built"), &mut found);
             check_sheet_keys(sheet, name, &mut found);
         }
+        if std::env::var_os("BURNBURN_BASELINE_ALL").is_none() {
+            let before = found.len();
+            found.retain(|m| !(m.contains(": baseline") && BASELINE_PENDING.iter().any(|p| m.starts_with(p))));
+            if found.len() < before {
+                eprintln!("layout_invariants: {} pending baseline violations skipped (BASELINE_PENDING)", before - found.len());
+            }
+        }
         if found.is_empty() {
             return Ok(());
         }
@@ -123,6 +135,64 @@ mod invariants {
             found[..shown].join("\n    "),
             if found.len() > shown { format!("\n    ... and {} more", found.len() - shown) } else { String::new() }
         ))
+    }
+
+    /// The baseline check itself: a caption 6 pt off its field is reported, an aligned one is not.
+    /// A failure of this check is pushed to `found` like any violation.
+    fn baseline_self_test(s: &Session, found: &mut Vec<String>) {
+        let window = scratch_window(s);
+        let Some(content) = window.contentView() else { return };
+        let label = |y: f64| {
+            let l = NSTextField::labelWithString(&objc2_foundation::NSString::from_str("Snelheid"), s.mtm);
+            l.setFrame(NSRect::new(NSPoint::new(10.0, y), NSSize::new(80.0, 17.0)));
+            l
+        };
+        let field = |y: f64| {
+            let f = NSTextField::textFieldWithString(&objc2_foundation::NSString::from_str("100"), s.mtm);
+            f.setFrame(NSRect::new(NSPoint::new(100.0, y), NSSize::new(80.0, 22.0)));
+            f
+        };
+        let (bad_label, bad_field) = (label(46.0), field(40.0));
+        
+        content.addSubview(&bad_label);
+        content.addSubview(&bad_field);
+        let mut mine = Vec::new();
+        walk_window(&window, "selftest misaligned", &mut mine);
+        if !mine.iter().any(|m| m.contains(": baseline")) {
+            found.push("baseline self-test: a caption on another baseline than its field was not reported".into());
+        }
+        bad_label.removeFromSuperview();
+        bad_field.removeFromSuperview();
+        // Aligned: the label sits where the field's baseline is.
+        let good_field = field(40.0);
+        let good_label = label(40.0);
+        content.addSubview(&good_field);
+        content.addSubview(&good_label);
+        let shift = baseline(&good_field) - baseline(&good_label);
+        good_label.setFrameOrigin(NSPoint::new(10.0, 40.0 + shift));
+        let mut mine = Vec::new();
+        walk_window(&window, "selftest aligned", &mut mine);
+        if mine.iter().any(|m| m.contains(": baseline")) {
+            found.push(format!("baseline self-test: an aligned caption was reported: {mine:?}"));
+        }
+    }
+
+    /// A small hidden window for the self-test (alpha 0, never shown).
+    #[allow(unsafe_code)]
+    fn scratch_window(s: &Session) -> Retained<NSWindow> {
+        use objc2_app_kit::NSBackingStoreType;
+        // SAFETY: a freshly allocated window on the main thread; released with the Retained.
+        let window = unsafe {
+            NSWindow::initWithContentRect_styleMask_backing_defer(
+            NSWindow::alloc(s.mtm),
+            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(300.0, 120.0)),
+            NSWindowStyleMask::Titled,
+            NSBackingStoreType::Buffered,
+            false,
+            )
+        };
+        window.setAlphaValue(0.0);
+        window
     }
 
     /// Regression (look-and-feel Q1): X, Y, Width and Height of the inspector lay above the visible
@@ -430,6 +500,66 @@ mod invariants {
         }
     }
 
+    /// Window titles (the step names of `common::windows::steps()`, `document`, `cut-settings`,
+    /// `sheet`) whose hand-laid captions do not yet share a baseline with their field. LF6 migrates
+    /// them to the form builder and empties this list.
+    const BASELINE_PENDING: &[&str] = &[
+        "document", "sheet", "cut-settings", "preferences", "machine-hub", "laser", "material-library", "art-library",
+        "notes", "schikken", "offset", "structure", "recognition", "remnants", "search", "generator",
+        "cam-optimization", "cam-device", "cam-array", "cam-material-test", "cam-interval-test", "cam-focus-test",
+        "cam-feeder", "round-corners", "barcode", "export-svg",
+    ];
+
+    /// The y of the first text baseline of `view` in its parent's own coordinates.
+    #[allow(unsafe_code)]
+    fn baseline(view: &NSView) -> f64 {
+        // SAFETY: `firstBaselineOffsetFromTop` is an NSView property returning a CGFloat.
+        let from_top: f64 = unsafe { objc2::msg_send![view, firstBaselineOffsetFromTop] };
+        let f = view.frame();
+        // SAFETY: reads the parent pointer of a live view on the main thread.
+        if unsafe { view.superview() }.is_some_and(|p| p.isFlipped()) {
+            f.origin.y + from_top
+        } else {
+            f.origin.y + f.size.height - from_top
+        }
+    }
+
+    /// (h) a caption and the field or pop-up beside it share a baseline.
+    fn check_baselines(items: &[&Retained<NSView>], path: &str, found: &mut Vec<String>) {
+        for label_view in items {
+            let Some(label) = as_any(label_view).downcast_ref::<NSTextField>() else { continue };
+            if label.isEditable() || label.isBezeled() || label.stringValue().to_string().trim().is_empty() {
+                continue;
+            }
+            let l = label_view.frame();
+            for field_view in items {
+                let any = as_any(field_view);
+                let is_field = any
+                    .downcast_ref::<NSTextField>()
+                    .is_some_and(|t| t.isEditable() && t.isBezeled())
+                    || any.downcast_ref::<NSPopUpButton>().is_some();
+                if !is_field {
+                    continue;
+                }
+                let f = field_view.frame();
+                let beside = (l.origin.y + l.size.height / 2.0 - (f.origin.y + f.size.height / 2.0)).abs() < 14.0
+                    && l.origin.x + l.size.width <= f.origin.x + TOLERANCE + 2.0
+                    && f.origin.x - (l.origin.x + l.size.width) < 60.0;
+                if !beside {
+                    continue;
+                }
+                let gap = baseline(label_view) - baseline(field_view);
+                if gap.abs() > TOLERANCE {
+                    found.push(format!(
+                        "{path}: baseline of the caption is {gap:+.1} pt off its field: {}  /  {}",
+                        describe(label_view),
+                        describe(field_view)
+                    ));
+                }
+            }
+        }
+    }
+
     /// (g) an editable field has a caption beside or above it, or a placeholder.
     fn check_captioned(items: &[&Retained<NSView>], path: &str, found: &mut Vec<String>) {
         for item in items {
@@ -497,6 +627,7 @@ mod invariants {
         }
         check_default_rightmost(&items, path, found, default_cell);
         check_captioned(&items, path, found);
+        check_baselines(&items, path, found);
         for (i, a) in items.iter().enumerate() {
             for b in &items[i + 1..] {
                 if overlap(a.frame(), b.frame()) {
