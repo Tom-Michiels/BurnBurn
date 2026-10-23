@@ -13,6 +13,7 @@ use burnburn_presentation::{AppViewModel, CommandKey, FieldKey};
 use crate::l10n::{HostText, Locale, host_text};
 
 mod cam;
+mod cam_form;
 mod camera;
 mod camera_workspace;
 mod cut_settings;
@@ -36,6 +37,7 @@ mod sketch;
 mod text;
 
 pub use cam::*;
+pub use cam_form::{CamForm, CamTarget, CaptionParts, cam_form, split_caption};
 pub use camera::*;
 pub use camera_workspace::*;
 pub use cut_settings::*;

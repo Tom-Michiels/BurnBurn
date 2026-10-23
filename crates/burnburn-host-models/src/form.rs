@@ -67,11 +67,67 @@ pub struct FormRow {
     pub help: Option<String>,
     pub error: Option<String>,
     pub enabled: bool,
+    /// Not part of the form now (another mode): the row keeps its place so the form keeps its shape.
+    pub hidden: bool,
+    /// Said when the pointer rests on the control.
+    pub tooltip: Option<String>,
+    /// Small buttons after the control (the arrows beside an `Order by` level).
+    pub tools: Vec<FormTool>,
+    /// Entries of a choice that cannot be picked, with the reason if there is one.
+    pub disabled_options: Vec<(usize, Option<String>)>,
+}
+
+/// A small button beside the control of a row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FormTool {
+    pub id: FormId,
+    pub title: String,
+    /// What a screen reader says.
+    pub label: String,
+    pub enabled: bool,
+}
+
+impl FormTool {
+    pub fn new(id: u32, title: &str, label: &str) -> Self {
+        FormTool { id: FormId(id), title: title.to_owned(), label: label.to_owned(), enabled: true }
+    }
 }
 
 impl FormRow {
     pub fn new(id: u32, label: &str, control: Control) -> Self {
-        FormRow { id: FormId(id), label: label.to_owned(), control, unit: None, help: None, error: None, enabled: true }
+        FormRow {
+            id: FormId(id),
+            label: label.to_owned(),
+            control,
+            unit: None,
+            help: None,
+            error: None,
+            enabled: true,
+            hidden: false,
+            tooltip: None,
+            tools: Vec::new(),
+            disabled_options: Vec::new(),
+        }
+    }
+
+    pub fn hidden(mut self, hidden: bool) -> Self {
+        self.hidden = hidden;
+        self
+    }
+
+    pub fn tooltip(mut self, text: &str) -> Self {
+        self.tooltip = Some(text.to_owned());
+        self
+    }
+
+    pub fn tool(mut self, tool: FormTool) -> Self {
+        self.tools.push(tool);
+        self
+    }
+
+    pub fn disabled_option(mut self, index: usize, reason: Option<&str>) -> Self {
+        self.disabled_options.push((index, reason.map(str::to_owned)));
+        self
     }
 
     pub fn unit(mut self, unit: Quantity) -> Self {
@@ -101,12 +157,21 @@ pub struct FormSection {
     pub heading: Option<String>,
     /// Why the section cannot be used now; said once for the section, never per row.
     pub unavailable: Option<String>,
+    /// Why some rows of the section are greyed; said once under the heading. Unlike
+    /// `unavailable` it does not switch the rows off: each row says whether it is enabled.
+    /// An empty text is not shown but keeps the shape (the reason may come and go).
+    pub reason: Option<String>,
     pub rows: Vec<FormRow>,
 }
 
 impl FormSection {
     pub fn new(heading: Option<&str>, rows: Vec<FormRow>) -> Self {
-        FormSection { heading: heading.map(str::to_owned), unavailable: None, rows }
+        FormSection { heading: heading.map(str::to_owned), unavailable: None, reason: None, rows }
+    }
+
+    pub fn reason(mut self, text: &str) -> Self {
+        self.reason = Some(text.to_owned());
+        self
     }
 
     pub fn unavailable(mut self, reason: &str) -> Self {
@@ -124,12 +189,13 @@ impl FormSection {
         let mut out: Vec<String> = Vec::new();
         out.extend(self.heading.clone());
         out.extend(self.unavailable.clone());
-        for row in &self.rows {
+        out.extend(self.reason.clone().filter(|r| !r.is_empty()));
+        for row in self.rows.iter().filter(|r| !r.hidden) {
             if !row.label.is_empty() {
                 out.push(row.label.clone());
             }
-            out.extend(row.help.clone());
-            out.extend(row.error.clone());
+            out.extend(row.help.clone().filter(|t| !t.is_empty()));
+            out.extend(row.error.clone().filter(|t| !t.is_empty()));
         }
         out
     }
@@ -168,11 +234,18 @@ pub struct FormButton {
     pub id: FormId,
     pub title: String,
     pub enabled: bool,
+    /// Why the button is greyed, or what it does.
+    pub tooltip: Option<String>,
 }
 
 impl FormButton {
     pub fn new(id: u32, title: &str) -> Self {
-        FormButton { id: FormId(id), title: title.to_owned(), enabled: true }
+        FormButton { id: FormId(id), title: title.to_owned(), enabled: true, tooltip: None }
+    }
+
+    pub fn tooltip(mut self, text: &str) -> Self {
+        self.tooltip = Some(text.to_owned());
+        self
     }
 }
 
@@ -266,10 +339,13 @@ impl FormSpec {
         for section in &self.sections {
             for row in &section.rows {
                 note(row.id, &mut out);
+                for tool in &row.tools {
+                    note(tool.id, &mut out);
+                }
                 if row.unit.is_some_and(|u| label_has_unit(&row.label, u)) {
                     out.push(FormProblem::UnitInLabel(row.id));
                 }
-                if let Some(reason) = &section.unavailable
+                if let Some(reason) = section.unavailable.as_ref().or(section.reason.as_ref().filter(|r| !r.is_empty()))
                     && (row.help.as_ref() == Some(reason) || row.error.as_ref() == Some(reason))
                 {
                     out.push(FormProblem::ReasonRepeated(row.id));
@@ -287,9 +363,10 @@ impl FormSpec {
         let mut out = Vec::new();
         for (i, section) in self.sections.iter().enumerate() {
             out.push(format!(
-                "section {i} heading={} unavailable={}",
+                "section {i} heading={} unavailable={} reason={}",
                 section.heading.is_some(),
-                section.unavailable.is_some()
+                section.unavailable.is_some(),
+                section.reason.is_some()
             ));
             for row in &section.rows {
                 let options = match &row.control {
@@ -297,12 +374,13 @@ impl FormSpec {
                     _ => 0,
                 };
                 out.push(format!(
-                    "row {} {} options={options} unit={} help={} error={}",
+                    "row {} {} options={options} unit={} help={} error={} tools={}",
                     row.id.0,
                     row.control.kind(),
                     row.unit.is_some(),
                     row.help.is_some(),
-                    row.error.is_some()
+                    row.error.is_some(),
+                    row.tools.len()
                 ));
             }
         }
@@ -427,5 +505,62 @@ mod tests {
         assert_eq!(make("a", None).shape(), make("b", None).shape());
         assert_ne!(make("a", None).shape(), make("a", Some("Te lang")).shape());
         assert!(!make("a", None).shape().is_empty());
+    }
+
+    #[test]
+    fn a_hidden_row_says_nothing_but_keeps_the_shape_of_the_form() {
+        let make = |hidden: bool| {
+            let section = FormSection::new(Some("Tabs"), vec![text(1, "Aantal").help("Per rand"), text(2, "Breedte")])
+                .reason("");
+            let mut section = section;
+            section.rows[0].hidden = hidden;
+            FormSpec { sections: vec![section], ..FormSpec::default() }
+        };
+        let shown = make(false);
+        let hidden = make(true);
+        assert_eq!(shown.shape(), hidden.shape(), "hiding a row does not make the host build again");
+        assert!(shown.sections[0].texts().contains(&"Aantal".to_owned()));
+        let texts = hidden.sections[0].texts();
+        assert!(!texts.contains(&"Aantal".to_owned()) && !texts.contains(&"Per rand".to_owned()), "{texts:?}");
+        assert!(texts.contains(&"Breedte".to_owned()));
+    }
+
+    #[test]
+    fn a_section_reason_is_said_once_and_leaves_the_rows_to_say_if_they_are_enabled() {
+        let mut off = text(2, "Rotary-diameter");
+        off.enabled = false;
+        let section =
+            FormSection::new(Some("Rotary"), vec![text(1, "Naam"), off]).reason("Zet eerst Rotary gebruiken aan");
+        let texts = section.texts();
+        assert_eq!(texts.iter().filter(|t| *t == "Zet eerst Rotary gebruiken aan").count(), 1, "{texts:?}");
+        assert!(section.row_enabled(&section.rows[0]), "a reason does not switch the other rows off");
+        assert!(!section.row_enabled(&section.rows[1]));
+        assert!(FormSection::new(None, vec![text(3, "x")]).reason("").texts().iter().all(|t| !t.is_empty()));
+        let repeated = FormSection::new(None, vec![text(1, "Snelheid").help("Kies een machine")]).reason("Kies een machine");
+        let spec = FormSpec { sections: vec![repeated], ..FormSpec::default() };
+        assert_eq!(spec.problems(), vec![FormProblem::ReasonRepeated(FormId(1))]);
+    }
+
+    #[test]
+    fn tools_and_a_reason_belong_to_the_shape_and_tool_ids_may_not_repeat() {
+        let plain = FormSpec { sections: vec![FormSection::new(None, vec![text(1, "Laag")])], ..FormSpec::default() };
+        let with_tools = FormSpec {
+            sections: vec![FormSection::new(
+                None,
+                vec![text(1, "Laag").tool(FormTool::new(2, "↑", "Omhoog")).tool(FormTool::new(3, "↓", "Omlaag"))],
+            )],
+            ..FormSpec::default()
+        };
+        assert_ne!(plain.shape(), with_tools.shape());
+        let clash = FormSpec {
+            sections: vec![FormSection::new(
+                None,
+                vec![text(1, "Laag").tool(FormTool::new(2, "↑", "Omhoog")), text(2, "Groep")],
+            )],
+            ..FormSpec::default()
+        };
+        assert!(clash.problems().contains(&FormProblem::DuplicateId(FormId(2))));
+        let reasoned = FormSpec { sections: vec![FormSection::new(None, vec![text(1, "Laag")]).reason("")], ..FormSpec::default() };
+        assert_ne!(plain.shape(), reasoned.shape(), "a section that can show a reason has another shape");
     }
 }
