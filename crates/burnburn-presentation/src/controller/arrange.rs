@@ -654,6 +654,7 @@ pub(super) fn command_enabled(command: CommandKey, s: &Session) -> Option<bool> 
         CommandKey::Paste
         | CommandKey::PasteInPlace
         | CommandKey::ZoomPage
+        | CommandKey::ZoomBed
         | CommandKey::ZoomIn
         | CommandKey::ZoomOut => true,
         CommandKey::ViewWireframe => true,

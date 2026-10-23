@@ -199,16 +199,19 @@ impl AppController {
             | CommandKey::PasteInPlace
             | CommandKey::Duplicate => self.clipboard_command(document, command),
             CommandKey::ZoomPage => {
-                let bed = self.machine.as_ref().and_then(|m| {
-                    let frame = m.profile.frame();
-                    burnburn_geometry::Bounds::from_corners(
-                        burnburn_geometry::Point::new(0.0, 0.0),
-                        burnburn_geometry::Point::new(frame.width_mm(), frame.height_mm()),
-                    )
-                    .into()
-                });
-                self.with_session(document, |s| super::arrange::zoom_page(s, document, bed))
+                let bed = self.bed_bounds();
+                self.with_session(document, |s| {
+                    s.fit_pending = false;
+                    super::arrange::zoom_page(s, document, bed)
+                })
             }
+            CommandKey::ZoomBed => match self.bed_bounds() {
+                Some(bed) => self.with_session(document, |s| {
+                    s.fit_pending = false;
+                    super::arrange::fit_to(s, document, bed)
+                }),
+                None => AppUpdate::default(),
+            },
             CommandKey::BooleanUnion => self.submit_boolean(document, BooleanOp::Union),
             CommandKey::BooleanDifference => self.submit_boolean(document, BooleanOp::Difference),
             CommandKey::BooleanIntersection => self.submit_boolean(document, BooleanOp::Intersection),
