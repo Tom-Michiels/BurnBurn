@@ -16,7 +16,9 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSObject, NSString};
 
-use super::widgets::{field, label, push_button, rect, set_text};
+use super::widgets::{align_baseline, field, label, push_button, rect, set_text};
+use burnburn_host_models::form::split_caption;
+use burnburn_host_models::format::unit_label;
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
@@ -229,16 +231,25 @@ pub(crate) struct FormRow {
     pub(crate) cells: Cells,
     pub(crate) height: f64,
     pub(crate) visible: Cell<bool>,
+    /// The unit after the control: it left the caption (`Breedte (mm)` is `Breedte` and `mm`).
+    suffix: Option<Retained<NSTextField>>,
 }
+
+/// Room between a control and its unit.
+const SUFFIX_GAP: f64 = 4.0;
 
 impl FormRow {
     pub(crate) fn new(cells: Cells, height: f64) -> FormRow {
-        FormRow { cells, height, visible: Cell::new(true) }
+        FormRow { cells, height, visible: Cell::new(true), suffix: None }
     }
 
     fn views(&self) -> Vec<&NSView> {
         match &self.cells {
-            Cells::Labeled(l, c) => vec![&**l, &**c],
+            Cells::Labeled(l, c) => {
+                let mut v: Vec<&NSView> = vec![&**l, &**c];
+                v.extend(self.suffix.iter().map(|s| &****s as &NSView));
+                v
+            }
             Cells::Full(c) => vec![&**c],
             Cells::Side(cs) => cs.iter().map(|c| &**c).collect(),
         }
@@ -253,9 +264,26 @@ pub(crate) struct Form {
 }
 
 impl Form {
-    pub(crate) fn new(mtm: MainThreadMarker, width: f64, rows: Vec<FormRow>) -> Form {
+    pub(crate) fn new(mtm: MainThreadMarker, width: f64, mut rows: Vec<FormRow>) -> Form {
         let content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 100.0));
         content.setAutoresizesSubviews(false);
+        // A unit in the caption becomes the suffix after the control; what else was in the
+        // brackets is the control's tooltip.
+        for row in &mut rows {
+            if let Cells::Labeled(l, c) = &row.cells {
+                let split = split_caption(&l.stringValue().to_string());
+                if let Some(unit) = split.unit {
+                    l.setStringValue(&NSString::from_str(&split.label));
+                    if let Some(hint) = &split.hint {
+                        c.setToolTip(Some(&NSString::from_str(hint)));
+                    }
+                    let suffix = label(mtm, unit_label(unit), rect(0.0, 0.0, 40.0, 20.0));
+                    suffix.setTextColor(Some(&NSColor::secondaryLabelColor()));
+                    content.addSubview(&suffix);
+                    row.suffix = Some(suffix);
+                }
+            }
+        }
         for row in &rows {
             for v in row.views() {
                 content.addSubview(v);
@@ -281,8 +309,18 @@ impl Form {
             y -= row.height;
             match &row.cells {
                 Cells::Labeled(l, c) => {
+                    let mut control_w = inner - LABEL_WIDTH - 6.0;
+                    if let Some(suffix) = &row.suffix {
+                        let w = suffix.cell().map_or(24.0, |cell| cell.cellSize().width.ceil()) + 4.0;
+                        control_w -= w + SUFFIX_GAP;
+                        suffix.setFrame(rect(MARGIN + LABEL_WIDTH + 6.0 + control_w + SUFFIX_GAP, y, w, 20.0));
+                    }
                     l.setFrame(rect(MARGIN, y + (row.height - 20.0) / 2.0, LABEL_WIDTH, 20.0));
-                    c.setFrame(rect(MARGIN + LABEL_WIDTH + 6.0, y, inner - LABEL_WIDTH - 6.0, row.height));
+                    c.setFrame(rect(MARGIN + LABEL_WIDTH + 6.0, y, control_w, row.height));
+                    align_baseline(l, c);
+                    if let Some(suffix) = &row.suffix {
+                        align_baseline(suffix, c);
+                    }
                 }
                 Cells::Full(c) => c.setFrame(rect(MARGIN, y, inner, row.height)),
                 Cells::Side(cs) => {

@@ -150,3 +150,17 @@ pub(crate) fn set_text(label: &NSTextField, text: &str) {
         label.setStringValue(&NSString::from_str(text));
     }
 }
+
+/// Moves `caption` so that its first text baseline is the one of `field` (both lie in one
+/// non-flipped parent). A caption and the field beside it read as one line (LF6c).
+#[allow(unsafe_code)]
+pub(crate) fn align_baseline(caption: &objc2_app_kit::NSView, field: &objc2_app_kit::NSView) {
+    let offset = |v: &objc2_app_kit::NSView| -> f64 {
+        // SAFETY: `firstBaselineOffsetFromTop` is an NSView property returning a CGFloat.
+        unsafe { objc2::msg_send![v, firstBaselineOffsetFromTop] }
+    };
+    let f = field.frame();
+    let target = f.origin.y + f.size.height - offset(field);
+    let c = caption.frame();
+    caption.setFrameOrigin(objc2_foundation::NSPoint::new(c.origin.x, target - c.size.height + offset(caption)));
+}

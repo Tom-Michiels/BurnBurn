@@ -555,6 +555,9 @@ mod invariants {
     fn check_window(s: &Session, window: &NSWindow, name: &str, found: &mut Vec<String>) {
         window.displayIfNeeded();
         walk_window(window, &format!("{name}, as opened"), found);
+        if name.starts_with("barcode") || name.starts_with("round-corners") {
+            check_units_are_suffixes(window, name, found);
+        }
         if window.styleMask().contains(NSWindowStyleMask::Resizable)
             && let Some(content) = window.contentView()
         {
@@ -568,6 +571,30 @@ mod invariants {
             // user scrolls back, so the next check starts from the top like a fresh window.
             scroll_to_top(&content);
             s.pump(0.1);
+        }
+    }
+
+    /// LF6c: the unit of a field is a suffix label after it, never part of the caption.
+    fn check_units_are_suffixes(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let mut suffixes = 0;
+        for v in &all {
+            let Some(l) = as_any(v).downcast_ref::<NSTextField>() else { continue };
+            if l.isEditable() || l.isBezeled() {
+                continue;
+            }
+            let text = l.stringValue().to_string();
+            if ["(mm", "(°", "(%", "(px", "(s)", "(s,"].iter().any(|u| text.contains(u)) && text.chars().count() < 60 {
+                found.push(format!("{name}: a caption holds its unit: '{text}'"));
+            }
+            if matches!(text.as_str(), "mm" | "°" | "%" | "px" | "s") {
+                suffixes += 1;
+            }
+        }
+        if suffixes == 0 {
+            found.push(format!("{name}: no unit suffix label after any field"));
         }
     }
 
@@ -822,8 +849,6 @@ mod invariants {
         "cam-interval-test",
         "cam-focus-test",
         "cam-feeder",
-        "round-corners",
-        "barcode",
         "export-svg",
     ];
 
