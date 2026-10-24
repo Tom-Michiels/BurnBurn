@@ -252,7 +252,7 @@ layer = 5
 kind = "adapter"
 owner = "gui"
 unsafe = "adapter"
-allow = ["burnburn-types", "burnburn-geometry", "burnburn-image", "burnburn-editor", "burnburn-job"]
+allow = ["burnburn-types", "burnburn-geometry", "burnburn-image", "burnburn-editor", "burnburn-job", "burnburn-text"]
 forbid = ["apple_native", "windows_native", "ui_toolkit", "async_runtime", "network", "foreign_kernel"]
 forbid_transitive = ["ui_toolkit", "async_runtime", "network", "foreign_kernel"]
 

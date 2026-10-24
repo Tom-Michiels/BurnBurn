@@ -10,6 +10,7 @@ use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
 mod sketch;
+pub(crate) mod text;
 
 use crate::input::Rgba;
 use crate::packet::{ImageCell, Primitive, RenderPacket};
@@ -270,6 +271,12 @@ fn lift_to_contrast(c: Rgba, against: Rgba, min: f64) -> Rgba {
     out
 }
 
+/// The characters of `text` the bundled canvas font cannot draw; they are left out, never replaced
+/// by a block (LF10).
+pub fn canvas_text_missing_chars(text: &str) -> Vec<char> {
+    text::missing_chars(text)
+}
+
 /// The drawable size in whole device pixels (rounded, at least one).
 pub fn size_px(viewport: &Viewport) -> [u32; 2] {
     let px = |pt: f64| (pt * viewport.backing_scale()).round().clamp(1.0, f64::from(u32::MAX)) as u32;
@@ -282,6 +289,8 @@ struct Projection {
     viewport: Viewport,
     scale: f64,
     tolerance_px: f64,
+    /// The surface canvas text lies on, for its halo: the bed when the scene has one, else the canvas.
+    halo: Rgba,
 }
 
 impl Projection {
@@ -554,6 +563,11 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
         viewport: scene.viewport,
         scale: scene.viewport.backing_scale(),
         tolerance_px: theme.tolerance_px,
+        halo: if scene.overlays.iter().any(|o| matches!(o, Overlay::Bed { .. })) {
+            theme.bed_fill
+        } else {
+            theme.background
+        },
     };
     let mut out = Vec::new();
     // Camera pictures lie beneath everything, the grid included.
