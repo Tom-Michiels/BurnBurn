@@ -27,7 +27,7 @@ use burnburn_host_models::form::{ButtonRole, Control, FormId, FormRow, FormSecti
 use burnburn_host_models::style::{Space, StatusTone, TextRole};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
-use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, Message};
+use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
 use objc2_app_kit::{
     NSAccessibility, NSButton, NSColor, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSFont, NSGridCell,
     NSGridCellPlacement, NSGridRow, NSGridRowAlignment, NSGridView, NSImageFrameStyle, NSImageScaling, NSImageView,
@@ -36,6 +36,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSArray, NSPoint, NSRange, NSSize, NSString};
 
+use crate::appkit::classes::ffi_guard;
 use crate::appkit::panels::image::show_bitmap;
 use crate::appkit::panels::widgets::{push_button, rect};
 
@@ -839,7 +840,7 @@ pub fn build_form_with(
         l
     });
 
-    let root = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, 1.0));
+    let root = FormRoot::new(mtm, rect(0.0, 0.0, width, 1.0));
     let mut chrome_h = 0.0;
     let mut tab_view = None;
     let body = if tabbed {
@@ -898,7 +899,7 @@ pub fn build_form_with(
         root.addSubview(b);
     }
     let mut view = FormView {
-        root,
+        root: Retained::into_super(root),
         grids: grids.into_iter().map(|(_, g)| g).collect(),
         body,
         notice,
@@ -920,7 +921,84 @@ pub fn build_form_with(
     view.apply_state(spec, true);
     view.relayout(0.0);
     view.scroll_to_top();
+    view.link_key_views();
     view
+}
+
+/// The first control of a form, which the root remembers (`previousKeyView` of that control is the
+/// last control, so the root cannot hold it in a key-view link).
+#[derive(Default)]
+struct FirstStop(std::cell::RefCell<Option<Retained<NSView>>>);
+
+define_class!(
+    /// The root view of a built form (LF15). When the form arrives in a window that has no first
+    /// responder yet, its first control becomes the window's `initialFirstResponder`: Tab then
+    /// starts at the top of the form.
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "BurnBurnFormRoot"]
+    #[ivars = FirstStop]
+    struct FormRoot;
+
+    impl FormRoot {
+        #[unsafe(method(viewDidMoveToWindow))]
+        fn view_did_move_to_window(&self) {
+            ffi_guard("viewDidMoveToWindow", (), || {
+                // SAFETY: NSView's own implementation, no arguments.
+                let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
+                self.offer_initial();
+            });
+        }
+    }
+);
+
+impl FormRoot {
+    /// Offers the first control a user can reach as the window's `initialFirstResponder`, unless
+    /// another form of the window already holds it. Rows come and go, so this is repeated when the
+    /// form changes (`FormView::relayout`).
+    fn offer_initial(&self) {
+        let Some(window) = self.window() else { return };
+        let first = self.ivars().0.borrow().clone();
+        // AppKit may have picked a first responder by itself; the first form to arrive keeps
+        // the window's, a later form of the same window does not take it over.
+        let in_another_form = window.initialFirstResponder().filter(|c| c.window().is_some()).is_some_and(|c| {
+            let mut up = unsafe { c.superview() };
+            while let Some(p) = up {
+                if p.downcast_ref::<FormRoot>().is_some_and(|f| !std::ptr::eq(f, self)) {
+                    return true;
+                }
+                up = unsafe { p.superview() };
+            }
+            false
+        });
+        // The first control a user can reach: rows may be hidden or switched off.
+        let start = first.and_then(|first| {
+            let mut at = first.clone();
+            for _ in 0..400 {
+                let usable =
+                    !at.isHiddenOrHasHiddenAncestor() && at.downcast_ref::<NSControl>().is_none_or(|c| c.isEnabled());
+                if usable {
+                    return Some(at);
+                }
+                // SAFETY: a read of the key-view link between this form's own views.
+                let next = unsafe { at.nextKeyView() }?;
+                if std::ptr::eq(&*next, &*first) {
+                    return None;
+                }
+                at = next;
+            }
+            None
+        });
+        if let (Some(start), false) = (start, in_another_form) {
+            window.setInitialFirstResponder(Some(&start));
+        }
+    }
+
+    fn new(mtm: MainThreadMarker, frame: objc2_foundation::NSRect) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(FirstStop::default());
+        // SAFETY: NSView's designated initialiser on a freshly allocated instance with ivars set.
+        unsafe { msg_send![super(this), initWithFrame: frame] }
+    }
 }
 
 fn text_field(mtm: MainThreadMarker, value: &str, wiring: Option<Wiring<'_>>) -> Retained<NSTextField> {
@@ -973,13 +1051,60 @@ fn set_enabled(control: &NSView, kind: Kind, enabled: bool) {
     if let Some(c) = any.downcast_ref::<NSControl>() {
         c.setEnabled(enabled);
     } else if let Some(t) = any.downcast_ref::<NSTextView>() {
-        // A log is read-only whatever the row says; its text stays selectable.
-        t.setEditable(enabled && kind != Kind::Log);
-        t.setSelectable(enabled || matches!(kind, Kind::Memo | Kind::Log));
+        // A log or a report is read-only whatever the row says; its text stays selectable.
+        t.setEditable(enabled && !matches!(kind, Kind::Log | Kind::Report));
+        t.setSelectable(enabled || matches!(kind, Kind::Memo | Kind::Log | Kind::Report));
     }
 }
 
 impl FormView {
+    /// The controls Tab visits, in reading order: row by row (a control, then the small buttons
+    /// beside it; captions, notes, pictures and read-only texts are skipped), the dialog buttons
+    /// last.
+    pub fn key_stops(&self) -> Vec<Retained<NSView>> {
+        let mut stops: Vec<Retained<NSView>> = Vec::new();
+        for r in &self.rows {
+            match r.kind {
+                Kind::Text | Kind::Choice | Kind::Check | Kind::Memo | Kind::Action => {
+                    stops.push(r.control.clone());
+                }
+                Kind::Actions => {
+                    if let Some((_, buttons)) = &r.button_row {
+                        stops.extend(buttons.iter().map(|b| Retained::into_super(Retained::into_super(b.clone()))));
+                    }
+                }
+                Kind::ReadOnly | Kind::Log | Kind::Picture | Kind::Note | Kind::Report | Kind::Preview => {}
+            }
+            stops.extend(r.tools.iter().map(|(_, b)| Retained::into_super(Retained::into_super(b.clone()))));
+        }
+        stops.extend(self.buttons.iter().map(|(_, _, b)| Retained::into_super(Retained::into_super(b.clone()))));
+        stops
+    }
+
+    fn offer_initial(&self) {
+        if let Some(root) = self.root.downcast_ref::<FormRoot>() {
+            root.offer_initial();
+        }
+    }
+
+    /// Links the stops into a loop (`nextKeyView`, the last back to the first) and tells the root
+    /// which is the first. Hidden and disabled controls stay in the loop; AppKit skips them.
+    #[allow(unsafe_code)]
+    fn link_key_views(&self) {
+        let stops = self.key_stops();
+        let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return };
+        for pair in stops.windows(2) {
+            // SAFETY: the links are unretained; every stop is a view of this form, which its rows
+            // and buttons keep alive as long as the form exists.
+            unsafe { pair[0].setNextKeyView(Some(&pair[1])) };
+        }
+        // SAFETY: as above.
+        unsafe { last.setNextKeyView(Some(first)) };
+        if let Some(root) = self.root.downcast_ref::<FormRoot>() {
+            *root.ivars().0.borrow_mut() = Some(first.clone());
+        }
+    }
+
     /// The widget of a row (a memo is its text view), of any kind.
     pub fn control(&self, id: FormId) -> Option<Retained<NSView>> {
         if let Some(r) = self.rows.iter().find(|r| r.id == id) {
@@ -1020,6 +1145,7 @@ impl FormView {
 
     /// Puts the run-time hiding over the grid rows, and gives a row back what its description says.
     fn apply_forced(&self) {
+        self.offer_initial();
         for (si, s) in self.sections.iter().enumerate() {
             let any_shown = self.rows.iter().filter(|r| r.section == si).any(|r| !r.spec_hidden);
             if let Some((_, row)) = &s.heading {
@@ -1331,6 +1457,7 @@ impl FormView {
             let tip = b.tooltip.as_deref().map(NSString::from_str);
             widget.setToolTip(tip.as_deref());
         }
+        self.offer_initial();
     }
 
     /// Sizes the grids to their rows and the root to the grids (or to its limit); the rows scroll
