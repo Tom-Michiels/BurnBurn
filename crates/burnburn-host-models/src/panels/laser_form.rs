@@ -5,15 +5,11 @@
 
 use burnburn_presentation::{JobAnchor, JogKey, LaserControlKind, StepDirection};
 
-use crate::form::{
-    Control, FormId, FormRow, FormSection, FormSpec, ItemState, PadCell, PadGlyph, split_caption,
-};
+use crate::form::{Control, FormId, FormRow, FormSection, FormSpec, ItemState, PadCell, PadGlyph, split_caption};
 use crate::l10n::Locale;
 use crate::style::StatusTone;
 
-use super::laser::{
-    LaserPanel, LaserText, PanelControl, anchor_text, laser_text, segment_for_start_from,
-};
+use super::laser::{LaserPanel, LaserText, PanelControl, anchor_text, laser_text, segment_for_start_from};
 
 /// The ids of the rows (a pad or a row of buttons answers `id`, `id + 1`, …).
 pub mod laser_id {
@@ -94,8 +90,8 @@ pub enum LaserFormAction {
 
 /// The action a form id stands for, `None` for a row the user only reads or a gap in a pad.
 pub fn laser_form_action(id: FormId) -> Option<LaserFormAction> {
-    use laser_id as i;
     use LaserFormAction as A;
+    use laser_id as i;
     let n = id.0;
     let within = |base: u32, len: u32| (n >= base && n < base + len).then(|| (n - base) as usize);
     if let Some(cell) = within(i::JOG_PAD, 9) {
@@ -230,12 +226,9 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
         row
     };
     let buttons = |id: u32, titles: &[LaserText], items: Vec<ItemState>| {
-        let mut row = FormRow::new(
-            id,
-            "",
-            Control::Actions { titles: titles.iter().map(|x| t(*x).to_owned()).collect() },
-        )
-        .items(items);
+        let mut row =
+            FormRow::new(id, "", Control::Actions { titles: titles.iter().map(|x| t(*x).to_owned()).collect() })
+                .items(items);
         row.enabled = on;
         row
     };
@@ -277,7 +270,8 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
 
     // Position and jog.
     let jog_caption = split_caption(t(LaserText::Jog));
-    let jog_help = if panel.jog_held { t(LaserText::JogHeld).to_owned() } else { jog_caption.hint.clone().unwrap_or_default() };
+    let jog_help =
+        if panel.jog_held { t(LaserText::JogHeld).to_owned() } else { jog_caption.hint.clone().unwrap_or_default() };
     let jog_cell = |key: JogKey, text: LaserText, glyph: PadGlyph| {
         let title = plain(t(text));
         pad_cell(panel, &LaserControlKind::Jog(key), &title, &title, glyph)
@@ -381,7 +375,11 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
                 &[LaserText::SetOrigin, LaserText::ClearOrigin],
                 vec![item(panel, &LaserControlKind::SetOrigin), connected_item(panel)],
             ),
-            FormRow::new(i::USER_ORIGIN, t(LaserText::UserOrigin), Control::ReadOnly { value: panel.user_origin.clone() }),
+            FormRow::new(
+                i::USER_ORIGIN,
+                t(LaserText::UserOrigin),
+                Control::ReadOnly { value: panel.user_origin.clone() },
+            ),
         ],
     )
     .reason(&reason(panel, &origin_kinds));
@@ -414,10 +412,19 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
         Some(t(LaserText::SectionStart)),
         vec![
             start_from,
-            FormRow::new(i::ANCHOR_PAD, &anchor_caption.label, Control::Pad { columns: 3, cells: anchors, hold: false })
-                .help(anchor_caption.hint.as_deref().unwrap_or("")),
+            FormRow::new(
+                i::ANCHOR_PAD,
+                &anchor_caption.label,
+                Control::Pad { columns: 3, cells: anchors, hold: false },
+            )
+            .help(anchor_caption.hint.as_deref().unwrap_or("")),
             check(i::CUT_SELECTED, LaserText::CutSelected, panel.cut_selected, connected_item(panel)),
-            check(i::SELECTION_ORIGIN, LaserText::UseSelectionOrigin, panel.use_selection_origin, connected_item(panel)),
+            check(
+                i::SELECTION_ORIGIN,
+                LaserText::UseSelectionOrigin,
+                panel.use_selection_origin,
+                connected_item(panel),
+            ),
             FormRow::new(i::PLACEMENT, "", Control::ReadOnly { value: panel.placement.clone() }),
         ],
     )
@@ -451,22 +458,27 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
     };
     let file_kind = |which: usize| -> Option<LaserControlKind> {
         let name = panel.files.get(chosen).map(|(n, _)| n.as_str())?;
-        panel.controls.iter().map(|c| &c.kind).find(|k| match (which, k) {
-            (0, LaserControlKind::FileMetadata(n)) | (1, LaserControlKind::RunFile(n)) | (2, LaserControlKind::DeleteFile(n)) => {
-                n.as_str() == name
-            }
-            _ => false,
-        }).cloned()
+        panel
+            .controls
+            .iter()
+            .map(|c| &c.kind)
+            .find(|k| match (which, k) {
+                (0, LaserControlKind::FileMetadata(n))
+                | (1, LaserControlKind::RunFile(n))
+                | (2, LaserControlKind::DeleteFile(n)) => n.as_str() == name,
+                _ => false,
+            })
+            .cloned()
     };
     let file_item = |which: usize| file_kind(which).map_or_else(|| ItemState::new(false, ""), |k| item(panel, &k));
-    let mut file_choice = FormRow::new(
-        i::FILE_CHOICE,
-        t(LaserText::FileChoice),
-        Control::Choice { options, selected: chosen },
-    );
+    let mut file_choice =
+        FormRow::new(i::FILE_CHOICE, t(LaserText::FileChoice), Control::Choice { options, selected: chosen });
     file_choice.enabled = on && !panel.files.is_empty();
-    let mut rd_name =
-        FormRow::new(i::RD_NAME, t(LaserText::SaveRdName), Control::Text { value: String::new(), placeholder: String::new() });
+    let mut rd_name = FormRow::new(
+        i::RD_NAME,
+        t(LaserText::SaveRdName),
+        Control::Text { value: String::new(), placeholder: String::new() },
+    );
     rd_name.enabled = on;
     let mut file_reason_kinds = vec![LaserControlKind::SaveRd, LaserControlKind::ListFiles];
     file_reason_kinds.extend((0..3).filter_map(file_kind));
@@ -490,11 +502,18 @@ pub fn laser_form(panel: &LaserPanel, selected_file: usize, locale: Locale) -> F
     diagnostics_row.help = Some(t(LaserText::DiagnosticsMessage).to_owned());
     let diagnostics = FormSection::new(Some(t(LaserText::SectionDiagnostics)), vec![diagnostics_row]).reason("");
 
-    FormSpec {
-        title: t(LaserText::PanelTitle).to_owned(),
-        sections: vec![machine, motion, origin, start, frame, files, diagnostics],
-        ..FormSpec::default()
+    // A sentence two sections would share (nothing is proven on the controller: every control gives
+    // the same words) is said once in the window, in the first of them; the others keep their room.
+    let mut sections = vec![machine, motion, origin, start, frame, files, diagnostics];
+    let mut said: Vec<String> = Vec::new();
+    for section in &mut sections {
+        match section.reason.clone().filter(|r| !r.is_empty()) {
+            Some(r) if said.contains(&r) => section.reason = Some(String::new()),
+            Some(r) => said.push(r),
+            None => {}
+        }
     }
+    FormSpec { title: t(LaserText::PanelTitle).to_owned(), sections, ..FormSpec::default() }
 }
 
 #[cfg(test)]
@@ -509,7 +528,9 @@ mod tests {
         assert_eq!(kinds[PAUSE_TAG as usize + 1], LaserControlKind::Resume);
         assert_eq!(kinds[SHOW_POSITION_TAG as usize], LaserControlKind::ShowPosition);
         assert_eq!(kinds[LIST_FILES_TAG as usize], LaserControlKind::ListFiles);
-        for (tag, dir) in STEP_TAGS.iter().zip([StepDirection::Left, StepDirection::Right, StepDirection::Up, StepDirection::Down]) {
+        for (tag, dir) in
+            STEP_TAGS.iter().zip([StepDirection::Left, StepDirection::Right, StepDirection::Up, StepDirection::Down])
+        {
             assert_eq!(kinds[*tag as usize], LaserControlKind::Step(dir));
         }
         use burnburn_presentation::FrameShape;

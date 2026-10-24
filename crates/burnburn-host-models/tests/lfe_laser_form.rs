@@ -3,6 +3,8 @@
 //! buttons by role, and every control mapped to the action it had in the hand-laid panel.
 //! No AppKit, no machine: `LaserPanel` is plain data.
 
+#![allow(clippy::expect_used, clippy::panic, clippy::bool_comparison)]
+
 use burnburn_host_models::form::{Control, FormId, FormProblem, FormRow, FormSpec, PadCell, PadGlyph};
 use burnburn_host_models::format::Quantity;
 use burnburn_host_models::l10n::Locale;
@@ -197,7 +199,8 @@ fn the_chosen_anchor_is_the_only_cell_that_is_on() {
     let mut p = connected(true);
     p.anchor = burnburn_presentation::JobAnchor::Center;
     let spec = form(&p);
-    let on: Vec<usize> = cells(&spec, id::ANCHOR_PAD).iter().enumerate().filter(|(_, c)| c.on).map(|(i, _)| i).collect();
+    let on: Vec<usize> =
+        cells(&spec, id::ANCHOR_PAD).iter().enumerate().filter(|(_, c)| c.on).map(|(i, _)| i).collect();
     assert_eq!(on, vec![4]);
     let glyphs: Vec<_> = cells(&spec, id::ANCHOR_PAD).iter().map(|c| c.glyph).collect();
     assert_eq!(glyphs.iter().filter(|g| **g == Some(PadGlyph::On)).count(), 1);
@@ -206,24 +209,67 @@ fn the_chosen_anchor_is_the_only_cell_that_is_on() {
 
 #[test]
 fn a_section_that_is_greyed_says_why_once_and_the_rows_do_not_repeat_it() {
-    let spec = form(&connected(false));
-    assert_eq!(spec.problems(), Vec::<FormProblem>::new(), "no row repeats the reason of its section");
-    // Machine (stop, pause), move, origin, frame and files hold controls that are off for the same
-    // reason; the start section only holds window setup and has nothing to say.
-    for (i, section) in spec.sections.iter().enumerate() {
-        let said = section.texts().iter().filter(|x| x.as_str() == REASON).count();
-        let greyed = section.rows.iter().any(|r| matches!(r.control, Control::Pad { .. } | Control::Actions { .. }));
-        if matches!(i, 0 | 1 | 2 | 4 | 5) {
-            assert_eq!(said, 1, "section {i} ({:?}) says the reason once", section.heading);
-        } else if greyed {
-            assert!(said <= 1, "section {i}");
-        }
+    // Each section holds controls that are off for a reason of its own (the words differ per kind).
+    let mut p = connected(false);
+    for c in &mut p.controls {
+        let section = match &c.kind {
+            LaserControlKind::ShowPosition | LaserControlKind::Pause | LaserControlKind::Resume => "machine",
+            LaserControlKind::Home
+            | LaserControlKind::GoToMachineOrigin
+            | LaserControlKind::GoToUserOrigin
+            | LaserControlKind::SetOrigin => "origin",
+            LaserControlKind::Frame(_) => "frame",
+            LaserControlKind::SaveRd
+            | LaserControlKind::ListFiles
+            | LaserControlKind::FileMetadata(_)
+            | LaserControlKind::RunFile(_)
+            | LaserControlKind::DeleteFile(_) => "files",
+            _ => "move",
+        };
+        c.tooltip = format!("Niet geverifieerd: {section} is nog niet bewezen op deze controller.");
     }
-    // Every section that can show a reason keeps room for it, so the shape does not change when
-    // the evidence arrives.
+    let spec = form(&p);
+    assert_eq!(spec.problems(), Vec::<FormProblem>::new(), "no row repeats the reason of its section");
+    // Machine, move, origin, frame and files each say theirs once; the start section only holds window
+    // setup (nothing is sent to the machine) and has nothing to say.
+    let said: Vec<(usize, String)> = spec
+        .sections
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (i, s.reason.clone().unwrap_or_default()))
+        .filter(|(_, r)| !r.is_empty())
+        .collect();
+    assert_eq!(said.iter().map(|(i, _)| *i).collect::<Vec<_>>(), vec![0, 1, 2, 4, 5], "{said:?}");
+    let all: Vec<String> = spec.sections.iter().flat_map(|s| s.texts()).collect();
+    for (i, reason) in &said {
+        assert_eq!(all.iter().filter(|x| *x == reason).count(), 1, "section {i}: {reason}");
+        assert!(reason.contains(
+            ["machine", "move", "origin", "frame", "files"][match i {
+                0 => 0,
+                1 => 1,
+                2 => 2,
+                4 => 3,
+                _ => 4,
+            }]
+        ));
+    }
+    // Every section keeps room for a reason, so the shape does not change when the evidence arrives.
     assert!(spec.sections.iter().all(|s| s.reason.is_some()));
     assert_eq!(form(&connected(true)).shape(), spec.shape());
     assert!(form(&connected(true)).sections.iter().all(|s| s.reason.as_deref().is_none_or(str::is_empty)));
+}
+
+#[test]
+fn a_reason_that_several_sections_share_is_said_once_in_the_window() {
+    // The same sentence for every control (as when nothing at all is proven on the controller).
+    let spec = form(&connected(false));
+    let all: Vec<String> = spec.sections.iter().flat_map(|s| s.texts()).collect();
+    assert_eq!(all.iter().filter(|x| x.as_str() == REASON).count(), 1, "said once: {all:?}");
+    assert_eq!(spec.sections[0].reason.as_deref(), Some(REASON), "in the first section that has it");
+    assert!(spec.sections[1..].iter().all(|s| s.reason.as_deref() == Some("")), "the others keep their room");
+    // Every button still has the words in its own tooltip.
+    let jog = cells(&spec, id::JOG_PAD);
+    assert_eq!(jog[1].tooltip.as_deref(), Some(REASON));
 }
 
 #[test]
@@ -292,7 +338,10 @@ fn the_buttons_have_their_role_and_the_delete_is_last_of_its_row() {
     );
     // Refresh, info, run and delete: delete is last, and it asks before it acts (the host sheet).
     let files = actions(&spec, id::FILE_BUTTONS);
-    assert_eq!(files, [t(LaserText::ListFiles), t(LaserText::FileInfo), t(LaserText::FileRun), t(LaserText::FileDelete)]);
+    assert_eq!(
+        files,
+        [t(LaserText::ListFiles), t(LaserText::FileInfo), t(LaserText::FileRun), t(LaserText::FileDelete)]
+    );
     assert_eq!(laser_form_action(FormId(id::FILE_BUTTONS)), Some(LaserFormAction::Simple(6)));
     assert_eq!(laser_form_action(FormId(id::FILE_BUTTONS + 1)), Some(LaserFormAction::File(0)));
     assert_eq!(laser_form_action(FormId(id::FILE_BUTTONS + 2)), Some(LaserFormAction::File(1)));
@@ -363,7 +412,8 @@ fn the_files_are_one_choice_with_the_names_and_the_chosen_one_decides_the_button
     assert_eq!(*selected, 0);
     assert!(row(&first, id::FILE_CHOICE).enabled);
     // The buttons are the ones of the chosen file: [refresh, info, run, delete].
-    let state = |spec: &FormSpec| -> Vec<bool> { row(spec, id::FILE_BUTTONS).items.iter().map(|i| i.enabled).collect() };
+    let state =
+        |spec: &FormSpec| -> Vec<bool> { row(spec, id::FILE_BUTTONS).items.iter().map(|i| i.enabled).collect() };
     assert_eq!(state(&first), vec![true, true, false, false]);
     let second = laser_form(&p, 1, Locale::Nl);
     assert_eq!(state(&second), vec![true, true, true, false]);

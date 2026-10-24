@@ -82,11 +82,22 @@ pub(crate) fn set_hold_handler(button: &NSButton, handler: Option<HoldHandler>) 
     }
 }
 
+/// Reports a press or a release to the handler of a hold button as the tracking loop would; `false`
+/// when `button` holds no handler (native tests drive the jog cross with it: a mouse-down would
+/// wait for the mouse-up in AppKit's tracking loop).
+pub(crate) fn fire_hold(button: &NSButton, press: bool) -> bool {
+    let any: &AnyObject = button.as_ref();
+    let handler = any
+        .downcast_ref::<HoldButton>()
+        .and_then(|h| h.ivars().handler.try_borrow().ok().and_then(|handler| handler.clone()));
+    handler.is_some_and(|h| h(press))
+}
+
 const GAP: f64 = 4.0;
 const HEIGHT: f64 = 28.0;
 /// A button with a title needs more room than one with only a symbol.
 const WIDE: f64 = 64.0;
-const NARROW: f64 = 34.0;
+const NARROW: f64 = 40.0;
 
 /// The buttons of a pad and the view that holds them.
 pub(crate) struct Pad {
@@ -105,21 +116,15 @@ pub(crate) fn build_pad(
 ) -> Pad {
     let columns = usize::from(columns.max(1));
     let rows = cells.len().div_ceil(columns).max(1);
-    let cell_w = if cells.iter().any(|c| !c.title.is_empty()) { WIDE } else { NARROW };
-    let width = columns as f64 * cell_w + (columns as f64 - 1.0) * GAP;
-    let height = rows as f64 * HEIGHT + (rows as f64 - 1.0) * GAP;
+    let cell_w = cell_width(cells);
+    let (width, height) = pad_size(columns as u8, cells);
     let container = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, width, height));
     let mut buttons = Vec::new();
     for (i, cell) in cells.iter().enumerate() {
         let b: Retained<NSButton> =
             if hold { Retained::into_super(HoldButton::new(mtm)) } else { push_button(mtm, &cell.title) };
         let (row, col) = (i / columns, i % columns);
-        b.setFrame(rect(
-            col as f64 * (cell_w + GAP),
-            (rows - 1 - row) as f64 * (HEIGHT + GAP),
-            cell_w,
-            HEIGHT,
-        ));
+        b.setFrame(rect(col as f64 * (cell_w + GAP), (rows - 1 - row) as f64 * (HEIGHT + GAP), cell_w, HEIGHT));
         if !hold {
             wire(&b);
         }
@@ -134,11 +139,14 @@ pub(crate) fn build_pad(
 pub(crate) fn pad_size(columns: u8, cells: &[PadCell]) -> (f64, f64) {
     let columns = usize::from(columns.max(1));
     let rows = cells.len().div_ceil(columns).max(1);
-    let cell_w = if cells.iter().any(|c| !c.title.is_empty()) { WIDE } else { NARROW };
     (
-        columns as f64 * cell_w + (columns as f64 - 1.0) * GAP,
+        columns as f64 * cell_width(cells) + (columns as f64 - 1.0) * GAP,
         rows as f64 * HEIGHT + (rows as f64 - 1.0) * GAP,
     )
+}
+
+fn cell_width(cells: &[PadCell]) -> f64 {
+    if cells.iter().any(|c| !c.title.is_empty()) { WIDE } else { NARROW }
 }
 
 /// Copies the cells into the buttons: title, name for the screen reader, tooltip, whether it acts
