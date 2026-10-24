@@ -420,7 +420,7 @@ mod scenario {
             .find(|v| class_name(v) == "BurnBurnCanvasView")
             .map(|v| base_rect(v).origin.x + base_rect(v).size.width)
             .unwrap_or(0.0);
-        let at = |pred: &dyn Fn(&Retained<NSView>) -> bool| chain.iter().position(|v| pred(v));
+        let at = |pred: &dyn Fn(&Retained<NSView>) -> bool| chain.iter().position(pred);
         let table = at(&|v| as_any(v).downcast_ref::<NSTableView>().is_some() && base_rect(v).origin.x < 5.0);
         let canvas = at(&|v| class_name(v) == "BurnBurnCanvasView");
         let operations = at(&|v| {

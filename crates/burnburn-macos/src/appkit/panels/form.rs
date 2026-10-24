@@ -982,11 +982,13 @@ impl FormRoot {
         // AppKit may have picked a first responder by itself; the first form to arrive keeps
         // the window's, a later form of the same window does not take it over.
         let in_another_form = window.initialFirstResponder().filter(|c| c.window().is_some()).is_some_and(|c| {
+            // SAFETY: reads of the view hierarchy on the main thread.
             let mut up = unsafe { c.superview() };
             while let Some(p) = up {
                 if p.downcast_ref::<FormRoot>().is_some_and(|f| !std::ptr::eq(f, self)) {
                     return true;
                 }
+                // SAFETY: as above.
                 up = unsafe { p.superview() };
             }
             false

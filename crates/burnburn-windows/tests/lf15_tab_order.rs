@@ -6,9 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use burnburn_host_models::form::{
-    Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec, FormTool,
-};
+use burnburn_host_models::form::{Control, DialogButtons, FormButton, FormRow, FormSection, FormSpec, FormTool};
 use burnburn_windows::forms::spec_layout::{DluBase, SpecClass, SpecLayout, TextMeter, layout_spec};
 use burnburn_windows::forms::spec_win32::win_spec;
 

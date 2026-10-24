@@ -11,9 +11,7 @@ const TONES: [StatusTone; 3] = [StatusTone::Neutral, StatusTone::Warning, Status
 
 /// A symbol-font glyph or pictograph (not a letter, digit, space or ordinary punctuation).
 fn has_glyph(text: &str) -> bool {
-    text.chars().any(|c| {
-        matches!(c as u32, 0x2190..=0x2BFF | 0x1F000..=0x1FAFF | 0xE000..=0xF8FF)
-    })
+    text.chars().any(|c| matches!(c as u32, 0x2190..=0x2BFF | 0x1F000..=0x1FAFF | 0xE000..=0xF8FF))
 }
 
 #[test]

@@ -139,9 +139,7 @@ impl StatusTone {
 pub fn toned_text(tone: StatusTone, text: &str) -> String {
     match tone {
         StatusTone::Neutral => text.to_owned(),
-        StatusTone::Warning | StatusTone::Error if text.is_empty() || text.starts_with(tone.glyph()) => {
-            text.to_owned()
-        }
+        StatusTone::Warning | StatusTone::Error if text.is_empty() || text.starts_with(tone.glyph()) => text.to_owned(),
         StatusTone::Warning | StatusTone::Error => format!("{} {text}", tone.glyph()),
     }
 }
