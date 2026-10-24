@@ -504,7 +504,7 @@ fn near(image: &burnburn_macos::panels_image::BitmapImage, at: [f64; 2], want: [
 }
 
 #[test]
-fn the_preview_bitmap_draws_unplayed_cuts_red_played_green_the_pick_blue_and_travel_only_when_shown() {
+fn the_preview_bitmap_draws_unplayed_cuts_in_full_colour_played_dimmed_the_pick_blue_and_travel_only_when_shown() {
     let (mut h, doc) = compiled();
     let view = h.controller().preview_view(doc).unwrap();
     let frame = PreviewFrame::fit(view.bed_mm.unwrap(), [760, 456], 8);
@@ -515,23 +515,34 @@ fn the_preview_bitmap_draws_unplayed_cuts_red_played_green_the_pick_blue_and_tra
         let m = moves[i];
         frame.to_px([(m.from.x_mm() + m.to.x_mm()) / 2.0, (m.from.y_mm() + m.to.y_mm()) / 2.0])
     };
-    let (red, grey, green, blue, white) =
-        ([220, 40, 40], [170, 170, 170], [30, 160, 60], [0, 100, 255], [255, 255, 255]);
+    // Without a layer palette a cut is the fallback red; travel is grey; what is played is that red at 35 %.
+    let (red, grey, dimmed_red, blue, white) =
+        ([220, 40, 40], [140, 140, 145], [236, 173, 173], [0, 100, 255], [255, 255, 255]);
     let image = render_preview(&view, &frame);
     assert_eq!((image.width, image.height), (760, 456));
     assert!(near(&image, mid(cut), red), "an unplayed cut is red");
-    assert!(!near(&image, mid(cut), green) && !near(&image, mid(cut), blue));
+    assert!(!near(&image, mid(cut), dimmed_red) && !near(&image, mid(cut), blue));
     assert!(near(&image, mid(travel), grey), "travel is grey");
     assert!(near(&image, [2.0, 2.0], white), "outside the bed is white");
 
+    // Travel is hidden when asked: the picture differs around the travel move, and only there. (The head
+    // ring lies near it, so the colour alone cannot tell; the shown and the hidden picture can.)
+    let shown = render_preview(&h.controller().preview_view(doc).unwrap(), &frame);
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::ShowTravel { document: doc, show: false })));
     let hidden = render_preview(&h.controller().preview_view(doc).unwrap(), &frame);
-    assert!(!near(&hidden, mid(travel), grey), "hidden travel is not drawn");
-
+    let m = moves[travel];
+    let (a, b) = (frame.to_px([m.from.x_mm(), m.from.y_mm()]), frame.to_px([m.to.x_mm(), m.to.y_mm()]));
+    let changed: Vec<usize> = (0..shown.rgba.len()).step_by(4).filter(|i| shown.rgba[*i..*i + 3] != hidden.rgba[*i..*i + 3]).collect();
+    assert!(!changed.is_empty(), "hiding travel changes the picture");
+    for i in changed {
+        let (x, y) = (((i / 4) % 760) as f64, ((i / 4) / 760) as f64);
+        assert!(x >= a[0].min(b[0]) - 3.0 && x <= a[0].max(b[0]) + 3.0, "x {x} outside the travel move");
+        assert!(y >= a[1].min(b[1]) - 3.0 && y <= a[1].max(b[1]) + 3.0, "y {y} outside the travel move");
+    }
     let total = view.estimated_total_seconds;
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::Seek { document: doc, seconds: total })));
     let played = render_preview(&h.controller().preview_view(doc).unwrap(), &frame);
-    assert!(near(&played, mid(cut), green) && !near(&played, mid(cut), red), "played is green");
+    assert!(near(&played, mid(cut), dimmed_red) && !near(&played, mid(cut), red), "played is the same colour, dimmed");
 
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::Seek { document: doc, seconds: 0.0 })));
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::SelectMove { document: doc, index: cut })));

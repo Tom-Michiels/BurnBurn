@@ -2,14 +2,18 @@
 //! lines, history lines, the preview's texts and bitmap, and the RD listing.
 
 use burnburn_presentation::{
-    HistoryViewModel, LengthUnit, MessageKey, MoveKind, PartialMove, PlaybackSpeed, PrefKey, PrefProblem, PrefUnit,
+    HistoryViewModel, LengthUnit, MessageKey, MoveKind, PlaybackSpeed, PrefKey, PrefProblem, PrefUnit,
     PrefValue, Preferences, PrefsViewModel, PreviewViewModel, RdInspectViewModel, ShortcutProblem, ShortcutTarget,
     ShortcutsViewModel,
 };
 
 use crate::app_text::{AppText, app_text};
+use crate::format::{LengthPreference, format_length};
 use crate::l10n::{HostText, Locale, host_text, message_or_key, undo_label_text};
-use crate::panels_image::BitmapImage;
+pub use crate::preview_draw::{
+    LegendEntry, PLAYED_OPACITY, PreviewStyle, Swatch, event_at_seconds, preview_legend, render_preview,
+    render_preview_styled, render_swatch,
+};
 
 // ---- preferences ------------------------------------------------------------------------------
 
@@ -275,10 +279,15 @@ pub struct PreviewPanel {
     pub stale: Option<String>,
     pub picked: Option<String>,
     pub picked_hint: String,
-    pub legend: &'static str,
+    /// The legend's words in reading order (the swatches are [`preview_legend`]).
+    pub legend: String,
     /// Slider range and value in estimated seconds.
     pub slider_max: f64,
     pub slider_value: f64,
+    /// Playback runs: the play button shows the pause symbol.
+    pub playing: bool,
+    /// "Cut 1,2 m · Scan … · Travel …" in the preferred length unit.
+    pub lengths_text: String,
 }
 
 /// Names the host knows for the picked move's source, so the line reads "Rechthoek 1" and not a number.
@@ -293,6 +302,16 @@ pub fn preview_panel(view: &PreviewViewModel, locale: Locale) -> PreviewPanel {
 }
 
 pub fn preview_panel_named(view: &PreviewViewModel, names: &PickNames, locale: Locale) -> PreviewPanel {
+    preview_panel_units(view, names, locale, LengthPreference::Millimeters)
+}
+
+/// The preview's texts with lengths in `unit`.
+pub fn preview_panel_units(
+    view: &PreviewViewModel,
+    names: &PickNames,
+    locale: Locale,
+    unit: LengthPreference,
+) -> PreviewPanel {
     let t = |text| app_text(text, locale);
     let picked = view.selected.map(|p| {
         let kind = t(match p.kind {
@@ -324,6 +343,13 @@ pub fn preview_panel_named(view: &PreviewViewModel, names: &PickNames, locale: L
         }
         text
     });
+    let length = |word: &str, mm: f64| format!("{word} {}", format_length(mm, unit, locale));
+    let mut lengths = vec![length(t(AppText::PreviewLegendCut), view.preview.cut_length_mm)];
+    if view.preview.scan_length_mm > 0.0 {
+        lengths.push(length(t(AppText::PreviewLengthScan), view.preview.scan_length_mm));
+    }
+    lengths.push(length(t(AppText::PreviewLegendTravel), view.preview.travel_length_mm));
+    let lengths_text = lengths.join(" · ");
     let id = view.plan.to_string();
     PreviewPanel {
         plan_text: format!("{} {}", t(AppText::PreviewPlanId), id.chars().take(21).collect::<String>()),
@@ -342,9 +368,11 @@ pub fn preview_panel_named(view: &PreviewViewModel, names: &PickNames, locale: L
         stale: view.stale.then(|| t(AppText::PreviewStale).to_owned()),
         picked,
         picked_hint: t(AppText::PreviewNothingPicked).to_owned(),
-        legend: t(AppText::PreviewLegend),
+        legend: preview_legend(locale).iter().map(|e| e.word).collect::<Vec<_>>().join(" · "),
         slider_max: view.estimated_total_seconds,
         slider_value: view.estimated_position_seconds,
+        playing: view.playing,
+        lengths_text,
     }
 }
 
@@ -423,113 +451,6 @@ impl PreviewFrame {
     pub fn hit_radius_mm(&self, px: f64) -> f64 {
         px * self.mm_per_px()
     }
-}
-
-const BED_FILL: [u8; 3] = [245, 245, 245];
-const BED_EDGE: [u8; 3] = [200, 200, 200];
-const TRAVEL: [u8; 3] = [170, 170, 170];
-const UNPLAYED: [u8; 3] = [220, 40, 40];
-/// A stretch cut at a lowered power (a tab, C04) that has not been played yet.
-const UNPLAYED_LOWERED: [u8; 3] = [235, 140, 20];
-const PLAYED: [u8; 3] = [30, 160, 60];
-const PICKED: [u8; 3] = [0, 100, 255];
-const HEAD: [u8; 3] = [0, 0, 0];
-
-struct Canvas {
-    width: i64,
-    height: i64,
-    rgba: Vec<u8>,
-}
-
-impl Canvas {
-    fn plot(&mut self, x: i64, y: i64, c: [u8; 3]) {
-        if (0..self.width).contains(&x) && (0..self.height).contains(&y) {
-            let i = (y as usize * self.width as usize + x as usize) * 4;
-            self.rgba[i..i + 3].copy_from_slice(&c);
-        }
-    }
-
-    /// A line of `width` pixels (Bresenham on the rounded ends, a square pen).
-    fn line(&mut self, a: [f64; 2], b: [f64; 2], width: i64, c: [u8; 3]) {
-        let (mut x, mut y) = (a[0].round() as i64, a[1].round() as i64);
-        let end = (b[0].round() as i64, b[1].round() as i64);
-        let (dx, dy) = ((end.0 - x).abs(), -(end.1 - y).abs());
-        let (sx, sy) = (if x < end.0 { 1 } else { -1 }, if y < end.1 { 1 } else { -1 });
-        let mut err = dx + dy;
-        let half = width / 2;
-        loop {
-            for ox in 0..width {
-                for oy in 0..width {
-                    self.plot(x - half + ox, y - half + oy, c);
-                }
-            }
-            if (x, y) == end {
-                break;
-            }
-            let doubled = 2 * err;
-            if doubled >= dy {
-                err += dy;
-                x += sx;
-            }
-            if doubled <= dx {
-                err += dx;
-                y += sy;
-            }
-        }
-    }
-
-    fn fill_rect(&mut self, min: [f64; 2], max: [f64; 2], c: [u8; 3]) {
-        let (x0, x1) = (min[0].round() as i64, max[0].round() as i64);
-        let (y0, y1) = (min[1].round() as i64, max[1].round() as i64);
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                self.plot(x, y, c);
-            }
-        }
-    }
-}
-
-/// The preview as a bitmap: the bed, laser-off moves (when shown), then every burning move — played
-/// green, not yet played red, the picked one blue on top — and the head as a cross.
-pub fn render_preview(view: &PreviewViewModel, frame: &PreviewFrame) -> BitmapImage {
-    let [width, height] = frame.size_px();
-    let mut canvas = Canvas {
-        width: i64::from(width),
-        height: i64::from(height),
-        rgba: vec![255; width as usize * height as usize * 4],
-    };
-    if let Some(bed) = view.bed_mm {
-        let (a, b) = (frame.to_px([0.0, bed[1]]), frame.to_px([bed[0], 0.0]));
-        canvas.fill_rect(a, b, BED_EDGE);
-        canvas.fill_rect([a[0] + 1.0, a[1] + 1.0], [b[0] - 1.0, b[1] - 1.0], BED_FILL);
-    }
-    let moves = &view.preview.moves;
-    let px = |p: burnburn_presentation::MachinePoint| frame.to_px([p.x_mm(), p.y_mm()]);
-    let burning = |k: MoveKind| matches!(k, MoveKind::Cut | MoveKind::Scan | MoveKind::Dot);
-    if view.show_travel {
-        for m in moves.iter().filter(|m| !burning(m.kind)) {
-            canvas.line(px(m.from), px(m.to), 2, TRAVEL);
-        }
-    }
-    for (i, m) in moves.iter().enumerate().filter(|(_, m)| burning(m.kind)) {
-        let (a, b) = (px(m.from), px(m.to));
-        let unplayed = if m.power.is_some() { UNPLAYED_LOWERED } else { UNPLAYED };
-        match view.partial {
-            Some(PartialMove { index, fraction }) if index == i => {
-                let split = [a[0] + (b[0] - a[0]) * fraction, a[1] + (b[1] - a[1]) * fraction];
-                canvas.line(a, split, 3, PLAYED);
-                canvas.line(split, b, 3, unplayed);
-            }
-            _ => canvas.line(a, b, 3, if i < view.completed_moves { PLAYED } else { unplayed }),
-        }
-    }
-    if let Some(m) = view.selected.and_then(|p| moves.get(p.index)) {
-        canvas.line(px(m.from), px(m.to), 5, PICKED);
-    }
-    let head = frame.to_px(view.head);
-    canvas.line([head[0] - 5.0, head[1]], [head[0] + 5.0, head[1]], 1, HEAD);
-    canvas.line([head[0], head[1] - 5.0], [head[0], head[1] + 5.0], 1, HEAD);
-    BitmapImage { width, height, rgba: canvas.rgba }
 }
 
 // ---- RD inspector -----------------------------------------------------------------------------

@@ -451,7 +451,7 @@ pub(crate) fn refresh_preview(w: &mut PreviewWindow, panel: Option<&PreviewPanel
     set_text(&w.stale, p.stale.as_deref().unwrap_or(""));
     set_text(&w.time, &p.time_text);
     set_text(&w.picked, p.picked.as_deref().unwrap_or(&p.picked_hint));
-    set_text(&w.legend, p.legend);
+    set_text(&w.legend, &p.legend);
     w.play.setTitle(&NSString::from_str(p.play_title));
     w.slider.setMaxValue(p.slider_max.max(0.001));
     if !w.slider_is_dragging() {

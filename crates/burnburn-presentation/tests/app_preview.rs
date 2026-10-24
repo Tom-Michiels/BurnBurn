@@ -254,3 +254,19 @@ fn the_rd_inspector_keeps_what_it_decoded_and_says_when_it_is_not_the_current_pl
     assert!(again.current);
     assert_ne!(again.plan, before.plan);
 }
+
+/// LF11: the preview draws a cut in the colour of its layer, so the view names the palette slot of
+/// every operation; it is the slot the operations panel and the canvas use.
+#[test]
+fn the_preview_names_the_layer_slot_of_every_operation_like_the_operations_panel() {
+    let (mut h, doc) = compiled();
+    let view = preview(&mut h, doc);
+    let rows = h.document(doc).unwrap().operations;
+    assert!(!rows.is_empty());
+    assert_eq!(view.layer_slots.len(), rows.len());
+    for row in rows {
+        assert_eq!(view.layer_slots.get(&row.id), Some(&row.slot), "{}", row.name);
+    }
+    let cut = view.preview.moves.iter().find(|m| m.kind == MoveKind::Cut).expect("a cut move");
+    assert!(view.layer_slots.contains_key(&cut.operation.expect("a cut has its operation")));
+}
