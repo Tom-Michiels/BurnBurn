@@ -5,7 +5,7 @@
 //! used for CAM). The camera origin is subtracted in `f64` before narrowing to `f32` (ADR 0003).
 //! Colours and widths are a theme decision; the scene only carries semantic roles.
 
-use burnburn_editor::{BedOrigin, CompareSide, Handle, Overlay, SceneSnapshot, StyleRole, Viewport};
+use burnburn_editor::{BedOrigin, CompareSide, Handle, Overlay, SceneSnapshot, SnapKind, StyleRole, Viewport};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
@@ -380,6 +380,74 @@ fn round_marker(out: &mut Vec<Primitive>, at: Point, size_pt: f64, fill: Rgba, s
     out.push(Primitive::Stroke { points_px: circle, closed: true, width_px: proj.scale as f32, color: stroke });
 }
 
+/// Half the side of a snap marker, in logical points.
+const SNAP_HALF_PT: f64 = 4.5;
+/// Size of the em square of canvas labels (snap names), in logical points.
+const LABEL_EM_PT: f64 = 11.0;
+/// How far a label's halo reaches beyond the glyphs, in logical points.
+const LABEL_HALO_PT: f64 = 1.5;
+
+/// The marker of a snap target, by kind (square = endpoint, triangle = midpoint, circle = centre,
+/// X = intersection, diamond = on the path, plus = grid), hollow so that the object stays visible,
+/// and the kind's name beside it.
+fn snap_marker(
+    out: &mut Vec<Primitive>,
+    at: Point,
+    kind: SnapKind,
+    labels: Option<&SnapLabels>,
+    theme: &Theme,
+    proj: &Projection,
+) {
+    let [x, y] = proj.px(at);
+    let h = SNAP_HALF_PT * proj.scale;
+    let width_px = (1.5 * proj.scale) as f32;
+    let color = theme.snap;
+    let closed = |pts: Vec<[f64; 2]>| Primitive::Stroke {
+        points_px: pts.into_iter().map(|[a, b]| [a as f32, b as f32]).collect(),
+        closed: true,
+        width_px,
+        color,
+    };
+    let open = |a: [f64; 2], b: [f64; 2]| Primitive::Stroke {
+        points_px: vec![[a[0] as f32, a[1] as f32], [b[0] as f32, b[1] as f32]],
+        closed: false,
+        width_px,
+        color,
+    };
+    match kind {
+        SnapKind::Endpoint => out.push(closed(vec![[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]])),
+        SnapKind::Midpoint => out.push(closed(vec![[x - h, y + h], [x + h, y + h], [x, y - h]])),
+        SnapKind::Center => out.push(closed(
+            (0..24)
+                .map(|k| {
+                    let a = std::f64::consts::TAU * k as f64 / 24.0;
+                    [x + h * a.cos(), y + h * a.sin()]
+                })
+                .collect(),
+        )),
+        SnapKind::Intersection => {
+            out.push(open([x - h, y - h], [x + h, y + h]));
+            out.push(open([x - h, y + h], [x + h, y - h]));
+        }
+        SnapKind::Nearest => out.push(closed(vec![[x, y - h], [x + h, y], [x, y + h], [x - h, y]])),
+        _ => {
+            out.push(open([x - h, y], [x + h, y]));
+            out.push(open([x, y - h], [x, y + h]));
+        }
+    }
+    if let Some(name) = labels.map(|l| l.get(kind)) {
+        let style = text::TextStyle {
+            em_px: LABEL_EM_PT * proj.scale,
+            ink: color,
+            halo: proj.halo,
+            halo_px: (LABEL_HALO_PT * proj.scale) as f32,
+            quarter_turns: 0,
+        };
+        let offset = (SNAP_HALF_PT + 4.0) * proj.scale;
+        text::label(out, name, [x + offset, y - offset], text::Anchor::Start, style);
+    }
+}
+
 /// A work area in device pixels: left, top, right and bottom edges.
 #[derive(Clone, Copy)]
 struct BedPx {
@@ -553,10 +621,69 @@ fn bitmap(
     }
 }
 
-/// Translate one scene into device pixels. Pure, no GPU.
+/// The names a snap label shows, in the host's language (render has no catalogue of its own).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SnapLabels {
+    pub endpoint: &'static str,
+    pub intersection: &'static str,
+    pub midpoint: &'static str,
+    pub center: &'static str,
+    pub nearest: &'static str,
+    pub grid: &'static str,
+}
+
+impl SnapLabels {
+    pub const DUTCH: SnapLabels = SnapLabels {
+        endpoint: "Eindpunt",
+        intersection: "Snijpunt",
+        midpoint: "Midden",
+        center: "Centrum",
+        nearest: "Op de lijn",
+        grid: "Raster",
+    };
+    pub const ENGLISH: SnapLabels = SnapLabels {
+        endpoint: "Endpoint",
+        intersection: "Intersection",
+        midpoint: "Midpoint",
+        center: "Center",
+        nearest: "On Path",
+        grid: "Grid",
+    };
+
+    pub fn get(&self, kind: SnapKind) -> &'static str {
+        match kind {
+            SnapKind::Endpoint => self.endpoint,
+            SnapKind::Intersection => self.intersection,
+            SnapKind::Midpoint => self.midpoint,
+            SnapKind::Center => self.center,
+            SnapKind::Nearest => self.nearest,
+            _ => self.grid,
+        }
+    }
+}
+
+/// What the host adds around the scene: texts in its language, the rulers (LF9).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CanvasChrome {
+    /// The label next to a snap marker; `None` draws markers only.
+    pub snap_labels: Option<SnapLabels>,
+}
+
+impl Default for CanvasChrome {
+    fn default() -> Self {
+        CanvasChrome { snap_labels: Some(SnapLabels::DUTCH) }
+    }
+}
+
+/// Translate one scene into device pixels. Pure, no GPU. The default chrome: Dutch snap labels, no rulers.
 ///
 /// Painting order: grid, items back to front (fill, then outline), then the other overlays.
 pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
+    build_packet_with(scene, theme, &CanvasChrome::default())
+}
+
+/// [`build_packet`] with the host's chrome.
+pub fn build_packet_with(scene: &SceneSnapshot, theme: &Theme, chrome: &CanvasChrome) -> RenderPacket {
     let size = size_px(&scene.viewport);
     let proj = Projection {
         camera: scene.camera,
@@ -699,8 +826,8 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
             Overlay::TangentContact { at } => {
                 marker(&mut out, *at, theme.handle_size_pt * 0.6, theme.snap, theme.snap, &proj);
             }
-            Overlay::SnapCandidate { at, .. } => {
-                marker(&mut out, *at, theme.handle_size_pt * 0.6, theme.snap, theme.snap, &proj);
+            Overlay::SnapCandidate { at, kind } => {
+                snap_marker(&mut out, *at, *kind, chrome.snap_labels.as_ref(), theme, &proj);
             }
             Overlay::Issue { at, .. } => {
                 marker(&mut out, *at, theme.handle_size_pt, theme.issue, theme.issue, &proj);

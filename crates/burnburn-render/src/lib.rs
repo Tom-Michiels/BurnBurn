@@ -18,5 +18,6 @@ pub mod tess;
 pub use input::Rgba;
 pub use packet::{ImageCell, Primitive, RenderPacket};
 pub use scene::{
-    LAYER_COLOURS, RoleStyle, Theme, build_packet, canvas_text_missing_chars, contrast_ratio, delta_e, size_px,
+    CanvasChrome, LAYER_COLOURS, RoleStyle, SnapLabels, Theme, build_packet, build_packet_with, canvas_text_missing_chars,
+    contrast_ratio, delta_e, size_px,
 };
