@@ -16,12 +16,16 @@ pub use burnburn_host_models::{
 pub mod adapter;
 pub mod app_view;
 pub mod appearance;
+pub mod dwm;
 pub mod forms;
+pub mod icon_dib;
 pub mod menus;
 pub mod persist;
 pub mod startup;
+pub mod status_bar;
 pub mod status_line;
 pub mod tasks;
+pub mod window_state;
 
 #[cfg(windows)]
 pub mod win32;
