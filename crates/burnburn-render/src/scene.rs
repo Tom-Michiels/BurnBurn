@@ -9,8 +9,14 @@ use burnburn_editor::{BedOrigin, CompareSide, Handle, Overlay, SceneSnapshot, Sn
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
+mod ruler;
 mod sketch;
 pub(crate) mod text;
+
+pub use ruler::{
+    MarkKind, RULER_MIN_MAJOR_GAP_PT, RULER_THICKNESS_PT, RulerAxis, RulerMark, RulerStep, RulerUnit, Rulers, ruler_marks,
+    ruler_step,
+};
 
 use crate::input::Rgba;
 use crate::packet::{ImageCell, Primitive, RenderPacket};
@@ -105,6 +111,9 @@ pub struct Theme {
     pub grip_size_pt: f64,
     pub grip_hover_size_pt: f64,
     pub snap: Rgba,
+    /// The rulers (LF9): the band and the marks and numbers on it.
+    pub ruler_background: Rgba,
+    pub ruler_ink: Rgba,
     pub issue: Rgba,
     /// Sketch mode: relation glyphs, freedom markers and suggestions.
     pub sketch: Rgba,
@@ -149,6 +158,8 @@ impl Theme {
             grip_size_pt: 7.0,
             grip_hover_size_pt: 9.0,
             snap: Rgba::new(0.85, 0.0, 0.6, 1.0),
+            ruler_background: Rgba::new(0.95, 0.95, 0.96, 1.0),
+            ruler_ink: Rgba::new(0.30, 0.30, 0.35, 1.0),
             issue: Rgba::new(0.9, 0.1, 0.1, 1.0),
             sketch: Rgba::new(0.0, 0.4, 0.45, 1.0),
             sketch_dimension: Rgba::new(0.1, 0.45, 0.15, 1.0),
@@ -187,6 +198,8 @@ impl Theme {
             compare_b: Rgba::new(1.0, 0.40, 0.40, 1.0),
             rubber_band_fill: Rgba::new(accent.r, accent.g, accent.b, 0.18),
             snap: lift(light.snap),
+            ruler_background: Rgba::new(0.14, 0.14, 0.16, 1.0),
+            ruler_ink: Rgba::new(0.72, 0.72, 0.76, 1.0),
             issue: lift(light.issue),
             sketch: lift(light.sketch),
             sketch_dimension: lift(light.sketch_dimension),
@@ -667,11 +680,13 @@ impl SnapLabels {
 pub struct CanvasChrome {
     /// The label next to a snap marker; `None` draws markers only.
     pub snap_labels: Option<SnapLabels>,
+    /// The rulers above and left of the canvas; `None` draws none.
+    pub rulers: Option<Rulers>,
 }
 
 impl Default for CanvasChrome {
     fn default() -> Self {
-        CanvasChrome { snap_labels: Some(SnapLabels::DUTCH) }
+        CanvasChrome { snap_labels: Some(SnapLabels::DUTCH), rulers: None }
     }
 }
 
@@ -835,5 +850,94 @@ pub fn build_packet_with(scene: &SceneSnapshot, theme: &Theme, chrome: &CanvasCh
             other => sketch::draw(&mut out, other, theme, &proj),
         }
     }
+    if let Some(rulers) = &chrome.rulers {
+        draw_rulers(&mut out, scene, rulers, theme, &proj, size);
+    }
     RenderPacket { size_px: size, clear: theme.background, primitives: out }
+}
+
+/// Em square of the ruler numbers, in logical points.
+const RULER_EM_PT: f64 = 8.5;
+/// Length of numbered and of minor marks, in logical points.
+const RULER_MAJOR_LEN_PT: f64 = 8.0;
+const RULER_MINOR_LEN_PT: f64 = 4.0;
+
+/// The rulers on top of everything: two bands and a corner with the unit, marks that scale with
+/// the zoom, numbers, and the cursor position.
+fn draw_rulers(
+    out: &mut Vec<Primitive>,
+    scene: &SceneSnapshot,
+    rulers: &Rulers,
+    theme: &Theme,
+    proj: &Projection,
+    size: [u32; 2],
+) {
+    let s = proj.scale;
+    let (w, h) = (size[0] as f32, size[1] as f32);
+    let t = (RULER_THICKNESS_PT * s) as f32;
+    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    out.push(Primitive::Fill { contours_px: vec![rect(0.0, 0.0, w, t)], color: theme.ruler_background });
+    out.push(Primitive::Fill { contours_px: vec![rect(0.0, 0.0, t, h)], color: theme.ruler_background });
+    let crisp = |v: f64| (v.floor() + 0.5) as f32;
+    let line = |points_px: Vec<[f32; 2]>, color: Rgba, width_px: f32| Primitive::Stroke {
+        points_px,
+        closed: false,
+        width_px,
+        color,
+    };
+    // The inner edges of the bands.
+    out.push(line(vec![[t, crisp(f64::from(t))], [w, crisp(f64::from(t))]], theme.bed_border, 1.0));
+    out.push(line(vec![[crisp(f64::from(t)), t], [crisp(f64::from(t)), h]], theme.bed_border, 1.0));
+    let style = |quarter_turns: u8| text::TextStyle {
+        em_px: RULER_EM_PT * s,
+        ink: theme.ruler_ink,
+        halo: theme.ruler_background,
+        halo_px: 0.0,
+        quarter_turns,
+    };
+    let step = ruler_step(scene.camera.points_per_mm() * rulers.unit.mm_per_unit());
+    let (major, minor) = ((RULER_MAJOR_LEN_PT * s) as f32, (RULER_MINOR_LEN_PT * s) as f32);
+    for axis in [RulerAxis::Horizontal, RulerAxis::Vertical] {
+        for mark in ruler_marks(&scene.camera, &scene.viewport, axis, rulers.unit) {
+            let along = mark.at_pt * s;
+            if along < f64::from(t) {
+                continue; // under the corner
+            }
+            let len = if mark.kind == MarkKind::Major { major } else { minor };
+            let a = crisp(along);
+            let (p0, p1) = match axis {
+                RulerAxis::Horizontal => ([a, t - len], [a, t]),
+                RulerAxis::Vertical => ([t - len, a], [t, a]),
+            };
+            out.push(line(vec![p0, p1], theme.ruler_ink, 1.0));
+            if mark.kind == MarkKind::Major {
+                let text = ruler::mark_text(mark.value, &step, rulers.decimal);
+                let gap = 2.5 * s;
+                let centre = (RULER_THICKNESS_PT - RULER_MAJOR_LEN_PT) * s / 2.0;
+                match axis {
+                    RulerAxis::Horizontal => {
+                        text::label(out, &text, [f64::from(a) + gap, centre], text::Anchor::Start, style(0));
+                    }
+                    RulerAxis::Vertical => {
+                        text::label(out, &text, [centre, f64::from(a) - gap], text::Anchor::Start, style(1));
+                    }
+                }
+            }
+        }
+    }
+    // The corner shows the unit.
+    text::label(out, rulers.unit.symbol(), [f64::from(t) / 2.0, f64::from(t) / 2.0], text::Anchor::Center, style(0));
+    // The cursor: a line across each band, in the selection colour.
+    if let Some(cursor) = rulers.cursor_mm {
+        let [x, y] = proj.px(cursor);
+        let width = s as f32;
+        if x >= f64::from(t) && x < f64::from(w) {
+            let x = crisp(x);
+            out.push(line(vec![[x, 0.0], [x, t]], theme.selection, width));
+        }
+        if y >= f64::from(t) && y < f64::from(h) {
+            let y = crisp(y);
+            out.push(line(vec![[0.0, y], [t, y]], theme.selection, width));
+        }
+    }
 }

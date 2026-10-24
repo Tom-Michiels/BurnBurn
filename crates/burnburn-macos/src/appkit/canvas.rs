@@ -12,7 +12,7 @@ use std::ptr::NonNull;
 
 use burnburn_editor::SceneSnapshot;
 use burnburn_render::surface::{CanvasError, DrawReport, SurfaceCanvas};
-use burnburn_render::{RenderPacket, Theme, build_packet};
+use burnburn_render::{CanvasChrome, RenderPacket, RulerUnit, Rulers, Theme, build_packet, build_packet_with};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSAppearanceCustomization, NSView};
@@ -38,9 +38,18 @@ pub fn canvas_theme(dark: bool, wireframe: bool, tolerance_px: f64) -> Theme {
     if wireframe { theme.wireframe() } else { theme }
 }
 
-/// As [`canvas_packet_with`], in the light or the dark canvas theme.
+/// The rulers above and left of the canvas (LF9), in millimetres with the Dutch decimal comma, and
+/// no cursor mark until the host passes the pointer position.
+pub fn canvas_chrome() -> CanvasChrome {
+    CanvasChrome {
+        rulers: Some(Rulers { unit: RulerUnit::Millimetre, cursor_mm: None, decimal: ',' }),
+        ..CanvasChrome::default()
+    }
+}
+
+/// As [`canvas_packet_with`], in the light or the dark canvas theme, with the rulers.
 pub fn canvas_packet_themed(scene: &SceneSnapshot, wireframe: bool, tolerance_px: f64, dark: bool) -> RenderPacket {
-    build_packet(scene, &canvas_theme(dark, wireframe, tolerance_px))
+    build_packet_with(scene, &canvas_theme(dark, wireframe, tolerance_px), &canvas_chrome())
 }
 
 /// Whether `view` is in the dark appearance (system setting or the window's own appearance).

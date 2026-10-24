@@ -109,11 +109,6 @@ pub(super) struct TextStyle {
     pub quarter_turns: u8,
 }
 
-/// Device-pixel width of `text` at `em_px` (0 when it cannot be shaped).
-pub(super) fn width_px(text: &str, em_px: f64) -> f64 {
-    shaped(text).map_or(0.0, |s| s.0.width_mm * em_px / SHAPE_EM_MM)
-}
-
 /// The label as primitives: the halo ring first, then the filled glyphs.
 pub(super) fn label(out: &mut Vec<Primitive>, text: &str, at_px: [f64; 2], anchor: Anchor, style: TextStyle) {
     if text.trim().is_empty() || !(style.em_px.is_finite() && style.em_px > 0.0) {
