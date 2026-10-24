@@ -50,3 +50,7 @@ muis blijft handmatig. De pijltjestoetsen-test is ongewijzigd groen.
 - Positie wordt "onbekend" zonder eenheid en krijgt `mm` zodra hij bekend is: dat is een herbouw van het formulier (zie boven).
 - Handmatig: jog met de muis vasthouden, VoiceOver-labels van de pads, uiterlijk naast de HIG, Windows-host van het laservenster op `FormSpec`.
 - `appkit/app/laser_host.rs` kreeg één regel (`refresh_laser_panel`); `form.rs`/`tests/native/macos/layout_invariants.rs` zijn additief gewijzigd.
+
+## Verify
+
+`cargo xtask verify` (eigen target-map, uitvoer via `tail`): doorgelopen tot en met de doc-tests zonder fout. Een `hdiutil create` van de dist-dmg-test van xtask hing 26 minuten (omgeving, andere lanes tegelijk); ik heb dat proces gestopt waarna verify doorliep. Niet van deze lane.
