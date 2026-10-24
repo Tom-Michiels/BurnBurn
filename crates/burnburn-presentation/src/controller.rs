@@ -287,6 +287,8 @@ struct Session {
     /// Where the Text tool was clicked: the next committed text is placed there.
     text_anchor: Option<Point>,
     pending: BTreeMap<TaskId, (TaskKind, CancellationSource)>,
+    /// Progress (per mille) the running tasks reported; dropped with the task.
+    task_progress: BTreeMap<TaskId, u16>,
     /// Default-name counters per created kind ("Rechthoek 2", "Cirkel 1").
     created: BTreeMap<NameKind, u64>,
     snap: SnapSettings,
@@ -385,6 +387,7 @@ impl Session {
             tool_measurement: None,
             text_anchor: None,
             pending: BTreeMap::new(),
+            task_progress: BTreeMap::new(),
             created: BTreeMap::new(),
             snap: SnapSettings::default(),
             last_pointer: None,
@@ -923,6 +926,14 @@ impl AppController {
                 self.with_session(document, |s| shapes::commit_shape_param(s, document, key, &text, request))
             }
             UiIntent::Schikken(intent) => self.schikken(intent),
+            UiIntent::CancelTask { document, task } => self.with_session(document, |s| {
+                if let Some((kind, source)) = s.pending.get(&task)
+                    && kind.is_cancellable()
+                {
+                    source.cancel();
+                }
+                AppUpdate::default()
+            }),
         }
     }
 
@@ -1138,6 +1149,7 @@ fn intent_document(intent: &UiIntent) -> Option<DocumentId> {
         | UiIntent::Camera { document, .. } => Some(*document),
         UiIntent::PasteData { document, .. } => *document,
         UiIntent::Schikken(intent) => Some(intent.document()),
+        UiIntent::CancelTask { document, .. } => Some(*document),
         UiIntent::Invoke { document, .. } | UiIntent::Machine { document, .. } | UiIntent::Laser { document, .. } => {
             *document
         }

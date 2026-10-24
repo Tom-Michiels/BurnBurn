@@ -195,7 +195,17 @@ fn the_settings_window_has_three_tabs_a_route_per_preference_and_restore_default
 #[test]
 fn the_machine_hub_is_a_spec_panel_with_four_tabs() {
     let (mut h, _) = window();
-    let hub = h.controller().machine_hub_view();
+    let mut hub = h.controller().machine_hub_view();
+    // LF17: without a machine the device tab shows an empty state instead of the pop-up.
+    hub.devices.push(burnburn_presentation::DeviceRow {
+        id: "ruida".into(),
+        revision: 1,
+        width_mm: 600.0,
+        height_mm: 400.0,
+        active: true,
+        model: None,
+        firmware: None,
+    });
     let panel = burnburn_host_models::hub_panel::hub_panel(&hub, true, Locale::Nl);
     let spec = spec_panels::hub(&panel, Locale::Nl);
     let l = check("hub", &spec);

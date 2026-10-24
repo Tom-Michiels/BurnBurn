@@ -95,6 +95,11 @@ pub(crate) fn material_section(
 }
 
 impl MaterialSection {
+    /// The sentence of the empty state while it shows (the native test of LF17).
+    pub(crate) fn empty_text(&self) -> Option<String> {
+        self.surface.empty_state_text(id::EMPTY)
+    }
+
     fn wire(&self, target: &FilesTarget, app: Weak<HostApp>, document: DocumentId) {
         let link = Rc::new(Link { app, document });
         // Search: any of the three controls sends the whole search.
@@ -282,6 +287,14 @@ impl DocWindow {
         if m.layer.indexOfSelectedItem() < 0 && !model.operations.items.is_empty() {
             m.layer.selectItemAtIndex(0);
         }
+        // An empty library says so once, with the symbol, instead of an empty pop-up (LF17).
+        let empty = vm
+            .document(document)
+            .and_then(|d| d.files.material.as_ref())
+            .and_then(|p| burnburn_host_models::empty_state::material_empty(p, locale));
+        m.surface.set_empty_state(id::EMPTY, empty.as_ref());
+        m.surface.set_hidden(id::ENTRIES, empty.is_some());
+        m.surface.set_hidden(id::DETAIL, empty.is_some());
         let actions = material_actions(vm, document, m.layer.indexOfSelectedItem());
         m.buttons().enable(actions);
         m.surface.fit_window(&m.panel);

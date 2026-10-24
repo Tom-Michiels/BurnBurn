@@ -227,7 +227,16 @@ pub(super) fn document_view(
         undo: s.doc.undo_label(),
         redo: s.doc.redo_label(),
         messages: s.messages.clone(),
-        tasks: s.pending.iter().map(|(tid, (kind, _))| TaskBadge { id: *tid, kind: *kind }).collect(),
+        tasks: s
+            .pending
+            .iter()
+            .map(|(tid, (kind, _))| TaskBadge {
+                id: *tid,
+                kind: *kind,
+                cancellable: kind.is_cancellable(),
+                progress_permille: s.task_progress.get(tid).copied(),
+            })
+            .collect(),
         measure: s.measure.clone(),
         tool_measurement: s.tool_measurement.clone(),
         camera: s.camera,

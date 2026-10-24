@@ -71,6 +71,11 @@ pub enum Control {
     Picture {
         image: crate::panels_image::BitmapImage,
     },
+    /// What a list shows when it is empty (LF17): a centred symbol and one sentence.
+    EmptyState {
+        symbol: String,
+        text: String,
+    },
 }
 
 impl Control {
@@ -89,6 +94,7 @@ impl Control {
             Control::Actions { .. } => "actions",
             Control::Log { .. } => "log",
             Control::Picture { .. } => "picture",
+            Control::EmptyState { .. } => "empty_state",
         }
     }
 }

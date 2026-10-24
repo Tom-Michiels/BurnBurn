@@ -51,6 +51,8 @@ pub mod bundle {
     pub const PRIMARY: u32 = 51;
     /// Check boxes for the profiles of an incoming bundle (a bundle holds few).
     pub const PROFILE_SLOTS: usize = 4;
+    /// The empty state (LF17), hidden until the host sees that there is nothing to bundle.
+    pub const EMPTY: u32 = 40;
     /// The section shown for an export, and the one shown for an import.
     pub const EXPORT_SECTION: usize = 1;
     pub const IMPORT_SECTION: usize = 2;
@@ -68,6 +70,8 @@ pub mod material {
     /// Apply, update, update and apply: `LAYER_ACTIONS + 0..3`.
     pub const LAYER_ACTIONS: u32 = 8;
     pub const NAME: u32 = 11;
+    /// The empty state (LF17), hidden until the library is read and holds nothing.
+    pub const EMPTY: u32 = 19;
     pub const STORE_MATERIAL: u32 = 12;
     pub const STORE_THICKNESS: u32 = 13;
     /// Save, overwrite, remove: `STORE_ACTIONS + 0..3`.
@@ -94,6 +98,8 @@ pub mod art {
     pub const GROUP_ACTIONS: u32 = 14;
     /// Rename item, move item, remove item: `ITEM_ACTIONS + 0..3`.
     pub const ITEM_ACTIONS: u32 = 17;
+    /// The empty state (LF17), hidden until the library is read and holds nothing.
+    pub const EMPTY: u32 = 25;
     pub const CLOSE: u32 = 30;
 }
 
@@ -212,6 +218,12 @@ fn note_row(id: u32, lines: u8, tone: StatusTone, strong: bool) -> FormRow {
     FormRow::new(id, "", Control::Note { value: String::new(), lines, tone, strong })
 }
 
+/// The place of an empty state: the host fills it in and shows it when the model says the list is
+/// empty, and hides it otherwise (LF17).
+fn empty_state_row(id: u32) -> FormRow {
+    FormRow::new(id, "", Control::EmptyState { symbol: String::new(), text: String::new() })
+}
+
 fn report_row(id: u32, lines: u8) -> FormRow {
     FormRow::new(id, "", Control::Report { text: String::new(), lines })
 }
@@ -298,6 +310,7 @@ pub fn bundle_form(locale: Locale) -> FormSpec {
                     note_row(bundle::TITLE, 1, StatusTone::Neutral, true),
                     note_row(bundle::STATUS, 2, StatusTone::Neutral, false),
                     note_row(bundle::REPORT, 3, StatusTone::Neutral, false),
+                    empty_state_row(bundle::EMPTY),
                 ],
             ),
             section(Some(t(T::BundleChoose).trim_end_matches(':')), kinds),
@@ -314,7 +327,10 @@ pub fn material_form(locale: Locale) -> FormSpec {
     FormSpec {
         title: t(T::MaterialTitle).to_owned(),
         sections: vec![
-            section(None, vec![note_row(material::STATUS, 2, StatusTone::Neutral, false)]),
+            section(
+                None,
+                vec![note_row(material::STATUS, 2, StatusTone::Neutral, false), empty_state_row(material::EMPTY)],
+            ),
             section(
                 Some(t(T::SectionSearch)),
                 vec![
@@ -361,7 +377,7 @@ pub fn art_form(locale: Locale) -> FormSpec {
     FormSpec {
         title: t(T::ArtTitle).to_owned(),
         sections: vec![
-            section(None, vec![note_row(art::STATUS, 2, StatusTone::Neutral, false)]),
+            section(None, vec![note_row(art::STATUS, 2, StatusTone::Neutral, false), empty_state_row(art::EMPTY)]),
             section(
                 Some(t(T::SectionSearch)),
                 vec![

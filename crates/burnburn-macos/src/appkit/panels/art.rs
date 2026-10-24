@@ -108,6 +108,11 @@ pub(crate) fn art_section(
 }
 
 impl ArtSection {
+    /// The sentence of the empty state while it shows (the native test of LF17).
+    pub(crate) fn empty_text(&self) -> Option<String> {
+        self.surface.empty_state_text(id::EMPTY)
+    }
+
     fn wire(
         &self,
         mtm: MainThreadMarker,
@@ -322,6 +327,15 @@ impl DocWindow {
         a.move_item.setEnabled(model.can_edit_item);
         a.rename_group.setEnabled(model.can_edit_group);
         a.remove_group.setEnabled(model.can_edit_group);
+        // An empty library says so once, with the symbol, instead of an empty pop-up (LF17).
+        let empty = vm
+            .document(document)
+            .and_then(|d| d.files.art.as_ref())
+            .and_then(|p| burnburn_host_models::empty_state::art_empty(p, locale));
+        a.surface.set_empty_state(id::EMPTY, empty.as_ref());
+        a.surface.set_hidden(id::ITEMS, empty.is_some());
+        a.surface.set_hidden(id::THUMBNAIL, empty.is_some());
+        a.surface.set_hidden(id::DETAIL, empty.is_some());
         let waiting = model.scale_prompt.is_some();
         set_text(&a.scale_prompt, model.scale_prompt.as_deref().unwrap_or(""));
         a.surface.set_hidden(id::SCALE_PROMPT, !waiting);

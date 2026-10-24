@@ -44,7 +44,7 @@ fn the_form_waits_for_its_menu_item_and_learns_from_the_chosen_camera_with_the_t
             _ => false,
         })
     };
-    assert!(has("No template learned yet.") && has("Learn template"));
+    assert!(has("No template to recognise yet. Teach a product with the camera.") && has("Learn template"));
 
     let mut values = form.values();
     let typed = [C::RecogX, C::RecogY, C::RecogWidth, C::RecogHeight, C::RecogName];

@@ -29,6 +29,11 @@ fn plain(caption: &str) -> String {
     caption.trim_end().trim_end_matches(':').to_owned()
 }
 
+/// An empty list as a row: the symbol and one sentence (LF17).
+fn empty_row(id: u32, state: &crate::empty_state::EmptyState) -> FormRow {
+    FormRow::new(id, "", Control::EmptyState { symbol: state.symbol.to_owned(), text: state.text.clone() })
+}
+
 /// The hub window for `panel`.
 pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     let text = |t| machine_text(t, locale);
@@ -55,8 +60,12 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     )
     .help(text(T::DeviceNote));
     device.enabled = !panel.devices.is_empty();
+    let device_row = match &panel.empty.devices {
+        Some(e) => empty_row(next_note(), e),
+        None => device,
+    };
     let device_tab = [
-        FormSection::new(None, vec![device]),
+        FormSection::new(None, vec![device_row]),
         FormSection::new(Some(text(T::SupportHeader)), vec![log(next_note(), "", panel.support.join("\n"))]),
     ];
 
@@ -71,7 +80,10 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
             vec![
                 note(next_note(), &panel.queue_counts),
                 note(next_note(), text(T::QueueNote)),
-                log(next_note(), "", panel.queue.join("\n")),
+                match &panel.empty.queue {
+                    Some(e) => empty_row(next_note(), e),
+                    None => log(next_note(), "", panel.queue.join("\n")),
+                },
             ],
         ),
     ];
@@ -89,6 +101,10 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     };
     let mut history_row = FormRow::new(ID_HISTORY, "", Control::Choice { options: history, selected: 0 });
     history_row.enabled = !panel.history.is_empty();
+    let history_row = match &panel.empty.history {
+        Some(e) => empty_row(next_note(), e),
+        None => history_row,
+    };
     let history_tab = [FormSection::new(
         Some(text(T::HistoryHeader)),
         vec![
@@ -125,7 +141,10 @@ pub fn hub_form(panel: &HubPanel, locale: Locale) -> FormSpec {
     let proofs = none(&panel.proofs, T::ProofNone);
     let mut proofs_row = FormRow::new(ID_PROOFS, "", Control::Choice { options: proofs, selected: 0 });
     proofs_row.enabled = !panel.proofs.is_empty();
-    rows.push(proofs_row);
+    rows.push(match &panel.empty.proofs {
+        Some(e) => empty_row(next_note(), e),
+        None => proofs_row,
+    });
     rows.push(action(ID_REMOVE, text(T::RemoveProof), !panel.proofs.is_empty()));
     rows.push(note(next_note(), text(T::CalibrationNote)));
     let calibration_tab = [FormSection::new(Some(text(T::CalibrationHeader)), rows)];
@@ -162,6 +181,7 @@ mod tests {
             repeat: None,
             proofs: vec![],
             proof_problem: String::new(),
+            empty: Default::default(),
         }
     }
 

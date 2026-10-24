@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use burnburn_io::{Project, SaveError};
-use burnburn_types::{CancellationSource, TaskId};
+use burnburn_types::{CancellationSource, DocumentId, TaskId};
 
 use crate::field::format_mm;
 use crate::production::{JobInputs, PreparedJob};
@@ -17,6 +17,22 @@ use super::trace::Tracer;
 use super::{AppController, AppUpdate, HostEffect, file_title};
 
 impl AppController {
+    /// A running task reports how far it is (per mille). Ignored for a task that is not (or no
+    /// longer) pending; later reports never move the bar backwards.
+    pub fn report_task_progress(&mut self, document: DocumentId, task: TaskId, permille: u16) -> AppUpdate {
+        self.with_session(document, |s| {
+            if !s.pending.contains_key(&task) {
+                return AppUpdate::default();
+            }
+            let permille = permille.min(1000);
+            if s.task_progress.get(&task).is_some_and(|old| permille <= *old) {
+                return AppUpdate::default();
+            }
+            s.task_progress.insert(task, permille);
+            AppUpdate { view_changed: true, ..AppUpdate::default() }
+        })
+    }
+
     /// Delivers a worker result. Applied only while the session is open and the task is still
     /// pending. Revision-sensitive results must match the current revision; a save records
     /// exactly the revision it wrote (an older one leaves the document dirty).
@@ -56,6 +72,7 @@ impl AppController {
         let approved_plans = self.approved_plans.clone();
         let Some(s) = self.sessions.get_mut(&outcome.document) else { return AppUpdate::default() };
         let Some((kind, _)) = s.pending.remove(&outcome.id) else { return AppUpdate::default() };
+        s.task_progress.remove(&outcome.id);
         let document = outcome.document;
         let record = s.variable.take_record(outcome.id);
         let mut update = AppUpdate { view_changed: true, effects: recent, ..AppUpdate::default() };

@@ -58,6 +58,8 @@ pub(super) fn form_lines(model_lines: Vec<G5Line>) -> Vec<FormLine> {
                 lines.push(FormLine::Check { id: id(control), caption, on, enabled: true })
             }
             G5Line::Image(image) => lines.push(FormLine::Image(image)),
+            // The glyph is for the native Windows drawing (LF14); the sentence is the same one.
+            G5Line::EmptyState { text, .. } => lines.push(FormLine::Text(text)),
             G5Line::Button { control, title, enabled } => {
                 let short = title.chars().count() <= SHORT_BUTTON;
                 let button = FormButton::new(id(control), title, enabled);

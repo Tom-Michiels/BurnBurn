@@ -27,6 +27,7 @@ use super::panels::arrange::arrange_toolbar;
 use super::panels::barcode::{BarcodeSection, barcode_section};
 use super::panels::camera::CameraSection;
 use super::panels::cut_settings::{CutSettingsSheet, cut_settings_sheet};
+use super::panels::empty_state::{EmptyOverlay, ProgressWidgets};
 use super::panels::g5::{G5Section, g5_section};
 use super::panels::image::{ImageSheets, image_sheets};
 use super::panels::import::{ImportSheet, import_sheet};
@@ -90,6 +91,11 @@ pub(crate) struct DocWindow {
     pub(crate) pointer: Option<[f64; 2]>,
     pub(crate) length_unit: burnburn_host_models::format::LengthPreference,
     pub(crate) status_bar: StatusBarWidgets,
+    /// The empty state over the object list and over the layer table, and the progress row of the
+    /// running tasks in the status bar (LF17).
+    pub(crate) objects_empty: EmptyOverlay,
+    pub(crate) operations_empty: EmptyOverlay,
+    pub(crate) progress: ProgressWidgets,
     pub(crate) table: Retained<NSTableView>,
     pub(crate) toolbar: Retained<NSToolbar>,
     /// The toolbar's Uitlijnen control (align and distribute segments).
@@ -254,6 +260,9 @@ impl DocWindow {
         inspector.addSubview(&grbl_refusals);
 
         let status_bar = status_bar_widgets(mtm, CONTENT_SIZE.width, locale);
+        let objects_empty = EmptyOverlay::new(mtm, app.clone(), &scroll, 150.0);
+        let operations_empty = EmptyOverlay::new(mtm, app.clone(), &operations.scroll, 260.0);
+        let progress = ProgressWidgets::new(mtm, app.clone(), &status_bar.view, 290.0, STATUS_HEIGHT);
         let (status_coordinate, status_zoom, status_unit) =
             (status_bar.coordinate.clone(), status_bar.zoom.clone(), status_bar.unit.clone());
         let sidebar_pane: Retained<NSView> = Retained::into_super(scroll.clone());
@@ -524,6 +533,9 @@ impl DocWindow {
             pointer: None,
             length_unit: burnburn_host_models::format::LengthPreference::Millimeters,
             status_bar,
+            objects_empty,
+            operations_empty,
+            progress,
             split,
             sidebar_pane,
             canvas_pane,
@@ -687,6 +699,13 @@ impl DocWindow {
         self.refresh_files(vm, document);
 
         self.refresh_status_bar(doc);
+        self.progress.show(
+            &burnburn_host_models::empty_state::progress_rows(doc, locale),
+            burnburn_host_models::l10n_empty::empty_text(
+                burnburn_host_models::l10n_empty::EmptyText::TaskCancel,
+                locale,
+            ),
+        );
 
         // The view model's toolbar is the active document's: another window keeps what it had.
         if vm.active == Some(document) {
@@ -704,6 +723,7 @@ impl DocWindow {
                 eprintln!("burnburn: {e}");
             }
         }
+        self.objects_empty.show(burnburn_host_models::empty_state::object_list_empty(vm, document, locale).as_ref());
         let wanted = vm_selected_rows(vm, document);
         if selected_rows(&self.table) != wanted {
             let set = NSMutableIndexSet::new();
@@ -776,6 +796,9 @@ impl Drop for DocWindow {
             w.control.set_target(None);
         }
         self.image.clear_targets();
+        self.objects_empty.clear_target();
+        self.operations_empty.clear_target();
+        self.progress.clear_target();
         // SAFETY: as above.
         unsafe { self.operations.table.setTarget(None) };
         for b in [

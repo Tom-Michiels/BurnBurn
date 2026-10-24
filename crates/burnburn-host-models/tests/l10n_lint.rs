@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 use burnburn_host_models::app_text::{AppText, app_text};
 use burnburn_host_models::l10n::{HostText, Locale, host_text};
+use burnburn_host_models::l10n_empty::{EmptyText, empty_text};
 use burnburn_host_models::l10n_files::{FilesText, files_text};
 use burnburn_host_models::l10n_g5::{G5Text, g5_text};
 use burnburn_host_models::l10n_g6::{G6Text, g6_text};
@@ -37,6 +38,7 @@ fn entries() -> Vec<Entry> {
     }
     gather!("AppText", AppText, app_text);
     gather!("HostText", HostText, host_text);
+    gather!("EmptyText", EmptyText, empty_text);
     gather!("FilesText", FilesText, files_text);
     gather!("G5Text", G5Text, g5_text);
     gather!("G6Text", G6Text, g6_text);

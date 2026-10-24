@@ -282,11 +282,14 @@ pub(crate) fn build_shortcuts(
 pub(crate) struct HistoryWindow {
     pub(crate) window: Retained<NSWindow>,
     pub(crate) table: Retained<NSTableView>,
+    /// Laid over the table until the first step is taken (LF17).
+    pub(crate) empty: crate::appkit::panels::empty_state::EmptyOverlay,
 }
 
 #[allow(unsafe_code)]
 pub(crate) fn build_history(
     mtm: MainThreadMarker,
+    app: Weak<HostApp>,
     target: &AppPanelTarget,
     locale: Locale,
     float: bool,
@@ -315,7 +318,8 @@ pub(crate) fn build_history(
     // SAFETY: as above.
     unsafe { table.setAction(Some(sel!(historyClicked:))) };
     content.addSubview(&scroll);
-    HistoryWindow { window, table }
+    let empty = crate::appkit::panels::empty_state::EmptyOverlay::new(mtm, app, &scroll, w - 80.0);
+    HistoryWindow { window, table, empty }
 }
 
 // ---- preview ----------------------------------------------------------------------------------

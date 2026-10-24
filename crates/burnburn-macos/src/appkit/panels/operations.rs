@@ -37,6 +37,8 @@ pub(crate) fn layer_colour(slot: u8) -> Retained<NSColor> {
 /// The operations panel: colour palette, layer table, add row and the message line.
 pub(crate) struct OperationsSection {
     pub(crate) table: Retained<NSTableView>,
+    /// The scroll view round the table: the empty state is laid over it (LF17).
+    pub(crate) scroll: Retained<NSScrollView>,
     /// Name, speed, power of a new operation.
     pub(crate) inputs: [Retained<NSTextField>; 3],
     pub(crate) kind: Retained<NSPopUpButton>,
@@ -147,14 +149,24 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     strip.addSubview(&add);
     let error = strip_label(mtm, strip, "", rect(12.0, 6.0, ops_width, 34.0), true);
     error.setTextColor(Some(&NSColor::systemRedColor()));
-    OperationsSection { table, inputs: [name, speed, power], kind, add, error, layer_delegate, palette, settings }
+    OperationsSection {
+        table,
+        scroll,
+        inputs: [name, speed, power],
+        kind,
+        add,
+        error,
+        layer_delegate,
+        palette,
+        settings,
+    }
 }
 
 impl DocWindow {
     /// The operations table and its message line.
     pub(crate) fn refresh_operations(&self, vm: &AppViewModel, document: DocumentId) {
         let panel = operations_panel(vm, document, self.locale);
-        let empty = panel.rows.is_empty();
+
         for (b, model) in self.operations.palette.iter().zip(palette_buttons(vm, document, self.locale)) {
             if b.toolTip().map(|t| t.to_string()).as_deref() != Some(&model.help) {
                 let help = NSString::from_str(&model.help);
@@ -180,7 +192,11 @@ impl DocWindow {
                 eprintln!("burnburn: {e}");
             }
         }
-        let message = if !panel.error.is_empty() || !empty { &panel.error } else { &panel.empty_text };
+        // The empty table says so with the empty state laid over it (LF17); the message line keeps
+        // only errors.
+        self.operations_empty
+            .show(burnburn_host_models::empty_state::operations_empty(vm, document, self.locale).as_ref());
+        let message = &panel.error;
         set_text(&self.operations.error, message);
         let color = if panel.error.is_empty() { NSColor::secondaryLabelColor() } else { NSColor::systemRedColor() };
         self.operations.error.setTextColor(Some(&color));

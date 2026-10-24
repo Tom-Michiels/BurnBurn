@@ -7,7 +7,7 @@ use burnburn_job::{JobPlanId, MachineProfile};
 use burnburn_machine::ExecutionState;
 use burnburn_ruida::RuidaProfile;
 use burnburn_trace::TraceRecipe;
-use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId};
+use burnburn_types::{DocumentId, GeometryId, MonotonicTime, OperationId, TaskId};
 
 use crate::barcode_panel::BarcodeEdit;
 use crate::camera::BedCameraIntent;
@@ -26,6 +26,12 @@ use crate::variable_panel::VariableEdit;
 #[non_exhaustive]
 pub enum UiIntent {
     NewDocument,
+    /// The cancel button of a running task (progress indicator): asks the worker to stop. The task
+    /// stays listed until its outcome arrives; a cancelled outcome changes nothing.
+    CancelTask {
+        document: DocumentId,
+        task: TaskId,
+    },
     /// Path chosen in NSOpenPanel / IFileOpenDialog.
     Open {
         path: PathBuf,

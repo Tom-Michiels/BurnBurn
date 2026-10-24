@@ -82,6 +82,25 @@ impl FormSurface {
         }
     }
 
+    /// Shows `state` in the empty-state row `id`, or hides the row when the list is not empty (LF17).
+    pub(crate) fn set_empty_state(&mut self, id: u32, state: Option<&burnburn_host_models::empty_state::EmptyState>) {
+        if let Some(s) = state
+            && let Some(stack) = self.control(id).and_then(|v| v.downcast::<objc2_app_kit::NSStackView>().ok())
+        {
+            super::empty_state::set_empty(&stack, s.symbol, &s.text);
+        }
+        self.set_hidden(id, state.is_none());
+    }
+
+    /// Whether the empty-state row `id` shows now, and its sentence (for the native tests).
+    pub(crate) fn empty_state_text(&self, id: u32) -> Option<String> {
+        let stack = self.control(id)?.downcast::<objc2_app_kit::NSStackView>().ok()?;
+        if stack.isHiddenOrHasHiddenAncestor() {
+            return None;
+        }
+        super::empty_state::sentence(&stack)
+    }
+
     pub(crate) fn set_section_hidden(&mut self, form: usize, section: usize, hidden: bool) {
         if let Some(f) = self.forms.get_mut(form) {
             f.set_section_hidden(section, hidden);

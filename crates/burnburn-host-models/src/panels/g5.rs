@@ -372,6 +372,11 @@ pub enum G5Line {
     },
     /// A small picture (the preview of a found project).
     Image(crate::panels_image::BitmapImage),
+    /// What the panel shows instead of an empty list (LF17): a symbol and one sentence.
+    EmptyState {
+        symbol: &'static str,
+        text: String,
+    },
 }
 
 impl G5Line {
@@ -382,9 +387,12 @@ impl G5Line {
             | G5Line::Choice { control, .. }
             | G5Line::Check { control, .. }
             | G5Line::Button { control, .. } => Some(*control),
-            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Unavailable(_) | G5Line::Image(_) => {
-                None
-            }
+            G5Line::Heading(_)
+            | G5Line::Text(_)
+            | G5Line::Problem(_)
+            | G5Line::Unavailable(_)
+            | G5Line::Image(_)
+            | G5Line::EmptyState { .. } => None,
         }
     }
 }

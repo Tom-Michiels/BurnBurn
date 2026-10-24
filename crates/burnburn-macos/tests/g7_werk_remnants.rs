@@ -24,6 +24,8 @@ fn texts(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Vec<Stri
         .into_iter()
         .filter_map(|l| match l {
             G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::Heading(t) => Some(t),
+            // LF17: an empty library is an empty state (symbol and sentence).
+            G5Line::EmptyState { text, .. } => Some(text),
             G5Line::Button { title, .. } => Some(format!("[{title}]")),
             G5Line::Field { caption, .. } => Some(format!("<{caption}>")),
             _ => None,
@@ -71,7 +73,10 @@ fn the_menu_item_has_its_tag_its_titles_and_toggles_the_panel() {
 fn an_empty_library_says_so_and_offers_the_form_to_keep_the_selection() {
     let r = rig();
     let nl = texts(&r.h, r.doc, Locale::Nl).join("\n");
-    assert!(nl.contains("Er zijn nog geen restplaten bewaard."), "{nl}");
+    assert!(
+        nl.contains("Nog geen restplaten bewaard. Selecteer de omtrek van een restplaat om hem te bewaren."),
+        "{nl}"
+    );
     assert!(
         nl.contains("Selectie bewaren als restplaat") && nl.contains("De grootste gesloten lijn is de plaat"),
         "{nl}"
@@ -80,7 +85,11 @@ fn an_empty_library_says_so_and_offers_the_form_to_keep_the_selection() {
         assert!(nl.contains(caption), "{caption} in {nl}");
     }
     let en = texts(&r.h, r.doc, Locale::En).join("\n");
-    assert!(en.contains("No remnants have been kept yet.") && en.contains("[Keep selection]"), "{en}");
+    assert!(
+        en.contains("No remnants kept yet. Select the outline of a remnant to keep it.")
+            && en.contains("[Keep selection]"),
+        "{en}"
+    );
 }
 
 #[test]

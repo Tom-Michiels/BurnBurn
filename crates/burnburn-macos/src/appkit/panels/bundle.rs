@@ -151,6 +151,11 @@ pub(crate) fn bundle_sheet(
 }
 
 impl BundleSheet {
+    /// The sentence of the empty state while it shows (the native test of LF17).
+    pub(crate) fn empty_text(&self) -> Option<String> {
+        self.surface.empty_state_text(id::EMPTY)
+    }
+
     pub(crate) fn clear_targets(&self) {
         for c in self.kinds.iter().chain(self.profiles.iter()).chain([&self.primary, &self.close]) {
             unwire(c);
@@ -182,8 +187,14 @@ impl DocWindow {
         set_text(&b.status, &model.status);
         b.surface.set_hidden(id::STATUS, model.status.is_empty());
         let export = !model.import;
-        b.surface.set_section_hidden(0, id::EXPORT_SECTION, !export);
-        b.surface.set_section_hidden(0, id::IMPORT_SECTION, export);
+        // Nothing to bundle, or a bundle with nothing in it: the sentence replaces the choices (LF17).
+        let empty = vm
+            .document(document)
+            .and_then(|d| d.files.bundle.as_ref())
+            .and_then(|d| burnburn_host_models::empty_state::bundle_empty(d, locale));
+        b.surface.set_empty_state(id::EMPTY, empty.as_ref());
+        b.surface.set_section_hidden(0, id::EXPORT_SECTION, !export || empty.is_some());
+        b.surface.set_section_hidden(0, id::IMPORT_SECTION, export || empty.is_some());
         for (i, button) in b.kinds.iter().enumerate() {
             let row = model.kinds.get(i).filter(|_| export);
             b.surface.set_hidden(id::KIND + i as u32, row.is_none());

@@ -45,6 +45,11 @@ pub enum FormLine<C> {
         enabled: bool,
     },
     Image(BitmapImage),
+    /// An empty list: a symbol and one sentence (LF17).
+    Empty {
+        symbol: String,
+        text: String,
+    },
 }
 
 /// A form and which panel control each of its ids is.
@@ -149,6 +154,14 @@ pub fn lines_form<C: Copy>(title: &str, lines: &[FormLine<C>], role: impl Fn(C) 
                         current.rows.push(row);
                     }
                 }
+            }
+            FormLine::Empty { symbol, text } => {
+                let id = take_id(None, &mut controls);
+                current.rows.push(FormRow::new(
+                    id,
+                    "",
+                    Control::EmptyState { symbol: symbol.clone(), text: text.clone() },
+                ));
             }
             FormLine::Image(image) => {
                 let id = take_id(None, &mut controls);
