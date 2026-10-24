@@ -340,6 +340,9 @@ pub enum G5Line {
     Text(String),
     /// Why something did not work; drawn apart from the normal text.
     Problem(String),
+    /// Why the section above it cannot be used now (LFC); said once per section, as the
+    /// section's `unavailable` in the form.
+    Unavailable(String),
     /// A multi-line text.
     Memo {
         control: G5Control,
@@ -379,7 +382,9 @@ impl G5Line {
             | G5Line::Choice { control, .. }
             | G5Line::Check { control, .. }
             | G5Line::Button { control, .. } => Some(*control),
-            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Image(_) => None,
+            G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Unavailable(_) | G5Line::Image(_) => {
+                None
+            }
         }
     }
 }

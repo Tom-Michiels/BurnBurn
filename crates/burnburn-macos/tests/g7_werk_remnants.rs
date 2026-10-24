@@ -23,7 +23,7 @@ fn texts(h: &HeadlessEditorHarness, doc: DocumentId, locale: Locale) -> Vec<Stri
     lines(h, doc, locale, &[])
         .into_iter()
         .filter_map(|l| match l {
-            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Heading(t) => Some(t),
+            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::Heading(t) => Some(t),
             G5Line::Button { title, .. } => Some(format!("[{title}]")),
             G5Line::Field { caption, .. } => Some(format!("<{caption}>")),
             _ => None,

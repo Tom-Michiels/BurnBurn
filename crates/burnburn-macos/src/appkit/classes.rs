@@ -33,8 +33,8 @@ use objc2_app_kit::{
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
     NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
     NSPopUpButton, NSResponder, NSSegmentedControl, NSSplitView, NSSplitViewDelegate, NSTableColumn, NSTableView,
-    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextFieldCell, NSTextInputClient, NSToolbar,
-    NSToolbarDelegate, NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextInputClient, NSToolbar, NSToolbarDelegate,
+    NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -521,6 +521,26 @@ define_class!(
             });
         }
 
+        /// A text field of the layer table ended its edit: the typed text goes to presentation unparsed.
+        #[unsafe(method(layerFieldEdited:))]
+        fn layer_field_edited(&self, sender: Option<&AnyObject>) {
+            ffi_guard("layerFieldEdited:", (), || {
+                let Some(field) = sender.and_then(|s| s.downcast_ref::<NSTextField>()) else { return };
+                let Some((row, column)) = self.layer_cell_of(field) else { return };
+                self.commit_layer_field(row, column, field.stringValue().to_string());
+            });
+        }
+
+        /// An Output or Show check box of the layer table was clicked.
+        #[unsafe(method(layerToggled:))]
+        fn layer_toggled(&self, sender: Option<&AnyObject>) {
+            ffi_guard("layerToggled:", (), || {
+                let Some(button) = sender.and_then(|s| s.downcast_ref::<NSButton>()) else { return };
+                let Some((row, column)) = self.layer_cell_of(button) else { return };
+                self.commit_layer_toggle(row, column, button.state() == NSControlStateValueOn);
+            });
+        }
+
         /// OK in the Cut Settings sheet: the typed texts go to presentation unparsed.
         #[unsafe(method(cutSettingsOk:))]
         fn cut_settings_ok(&self, _sender: Option<&AnyObject>) {
@@ -745,20 +765,13 @@ define_class!(
                     return;
                 }
                 let (Some(column), Ok(row)) = (table_column.and_then(layer_column), usize::try_from(row)) else { return };
-                let document = self.ivars().document;
                 if column.is_toggle() {
                     let Some(on) = object.and_then(|o| o.downcast_ref::<NSNumber>()).map(|n| n.boolValue()) else { return };
-                    self.send(NativeEvent::LayerToggled { document, row, column, on });
+                    self.commit_layer_toggle(row, column, on);
                     return;
                 }
-                let Some(field) = column.field() else { return };
                 let Some(text) = object.and_then(|o| o.downcast_ref::<NSString>()) else { return };
-                self.send(NativeEvent::OperationFieldCommitted {
-                    document: self.ivars().document,
-                    row,
-                    field,
-                    text: text.to_string(),
-                });
+                self.commit_layer_field(row, column, text.to_string());
             });
         }
     }
@@ -766,30 +779,6 @@ define_class!(
     unsafe impl NSControlTextEditingDelegate for WindowController {}
 
     unsafe impl NSTableViewDelegate for WindowController {
-        /// The layer column shows its palette colour (cell-based table: one cell per column).
-        #[unsafe(method(tableView:willDisplayCell:forTableColumn:row:))]
-        fn will_display_cell(
-            &self,
-            table_view: &NSTableView,
-            cell: &AnyObject,
-            table_column: Option<&NSTableColumn>,
-            row: NSInteger,
-        ) {
-            ffi_guard("tableView:willDisplayCell:forTableColumn:row:", (), || {
-                if !self.is_operations(table_view) || table_column.and_then(layer_column) != Some(LayerColumn::Layer) {
-                    return;
-                }
-                let Some(cell) = cell.downcast_ref::<NSTextFieldCell>() else { return };
-                let slot = usize::try_from(row)
-                    .ok()
-                    .and_then(|r| self.ivars().operation_rows.try_borrow().ok()?.get(r).map(|l| l.slot));
-                let Some(slot) = slot else { return };
-                cell.setDrawsBackground(true);
-                cell.setBackgroundColor(Some(&super::panels::operations::layer_colour(slot)));
-                cell.setTextColor(Some(&super::panels::operations::layer_text_colour(slot)));
-            });
-        }
-
         #[unsafe(method(tableViewSelectionDidChange:))]
         fn table_selection_did_change(&self, notification: &NSNotification) {
             ffi_guard("tableViewSelectionDidChange:", (), || {
@@ -1141,6 +1130,29 @@ impl WindowController {
 
     fn is_operations(&self, table: &NSTableView) -> bool {
         std::ptr::eq(table, &*self.ivars().operations_table)
+    }
+
+    /// One row of the layer table, as the view model last said it.
+    pub(crate) fn operation_line(&self, row: usize) -> Option<OperationLine> {
+        self.ivars().operation_rows.try_borrow().ok()?.get(row).cloned()
+    }
+
+    /// The row and column of the layer-table cell `control` lies in.
+    fn layer_cell_of(&self, control: &NSView) -> Option<(usize, LayerColumn)> {
+        let table = &self.ivars().operations_table;
+        let row = usize::try_from(table.rowForView(control)).ok()?;
+        let column = usize::try_from(table.columnForView(control)).ok()?;
+        layer_column(&table.tableColumns().objectAtIndex(column)).map(|c| (row, c))
+    }
+
+    /// The typed text of a layer-table cell goes to presentation unparsed.
+    fn commit_layer_field(&self, row: usize, column: LayerColumn, text: String) {
+        let Some(field) = column.field() else { return };
+        self.send(NativeEvent::OperationFieldCommitted { document: self.ivars().document, row, field, text });
+    }
+
+    fn commit_layer_toggle(&self, row: usize, column: LayerColumn, on: bool) {
+        self.send(NativeEvent::LayerToggled { document: self.ivars().document, row, column, on });
     }
 
     /// Replace the operations table's rows; true when they changed (the table must reload).

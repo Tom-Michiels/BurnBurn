@@ -19,8 +19,8 @@
 //! too.
 //!
 //! (h) a caption and the field it labels share a baseline (within one point). The panels laid out by
-//! hand that still fail this are listed in `BASELINE_PENDING` (LF6 empties the list); the forms the
-//! LF5 builder makes must pass it. `BURNBURN_BASELINE_ALL=1` shows the pending ones too.
+//! hand are held to it too (LFC: the pending list is gone); the forms the
+//! LF5 builder makes must pass it.
 
 use std::process::ExitCode;
 
@@ -126,16 +126,6 @@ mod invariants {
         for (name, sheet) in &sheets {
             walk_window(sheet, &format!("sheet {name}, built"), &mut found);
             check_sheet_keys(sheet, name, &mut found);
-        }
-        if std::env::var_os("BURNBURN_BASELINE_ALL").is_none() {
-            let before = found.len();
-            found.retain(|m| !(m.contains(": baseline") && BASELINE_PENDING.iter().any(|p| m.starts_with(p))));
-            if found.len() < before {
-                eprintln!(
-                    "layout_invariants: {} pending baseline violations skipped (BASELINE_PENDING)",
-                    before - found.len()
-                );
-            }
         }
         if found.is_empty() {
             return Ok(());
@@ -859,7 +849,44 @@ mod invariants {
     fn check_document(s: &Session, doc: DocumentId, name: &str, found: &mut Vec<String>) -> Result<(), String> {
         let window = s.app.window(doc).ok_or("no window")?;
         check_window(s, &window, name, found);
+        if let Some(table) = s.app.with_window(doc, |w| w.operations_table.retain()) {
+            check_layer_table(&table, name, found);
+        }
         Ok(())
+    }
+
+    /// LFC: every row of the layer table has a 12 pt circle left of the layer's name, level with it.
+    fn check_layer_table(table: &NSTableView, name: &str, found: &mut Vec<String>) {
+        let rows = table.numberOfRows();
+        for row in 0..rows {
+            let Some(cell) = table.viewAtColumn_row_makeIfNecessary(0, row, true) else {
+                found.push(format!("{name}: layer row {row} has no cell view"));
+                continue;
+            };
+            let dots: Vec<Retained<NSView>> =
+                cell.subviews().iter().filter(|v| v.class().name().to_str() == Ok("BurnBurnLayerDot")).collect();
+            let [dot] = dots.as_slice() else {
+                found.push(format!("{name}: layer row {row} has {} circles instead of one", dots.len()));
+                continue;
+            };
+            let size = dot.frame().size;
+            if (size.width - 12.0).abs() > 0.01 || (size.height - 12.0).abs() > 0.01 {
+                found.push(format!("{name}: layer circle is {:.1} x {:.1} pt, not 12 x 12", size.width, size.height));
+            }
+            let label = cell.subviews().iter().find_map(|v| v.downcast::<NSTextField>().ok());
+            let Some(label) = label else {
+                found.push(format!("{name}: layer row {row} has a circle but no name"));
+                continue;
+            };
+            let (d, l) = (dot.frame(), label.frame());
+            if d.origin.x + d.size.width > l.origin.x + 0.01 {
+                found.push(format!("{name}: layer circle touches its name"));
+            }
+            let level = (d.origin.y + d.size.height / 2.0 - (l.origin.y + l.size.height / 2.0)).abs();
+            if level > TOLERANCE {
+                found.push(format!("{name}: layer circle is {level:.1} pt off the centre line of its name"));
+            }
+        }
     }
 
     /// Every visible window that appeared for `step`, then hides it again.
@@ -1209,11 +1236,6 @@ mod invariants {
             }
         }
     }
-
-    /// Window titles (the step names of `common::windows::steps()`, `document`, `cut-settings`,
-    /// `sheet`) whose hand-laid captions do not yet share a baseline with their field. LF6 migrates
-    /// them to the form builder and empties this list.
-    const BASELINE_PENDING: &[&str] = &["document", "laser"];
 
     /// The y of the first text baseline of `view` in its parent's own coordinates.
     #[allow(unsafe_code)]

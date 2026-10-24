@@ -1,7 +1,8 @@
 //! The operations section of the production strip: colour palette, layer table, add row.
 
+use crate::appkit::panels::layer_cells::{self, LayerTableDelegate};
 use crate::appkit::panels::production::LIFT;
-use crate::appkit::panels::widgets::{push_button, rect, set_text, strip_label};
+use crate::appkit::panels::widgets::{push_button, rect, selected_rows, set_text, strip_label};
 use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 
@@ -10,11 +11,10 @@ use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSButtonCell, NSButtonType, NSCellImagePosition, NSColor,
-    NSFont, NSImageScaling, NSPopUpButton, NSScrollView, NSTableColumn, NSTableView,
-    NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
+    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSCellImagePosition, NSColor, NSFont, NSImageScaling,
+    NSPopUpButton, NSScrollView, NSTableColumn, NSTableView, NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
 };
-use objc2_foundation::{NSSize, NSString};
+use objc2_foundation::{NSMutableIndexSet, NSSize, NSString};
 
 use crate::l10n::{HostText, Locale, host_text};
 use crate::panels::{
@@ -34,14 +34,6 @@ pub(crate) fn layer_colour(slot: u8) -> Retained<NSColor> {
     NSColor::colorWithSRGBRed_green_blue_alpha(f64::from(c.r), f64::from(c.g), f64::from(c.b), 1.0)
 }
 
-/// Black or white, whichever reads better on the layer colour.
-pub(crate) fn layer_text_colour(slot: u8) -> Retained<NSColor> {
-    let colours = burnburn_render::Theme::light().process_layers;
-    let c = colours[usize::from(slot) % colours.len()];
-    let luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-    if luminance > 0.5 { NSColor::blackColor() } else { NSColor::whiteColor() }
-}
-
 /// The operations panel: colour palette, layer table, add row and the message line.
 pub(crate) struct OperationsSection {
     pub(crate) table: Retained<NSTableView>,
@@ -50,6 +42,8 @@ pub(crate) struct OperationsSection {
     pub(crate) kind: Retained<NSPopUpButton>,
     pub(crate) add: Retained<NSButton>,
     pub(crate) error: Retained<NSTextField>,
+    /// Makes the cells of the layer table (the table keeps its delegate weakly).
+    pub(crate) layer_delegate: Retained<LayerTableDelegate>,
     /// One button per colour (tag = slot).
     pub(crate) palette: Vec<Retained<NSButton>>,
     /// Opens Cut Settings for the selected layer row.
@@ -113,15 +107,10 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         column.setWidth(width);
         // Never narrower than that, whatever the table does when the window changes size.
         column.setMinWidth(width);
-        if c.is_toggle() {
-            let cell = NSButtonCell::initTextCell(NSButtonCell::alloc(mtm), &NSString::from_str(""));
-            cell.setButtonType(NSButtonType::Switch);
-            // SAFETY: an NSButtonCell is a valid data cell for a cell-based table column.
-            unsafe { column.setDataCell(&cell) };
-        }
         table.addTableColumn(&column);
     }
     table.setAllowsEmptySelection(true);
+    table.setRowHeight(layer_cells::ROW_HEIGHT);
     // The system's 17 pt between columns would not leave room for the columns at the default width.
     table.setIntercellSpacing(NSSize::new(4.0, 2.0));
     // The columns keep the width they were given (a squeezed header is a cut-off header); a
@@ -130,6 +119,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     table.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::OperationsTitle))));
     scroll.setDocumentView(Some(&table));
     strip.addSubview(&scroll);
+    let layer_delegate = LayerTableDelegate::new(mtm);
 
     let input = |x: f64, w: f64, caption: HostText| {
         let f = NSTextField::textFieldWithString(&NSString::from_str(""), mtm);
@@ -157,7 +147,7 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
     strip.addSubview(&add);
     let error = strip_label(mtm, strip, "", rect(12.0, 6.0, ops_width, 34.0), true);
     error.setTextColor(Some(&NSColor::systemRedColor()));
-    OperationsSection { table, inputs: [name, speed, power], kind, add, error, palette, settings }
+    OperationsSection { table, inputs: [name, speed, power], kind, add, error, layer_delegate, palette, settings }
 }
 
 impl DocWindow {
@@ -174,7 +164,19 @@ impl DocWindow {
         }
         if self.controller.set_operation_rows(panel.rows.clone()) {
             let table = self.operations.table.clone();
-            if let Err(e) = crate::appkit::objc_try("reloading the operations table", || table.reloadData()) {
+            // A view-based table drops its selection on reload: the rows that are still there stay selected.
+            let selected = selected_rows(&table);
+            if let Err(e) = crate::appkit::objc_try("reloading the operations table", || {
+                table.reloadData();
+                let rows = usize::try_from(table.numberOfRows()).unwrap_or(0);
+                let keep = NSMutableIndexSet::new();
+                for row in selected.iter().filter(|r| **r < rows) {
+                    keep.addIndex(*row);
+                }
+                if keep.count() > 0 {
+                    table.selectRowIndexes_byExtendingSelection(&keep, false);
+                }
+            }) {
                 eprintln!("burnburn: {e}");
             }
         }

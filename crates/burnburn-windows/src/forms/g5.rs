@@ -35,6 +35,7 @@ pub(super) fn form_lines(model_lines: Vec<G5Line>) -> Vec<FormLine> {
             G5Line::Heading(t) => lines.push(FormLine::Heading(t)),
             G5Line::Text(t) => lines.push(FormLine::Text(t)),
             G5Line::Problem(t) => lines.push(FormLine::Problem(t)),
+            G5Line::Unavailable(t) => lines.push(FormLine::Problem(t)),
             G5Line::Memo { control, text, max_chars } => {
                 lines.push(FormLine::Memo { id: id(control), text, max_chars })
             }

@@ -312,7 +312,7 @@ pub(super) fn recognition_lines(
         lines.push(G5Line::Problem(t(G7Text::RecogLibraryUnreadable, locale)));
     }
     if r.cameras.is_empty() {
-        lines.push(G5Line::Problem(t(G7Text::RecogNoCamera, locale)));
+        lines.push(G5Line::Unavailable(t(G7Text::RecogNoCamera, locale)));
     } else {
         lines.push(G5Line::Choice {
             control: G5Control::RecogCamera,

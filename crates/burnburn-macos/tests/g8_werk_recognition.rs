@@ -77,7 +77,7 @@ fn texts(r: &Rig, locale: Locale) -> String {
     lines(r, locale)
         .into_iter()
         .filter_map(|l| match l {
-            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Heading(t) => Some(t),
+            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::Heading(t) => Some(t),
             G5Line::Button { title, .. } => Some(format!("[{title}]")),
             G5Line::Check { caption, on, .. } => Some(format!("({}) {caption}", if on { "x" } else { " " })),
             _ => None,

@@ -6,24 +6,27 @@
 
 use std::rc::Weak;
 
-use burnburn_presentation::AppViewModel;
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::dialog_forms::{geometry, geometry_dialog_form};
+use burnburn_presentation::{AppViewModel, GeometryDialogKind};
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSFont,
-    NSLineBreakMode, NSPanel, NSTextField, NSView, NSWindow, NSWindowStyleMask,
+    NSPanel, NSTextField, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSObject, NSPoint, NSSize, NSString};
 
 use crate::adapter::NativeEvent;
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::widgets::{field, label, push_button, rect, set_text};
+use crate::appkit::panels::form_surface::{FormSurface, form_sheet};
+use crate::appkit::panels::widgets::{field, label, rect, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels::{PARAM_SLOTS, ParamLine, ParamSection, geometry_dialog_panel, shapes_panel};
+use crate::panels::{GeometryDialogPanel, PARAM_SLOTS, ParamLine, ParamSection, geometry_dialog_panel, shapes_panel};
 
 const PANEL_WIDTH: f64 = 300.0;
 const ROW_HEIGHT: f64 = 28.0;
@@ -31,7 +34,6 @@ const TITLE_HEIGHT: f64 = 22.0;
 const MARGIN: f64 = 12.0;
 const CAPTION_WIDTH: f64 = 150.0;
 const DIALOG_WIDTH: f64 = 380.0;
-const DIALOG_HEIGHT: f64 = 170.0;
 
 /// One row of a section: caption, text field and checkbox (one of the two is shown).
 struct Row {
@@ -132,11 +134,9 @@ pub(crate) struct ShapesSection {
     rows: Vec<Row>,
     shown: bool,
     sheet: Retained<NSWindow>,
-    dialog_title: Retained<NSTextField>,
-    dialog_label: Retained<NSTextField>,
+    /// The dialog is a form built once from a skeleton and loaded for every opening (LFC).
+    dialog: FormSurface,
     dialog_field: Retained<NSTextField>,
-    dialog_unit: Retained<NSTextField>,
-    dialog_error: Retained<NSTextField>,
     dialog_ok: Retained<NSButton>,
     dialog_cancel: Retained<NSButton>,
     /// Whether the sheet is attached to the window now.
@@ -194,49 +194,19 @@ pub(crate) fn shapes_section(
     }
     panel.setContentView(Some(&content));
 
-    // --- the dialog sheet
-    // SAFETY: a freshly allocated window with a valid rect, style and the buffered backing.
-    let sheet = unsafe {
-        NSWindow::initWithContentRect_styleMask_backing_defer(
-            NSWindow::alloc(mtm),
-            rect(0.0, 0.0, DIALOG_WIDTH, DIALOG_HEIGHT),
-            NSWindowStyleMask::Titled,
-            NSBackingStoreType::Buffered,
-            false,
-        )
+    // --- the dialog sheet: a form (the title, label and unit of a kind are loaded on opening)
+    let skeleton = GeometryDialogPanel {
+        kind: GeometryDialogKind::RoundCorners,
+        title: t(HostText::GeometryRoundTitle).to_owned(),
+        label: t(HostText::GeometryRoundLabel).to_owned(),
+        text: String::new(),
+        error: String::new(),
     };
-    // SAFETY: ownership stays with this Retained.
-    unsafe { sheet.setReleasedWhenClosed(false) };
-    let sheet_content = NSView::initWithFrame(NSView::alloc(mtm), rect(0.0, 0.0, DIALOG_WIDTH, DIALOG_HEIGHT));
-    let dialog_title = label(mtm, "", rect(16.0, DIALOG_HEIGHT - 36.0, DIALOG_WIDTH - 32.0, 20.0));
-    dialog_title.setFont(Some(&NSFont::boldSystemFontOfSize(13.0)));
-    let dialog_label = label(mtm, "", rect(16.0, DIALOG_HEIGHT - 70.0, 200.0, 22.0));
-    let dialog_field = field(mtm, rect(222.0, DIALOG_HEIGHT - 72.0, DIALOG_WIDTH - 238.0, 24.0));
-    let dialog_unit = label(mtm, "", rect(0.0, 0.0, 40.0, 20.0));
-    dialog_unit.setTextColor(Some(&NSColor::secondaryLabelColor()));
-    dialog_unit.setHidden(true);
-    let dialog_error = label(mtm, "", rect(16.0, 52.0, DIALOG_WIDTH - 32.0, 34.0));
-    dialog_error.setTextColor(Some(&NSColor::systemRedColor()));
-    dialog_error.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-    let dialog_cancel = push_button(mtm, t(HostText::GeometryCancel));
-    dialog_cancel.setFrame(rect(DIALOG_WIDTH - 232.0, 12.0, 104.0, 28.0));
-    dialog_cancel.setKeyEquivalent(&NSString::from_str("\u{1b}"));
-    let dialog_ok = push_button(mtm, t(HostText::GeometryOk));
-    dialog_ok.setFrame(rect(DIALOG_WIDTH - 116.0, 12.0, 104.0, 28.0));
-    dialog_ok.setKeyEquivalent(&NSString::from_str("\r"));
-    for v in [
-        &dialog_title as &NSView,
-        &dialog_label,
-        &dialog_field,
-        &dialog_unit,
-        &dialog_error,
-        &dialog_cancel,
-        &dialog_ok,
-    ] {
-        sheet_content.addSubview(v);
-    }
-    dialog_field.setAccessibilityLabel(Some(&NSString::from_str(t(HostText::GeometryOk))));
-    sheet.setContentView(Some(&sheet_content));
+    let dialog = FormSurface::new(mtm, &[(&geometry_dialog_form(&skeleton, locale), DIALOG_WIDTH)]);
+    let sheet = form_sheet(mtm, &dialog, t(HostText::GeometryRoundTitle));
+    let dialog_field = dialog.text(geometry::VALUE);
+    let dialog_ok = dialog.dialog_button(ButtonRole::Primary);
+    let dialog_cancel = dialog.dialog_button(ButtonRole::Cancel);
 
     // --- the target
     let ivars = TargetIvars {
@@ -276,11 +246,8 @@ pub(crate) fn shapes_section(
         rows,
         shown: false,
         sheet,
-        dialog_title,
-        dialog_label,
+        dialog,
         dialog_field,
-        dialog_unit,
-        dialog_error,
         dialog_ok,
         dialog_cancel,
         dialog_shown: false,
@@ -452,36 +419,20 @@ impl DocWindow {
             }
             return;
         };
-        set_text(&s.dialog_error, &d.error);
+        let spec = geometry_dialog_form(&d, self.locale);
         if s.dialog_shown {
+            // Only the refusal changes while the sheet is up; what the user typed stays.
+            s.dialog.update(0, &spec);
+            let size = s.dialog.relayout();
+            crate::appkit::panels::form_surface::resize_content(&s.sheet, size);
             return;
         }
         // Filled once per opening, so a refused OK keeps what the user typed.
-        set_text(&s.dialog_title, &d.title);
-        // The unit of the caption (`Straal (mm)`) is a suffix after the field, on its baseline.
-        let split = burnburn_host_models::form::split_caption(&d.label);
-        set_text(&s.dialog_label, &split.label);
-        let field_x = 222.0;
-        let full_w = DIALOG_WIDTH - 238.0;
-        match split.unit {
-            Some(unit) => {
-                set_text(&s.dialog_unit, burnburn_host_models::format::unit_label(unit));
-                let w = s.dialog_unit.cell().map_or(24.0, |c| c.cellSize().width.ceil()) + 4.0;
-                s.dialog_field.setFrame(rect(field_x, DIALOG_HEIGHT - 72.0, full_w - w - 4.0, 24.0));
-                s.dialog_unit.setFrame(rect(field_x + full_w - w, DIALOG_HEIGHT - 72.0, w, 20.0));
-                s.dialog_unit.setHidden(false);
-                crate::appkit::panels::widgets::align_baseline(&s.dialog_unit, &s.dialog_field);
-            }
-            None => {
-                s.dialog_field.setFrame(rect(field_x, DIALOG_HEIGHT - 72.0, full_w, 24.0));
-                s.dialog_unit.setHidden(true);
-            }
-        }
-        s.dialog_label.setFrame(rect(16.0, DIALOG_HEIGHT - 70.0, 200.0, 22.0));
-        crate::appkit::panels::widgets::align_baseline(&s.dialog_label, &s.dialog_field);
-        s.dialog_field.setStringValue(&NSString::from_str(&d.text));
+        s.dialog.load(0, &spec);
         s.dialog_field.setAccessibilityLabel(Some(&NSString::from_str(&d.label)));
         s.sheet.setTitle(&NSString::from_str(&d.title));
+        let size = s.dialog.relayout();
+        crate::appkit::panels::form_surface::resize_content(&s.sheet, size);
         s.dialog_shown = true;
         let (window, sheet) = (self.window.clone(), s.sheet.clone());
         if let Err(e) =

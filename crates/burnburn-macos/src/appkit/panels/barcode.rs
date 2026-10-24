@@ -1,21 +1,21 @@
 //! The barcode sheet (W3-UI-tekst, E10): type pop-up over the 29 symbologies (unsupported ones
 //! greyed out with the reason as tooltip), the parameters that belong to the type, the encoded size
 //! and the readability warning. It copies the headless model (`crate::panels::text_panels`) into
-//! widgets; Maak creates the symbol through presentation.
+//! widgets; Maak creates the symbol through presentation. The sheet is a form built from
+//! `dialog_forms::barcode_form` (LFC); the rows a type does not have are hidden rows.
 
 use std::rc::Weak;
 
+use burnburn_host_models::form::ButtonRole;
+use burnburn_host_models::panels::dialog_forms::{barcode as id, barcode_form};
 use burnburn_presentation::AppViewModel;
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSButton, NSControl, NSPopUpButton, NSTextField};
 
-use super::image::sheet_window;
-use super::text::{SheetHolder, view};
-use super::textform::{
-    Cells, Form, FormRow, TextTarget, caption, message_line, new_target, popup, push, set_field, set_popup_items,
-    text_field, unwire,
-};
+use super::form_surface::{FormSurface, form_sheet};
+use super::text::SheetHolder;
+use super::textform::{TextTarget, new_target, set_field, set_popup_items, unwire, wire};
 use super::widgets::set_text;
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
@@ -24,17 +24,11 @@ use crate::panels::{Slot, TextText, text_panels, text_text};
 
 const SHEET_WIDTH: f64 = 480.0;
 
-// Row positions in the form, for showing only the rows the chosen type has.
-const ROW_HEIGHT: usize = 6;
-const ROW_ECC: usize = 7;
-const ROW_INPUT: usize = 8;
-const ROW_COLUMNS: usize = 9;
-
 pub(crate) struct BarcodeSection {
     target: Retained<TextTarget>,
     controls: Vec<Retained<NSControl>>,
     sheet: SheetHolder,
-    form: Form,
+    form: FormSurface,
     types: Retained<NSPopUpButton>,
     payload: Retained<NSTextField>,
     payload_hint: Retained<NSTextField>,
@@ -60,74 +54,40 @@ pub(crate) fn barcode_section(
     document: DocumentId,
     locale: Locale,
 ) -> BarcodeSection {
-    let t = |text: TextText| text_text(text, locale);
     let target = new_target(mtm, app, document);
-    let labelled = |text: TextText, control: &objc2_app_kit::NSView, height: f64| {
-        FormRow::new(Cells::Labeled(caption(mtm, t(text)), objc2::Message::retain(control)), height)
-    };
-    let types = popup(mtm, &target, Slot::BcType, t(TextText::BarcodeType));
-    let payload = text_field(mtm, &target, Slot::BcPayload, t(TextText::Payload));
-    let payload_hint = message_line(mtm, false);
-    let module = text_field(mtm, &target, Slot::BcModule, t(TextText::Module));
-    let min_module = text_field(mtm, &target, Slot::BcMinModule, t(TextText::MinModule));
-    let quiet = text_field(mtm, &target, Slot::BcQuiet, t(TextText::Quiet));
-    let height = text_field(mtm, &target, Slot::BcHeight, t(TextText::BarHeight));
-    let ecc = popup(mtm, &target, Slot::BcEcc, t(TextText::Ecc));
-    let input_mode = popup(mtm, &target, Slot::BcInputMode, t(TextText::InputMode));
-    let columns = text_field(mtm, &target, Slot::BcColumns, t(TextText::Columns));
-    let width = text_field(mtm, &target, Slot::BcWidth, t(TextText::Width));
-    let size_line = message_line(mtm, false);
-    let canonical_line = message_line(mtm, false);
-    let problems = message_line(mtm, true);
-    let readability = message_line(mtm, true);
-    let cancel = push(mtm, &target, Slot::BcCancel, t(TextText::Cancel));
-    let create = push(mtm, &target, Slot::BcCreate, t(TextText::Create));
-    create.setKeyEquivalent(&objc2_foundation::NSString::from_str("\r"));
-    cancel.setKeyEquivalent(&objc2_foundation::NSString::from_str("\u{1b}"));
-    let rows = vec![
-        labelled(TextText::BarcodeType, &types, 26.0),
-        labelled(TextText::Payload, &payload, 24.0),
-        FormRow::new(Cells::Full(view!(payload_hint)), 30.0),
-        labelled(TextText::Module, &module, 24.0),
-        labelled(TextText::MinModule, &min_module, 24.0),
-        labelled(TextText::Quiet, &quiet, 24.0),
-        labelled(TextText::BarHeight, &height, 24.0),
-        labelled(TextText::Ecc, &ecc, 26.0),
-        labelled(TextText::InputMode, &input_mode, 26.0),
-        labelled(TextText::Columns, &columns, 24.0),
-        labelled(TextText::Width, &width, 24.0),
-        FormRow::new(Cells::Full(view!(size_line)), 18.0),
-        FormRow::new(Cells::Full(view!(canonical_line)), 18.0),
-        FormRow::new(Cells::Full(view!(problems)), 50.0),
-        FormRow::new(Cells::Full(view!(readability)), 34.0),
-        FormRow::new(Cells::Side(vec![view!(cancel), view!(create)]), 28.0),
+    let spec = barcode_form(locale);
+    let form = FormSurface::new(mtm, &[(&spec, SHEET_WIDTH)]);
+    let types = form.popup(id::TYPE);
+    let ecc = form.popup(id::ECC);
+    let input_mode = form.popup(id::INPUT_MODE);
+    let (payload, module, min_module, quiet) =
+        (form.text(id::PAYLOAD), form.text(id::MODULE), form.text(id::MIN_MODULE), form.text(id::QUIET));
+    let (height, columns, width) = (form.text(id::HEIGHT), form.text(id::COLUMNS), form.text(id::WIDTH));
+    let (create, cancel) = (form.dialog_button(ButtonRole::Primary), form.dialog_button(ButtonRole::Cancel));
+    // The slot is the tag of a control; the one action of the text panels reads it.
+    let wired: [(&NSControl, Slot); 12] = [
+        (&types, Slot::BcType),
+        (&payload, Slot::BcPayload),
+        (&module, Slot::BcModule),
+        (&min_module, Slot::BcMinModule),
+        (&quiet, Slot::BcQuiet),
+        (&height, Slot::BcHeight),
+        (&ecc, Slot::BcEcc),
+        (&input_mode, Slot::BcInputMode),
+        (&columns, Slot::BcColumns),
+        (&width, Slot::BcWidth),
+        (&create, Slot::BcCreate),
+        (&cancel, Slot::BcCancel),
     ];
-    let form = Form::new(mtm, SHEET_WIDTH, rows);
-    let (sheet, _) = sheet_window(mtm, (SHEET_WIDTH, 460.0), t(TextText::BarcodeTitle));
-    sheet.setContentView(Some(&form.content));
-    let all: Vec<&NSControl> = vec![
-        &types,
-        &payload,
-        &module,
-        &min_module,
-        &quiet,
-        &height,
-        &ecc,
-        &input_mode,
-        &columns,
-        &width,
-        &cancel,
-        &create,
-    ];
-    let controls = all.iter().map(|c| objc2::Message::retain(*c)).collect();
+    let controls = wired.iter().map(|(c, slot)| wire(c, &target, *slot)).collect();
+    let sheet = form_sheet(mtm, &form, text_text(TextText::BarcodeTitle, locale));
     BarcodeSection {
         target,
         controls,
         sheet: SheetHolder { sheet, shown: false },
-        form,
         types,
         payload,
-        payload_hint,
+        payload_hint: form.text(id::PAYLOAD_HINT),
         module,
         min_module,
         quiet,
@@ -136,12 +96,13 @@ pub(crate) fn barcode_section(
         input_mode,
         columns,
         width,
-        size_line,
-        canonical_line,
-        problems,
-        readability,
+        size_line: form.text(id::SIZE_LINE),
+        canonical_line: form.text(id::CANONICAL),
+        problems: form.text(id::PROBLEMS),
+        readability: form.text(id::READABILITY),
         create,
         cancel,
+        form,
     }
 }
 
@@ -225,10 +186,10 @@ impl DocWindow {
         s.quiet.setPlaceholderString(Some(&objc2_foundation::NSString::from_str(&p.quiet_hint)));
         set_field(&s.width, &p.width, false);
         // Only the rows the chosen type has.
-        s.form.rows[ROW_HEIGHT].visible.set(p.height.is_some());
-        s.form.rows[ROW_ECC].visible.set(p.ecc.is_some());
-        s.form.rows[ROW_INPUT].visible.set(p.input_modes.is_some());
-        s.form.rows[ROW_COLUMNS].visible.set(p.columns.is_some());
+        s.form.set_hidden(id::HEIGHT, p.height.is_none());
+        s.form.set_hidden(id::ECC, p.ecc.is_none());
+        s.form.set_hidden(id::INPUT_MODE, p.input_modes.is_none());
+        s.form.set_hidden(id::COLUMNS, p.columns.is_none());
         if let Some(h) = &p.height {
             set_field(&s.height, h, false);
         }
@@ -249,7 +210,7 @@ impl DocWindow {
         set_text(&s.readability, &p.readability);
         s.create.setEnabled(p.create_enabled);
         s.create.setTitle(&objc2_foundation::NSString::from_str(&p.create_title));
-        let height = s.form.lay_out();
-        s.sheet.show(&window, (SHEET_WIDTH, height));
+        let size = s.form.relayout();
+        s.sheet.show(&window, (size.width, size.height));
     }
 }
