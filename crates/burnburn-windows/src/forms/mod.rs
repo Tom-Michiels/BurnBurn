@@ -27,6 +27,7 @@ pub mod layers;
 pub mod layout;
 pub mod schikken;
 pub mod shapes;
+pub mod spec_layout;
 pub mod sketch;
 pub mod text;
 pub mod toolstrip;
