@@ -59,7 +59,7 @@ texts! {
     StartConfirmButton => ("Start de job", "Start the job"),
     StartCancelButton => ("Annuleer", "Cancel"),
     // --- The remnant library (W07).
-    RemnantsMenu => ("Restplaten…", "Remnants…"),
+    RemnantsMenu => ("Restplaten", "Remnants"),
     RemnantsTitle => ("Restplaten", "Remnants"),
     RemnantsHeading => ("Bewaarde restplaten", "Kept remnants"),
     RemnantsNone => ("Er zijn nog geen restplaten bewaard.", "No remnants have been kept yet."),
@@ -112,7 +112,7 @@ texts! {
         "Take care with order {0}: the material of the remnant ({1}) is not the material of the job."
     ),
     // --- Product recognition (W06).
-    RecognitionMenu => ("Herkenning…", "Recognition…"),
+    RecognitionMenu => ("Herkenning", "Recognition"),
     RecognitionTitle => ("Producten herkennen", "Recognise products"),
     RecogHeading => ("Sjabloon uit het camerabeeld", "Template from the camera picture"),
     RecogHint => (

@@ -74,16 +74,12 @@ pub fn menu_bar(locale: Locale) -> Vec<Submenu> {
     let t = |text: HostText| host_text(text, locale);
     vec![
         popup("file", t(HostText::MenuFile), file::items(locale)),
-        popup("edit", t(HostText::MenuEdit), edit::items()),
-        popup("arrange", t(HostText::MenuArrange), arrange::items(locale)),
-        popup("tools", t(HostText::MenuTools), tools::tools_items()),
+        popup("edit", t(HostText::MenuEdit), edit::items(locale)),
         popup("view", t(HostText::MenuView), view::items()),
-        popup("shapes", t(HostText::MenuShapes), tools::shapes_items()),
+        popup("tools", t(HostText::MenuTools), tools::tools_items(locale)),
+        popup("arrange", t(HostText::MenuArrange), arrange::items(locale)),
         popup("text", crate::panels::text_text(crate::panels::TextText::MenuText, locale), tools::text_items()),
-        popup("sketch", t(HostText::MenuSketch), tools::sketch_items()),
-        popup("image", t(HostText::ImageMenu), image::items()),
-        popup("production", t(HostText::MenuProduction), app::production_items()),
-        popup("laser", crate::panels::laser_text(crate::panels::LaserText::MenuLaser, locale), laser::items()),
+        popup("laser", crate::panels::laser_text(crate::panels::LaserText::MenuLaser, locale), laser::items(locale)),
         popup("window", app_text(AppText::MenuWindow, locale), app::window_items()),
         popup("help", app_text(AppText::MenuHelp, locale), app::help_items()),
     ]

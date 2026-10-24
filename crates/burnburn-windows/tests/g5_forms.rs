@@ -421,8 +421,8 @@ fn the_panel_items_share_the_macos_tags_and_toggle_their_panels() {
         assert!(menu_items().contains(&item));
         assert_eq!(menu_item(command_id(item)), Some(item));
     }
-    assert_eq!(menu_title(MenuItem::OffsetPanel, &vm, Locale::En), "Offset and Repair…");
-    assert_eq!(menu_title(MenuItem::StructurePanel, &vm, Locale::Nl), "Structuur…");
+    assert_eq!(menu_title(MenuItem::OffsetPanel, &vm, Locale::En), "Offset and Repair");
+    assert_eq!(menu_title(MenuItem::StructurePanel, &vm, Locale::Nl), "Structuur");
     let ctx = MessageContext {
         document: doc,
         control: Control::Frame,

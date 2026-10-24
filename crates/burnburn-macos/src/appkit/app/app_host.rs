@@ -171,7 +171,8 @@ pub(super) fn window_menu(
     holder
 }
 
-/// Help menu: manual, support data, diagnostic export and the debug log switch.
+/// Help menu: manual, support data, diagnostic export and the debug log switch. Registered with
+/// AppKit as the Help menu (`setHelpMenu`).
 pub(super) fn help_menu(
     mtm: MainThreadMarker,
     target: &crate::appkit::classes::MenuTarget,
@@ -192,7 +193,10 @@ pub(super) fn help_menu(
         NSMenuItem::separatorItem(mtm),
         app(AppAction::DebugLog),
     ];
-    submenu_holder(mtm, app_text(AppText::MenuHelp, locale), &items).0
+    let (holder, menu) = submenu_holder(mtm, app_text(AppText::MenuHelp, locale), &items);
+    // The system adds its search field to the Help menu and keeps it the last menu of the bar.
+    NSApplication::sharedApplication(mtm).setHelpMenu(Some(&menu));
+    holder
 }
 
 /// The key string AppKit wants for a binding's key.

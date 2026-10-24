@@ -107,8 +107,8 @@ fn the_menu_item_has_its_tag_its_titles_and_toggles_the_panel() {
     assert_eq!(menu_tag(MenuItem::RecognitionPanel), 1071);
     assert_eq!(menu_item(1071), Some(MenuItem::RecognitionPanel));
     assert!(menu_enabled(MenuItem::RecognitionPanel, &vm));
-    assert_eq!(menu_title(MenuItem::RecognitionPanel, &vm, Locale::Nl), "Herkenning…");
-    assert_eq!(menu_title(MenuItem::RecognitionPanel, &vm, Locale::En), "Recognition…");
+    assert_eq!(menu_title(MenuItem::RecognitionPanel, &vm, Locale::Nl), "Herkenning");
+    assert_eq!(menu_title(MenuItem::RecognitionPanel, &vm, Locale::En), "Recognition");
     assert_eq!(
         translate(NativeEvent::Menu(MenuItem::RecognitionPanel), &vm),
         Reaction::ToggleG5Panel(G5Panel::Recognition)

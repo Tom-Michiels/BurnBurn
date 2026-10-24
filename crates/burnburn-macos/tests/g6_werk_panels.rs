@@ -74,7 +74,7 @@ fn the_panel_exists_only_while_a_tracer_is_open_and_the_menu_item_follows() {
     assert!(panel(&h, doc, Locale::En).is_some());
     assert!(menu_enabled(MenuItem::TracePrepPanel, &h.view()));
     assert_eq!(menu_item(menu_tag(MenuItem::TracePrepPanel)), Some(MenuItem::TracePrepPanel));
-    assert_eq!(menu_title(MenuItem::TracePrepPanel, &h.view(), Locale::Nl), "Beeld voorbereiden…");
+    assert_eq!(menu_title(MenuItem::TracePrepPanel, &h.view(), Locale::Nl), "Beeld voorbereiden");
     assert_eq!(
         translate(NativeEvent::Menu(MenuItem::TracePrepPanel), &h.view()),
         Reaction::ToggleG5Panel(G5Panel::TracePrep)

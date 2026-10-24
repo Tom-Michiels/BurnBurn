@@ -122,7 +122,7 @@ fn the_menu_item_has_the_macos_tag_and_toggles_the_panel() {
     let vm = h.view();
     assert_eq!(command_id(MenuItem::TracePrepPanel), 1032);
     assert_eq!(menu_item(1032), Some(MenuItem::TracePrepPanel));
-    assert_eq!(menu_title(MenuItem::TracePrepPanel, &vm, Locale::Nl), "Beeld voorbereiden…");
+    assert_eq!(menu_title(MenuItem::TracePrepPanel, &vm, Locale::Nl), "Beeld voorbereiden");
     let ctx = MessageContext {
         document: doc,
         control: Control::Frame,

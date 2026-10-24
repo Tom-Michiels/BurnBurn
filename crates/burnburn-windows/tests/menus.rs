@@ -112,23 +112,32 @@ fn fn_body(src: &str, signature: &str) -> String {
     rest[..end].to_owned()
 }
 
-fn win_tokens(menu: &Submenu) -> Vec<String> {
-    fn walk(nodes: &[MenuNode], out: &mut Vec<String>) {
+/// The macOS token of a menu item of the Windows menu.
+fn token_of(item: &MenuItem) -> String {
+    match item {
+        MenuItem::Command(k) => format!("Cmd:{k:?}"),
+        MenuItem::Open => "Open".into(),
+        MenuItem::CamDialog(d) => format!("Cam:{d:?}"),
+        MenuItem::SchikkenPanel => "Schikken".into(),
+        MenuItem::OffsetPanel => "Other:OffsetPanel".into(),
+        MenuItem::StructurePanel => "Other:StructurePanel".into(),
+        MenuItem::TracePrepPanel => "Other:TracePrepPanel".into(),
+        MenuItem::OperatorPanel => "Other:OperatorPanel".into(),
+        MenuItem::RemnantsPanel => "Other:RemnantsPanel".into(),
+        MenuItem::RecognitionPanel => "Other:RecognitionPanel".into(),
+        MenuItem::Host(item) => host_token(*item),
+    }
+}
+
+/// Every item of a popup with its macOS token, nested popups flattened; the dynamic recent lists
+/// are one `Dyn:` entry without a menu item.
+fn win_entries(menu: &Submenu) -> Vec<(String, Option<MenuItem>)> {
+    fn walk(nodes: &[MenuNode], out: &mut Vec<(String, Option<MenuItem>)>) {
         for n in nodes {
             match n {
-                MenuNode::Item(MenuItem::Command(k)) => out.push(format!("Cmd:{k:?}")),
-                MenuNode::Item(MenuItem::Open) => out.push("Open".into()),
-                MenuNode::Item(MenuItem::CamDialog(d)) => out.push(format!("Cam:{d:?}")),
-                MenuNode::Item(MenuItem::SchikkenPanel) => out.push("Schikken".into()),
-                MenuNode::Item(MenuItem::OffsetPanel) => out.push("Other:OffsetPanel".into()),
-                MenuNode::Item(MenuItem::StructurePanel) => out.push("Other:StructurePanel".into()),
-                MenuNode::Item(MenuItem::TracePrepPanel) => out.push("Other:TracePrepPanel".into()),
-                MenuNode::Item(MenuItem::OperatorPanel) => out.push("Other:OperatorPanel".into()),
-                MenuNode::Item(MenuItem::RemnantsPanel) => out.push("Other:RemnantsPanel".into()),
-                MenuNode::Item(MenuItem::RecognitionPanel) => out.push("Other:RecognitionPanel".into()),
-                MenuNode::Item(MenuItem::Host(item)) => out.push(host_token(*item)),
+                MenuNode::Item(item) => out.push((token_of(item), Some(*item))),
                 MenuNode::Separator => {}
-                MenuNode::Submenu(s) if s.id.starts_with("recent_") => out.push(format!("Dyn:{}", s.id)),
+                MenuNode::Submenu(s) if s.id.starts_with("recent_") => out.push((format!("Dyn:{}", s.id), None)),
                 MenuNode::Submenu(s) => walk(&s.items, out),
             }
         }
@@ -136,6 +145,10 @@ fn win_tokens(menu: &Submenu) -> Vec<String> {
     let mut out = Vec::new();
     walk(&menu.items, &mut out);
     out
+}
+
+fn win_tokens(menu: &Submenu) -> Vec<String> {
+    win_entries(menu).into_iter().map(|(token, _)| token).collect()
 }
 
 /// The macOS token of a panel-family item: commands are commands, host items keep their name.
@@ -162,14 +175,10 @@ fn windows_only(token: &str) -> bool {
 const POPUPS: &[(&str, &str)] = &[
     ("HostText::MenuFile", "file"),
     ("HostText::MenuEdit", "edit"),
-    ("HostText::MenuArrange", "arrange"),
-    ("HostText::MenuTools", "tools"),
     ("HostText::MenuView", "view"),
-    ("HostText::MenuShapes", "shapes"),
+    ("HostText::MenuTools", "tools"),
+    ("HostText::MenuArrange", "arrange"),
     ("TextText::MenuText", "text"),
-    ("HostText::MenuSketch", "sketch"),
-    ("HostText::ImageMenu", "image"),
-    ("HostText::MenuProduction", "production"),
     ("LaserText::MenuLaser", "laser"),
     ("AppText::MenuWindow", "window"),
     ("AppText::MenuHelp", "help"),
@@ -185,7 +194,7 @@ fn popup<'a>(bar: &'a [Submenu], id: &str) -> &'a Submenu {
 fn every_popup_has_the_macos_items_in_the_macos_order() {
     let bar = menu_bar(Locale::En);
     let popups = mac_popups();
-    assert!(popups.len() >= 13, "the macOS menu source was parsed: {} popups", popups.len());
+    assert!(popups.len() >= 9, "the macOS menu source was parsed: {} popups", popups.len());
     for (token, id) in POPUPS {
         let (_, src) = popups.iter().find(|(t, _)| t.contains(token)).unwrap_or_else(|| panic!("mac popup {token}"));
         let mut expected: Vec<String> = mac_tokens(src);
@@ -216,7 +225,10 @@ fn the_arrange_popup_nests_align_distribute_dock_and_move_together_like_the_mac(
             host_text(HostText::MenuAlign, Locale::En),
             host_text(HostText::MenuDistribute, Locale::En),
             "Dock",
-            "Move Together"
+            "Move Together",
+            // LF16: drawing order and lock/hide are submenus so the popup stays short.
+            host_text(HostText::MenuOrder, Locale::En),
+            host_text(HostText::MenuLockHide, Locale::En)
         ]
     );
     assert_eq!(win_tokens(subs[0]).len(), 6, "six alignments");
@@ -449,5 +461,170 @@ fn every_macos_key_equivalent_is_a_ctrl_accelerator_on_windows() {
             if option { "+Alt" } else { "" },
             if shift { "+Shift" } else { "" }
         );
+    }
+}
+
+// ---- LF16: the menu structure rules --------------------------------------------------------------
+
+include!("common/menu_rules.rs");
+
+#[test]
+fn the_menu_bar_is_the_ten_menus_of_the_mac_guidelines_without_the_application_menu() {
+    let bar = menu_bar(Locale::Nl);
+    let ids: Vec<&str> = bar.iter().map(|m| m.id).collect();
+    assert_eq!(ids, ["file", "edit", "view", "tools", "arrange", "text", "laser", "window", "help"]);
+    let titles: Vec<&str> = bar.iter().map(|m| m.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        ["Archief", "Wijzig", "Weergave", "Gereedschap", "Schikken", "Tekst", "Laser", "Venster", "Help"]
+    );
+}
+
+#[test]
+fn the_macos_menu_has_the_same_popups_in_the_same_order() {
+    let titles: Vec<String> = mac_popups().into_iter().map(|(title, _)| title).collect();
+    let expected = POPUPS.iter().map(|(token, _)| *token).collect::<Vec<_>>();
+    assert_eq!(titles.len(), expected.len(), "popups of the macOS menu: {titles:?}");
+    for (title, token) in titles.iter().zip(expected) {
+        assert!(title.contains(token), "{title} should be {token}");
+    }
+}
+
+#[test]
+fn production_and_the_cam_settings_live_in_the_laser_menu() {
+    let bar = menu_bar(Locale::En);
+    let laser = win_tokens(popup(&bar, "laser"));
+    for token in ["Cmd:Compile", "Cmd:ExportRd", "Cam:Optimization", "Cam:Order", "Cam:Sublayers", "Cam:Device"] {
+        assert!(laser.contains(&token.to_owned()), "{token} in Laser: {laser:?}");
+    }
+    let edit = win_tokens(popup(&bar, "edit"));
+    assert!(!edit.iter().any(|t| t.starts_with("Cam:")), "no CAM dialog is left in Edit: {edit:?}");
+    // The four settings sit together in one submenu named Operations.
+    let laser_menu = popup(&bar, "laser");
+    let operations = laser_menu
+        .items
+        .iter()
+        .find_map(|n| match n {
+            MenuNode::Submenu(s) if s.title == "Operations" => Some(s),
+            _ => None,
+        })
+        .expect("a submenu Operations in Laser");
+    assert_eq!(win_tokens(operations), ["Cam:Optimization", "Cam:Order", "Cam:Sublayers", "Cam:Device"]);
+    let nl = menu_bar(Locale::Nl);
+    assert!(popup(&nl, "laser").items.iter().any(|n| matches!(n, MenuNode::Submenu(s) if s.title == "Bewerkingen")));
+}
+
+#[test]
+fn shapes_sketch_and_image_are_submenus_of_the_tools_menu() {
+    let bar = menu_bar(Locale::Nl);
+    let tools = popup(&bar, "tools");
+    let subs: Vec<&str> = tools
+        .items
+        .iter()
+        .filter_map(|n| if let MenuNode::Submenu(s) = n { Some(s.title.as_str()) } else { None })
+        .collect();
+    assert_eq!(subs, ["Vormen", "Knopen", "Schets", "Beeld"]);
+}
+
+#[test]
+fn no_item_appears_twice_in_the_whole_menu_bar() {
+    for locale in [Locale::En, Locale::Nl] {
+        let mut seen: Vec<String> = Vec::new();
+        for menu in menu_bar(locale) {
+            for token in win_tokens(&menu) {
+                assert!(!seen.contains(&token), "{token} appears twice (second time in {})", menu.id);
+                seen.push(token);
+            }
+        }
+    }
+}
+
+#[test]
+fn the_macos_menu_source_has_no_item_twice_and_no_key_twice() {
+    let mut seen: Vec<String> = Vec::new();
+    for (title, src) in mac_popups() {
+        for token in mac_tokens(&src) {
+            assert!(!seen.contains(&token), "{token} appears twice in the macOS menu (second time in {title})");
+            seen.push(token);
+        }
+    }
+    let mut keys: Vec<(String, bool, bool)> = Vec::new();
+    for MacKey { token, key, shift, option } in mac_key_equivalents() {
+        let combo = (key.clone(), shift, option);
+        assert!(!keys.contains(&combo), "{token}: shortcut {combo:?} is used twice");
+        keys.push(combo);
+    }
+}
+
+#[test]
+fn an_item_that_opens_a_dialog_ends_in_an_ellipsis_and_no_other_item_does() {
+    let ellipsis = '\u{2026}';
+    for locale in [Locale::En, Locale::Nl] {
+        let vm = HeadlessEditorHarness::new().view();
+        for menu in menu_bar(locale) {
+            for (token, item) in win_entries(&menu) {
+                let Some(item) = item else { continue };
+                let title = menu_title(item, &vm, locale);
+                let ends = title.ends_with(ellipsis);
+                match opens(&token) {
+                    Opens::Dialog => {
+                        assert!(ends, "{token} opens a dialog: {title:?} should end in an ellipsis ({locale:?})")
+                    }
+                    Opens::Window | Opens::Nothing => {
+                        assert!(!ends, "{token} opens no dialog: {title:?} must not end in an ellipsis ({locale:?})")
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn no_menu_lists_more_than_25_entries_without_grouping_them_in_submenus() {
+    fn check(id: &str, nodes: &[MenuNode]) {
+        let entries = nodes.iter().filter(|n| !matches!(n, MenuNode::Separator)).count();
+        assert!(entries <= 25, "{id} lists {entries} entries");
+        for n in nodes {
+            if let MenuNode::Submenu(s) = n {
+                check(&format!("{id} > {}", s.title), &s.items);
+            }
+        }
+    }
+    for locale in [Locale::En, Locale::Nl] {
+        for menu in menu_bar(locale) {
+            check(menu.id, &menu.items);
+        }
+    }
+}
+
+#[test]
+fn the_edit_menu_groups_the_select_commands_in_a_submenu() {
+    let bar = menu_bar(Locale::En);
+    let edit = popup(&bar, "edit");
+    let select = edit
+        .items
+        .iter()
+        .find_map(|n| match n {
+            MenuNode::Submenu(s) => Some(s),
+            _ => None,
+        })
+        .expect("Edit has a submenu");
+    assert_eq!(select.title, "Select");
+    assert!(win_tokens(select).contains(&"Cmd:SelectCircles".to_owned()));
+}
+
+#[test]
+fn the_shortcut_ids_do_not_depend_on_the_menu_position() {
+    // The register and the Windows accelerators name an item by its command, never by the popup it
+    // sits in: moving Optimization Settings from Edit to Laser keeps its id and its accelerators.
+    let item = MenuItem::CamDialog(CamDialog::Optimization);
+    assert_eq!(command_id(item), 4000);
+    let bar = menu_bar(Locale::En);
+    let at = bar.iter().find(|m| win_tokens(m).contains(&"Cam:Optimization".to_owned())).map(|m| m.id);
+    assert_eq!(at, Some("laser"));
+    // Every accelerator still points at an item of the bar, wherever the item sits now.
+    let known: Vec<u16> = bar.iter().flat_map(win_entries).filter_map(|(_, i)| i).map(command_id).collect();
+    for a in accelerators() {
+        assert!(known.contains(&a.id), "accelerator for id {} has no menu item", a.id);
     }
 }

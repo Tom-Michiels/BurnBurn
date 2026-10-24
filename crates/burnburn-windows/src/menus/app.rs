@@ -1,15 +1,10 @@
-//! Productie (Production), Venster (Window) and Help. Windows has no application menu: the Mac
+//! Venster (Window) and Help (Productie was merged into Laser, LF16). Windows has no application menu: the Mac
 //! keeps About, Preferences and Shortcuts there, here they close the Help popup.
 
-use super::{MenuNode, cmd, host, sep};
+use super::{MenuNode, host, sep};
 use crate::adapter::MenuItem;
 use crate::app_menu::AppAction;
 use crate::host_panels::menu::Item;
-use burnburn_presentation::CommandKey;
-
-pub(super) fn production_items() -> Vec<MenuNode> {
-    vec![cmd(CommandKey::Compile), cmd(CommandKey::ExportRd)]
-}
 
 /// The libraries, then Preview, Inspect RD and the undo history. (The Mac adds its standard window
 /// commands and the list of windows; Windows has the taskbar for that.)
