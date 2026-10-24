@@ -9,6 +9,11 @@ use std::process::ExitCode;
 #[cfg(target_os = "macos")]
 mod common;
 
+// Which items open a dialog and which only show a window (the ellipsis rule), shared with the
+// Windows menu test.
+#[cfg(target_os = "macos")]
+include!("../../../crates/burnburn-windows/tests/common/menu_rules.rs");
+
 #[cfg(not(target_os = "macos"))]
 fn main() -> ExitCode {
     println!("clipboard_and_recents: SKIPPED (not macOS; not a pass)");
@@ -29,7 +34,15 @@ fn main() -> ExitCode {
     if c != ExitCode::SUCCESS {
         return c;
     }
-    common::report("arrange_and_view_menus_act_on_the_selection_and_the_view", arrange_and_view())
+    let d = common::report("arrange_and_view_menus_act_on_the_selection_and_the_view", arrange_and_view());
+    if d != ExitCode::SUCCESS {
+        return d;
+    }
+    let e = common::report("menu_structure_follows_the_mac_guidelines", menu_structure());
+    if e != ExitCode::SUCCESS {
+        return e;
+    }
+    common::report("saved_shortcuts_follow_their_items_to_the_new_menus", saved_shortcuts_follow_moved_items())
 }
 
 #[cfg(target_os = "macos")]
@@ -244,14 +257,10 @@ fn arrange_and_view() -> Result<(), String> {
                 "BurnBurn",
                 "Archief",
                 "Wijzig",
-                "Schikken",
-                "Gereedschap",
                 "Weergave",
-                "Vormen",
+                "Gereedschap",
+                "Schikken",
                 "Tekst",
-                "Schets",
-                "Beeld",
-                "Productie",
                 "Laser",
                 "Venster",
                 "Help",
@@ -315,5 +324,183 @@ fn arrange_and_view() -> Result<(), String> {
     expect(|| "a view setting is no document change".into(), s.doc(doc).is_some_and(|d| d.revision == revision))?;
     s.menu(wire)?;
     expect(|| "wireframe off again".into(), s.menu_item_checked(wire) == Some(false))?;
+    Ok(())
+}
+
+/// The rule token of a menu item (the scheme of `menu_rules.rs`).
+#[cfg(target_os = "macos")]
+fn rule_token(item: burnburn_macos::adapter::MenuItem) -> String {
+    use burnburn_macos::adapter::MenuItem as M;
+    match item {
+        M::Command(k) => format!("Cmd:{k:?}"),
+        M::Open => "Open".into(),
+        M::CamDialog(d) => format!("Cam:{d:?}"),
+        M::SchikkenPanel => "Schikken".into(),
+        M::App(a) => format!("App:{a:?}"),
+        other => format!("Other:{other:?}"),
+    }
+}
+
+/// The menus of LF16: ten menus in the order of the Mac guidelines, the system's Help, Window and
+/// Services menus registered, the toolbar items, and the rules that hold for the whole bar.
+#[cfg(target_os = "macos")]
+fn menu_structure() -> Result<(), String> {
+    use burnburn_macos::adapter::menu_item;
+    use common::expect;
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSApplication, NSMenu};
+    use std::collections::HashSet;
+
+    let s = common::start()?;
+    let bar = s.app.menu();
+    let top = |menu: &NSMenu, title: &str| -> Option<Retained<NSMenu>> {
+        (0..menu.numberOfItems())
+            .filter_map(|i| menu.itemAtIndex(i))
+            .find(|i| i.title().to_string() == title)?
+            .submenu()
+    };
+
+    // The system knows which menus are the Help, Window and Services menus.
+    let app = NSApplication::sharedApplication(s.mtm);
+    let title_of = |m: Option<Retained<NSMenu>>| m.map(|m| m.title().to_string());
+    expect(|| "Help is registered with setHelpMenu".into(), title_of(app.helpMenu()).as_deref() == Some("Help"))?;
+    expect(|| "Window is registered".into(), title_of(app.windowsMenu()).as_deref() == Some("Venster"))?;
+    expect(|| "Services is registered".into(), title_of(app.servicesMenu()).as_deref() == Some("Diensten"))?;
+
+    // View has the system's toolbar switches, answered through the responder chain.
+    let view = top(bar, "Weergave").ok_or("no Weergave menu")?;
+    let action_of = |title: &str| -> Result<Option<objc2::runtime::Sel>, String> {
+        let item = (0..view.numberOfItems())
+            .filter_map(|i| view.itemAtIndex(i))
+            .find(|i| i.title().to_string() == title)
+            .ok_or_else(|| format!("Weergave has no {title:?}"))?;
+        Ok(item.action())
+    };
+    expect(
+        || "Toon werkbalk toggles the toolbar".into(),
+        action_of("Toon werkbalk")? == Some(objc2::sel!(toggleToolbarShown:)),
+    )?;
+    expect(
+        || "Pas werkbalk aan… opens the palette".into(),
+        action_of("Pas werkbalk aan…")? == Some(objc2::sel!(runToolbarCustomizationPalette:)),
+    )?;
+
+    // Walk every menu of the bar below the application menu.
+    let mut tags = HashSet::new();
+    let mut converted = 0;
+    let mut stack: Vec<(String, Retained<NSMenu>)> = Vec::new();
+    for i in 1..bar.numberOfItems() {
+        let item = bar.itemAtIndex(i).ok_or("menu item")?;
+        stack.push((item.title().to_string(), item.submenu().ok_or("a top menu without items")?));
+    }
+    while let Some((path, menu)) = stack.pop() {
+        let entries: Vec<_> = (0..menu.numberOfItems()).filter_map(|i| menu.itemAtIndex(i)).collect();
+        let counted = entries.iter().filter(|e| !e.isSeparatorItem()).count();
+        // The Window menu lists the open windows after the standard commands: AppKit adds those.
+        expect(|| format!("{path} lists {counted} entries (at most 25)"), counted <= 25)?;
+        for entry in entries {
+            if let Some(sub) = entry.submenu() {
+                stack.push((format!("{path} > {}", entry.title()), sub));
+            }
+            let Some(menu_item) = menu_item(entry.tag()) else { continue };
+            expect(|| format!("{path}: {:?} appears twice", entry.title()), tags.insert(entry.tag()))?;
+            // The dynamic recent entries carry file names; only fixed items follow the rule.
+            let token = rule_token(menu_item);
+            let title = entry.title().to_string();
+            let ends = title.ends_with('\u{2026}');
+            let wants = opens(&token) == Opens::Dialog;
+            expect(
+                || format!("{path}: {title:?} ({token}) {} an ellipsis", if wants { "needs" } else { "must not have" }),
+                ends == wants
+                    || matches!(
+                        menu_item,
+                        burnburn_macos::adapter::MenuItem::Recent(_)
+                            | burnburn_macos::adapter::MenuItem::RecentTemplate(_)
+                    ),
+            )?;
+            converted += 1;
+        }
+    }
+    expect(|| format!("only {converted} items were checked"), converted > 150)?;
+
+    // Nothing is left of the menus that were merged.
+    let titles: Vec<String> =
+        (0..bar.numberOfItems()).filter_map(|i| bar.itemAtIndex(i)).map(|i| i.title().to_string()).collect();
+    for gone in ["Productie", "Vormen", "Schets", "Beeld"] {
+        expect(|| format!("{gone} is no top-level menu any more: {titles:?}"), !titles.iter().any(|t| t == gone))?;
+    }
+    let laser = top(bar, "Laser").ok_or("no Laser menu")?;
+    for (title, what) in [("Compileer plan", "Compile"), ("Bewerkingen", "the CAM settings submenu")] {
+        let found =
+            (0..laser.numberOfItems()).filter_map(|i| laser.itemAtIndex(i)).any(|i| i.title().to_string() == title);
+        expect(|| format!("Laser has {what} ({title:?})"), found)?;
+    }
+    Ok(())
+}
+
+/// Shortcuts are stored by the name of the command, not by the menu position: a shortcut saved
+/// for an item that LF16 moved (Compile and Export RD from Productie to Laser, Push Forward into
+/// Volgorde) applies to the item in its new place after a restart.
+#[cfg(target_os = "macos")]
+fn saved_shortcuts_follow_moved_items() -> Result<(), String> {
+    use burnburn_macos::adapter::{MenuItem, menu_item};
+    use burnburn_presentation::{AppIntent, CommandKey, KeyBinding, UiIntent};
+    use common::expect;
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSEventModifierFlags, NSMenu};
+
+    fn find(menu: &NSMenu, wanted: MenuItem) -> Option<Retained<objc2_app_kit::NSMenuItem>> {
+        for i in 0..menu.numberOfItems() {
+            let item = menu.itemAtIndex(i)?;
+            if menu_item(item.tag()) == Some(wanted) {
+                return Some(item);
+            }
+            if let Some(found) = item.submenu().and_then(|sub| find(&sub, wanted)) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    let compile = MenuItem::Command(CommandKey::Compile);
+    let forward = MenuItem::Command(CommandKey::PushForward);
+    let cmd_opt = NSEventModifierFlags(NSEventModifierFlags::Command.0 | NSEventModifierFlags::Option.0);
+
+    // First run: the user picks new keys; the settings file is written.
+    let saved = {
+        let s = common::start()?;
+        let dir = s.dir.join("user");
+        s.app.use_user_dir(dir.clone());
+        for (id, key) in [("cmd.Compile", "Cmd+Opt+k"), ("cmd.PushForward", "Cmd+Opt+u")] {
+            let binding = KeyBinding::parse(key).ok_or("binding")?;
+            s.app.dispatch(UiIntent::App(AppIntent::SetShortcut { id: id.into(), binding, replace: true }));
+        }
+        let file = dir.join("preferences.conf");
+        s.wait(3.0, "the settings file", || {
+            std::fs::read_to_string(&file).is_ok_and(|t| t.contains("shortcut.cmd.Compile"))
+        })?;
+        std::fs::read_to_string(&file).map_err(|e| e.to_string())?
+    };
+
+    // Second run: a fresh app reads the file; the keys sit on the items in their new menus.
+    let s = common::start()?;
+    let dir = s.dir.join("user");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("preferences.conf"), saved).map_err(|e| e.to_string())?;
+    s.app.use_user_dir(dir);
+    for (item, key) in [(compile, "k"), (forward, "u")] {
+        let found = find(s.app.menu(), item).ok_or_else(|| format!("{item:?} is not in the menu"))?;
+        expect(
+            || {
+                format!(
+                    "{item:?} has key {:?} / {:?}",
+                    found.keyEquivalent().to_string(),
+                    found.keyEquivalentModifierMask()
+                )
+            },
+            found.keyEquivalent().to_string() == key && found.keyEquivalentModifierMask() == cmd_opt,
+        )?;
+    }
+    let report = s.app.menu_key_report();
+    expect(|| format!("the register covers every key of the moved menus: {report:?}"), report.unregistered.is_empty())?;
     Ok(())
 }

@@ -45,7 +45,7 @@ texts! {
     ),
     // --- Offset and repair (E05, E09).
     OffsetTitle => ("Offset en reparatie", "Offset and Repair"),
-    OffsetMenu => ("Offset en reparatie…", "Offset and Repair…"),
+    OffsetMenu => ("Offset en reparatie", "Offset and Repair"),
     OffsetHeading => ("Offset van de selectie", "Offset of the selection"),
     OffsetDistance => ("Afstand (negatief = naar binnen)", "Distance (negative = inward)"),
     OffsetJoin => ("Hoeken", "Corners"),
@@ -98,7 +98,7 @@ texts! {
     Residual => ("{0} {1} (afwijking {2} mm)", "{0} {1} (deviation {2} mm)"),
     // --- Structure (S06, S07, P06).
     StructureTitle => ("Structuur", "Structure"),
-    StructureMenu => ("Structuur…", "Structure…"),
+    StructureMenu => ("Structuur", "Structure"),
     PlatesHeading => ("Platen", "Plates"),
     PlateCompile => ("Compileer met", "Compile with"),
     PlateWhole => ("Het hele ontwerp", "The whole design"),

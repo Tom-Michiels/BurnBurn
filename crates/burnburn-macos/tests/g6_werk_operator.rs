@@ -96,6 +96,6 @@ fn the_menu_item_has_its_tag_and_toggles_the_panel_while_there_is_something_to_s
     assert_eq!(menu_tag(MenuItem::OperatorPanel), 1033);
     assert_eq!(menu_item(1033), Some(MenuItem::OperatorPanel));
     assert!(menu_enabled(MenuItem::OperatorPanel, &vm));
-    assert_eq!(menu_title(MenuItem::OperatorPanel, &vm, Locale::Nl), "Operatorweergave…");
+    assert_eq!(menu_title(MenuItem::OperatorPanel, &vm, Locale::Nl), "Operatorweergave");
     assert_eq!(translate(NativeEvent::Menu(MenuItem::OperatorPanel), &vm), Reaction::ToggleG5Panel(G5Panel::Operator));
 }

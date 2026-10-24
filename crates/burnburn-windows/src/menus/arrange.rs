@@ -1,5 +1,5 @@
 //! Schikken (Arrange): grouping, flipping and rotating, align / distribute / dock / move together,
-//! nesting, the Schikken panel, drawing order, lock and hide.
+//! nesting, the Schikken panel; drawing order and lock/hide are submenus (LF16).
 
 use super::{MenuNode, cmd, cmds, nested, sep};
 use crate::adapter::MenuItem;
@@ -46,20 +46,20 @@ pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
     items.push(cmd(CommandKey::NestSelected));
     items.push(MenuNode::Item(MenuItem::SchikkenPanel));
     items.push(sep());
-    items.extend(cmds(&[
-        CommandKey::PushForward,
-        CommandKey::PushBackward,
-        CommandKey::PushToFront,
-        CommandKey::PushToBack,
-    ]));
-    items.push(sep());
-    items.extend(cmds(&[
-        CommandKey::LockSelected,
-        CommandKey::UnlockSelected,
-        CommandKey::UnlockAll,
-        CommandKey::HideSelected,
-        CommandKey::IsolateSelection,
-        CommandKey::ShowAll,
-    ]));
+    items.push(nested(
+        host_text(HostText::MenuOrder, locale),
+        cmds(&[CommandKey::PushForward, CommandKey::PushBackward, CommandKey::PushToFront, CommandKey::PushToBack]),
+    ));
+    items.push(nested(
+        host_text(HostText::MenuLockHide, locale),
+        cmds(&[
+            CommandKey::LockSelected,
+            CommandKey::UnlockSelected,
+            CommandKey::UnlockAll,
+            CommandKey::HideSelected,
+            CommandKey::IsolateSelection,
+            CommandKey::ShowAll,
+        ]),
+    ));
     items
 }

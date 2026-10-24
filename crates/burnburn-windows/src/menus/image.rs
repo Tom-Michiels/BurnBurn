@@ -1,4 +1,5 @@
-//! Beeld (Image), in the order of the macOS menu. The image window is Windows-only and sits last.
+//! Beeld (Image), a submenu of Gereedschap since LF16, in the order of the macOS menu. The image
+//! window is Windows-only and sits last.
 
 use super::{MenuNode, cmd, host, sep};
 use crate::adapter::MenuItem;

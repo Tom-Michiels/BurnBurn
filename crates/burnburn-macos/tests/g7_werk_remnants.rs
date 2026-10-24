@@ -61,8 +61,8 @@ fn the_menu_item_has_its_tag_its_titles_and_toggles_the_panel() {
     assert_eq!(menu_tag(MenuItem::RemnantsPanel), 1070);
     assert_eq!(menu_item(1070), Some(MenuItem::RemnantsPanel));
     assert!(menu_enabled(MenuItem::RemnantsPanel, &vm));
-    assert_eq!(menu_title(MenuItem::RemnantsPanel, &vm, Locale::Nl), "Restplaten…");
-    assert_eq!(menu_title(MenuItem::RemnantsPanel, &vm, Locale::En), "Remnants…");
+    assert_eq!(menu_title(MenuItem::RemnantsPanel, &vm, Locale::Nl), "Restplaten");
+    assert_eq!(menu_title(MenuItem::RemnantsPanel, &vm, Locale::En), "Remnants");
     assert_eq!(translate(NativeEvent::Menu(MenuItem::RemnantsPanel), &vm), Reaction::ToggleG5Panel(G5Panel::Remnants));
     assert!(!g5_opens_by_itself(G5Panel::Remnants), "it waits for its menu item");
 }

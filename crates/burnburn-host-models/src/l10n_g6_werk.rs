@@ -27,7 +27,7 @@ macro_rules! texts {
 texts! {
     // --- Prepare image (T03, T05, T06).
     TracePrepTitle => ("Beeld voorbereiden", "Prepare image"),
-    TracePrepMenu => ("Beeld voorbereiden…", "Prepare image…"),
+    TracePrepMenu => ("Beeld voorbereiden", "Prepare image"),
     ThresholdHeading => ("Drempel", "Threshold"),
     ThresholdGlobal => (
         "De globale drempel van het tracerblad is in gebruik.",
@@ -163,7 +163,7 @@ texts! {
     RefRemoveButton => ("Verwijder referentie {0}", "Remove reference {0}"),
     // --- The compact operator view (W08).
     OperatorTitle => ("Operatorweergave", "Operator view"),
-    OperatorMenu => ("Operatorweergave…", "Operator view…"),
+    OperatorMenu => ("Operatorweergave", "Operator view"),
     OperatorMachineHeading => ("Machine", "Machine"),
     OperatorNoMachine => ("Geen machine gekoppeld.", "No machine connected."),
     OperatorMachineLine => ("{0}: {1}", "{0}: {1}"),

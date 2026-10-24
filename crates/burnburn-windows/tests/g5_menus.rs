@@ -112,17 +112,15 @@ fn every_level_of_the_real_menu_bar_has_distinct_mnemonics_in_both_languages() {
 }
 
 #[test]
-fn the_production_popup_has_compile_and_export_rd_with_the_mac_shortcuts() {
+fn the_laser_popup_has_compile_and_export_rd_with_the_mac_shortcuts() {
+    // LF16: Productie was merged into Laser; the two items keep their shortcuts.
     let bar = menu_bar(Locale::En);
-    let production = bar.iter().find(|p| p.id == "production").expect("production popup");
-    let items: Vec<&MenuNode> = production.items.iter().collect();
-    assert_eq!(
-        items,
-        [
-            &MenuNode::Item(MenuItem::Command(CommandKey::Compile)),
-            &MenuNode::Item(MenuItem::Command(CommandKey::ExportRd))
-        ]
-    );
+    assert!(bar.iter().all(|p| p.id != "production"), "no Production popup any more");
+    let laser = bar.iter().find(|p| p.id == "laser").expect("laser popup");
+    let items: Vec<&MenuNode> = laser.items.iter().collect();
+    for key in [CommandKey::Compile, CommandKey::ExportRd] {
+        assert!(items.contains(&&MenuNode::Item(MenuItem::Command(key))), "{key:?} in Laser");
+    }
     assert_eq!(accelerator_label(MenuItem::Command(CommandKey::Compile)).as_deref(), Some("Ctrl+B"));
     assert_eq!(accelerator_label(MenuItem::Command(CommandKey::ExportRd)).as_deref(), Some("Ctrl+Shift+E"));
 }
@@ -168,8 +166,9 @@ fn the_panel_family_items_sit_in_the_file_laser_image_window_and_help_popups() {
     assert!(flat("file").contains(&host(Item::BundleExport)));
     assert!(flat("laser").contains(&host(Item::LaserWindow)));
     assert!(flat("laser").contains(&host(Item::CameraWindow)));
-    assert!(flat("image").contains(&host(Item::ImportImage)));
-    assert!(flat("image").contains(&host(Item::TraceImage)));
+    // LF16: the Image menu is a submenu of Tools.
+    assert!(flat("tools").contains(&host(Item::ImportImage)));
+    assert!(flat("tools").contains(&host(Item::TraceImage)));
     assert!(flat("window").contains(&host(Item::App(burnburn_windows::app_menu::AppAction::Preview))));
     assert!(flat("help").contains(&host(Item::ExportDiagnostics)));
     assert!(flat("help").contains(&host(Item::App(burnburn_windows::app_menu::AppAction::About))));

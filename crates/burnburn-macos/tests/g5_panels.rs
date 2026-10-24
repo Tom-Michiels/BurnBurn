@@ -500,8 +500,8 @@ mod adapter {
         h.new_document().unwrap();
         let vm = h.view();
         assert!(items.iter().all(|(i, _)| menu_enabled(*i, &vm)));
-        assert_eq!(menu_title(MenuItem::OffsetPanel, &vm, Locale::En), "Offset and Repair…");
-        assert_eq!(menu_title(MenuItem::StructurePanel, &vm, Locale::Nl), "Structuur…");
+        assert_eq!(menu_title(MenuItem::OffsetPanel, &vm, Locale::En), "Offset and Repair");
+        assert_eq!(menu_title(MenuItem::StructurePanel, &vm, Locale::Nl), "Structuur");
         let mut tags: Vec<isize> = menu_items().iter().map(|i| menu_tag(*i)).collect();
         let before = tags.len();
         tags.sort_unstable();

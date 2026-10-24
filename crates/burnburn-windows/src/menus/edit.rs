@@ -1,11 +1,11 @@
-//! Wijzig (Edit): undo, clipboard, duplicate, delete, the selection commands and the two CAM
-//! dialogs that belong to the document (Optimization Settings) and the machine (Device Settings).
+//! Wijzig (Edit): undo, clipboard, duplicate, delete and the selection commands (the less common
+//! ones in the Select submenu). The CAM dialogs moved to Laser ▸ Operations (LF16).
 
-use super::{MenuNode, cmd, cmds, sep};
-use crate::adapter::MenuItem;
-use burnburn_presentation::{CamDialog, CommandKey};
+use super::{MenuNode, cmd, cmds, nested, sep};
+use crate::l10n::{HostText, Locale, host_text};
+use burnburn_presentation::CommandKey;
 
-pub(super) fn items() -> Vec<MenuNode> {
+pub(super) fn items(locale: Locale) -> Vec<MenuNode> {
     let mut items = cmds(&[CommandKey::Undo, CommandKey::Redo]);
     items.push(sep());
     items.extend(cmds(&[
@@ -17,22 +17,19 @@ pub(super) fn items() -> Vec<MenuNode> {
         CommandKey::Delete,
     ]));
     items.push(sep());
-    items.extend(cmds(&[
-        CommandKey::SelectAll,
-        CommandKey::InvertSelection,
-        CommandKey::SelectOpenShapes,
-        CommandKey::SelectInLayer,
-        CommandKey::SelectContained,
-        CommandKey::SelectSmaller,
-        CommandKey::SelectCircles,
-        CommandKey::SelectSameType,
-    ]));
+    items.extend(cmds(&[CommandKey::SelectAll, CommandKey::InvertSelection]));
+    items.push(nested(
+        host_text(HostText::MenuSelect, locale),
+        cmds(&[
+            CommandKey::SelectOpenShapes,
+            CommandKey::SelectInLayer,
+            CommandKey::SelectContained,
+            CommandKey::SelectSmaller,
+            CommandKey::SelectCircles,
+            CommandKey::SelectSameType,
+        ]),
+    ));
     items.push(sep());
     items.push(cmd(CommandKey::DeleteDuplicates));
-    items.push(sep());
-    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Optimization)));
-    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Order)));
-    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Sublayers)));
-    items.push(MenuNode::Item(MenuItem::CamDialog(CamDialog::Device)));
     items
 }
