@@ -316,14 +316,21 @@ impl Builder<'_> {
                 right = cx + w;
             }
             Control::Actions { titles } => {
-                let mut x = cx;
+                // Buttons that do not fit the width go on the next line.
+                let (mut x, mut line_y) = (cx, y);
+                let gap = base.x(dlu::BUTTON_GAP);
                 for (n, title) in titles.iter().enumerate() {
-                    let w = self.button_width(title);
+                    let w = self.button_width(title).min(avail);
+                    if x > cx && x + w > cx + avail {
+                        x = cx;
+                        line_y += row_h + base.y(dlu::ROW_GAP);
+                    }
                     let id = Some(FormId(row.id.0 + u32::try_from(n).unwrap_or(0)));
-                    self.push(SpecClass::Button, id, Rect { x, y, w, h: row_h }, title, enabled, shown);
-                    x += w + base.x(dlu::BUTTON_GAP);
+                    self.push(SpecClass::Button, id, Rect { x, y: line_y, w, h: row_h }, title, enabled, shown);
+                    x += w + gap;
                 }
-                right = x;
+                h = line_y + row_h - y;
+                right = x - gap;
             }
             Control::ReadOnly { value } => {
                 self.push(SpecClass::Value, id, Rect { x: cx, y, w: avail, h: row_h }, value, enabled, shown);
@@ -361,6 +368,9 @@ impl Builder<'_> {
             }
         }
         let mut right = right;
+        if !row.tools.is_empty() {
+            h = h.max(row_h);
+        }
         if let Some(unit) = row.suffix() {
             let x = right + base.x(dlu::SUFFIX_GAP);
             let w = self.meter.width(unit, false).max(1);

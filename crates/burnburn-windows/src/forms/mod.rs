@@ -28,6 +28,8 @@ pub mod layout;
 pub mod schikken;
 pub mod shapes;
 pub mod spec_layout;
+pub mod spec_panels;
+pub mod spec_win32;
 pub mod sketch;
 pub mod text;
 pub mod toolstrip;

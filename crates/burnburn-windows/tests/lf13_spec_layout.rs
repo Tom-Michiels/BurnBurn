@@ -316,3 +316,44 @@ fn a_note_keeps_room_for_its_lines_and_a_long_help_wraps_inside_the_field_column
     assert!(help(&many).right() <= many.client.0);
     assert!(help(&many).y >= by_id(&many, 1).rect.bottom());
 }
+
+/// Regression (found by the panel tests): tools beside a check box overlapped its error line, and
+/// a row of action buttons wider than the form ran out of it.
+#[test]
+fn tools_make_their_row_tall_enough_and_action_buttons_wrap_inside_the_form() {
+    use burnburn_host_models::form::FormTool;
+    let spec = FormSpec {
+        sections: vec![FormSection::new(
+            None,
+            vec![
+                FormRow::new(1, "Volgorde", Control::Check { on: true })
+                    .tool(FormTool::new(2, "\u{2191}", "Omhoog"))
+                    .tool(FormTool::new(3, "\u{2193}", "Omlaag"))
+                    .error(""),
+                FormRow::new(
+                    10,
+                    "",
+                    Control::Actions {
+                        titles: vec![
+                            "Bijwerken en toepassen".into(),
+                            "Een tweede lange knop".into(),
+                            "Derde knop".into(),
+                        ],
+                    },
+                ),
+            ],
+        )],
+        ..FormSpec::default()
+    };
+    for dpi in DPIS {
+        let l = build(&spec, dpi, 6.0);
+        let shown: Vec<&SpecControl> = l.controls.iter().filter(|c| c.visible).collect();
+        for (i, a) in shown.iter().enumerate() {
+            assert!(shown[i + 1..].iter().all(|b| !a.rect.overlaps(&b.rect)), "{dpi}: {a:?}");
+            assert!(a.rect.right() <= l.client.0, "{dpi}: {a:?} runs out of {:?}", l.client);
+        }
+        let buttons: Vec<&SpecControl> = l.controls.iter().filter(|c| c.class == SpecClass::Button).collect();
+        assert_eq!(buttons.iter().map(|b| b.id.unwrap().0).collect::<Vec<_>>(), vec![10, 11, 12]);
+        assert!(buttons.iter().any(|b| b.rect.y > buttons[0].rect.y), "{dpi}: the buttons wrap");
+    }
+}
