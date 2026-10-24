@@ -63,6 +63,17 @@ impl FormSurface {
         size
     }
 
+    /// Copies `spec` into form `form` without touching what the user is typing; `false` when the
+    /// shape differs.
+    pub(crate) fn update(&mut self, form: usize, spec: &FormSpec) -> bool {
+        self.forms.get_mut(form).is_some_and(|f| f.update(spec))
+    }
+
+    /// Copies `spec` into form `form`, also over what was typed (a dialog that opens again).
+    pub(crate) fn load(&mut self, form: usize, spec: &FormSpec) -> bool {
+        self.forms.get_mut(form).is_some_and(|f| f.load(spec))
+    }
+
     pub(crate) fn set_hidden(&mut self, id: u32, hidden: bool) {
         for form in &mut self.forms {
             if form.control(FormId(id)).is_some() {
