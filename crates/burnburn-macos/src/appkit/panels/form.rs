@@ -37,6 +37,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSPoint, NSRange, NSSize, NSString};
 
 use crate::appkit::panels::image::show_bitmap;
+use crate::appkit::panels::pad::{apply_cells, build_pad, pad_size, set_hold_handler};
 use crate::appkit::panels::widgets::{push_button, rect};
 
 /// The height of a multi-line text row.
@@ -97,6 +98,8 @@ enum Kind {
     Preview,
     /// Several buttons in one row.
     Actions,
+    /// A grid of small square buttons (LFE).
+    Pad,
 }
 
 /// The widgets of one row.
@@ -567,6 +570,13 @@ pub fn build_form_with(
                         button_row = Some((container.clone(), buttons));
                         (container, Kind::Actions)
                     }
+                    Control::Pad { columns, cells, hold } => {
+                        let pad = build_pad(mtm, *columns, cells, *hold, &|b: &NSButton| wire(b, wiring));
+                        let (w, h) = pad_size(*columns, cells);
+                        exactly_sized(&pad.container, w, h);
+                        button_row = Some((pad.container.clone(), pad.buttons));
+                        (pad.container, Kind::Pad)
+                    }
                     Control::Picture { image } => {
                         let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, 96.0, 96.0));
                         v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
@@ -598,6 +608,7 @@ pub fn build_form_with(
                         | Kind::Report
                         | Kind::Preview
                         | Kind::Actions
+                        | Kind::Pad
                 ) && !row.label.is_empty()
                 {
                     control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
@@ -690,7 +701,7 @@ pub fn build_form_with(
                         cell.setXPlacement(NSGridCellPlacement::Leading);
                     }
                 } else {
-                    if matches!(kind, Kind::Note | Kind::Report | Kind::Preview | Kind::Actions) {
+                    if matches!(kind, Kind::Note | Kind::Report | Kind::Preview | Kind::Actions | Kind::Pad) {
                         grid_row.setRowAlignment(NSGridRowAlignment::None);
                         if kind == Kind::Actions {
                             grid_row.setHeight(BUTTON_HEIGHT);
@@ -719,7 +730,10 @@ pub fn build_form_with(
                     }
                     if let Some(cell) = grid.cellForView(&caption_view) {
                         cell.setXPlacement(NSGridCellPlacement::Trailing);
-                        if matches!(kind, Kind::Memo | Kind::Log | Kind::Picture | Kind::Report | Kind::Preview) {
+                        if matches!(
+                            kind,
+                            Kind::Memo | Kind::Log | Kind::Picture | Kind::Report | Kind::Preview | Kind::Pad
+                        ) {
                             cell.setYPlacement(NSGridCellPlacement::Top);
                         }
                     }
@@ -730,7 +744,7 @@ pub fn build_form_with(
                                 cell.setXPlacement(NSGridCellPlacement::Fill);
                                 cell.setYPlacement(NSGridCellPlacement::Fill);
                             }
-                            Kind::Note | Kind::Preview => {
+                            Kind::Note | Kind::Preview | Kind::Pad => {
                                 cell.setXPlacement(NSGridCellPlacement::Leading);
                                 cell.setYPlacement(NSGridCellPlacement::Top);
                             }
@@ -964,7 +978,7 @@ fn pushed_of(control: &Control) -> String {
         Control::Picture { image } => format!("{}x{}", image.width, image.height),
         Control::Note { value, .. } => value.clone(),
         Control::Report { text, .. } => text.clone(),
-        Control::Preview { .. } | Control::Actions { .. } => String::new(),
+        Control::Preview { .. } | Control::Actions { .. } | Control::Pad { .. } => String::new(),
     }
 }
 
@@ -1096,6 +1110,7 @@ impl FormView {
                         | Kind::Report
                         | Kind::Preview
                         | Kind::Actions
+                        | Kind::Pad
                 )
             })
             .map(|r| (r.id, r.control.clone()))
@@ -1128,6 +1143,9 @@ impl FormView {
             }
             if let Some((_, buttons)) = &r.button_row {
                 controls.extend(buttons.iter().map(|b| Retained::into_super(b.clone())));
+                if r.kind == Kind::Pad {
+                    buttons.iter().for_each(|b| set_hold_handler(b, None));
+                }
             }
         }
         for (_, _, b) in &self.buttons {
@@ -1314,11 +1332,24 @@ impl FormView {
                 (Control::Preview { .. }, _) => {}
                 (Control::Actions { titles }, _) => {
                     if let Some((_, buttons)) = &widgets.button_row {
-                        for (b, title) in buttons.iter().zip(titles) {
+                        for (n, (b, title)) in buttons.iter().zip(titles).enumerate() {
                             if b.title().to_string() != *title {
                                 b.setTitle(&NSString::from_str(title));
                             }
+                            // Only a row that says how each button stands is switched here; the other
+                            // rows leave their buttons to the panel that owns them.
+                            if !row.items.is_empty() {
+                                let item = row.items.get(n);
+                                b.setEnabled(enabled && item.is_none_or(|i| i.enabled));
+                                let tip = item.and_then(|i| i.tooltip.as_deref()).map(NSString::from_str);
+                                b.setToolTip(tip.as_deref());
+                            }
                         }
+                    }
+                }
+                (Control::Pad { cells, .. }, _) => {
+                    if let Some((_, buttons)) = &widgets.button_row {
+                        apply_cells(buttons, cells, enabled);
                     }
                 }
             }
@@ -1337,7 +1368,7 @@ impl FormView {
     /// when they do not fit. With tabs the tab view is as tall as its tallest tab.
     pub fn relayout(&mut self, min_height: f64) -> NSSize {
         for r in &self.rows {
-            if let Some((container, buttons)) = &r.button_row {
+            if let Some((container, buttons)) = r.button_row.as_ref().filter(|_| r.kind == Kind::Actions) {
                 layout_buttons(buttons, container.frame().size.width);
             }
         }
@@ -1498,7 +1529,8 @@ impl FormView {
                     | Kind::Note
                     | Kind::Report
                     | Kind::Preview
-                    | Kind::Actions => None,
+                    | Kind::Actions
+                    | Kind::Pad => None,
                 }
             })
             .collect()

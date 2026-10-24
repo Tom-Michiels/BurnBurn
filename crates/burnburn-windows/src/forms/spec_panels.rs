@@ -103,6 +103,9 @@ fn all_ids(spec: &FormSpec) -> Vec<FormId> {
             Control::Actions { titles } => {
                 ids.extend((0..titles.len()).map(|n| FormId(row.id.0 + u32::try_from(n).unwrap_or(0))));
             }
+            Control::Pad { cells, .. } => {
+                ids.extend((0..cells.len()).map(|n| FormId(row.id.0 + u32::try_from(n).unwrap_or(0))));
+            }
             _ => ids.push(row.id),
         }
         ids.extend(row.tools.iter().map(|t| t.id));

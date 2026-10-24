@@ -8,7 +8,7 @@
 //! (`GetTextExtentPoint32W` in the real host, a fixed table in tests).
 
 use burnburn_host_models::form::{
-    ButtonRole, Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, Platform,
+    ButtonRole, Control, DialogButtons, FormButton, FormId, FormRow, FormSection, FormSpec, PadGlyph, Platform,
 };
 
 use super::layout::Rect;
@@ -337,7 +337,8 @@ impl Builder<'_> {
                         line_y += row_h + base.y(dlu::ROW_GAP);
                     }
                     let id = Some(FormId(row.id.0 + u32::try_from(n).unwrap_or(0)));
-                    self.push(SpecClass::Button, id, Rect { x, y: line_y, w, h: row_h }, title, enabled, shown);
+                    let on = enabled && row.items.get(n).is_none_or(|i| i.enabled);
+                    self.push(SpecClass::Button, id, Rect { x, y: line_y, w, h: row_h }, title, on, shown);
                     x += w + gap;
                 }
                 h = line_y + row_h - y;
@@ -368,6 +369,28 @@ impl Builder<'_> {
                 h = base.points(f64::from(*height)).max(1);
                 self.push(SpecClass::Preview, id, Rect { x: cx, y, w, h }, "", enabled, shown);
                 right = cx + w;
+            }
+            Control::Pad { columns, cells, .. } => {
+                // Square buttons in a grid; a cell without a title draws its glyph as text.
+                let cols = usize::from(*columns).max(1);
+                let gap = base.x(dlu::BUTTON_GAP);
+                let wide = cells.iter().any(|c| !c.title.is_empty());
+                let cell_w = if wide { self.button_width("X+") } else { row_h };
+                for (n, cell) in cells.iter().enumerate() {
+                    let (line, col) = (n / cols, n % cols);
+                    let rect = Rect {
+                        x: cx + i32::try_from(col).unwrap_or(0) * (cell_w + gap),
+                        y: y + i32::try_from(line).unwrap_or(0) * (row_h + base.y(dlu::ROW_GAP)),
+                        w: cell_w,
+                        h: row_h,
+                    };
+                    let id = Some(FormId(row.id.0 + u32::try_from(n).unwrap_or(0)));
+                    let text = if cell.title.is_empty() { pad_glyph_text(cell.glyph) } else { cell.title.as_str() };
+                    self.push(SpecClass::Button, id, rect, text, enabled && cell.enabled, shown && cell.visible);
+                }
+                let lines = i32::try_from(cells.len().div_ceil(cols)).unwrap_or(1).max(1);
+                h = lines * row_h + (lines - 1) * base.y(dlu::ROW_GAP);
+                right = cx + i32::try_from(cols).unwrap_or(1) * (cell_w + gap) - gap;
             }
             Control::Picture { image } => {
                 let iw = base.points(f64::from(image.width)).max(1);
@@ -409,6 +432,19 @@ impl Builder<'_> {
             }
         }
         next + base.y(dlu::ROW_GAP)
+    }
+}
+
+/// The text a glyph button shows where the Mac host draws a symbol.
+fn pad_glyph_text(glyph: Option<PadGlyph>) -> &'static str {
+    match glyph {
+        Some(PadGlyph::Left) => "\u{2190}",
+        Some(PadGlyph::Right) => "\u{2192}",
+        Some(PadGlyph::Up) => "\u{2191}",
+        Some(PadGlyph::Down) => "\u{2193}",
+        Some(PadGlyph::On) => "\u{25cf}",
+        Some(PadGlyph::Off) => "\u{25cb}",
+        None => "",
     }
 }
 
