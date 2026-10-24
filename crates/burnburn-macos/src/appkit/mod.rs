@@ -40,6 +40,7 @@ pub use canvas::{
     canvas_theme,
 };
 pub use panels::camera_window::CameraParts;
+pub use panels::empty_state::{EmptyProbe, ProgressProbe};
 pub use panels::form;
 pub use panels::image::trace_batch_open_panel;
 pub use panels::laser::LaserParts;

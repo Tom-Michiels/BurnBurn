@@ -97,6 +97,8 @@ enum Kind {
     Preview,
     /// Several buttons in one row.
     Actions,
+    /// The symbol and sentence of an empty list (LF17).
+    Empty,
 }
 
 /// The widgets of one row.
@@ -436,6 +438,7 @@ pub fn build_form_with(
                             | Control::Preview { .. }
                             | Control::Report { .. }
                             | Control::Actions { .. }
+                            | Control::EmptyState { .. }
                     );
                 let cw = if wide { inner_g - edge_pad } else { control_w };
                 let mut button_row = None;
@@ -567,6 +570,13 @@ pub fn build_form_with(
                         button_row = Some((container.clone(), buttons));
                         (container, Kind::Actions)
                     }
+                    Control::EmptyState { symbol, text } => {
+                        // A centred symbol over one sentence, as wide as the form (LF17).
+                        let stack = crate::appkit::panels::empty_state::empty_stack(mtm, (cw - 32.0).max(120.0));
+                        crate::appkit::panels::empty_state::set_empty(&stack, symbol, text);
+                        exactly_wide(&stack, cw);
+                        (Retained::into_super(stack), Kind::Empty)
+                    }
                     Control::Picture { image } => {
                         let v = NSImageView::initWithFrame(NSImageView::alloc(mtm), rect(0.0, 0.0, 96.0, 96.0));
                         v.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
@@ -598,6 +608,7 @@ pub fn build_form_with(
                         | Kind::Report
                         | Kind::Preview
                         | Kind::Actions
+                        | Kind::Empty
                 ) && !row.label.is_empty()
                 {
                     control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
@@ -690,7 +701,7 @@ pub fn build_form_with(
                         cell.setXPlacement(NSGridCellPlacement::Leading);
                     }
                 } else {
-                    if matches!(kind, Kind::Note | Kind::Report | Kind::Preview | Kind::Actions) {
+                    if matches!(kind, Kind::Note | Kind::Report | Kind::Preview | Kind::Actions | Kind::Empty) {
                         grid_row.setRowAlignment(NSGridRowAlignment::None);
                         if kind == Kind::Actions {
                             grid_row.setHeight(BUTTON_HEIGHT);
@@ -730,7 +741,7 @@ pub fn build_form_with(
                                 cell.setXPlacement(NSGridCellPlacement::Fill);
                                 cell.setYPlacement(NSGridCellPlacement::Fill);
                             }
-                            Kind::Note | Kind::Preview => {
+                            Kind::Note | Kind::Preview | Kind::Empty => {
                                 cell.setXPlacement(NSGridCellPlacement::Leading);
                                 cell.setYPlacement(NSGridCellPlacement::Top);
                             }
@@ -964,6 +975,7 @@ fn pushed_of(control: &Control) -> String {
         Control::Picture { image } => format!("{}x{}", image.width, image.height),
         Control::Note { value, .. } => value.clone(),
         Control::Report { text, .. } => text.clone(),
+        Control::EmptyState { symbol, text } => format!("{symbol}|{text}"),
         Control::Preview { .. } | Control::Actions { .. } => String::new(),
     }
 }
@@ -1096,6 +1108,7 @@ impl FormView {
                         | Kind::Report
                         | Kind::Preview
                         | Kind::Actions
+                        | Kind::Empty
                 )
             })
             .map(|r| (r.id, r.control.clone()))
@@ -1299,6 +1312,11 @@ impl FormView {
                     }
                 }
                 (Control::Picture { .. }, _) => {}
+                (Control::EmptyState { symbol, text }, _) => {
+                    if let Some(stack) = any.downcast_ref::<NSStackView>() {
+                        crate::appkit::panels::empty_state::set_empty(stack, symbol, text);
+                    }
+                }
                 (Control::Note { value, .. }, _) => {
                     if let Some(l) = any.downcast_ref::<NSTextField>() {
                         set_text(l, value);
@@ -1498,7 +1516,8 @@ impl FormView {
                     | Kind::Note
                     | Kind::Report
                     | Kind::Preview
-                    | Kind::Actions => None,
+                    | Kind::Actions
+                    | Kind::Empty => None,
                 }
             })
             .collect()

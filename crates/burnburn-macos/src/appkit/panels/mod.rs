@@ -10,6 +10,9 @@ pub(crate) mod cam_dialog;
 pub(crate) mod camera;
 pub(crate) mod camera_window;
 pub(crate) mod cut_settings;
+// The intent target of the empty-state and cancel buttons is a `define_class!` (LF17).
+#[allow(unsafe_code)]
+pub(crate) mod empty_state;
 pub(crate) mod export;
 pub(crate) mod files;
 pub(crate) mod files_ui;

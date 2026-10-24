@@ -49,7 +49,11 @@ fn the_form_waits_for_its_menu_item_and_keeps_the_selection_with_the_typed_text(
         .find(|f| f.kind == FormKind::G5(P::Remnants))
         .expect("the remnant form");
     let text = texts(&form);
-    assert!(text.contains("Er zijn nog geen restplaten bewaard.") && text.contains("[Bewaar selectie]"), "{text}");
+    assert!(
+        text.contains("Nog geen restplaten bewaard. Selecteer de omtrek van een restplaat om hem te bewaren.")
+            && text.contains("[Bewaar selectie]"),
+        "{text}"
+    );
 
     let mut values = form.values();
     let typed = [C::RemnantName, C::RemnantMaterial, C::RemnantThickness];

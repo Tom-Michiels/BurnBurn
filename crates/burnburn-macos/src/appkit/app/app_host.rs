@@ -31,6 +31,7 @@ use crate::app_view::{
 use crate::appkit::app_panels::windows::{self, PREVIEW_SIZE, present};
 use crate::appkit::app_panels::{AppPanels, SupportDialog};
 use crate::appkit::objc_try;
+use crate::appkit::panels::empty_state::{EmptyProbe, ProgressProbe};
 use crate::l10n::HostText;
 
 /// Redraw rate of the preview while it plays.
@@ -787,10 +788,10 @@ impl HostApp {
     // ---- history ---------------------------------------------------------------------------------------
 
     pub fn show_history(&self) {
-        let (mtm, locale, float) = (self.mtm, self.locale, self.float());
+        let (mtm, locale, float, app) = (self.mtm, self.locale, self.float(), self.me.clone());
         self.with_panels(|p| {
             if p.history.is_none() {
-                p.history = Some(windows::build_history(mtm, &p.target, locale, float));
+                p.history = Some(windows::build_history(mtm, app, &p.target, locale, float));
             }
             if let Some(w) = &p.history {
                 present(&w.window, float);
@@ -804,13 +805,19 @@ impl HostApp {
         let lines = self
             .active_document()
             .and_then(|d| self.controller.try_borrow().ok().and_then(|c| c.history_view(d)))
-            .map(|v| (history_lines(&v, locale), v.position));
+            .map(|v| {
+                // No step yet: the empty state replaces the table, not a lone "Start" line (LF17).
+                let empty = burnburn_host_models::empty_state::history_empty(&v, locale);
+                let lines = if empty.is_some() { Vec::new() } else { history_lines(&v, locale) };
+                (lines, v.position, empty)
+            });
         self.with_panels(|p| {
-            let (lines, position) = lines.unwrap_or_default();
+            let (lines, position, empty) = lines.unwrap_or_default();
             if let Ok(mut data) = p.target.ivars_data().try_borrow_mut() {
                 data.history = lines;
             }
             let Some(w) = &p.history else { return };
+            w.empty.show(empty.as_ref());
             if let Err(e) = objc_try("reloading the history table", || {
                 w.table.reloadData();
                 w.table.selectRowIndexes_byExtendingSelection(&NSIndexSet::indexSetWithIndex(position), false);
@@ -825,6 +832,44 @@ impl HostApp {
     pub fn history_row_clicked(&self, row: usize) {
         if let Some(document) = self.active_document() {
             self.native(NativeEvent::App(AppEvent::HistoryRowClicked { document, row }));
+        }
+    }
+
+    /// The empty state over the object list of `document`, for the native tests (LF17).
+    pub fn objects_empty_state(&self, document: DocumentId) -> Option<EmptyProbe> {
+        self.windows.try_borrow().ok()?.get(&document).map(|w| w.objects_empty.probe())
+    }
+
+    /// The empty state over the layer table of `document`, for the native tests (LF17).
+    pub fn operations_empty_state(&self, document: DocumentId) -> Option<EmptyProbe> {
+        self.windows.try_borrow().ok()?.get(&document).map(|w| w.operations_empty.probe())
+    }
+
+    /// The empty state over the history table, once the history window exists (LF17).
+    pub fn history_empty_state(&self) -> Option<EmptyProbe> {
+        self.app_panels.try_borrow().ok()?.history.as_ref().map(|w| w.empty.probe())
+    }
+
+    /// The sentences of the material library, the art library and the bundle sheet while their
+    /// empty state shows (LF17).
+    pub fn library_empty_texts(&self, document: DocumentId) -> [Option<String>; 3] {
+        let Ok(windows) = self.windows.try_borrow() else { return [None, None, None] };
+        let Some(w) = windows.get(&document) else { return [None, None, None] };
+        [w.files.material.empty_text(), w.files.art.empty_text(), w.files.bundle.empty_text()]
+    }
+
+    /// The progress row in the status bar of `document` (LF17).
+    pub fn progress_row(&self, document: DocumentId) -> Option<ProgressProbe> {
+        self.windows.try_borrow().ok()?.get(&document).map(|w| w.progress.probe())
+    }
+
+    /// Draws `rows` in the progress row of `document` as a refresh would, for the native tests: the
+    /// real tasks end too fast to look at (LF17).
+    pub fn show_progress_rows(&self, document: DocumentId, rows: &[burnburn_host_models::empty_state::ProgressRow]) {
+        if let Ok(windows) = self.windows.try_borrow()
+            && let Some(w) = windows.get(&document)
+        {
+            w.progress.show(rows, "Annuleer");
         }
     }
 

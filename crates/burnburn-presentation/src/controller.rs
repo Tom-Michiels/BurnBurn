@@ -927,10 +927,10 @@ impl AppController {
             }
             UiIntent::Schikken(intent) => self.schikken(intent),
             UiIntent::CancelTask { document, task } => self.with_session(document, |s| {
-                if let Some((kind, source)) = s.pending.get(&task) {
-                    if kind.is_cancellable() {
-                        source.cancel();
-                    }
+                if let Some((kind, source)) = s.pending.get(&task)
+                    && kind.is_cancellable()
+                {
+                    source.cancel();
                 }
                 AppUpdate::default()
             }),

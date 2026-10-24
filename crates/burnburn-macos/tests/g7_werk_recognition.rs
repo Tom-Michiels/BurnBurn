@@ -81,6 +81,8 @@ fn texts(r: &Rig, locale: Locale) -> String {
         .into_iter()
         .filter_map(|l| match l {
             G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::Heading(t) => Some(t),
+            // LF17: no template yet is an empty state (symbol and sentence).
+            G5Line::EmptyState { text, .. } => Some(text),
             G5Line::Button { title, .. } => Some(format!("[{title}]")),
             G5Line::Field { caption, .. } => Some(format!("<{caption}>")),
             _ => None,
@@ -121,7 +123,7 @@ fn without_a_running_camera_the_panel_says_to_start_one_and_with_one_it_offers_i
     let mut r = rig();
     let nl = texts(&r, Locale::Nl);
     assert!(nl.contains("Start eerst een camera (Camerabeheer)."), "{nl}");
-    assert!(nl.contains("Nog geen sjabloon geleerd."), "{nl}");
+    assert!(nl.contains("Nog geen sjabloon om te herkennen. Leer een product aan met de camera."), "{nl}");
     start_camera(&mut r, &[(60.0, 60.0)]);
     let choice = lines(&r, Locale::Nl).into_iter().find_map(|l| match l {
         G5Line::Choice { control: C::RecogCamera, options, selected, .. } => Some((options, selected)),

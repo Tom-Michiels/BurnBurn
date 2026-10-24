@@ -225,6 +225,7 @@ fn spans(row: &FormRow) -> bool {
                 | Control::ReadOnly { .. }
                 | Control::Log { .. }
                 | Control::Picture { .. }
+                | Control::EmptyState { .. }
         )
 }
 
@@ -351,6 +352,12 @@ impl Builder<'_> {
                 let needed = self.lines(value, avail, *strong);
                 h = needed.max(i32::from(*lines)) * text_h;
                 self.push(SpecClass::Note, id, Rect { x: cx, y, w: avail, h }, value, enabled, shown);
+                right = cx + avail;
+            }
+            // The sentence of an empty list, as a wrapping note (the glyph is the native drawing's).
+            Control::EmptyState { text, .. } => {
+                h = self.lines(text, avail, false).max(1) * text_h;
+                self.push(SpecClass::Note, id, Rect { x: cx, y, w: avail, h }, text, enabled, shown);
                 right = cx + avail;
             }
             Control::Report { text, lines } => {

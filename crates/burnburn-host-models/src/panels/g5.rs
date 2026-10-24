@@ -373,7 +373,10 @@ pub enum G5Line {
     /// A small picture (the preview of a found project).
     Image(crate::panels_image::BitmapImage),
     /// What the panel shows instead of an empty list (LF17): a symbol and one sentence.
-    EmptyState { symbol: &'static str, text: String },
+    EmptyState {
+        symbol: &'static str,
+        text: String,
+    },
 }
 
 impl G5Line {

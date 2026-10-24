@@ -10,9 +10,9 @@ use burnburn_host_models::empty_state::{
 };
 use burnburn_host_models::l10n::Locale;
 use burnburn_presentation::{
-    ArtItemRow, ArtPanelViewModel, BundleChoice, BundleDialogViewModel, BundleExportView, BundleMode,
-    CommandKey, HeadlessEditorHarness, MaterialPanelViewModel, ProofKind, ProofRow, RemnantRow, RemnantsViewModel,
-    TaskKind, UiIntent,
+    ArtItemRow, ArtPanelViewModel, BundleChoice, BundleDialogViewModel, BundleExportView, BundleMode, CommandKey,
+    HeadlessEditorHarness, MaterialPanelViewModel, ProofKind, ProofRow, RemnantRow, RemnantsViewModel, TaskKind,
+    UiIntent,
 };
 use burnburn_types::{DocumentId, StableId};
 
@@ -42,7 +42,11 @@ fn the_object_list_is_empty_until_there_is_an_object_and_offers_to_draw() {
     h.invoke(doc, CommandKey::ToolRectangle);
     h.drag(doc, (10.0, 10.0), (30.0, 20.0));
     assert_eq!(object_list_empty(&h.view(), doc, Locale::Nl), None, "an object fills the list");
-    assert_eq!(object_list_empty(&h.view(), <DocumentId as StableId>::from_raw(9999), Locale::Nl), None, "no such window: nothing");
+    assert_eq!(
+        object_list_empty(&h.view(), <DocumentId as StableId>::from_raw(9999), Locale::Nl),
+        None,
+        "no such window: nothing"
+    );
 }
 
 #[test]
@@ -204,12 +208,9 @@ fn each_tab_of_the_machine_hub_is_empty_on_its_own() {
     hub.history.clear();
     hub.calibration.rows.clear();
     let empty = hub_empty(&hub, Locale::Nl);
-    for (state, what) in [
-        (empty.devices, "devices"),
-        (empty.queue, "queue"),
-        (empty.history, "history"),
-        (empty.proofs, "proofs"),
-    ] {
+    for (state, what) in
+        [(empty.devices, "devices"), (empty.queue, "queue"), (empty.history, "history"), (empty.proofs, "proofs")]
+    {
         assert_empty(state, what);
     }
 

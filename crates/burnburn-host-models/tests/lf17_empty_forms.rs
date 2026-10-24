@@ -120,7 +120,7 @@ fn the_hub_form_shows_an_empty_state_in_place_of_each_empty_list_and_a_list_when
 }
 
 #[test]
-fn the_library_and_bundle_forms_have_a_hidden_empty_state_row_the_host_shows_when_the_model_says_so() {
+fn the_library_and_bundle_forms_have_an_empty_state_row_the_host_shows_when_the_model_says_so() {
     for (spec, id) in [
         (material_form(Locale::Nl), material::EMPTY),
         (art_form(Locale::Nl), art::EMPTY),
@@ -129,7 +129,6 @@ fn the_library_and_bundle_forms_have_a_hidden_empty_state_row_the_host_shows_whe
         let rows = empty_rows(&spec);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id.0, id);
-        assert!(rows[0].hidden, "hidden until presentation says the list is empty");
         assert_eq!(spec.problems(), Vec::new());
     }
 }

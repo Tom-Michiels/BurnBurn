@@ -218,10 +218,10 @@ fn note_row(id: u32, lines: u8, tone: StatusTone, strong: bool) -> FormRow {
     FormRow::new(id, "", Control::Note { value: String::new(), lines, tone, strong })
 }
 
-/// The place of an empty state: hidden, and filled in by the host when the model says the list is
-/// empty (LF17).
+/// The place of an empty state: the host fills it in and shows it when the model says the list is
+/// empty, and hides it otherwise (LF17).
 fn empty_state_row(id: u32) -> FormRow {
-    FormRow::new(id, "", Control::EmptyState { symbol: String::new(), text: String::new() }).hidden(true)
+    FormRow::new(id, "", Control::EmptyState { symbol: String::new(), text: String::new() })
 }
 
 fn report_row(id: u32, lines: u8) -> FormRow {
@@ -377,10 +377,7 @@ pub fn art_form(locale: Locale) -> FormSpec {
     FormSpec {
         title: t(T::ArtTitle).to_owned(),
         sections: vec![
-            section(
-                None,
-                vec![note_row(art::STATUS, 2, StatusTone::Neutral, false), empty_state_row(art::EMPTY)],
-            ),
+            section(None, vec![note_row(art::STATUS, 2, StatusTone::Neutral, false), empty_state_row(art::EMPTY)]),
             section(
                 Some(t(T::SectionSearch)),
                 vec![

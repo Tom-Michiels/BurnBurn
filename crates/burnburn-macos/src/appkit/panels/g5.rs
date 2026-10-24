@@ -82,7 +82,7 @@ fn shape_of(line: &G5Line) -> Shape {
         G5Line::Heading(_) => Shape::Heading,
         G5Line::Text(_) => Shape::Text,
         G5Line::Problem(_) => Shape::Problem,
-        G5Line::Unavailable(_) => Shape::Text,
+        G5Line::Unavailable(_) | G5Line::EmptyState { .. } => Shape::Text,
         G5Line::Memo { control, .. } => Shape::Memo(*control),
         G5Line::Field { control, .. } => Shape::Field(*control),
         G5Line::Choice { control, options, .. } => Shape::Choice(*control, options.len()),
@@ -468,7 +468,11 @@ impl G5Section {
         let full = self.width - 2.0 * MARGIN;
         for line in lines {
             match line {
-                G5Line::Heading(_) | G5Line::Text(_) | G5Line::Problem(_) | G5Line::Unavailable(_) => {
+                G5Line::Heading(_)
+                | G5Line::Text(_)
+                | G5Line::Problem(_)
+                | G5Line::Unavailable(_)
+                | G5Line::EmptyState { .. } => {
                     let l = label(mtm, "", rect(MARGIN, 0.0, full, TEXT_LINE_HEIGHT));
                     l.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
                     l.setPreferredMaxLayoutWidth(full);
@@ -591,12 +595,12 @@ impl G5Section {
         for (line, widget) in lines.iter().zip(self.widgets.iter()) {
             heights.push(match (line, widget) {
                 (G5Line::Heading(_), _) => HEADING_HEIGHT,
-                (G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t), Widget::Label(l)) => measured(l, t, full) + 6.0,
+                (G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::EmptyState { text: t, .. }, Widget::Label(l)) => measured(l, t, full) + 6.0,
                 (G5Line::Field { caption, .. } | G5Line::Choice { caption, .. }, Widget::Field { caption: c, .. })
                 | (G5Line::Field { caption, .. } | G5Line::Choice { caption, .. }, Widget::Choice { caption: c, .. }) => {
                     (measured(c, caption, self.caption_width) + 8.0).max(ROW_HEIGHT)
                 }
-                (G5Line::Text(_) | G5Line::Problem(_) | G5Line::Unavailable(_) | G5Line::Field { .. } | G5Line::Choice { .. }, _) => {
+                (G5Line::Text(_) | G5Line::Problem(_) | G5Line::Unavailable(_) | G5Line::EmptyState { .. } | G5Line::Field { .. } | G5Line::Choice { .. }, _) => {
                     ROW_HEIGHT
                 }
                 (G5Line::Memo { .. }, _) => MEMO_HEIGHT + 8.0,
@@ -609,7 +613,10 @@ impl G5Section {
         for ((line, widget), height) in lines.iter().zip(self.widgets.iter_mut()).zip(&heights) {
             y -= height;
             match (line, widget) {
-                (G5Line::Heading(t) | G5Line::Text(t) | G5Line::Unavailable(t), Widget::Label(l)) => {
+                (
+                    G5Line::Heading(t) | G5Line::Text(t) | G5Line::Unavailable(t) | G5Line::EmptyState { text: t, .. },
+                    Widget::Label(l),
+                ) => {
                     set_text(l, t);
                     l.setFrame(rect(MARGIN, y, full, *height));
                     l.setTextColor(Some(&NSColor::labelColor()));
