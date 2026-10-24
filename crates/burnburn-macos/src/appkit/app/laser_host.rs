@@ -81,6 +81,11 @@ impl HostApp {
         self.refresh();
     }
 
+    /// The laser panel copies the model again (another file was chosen in its list).
+    pub(crate) fn refresh_laser_panel(&self) {
+        self.refresh();
+    }
+
     /// True while `document`'s laser panel is on screen (it is only refreshed then).
     pub(crate) fn laser_shown_in(&self, document: DocumentId) -> bool {
         self.laser_panel_shown(document)

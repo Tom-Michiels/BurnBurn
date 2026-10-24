@@ -919,6 +919,10 @@ mod invariants {
         if name.starts_with("preview") {
             check_preview_legend(window, name, found);
         }
+        if name.starts_with("laser") {
+            check_units_are_suffixes(window, name, found);
+            check_laser_form(window, name, found);
+        }
         if window.styleMask().contains(NSWindowStyleMask::Resizable)
             && let Some(content) = window.contentView()
         {
@@ -974,6 +978,50 @@ mod invariants {
                         ));
                     }
                 }
+            }
+        }
+    }
+
+    /// LFE: the laser window is a form: its seven sections each have a heading, no button carries an arrow
+    /// or dot glyph (the host draws a symbol), the jog cross is a cross (four buttons shown), and the
+    /// content is not taller than the screen it is on without scrolling.
+    fn check_laser_form(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let texts: Vec<String> = all
+            .iter()
+            .filter_map(|v| as_any(v).downcast_ref::<NSTextField>().map(|t| t.stringValue().to_string()))
+            .collect();
+        for heading in [
+            "Machine",
+            "Positie en jog",
+            "Oorsprong",
+            "Start vanaf en job-oorsprong",
+            "Frame",
+            "Bestanden op de controller",
+            "Diagnose",
+        ] {
+            if !texts.iter().any(|t| t == heading) {
+                found.push(format!("{name}: no heading '{heading}'"));
+            }
+        }
+        for v in &all {
+            if let Some(b) = as_any(v).downcast_ref::<NSButton>() {
+                let title = b.title().to_string();
+                if title.contains(['◀', '▶', '▲', '▼', '●', '○']) {
+                    found.push(format!("{name}: a glyph on a button: '{title}'"));
+                }
+            }
+        }
+        if let Some(screen) = window.screen() {
+            let visible = screen.visibleFrame();
+            let frame = window.frame();
+            if frame.size.height > visible.size.height + 0.5 {
+                found.push(format!(
+                    "{name}: the window is {} pt high on a screen that shows {}",
+                    frame.size.height, visible.size.height
+                ));
             }
         }
     }

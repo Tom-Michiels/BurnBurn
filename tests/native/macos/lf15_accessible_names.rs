@@ -153,11 +153,7 @@ mod scenario {
             if !w.isVisible() || main.as_deref().is_some_and(|m| ptr::eq(m, &*w)) {
                 continue;
             }
-            // The laser window is being rebuilt on the form builder by its own lane (LF-E): its
-            // names come from the builder then; it is checked once that has landed.
-            if step != "laser" {
-                check_window(&w, &format!("{step} ({})", w.title()), found);
-            }
+            check_window(&w, &format!("{step} ({})", w.title()), found);
             if let Some(parent) = w.sheetParent() {
                 parent.endSheet(&w);
             } else {

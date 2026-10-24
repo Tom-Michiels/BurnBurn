@@ -76,6 +76,78 @@ pub enum Control {
         symbol: String,
         text: String,
     },
+    /// A grid of small square buttons (the jog cross, the 3x3 origin of a job). `columns` buttons
+    /// per line, left to right, top to bottom. The buttons are answered as ids `id`, `id + 1`, ….
+    /// With `hold` a button acts while it is pressed: the host reports the press and the release.
+    Pad {
+        columns: u8,
+        cells: Vec<PadCell>,
+        hold: bool,
+    },
+}
+
+/// The glyph a pad button carries; the host picks the symbol (an arrow, a dot that is on or off).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PadGlyph {
+    Left,
+    Right,
+    Up,
+    Down,
+    /// A choice that is not taken.
+    Off,
+    /// The choice that is taken.
+    On,
+}
+
+/// One button of a [`Control::Pad`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadCell {
+    /// Text on the button; empty when only the glyph speaks.
+    pub title: String,
+    /// What a screen reader says.
+    pub label: String,
+    pub glyph: Option<PadGlyph>,
+    /// The cell is the chosen one (an origin in the 3x3 grid).
+    pub on: bool,
+    pub enabled: bool,
+    /// A cell that is not there (the corners of a cross) keeps its place but shows nothing.
+    pub visible: bool,
+    /// The reason in words when the cell is off, or what it does.
+    pub tooltip: Option<String>,
+}
+
+impl PadCell {
+    pub fn new(title: &str, label: &str, glyph: Option<PadGlyph>) -> Self {
+        PadCell {
+            title: title.to_owned(),
+            label: label.to_owned(),
+            glyph,
+            on: false,
+            enabled: true,
+            visible: true,
+            tooltip: None,
+        }
+    }
+
+    /// A place in the grid without a button.
+    pub fn gap() -> Self {
+        PadCell { visible: false, enabled: false, ..PadCell::new("", "", None) }
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn on(mut self, on: bool) -> Self {
+        self.on = on;
+        self
+    }
+
+    pub fn tooltip(mut self, text: &str) -> Self {
+        self.tooltip = Some(text.to_owned());
+        self
+    }
 }
 
 impl Control {
@@ -95,6 +167,7 @@ impl Control {
             Control::Log { .. } => "log",
             Control::Picture { .. } => "picture",
             Control::EmptyState { .. } => "empty_state",
+            Control::Pad { .. } => "pad",
         }
     }
 }
@@ -121,6 +194,22 @@ pub struct FormRow {
     pub tools: Vec<FormTool>,
     /// Entries of a choice that cannot be picked, with the reason if there is one.
     pub disabled_options: Vec<(usize, Option<String>)>,
+    /// The state of each button of a [`Control::Actions`] row, when the buttons differ from the row
+    /// (one is greyed, another is not). Empty: every button follows `enabled`.
+    pub items: Vec<ItemState>,
+}
+
+/// Whether one button of a row of buttons acts, and what its tooltip says (the reason when it is off).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ItemState {
+    pub enabled: bool,
+    pub tooltip: Option<String>,
+}
+
+impl ItemState {
+    pub fn new(enabled: bool, tooltip: &str) -> Self {
+        ItemState { enabled, tooltip: (!tooltip.is_empty()).then(|| tooltip.to_owned()) }
+    }
 }
 
 /// A small button beside the control of a row.
@@ -154,7 +243,14 @@ impl FormRow {
             tooltip: None,
             tools: Vec::new(),
             disabled_options: Vec::new(),
+            items: Vec::new(),
         }
+    }
+
+    /// The state of each button of a row of buttons.
+    pub fn items(mut self, items: Vec<ItemState>) -> Self {
+        self.items = items;
+        self
     }
 
     pub fn invalid(mut self, invalid: bool) -> Self {
@@ -513,6 +609,7 @@ impl FormSpec {
             for row in &section.rows {
                 let options = match &row.control {
                     Control::Choice { options, .. } => options.len(),
+                    Control::Pad { cells, .. } => cells.len(),
                     _ => 0,
                 };
                 out.push(format!(

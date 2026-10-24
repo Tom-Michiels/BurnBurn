@@ -37,6 +37,7 @@ pub(crate) mod laser;
 pub(crate) mod layer_cells;
 pub(crate) mod material;
 pub(crate) mod operations;
+pub(crate) mod pad;
 pub(crate) mod priority;
 pub(crate) mod production;
 // `define_class!` and `msg_send!` need unsafe (the Schikken panel has its own small target object).

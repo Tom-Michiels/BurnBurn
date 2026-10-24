@@ -4,11 +4,15 @@
 //! the arrow keys jog on key-down and release on key-up, key repeat is not a new press; losing the
 //! keyboard and hiding the panel release a held key.
 //!
+//! LFE: the window is a form (sections with a heading, the unit as a suffix, the reason said once per
+//! section, symbols instead of glyphs on the buttons), and the jog cross presses and releases through
+//! the same handler a mouse-down on it reaches.
+//!
 //! No real laser: the machine service sits on a port that acknowledges everything in-process.
 //!
 //! Manual (not covered here): pressing and holding a jog button with the mouse (AppKit's tracking
-//! loop), how the panel looks, and the diagnostic export's save sheet (set
-//! `BURNBURN_NATIVE_SCREENSHOT` for a window capture).
+//! loop; the test calls the handler the loop calls), how the panel looks, and the diagnostic export's
+//! save sheet (set `BURNBURN_NATIVE_SCREENSHOT` for a window capture).
 
 use std::process::ExitCode;
 
@@ -26,9 +30,19 @@ fn main() -> ExitCode {
     common::report("laser_window_shows_the_truth_and_jogs_only_while_a_key_is_held", scenario())
 }
 
+/// Every view below `view`, depth first.
+#[cfg(target_os = "macos")]
+fn descendants(view: &objc2_app_kit::NSView, out: &mut Vec<objc2::rc::Retained<objc2_app_kit::NSView>>) {
+    for child in view.subviews().iter() {
+        out.push(child.clone());
+        descendants(&child, out);
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 fn scenario() -> Result<(), String> {
+    use objc2_app_kit::NSButton;
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
 
@@ -38,6 +52,7 @@ fn scenario() -> Result<(), String> {
         MachineId, MachineIdentity, Policy, PortError, Reply, Request,
     };
     use burnburn_macos::adapter::MenuItem;
+    use burnburn_macos::panels::laser_id as id;
     use burnburn_presentation::{
         HistoryStore, HistoryStoreError, IntentRecord, LiveIntentRecord, MachineService, OutcomeRecord, Recorded,
         UiIntent, UploadRecord,
@@ -157,16 +172,21 @@ fn scenario() -> Result<(), String> {
     }
 
     // Nothing is proven on this controller: position unknown (not 0), Home off with the reason.
-    let position = s.app.with_laser(doc, |p| p.position.stringValue().to_string()).unwrap_or_default();
-    expect(|| format!("position label {position:?}"), position == "X: onbekend   Y: onbekend")?;
+    let position = s.app.with_laser(doc, |p| (p.text(id::POSITION_X), p.text(id::POSITION_Y))).unwrap_or_default();
+    expect(|| format!("position rows {position:?}"), position == ("onbekend".into(), "onbekend".into()))?;
+    let home = |p: &burnburn_macos::appkit::LaserParts<'_>| p.button(id::GO_HOME);
     let (home_on, tip) = s
         .app
         .with_laser(doc, |p| {
-            (p.simple[0].isEnabled(), p.simple[0].toolTip().map(|t| t.to_string()).unwrap_or_default())
+            let b = home(p);
+            (
+                b.as_ref().is_some_and(|b| b.isEnabled()),
+                b.and_then(|b| b.toolTip()).map(|t| t.to_string()).unwrap_or_default(),
+            )
         })
         .ok_or("no panel")?;
     expect(|| format!("Home enabled {home_on}, tooltip {tip:?}"), !home_on && tip.starts_with("Niet geverifieerd"))?;
-    let status = s.app.with_laser(doc, |p| p.status.stringValue().to_string()).unwrap_or_default();
+    let status = s.app.with_laser(doc, |p| p.text(id::STATUS)).unwrap_or_default();
     expect(|| format!("status {status:?}"), status.is_empty())?;
 
     // Evidence arrives: the controls switch on; Home sends one request.
@@ -175,11 +195,13 @@ fn scenario() -> Result<(), String> {
     caps.live.jog = Capability::Supported;
     service.set_capabilities(caps);
     s.app.dispatch(UiIntent::LaserSetup { setup: burnburn_presentation::LaserSetup::StepMm("2".into()) });
-    let home_on = s.app.with_laser(doc, |p| p.simple[0].isEnabled()).unwrap_or(false);
+    let home_on = s.app.with_laser(doc, |p| home(p).is_some_and(|b| b.isEnabled())).unwrap_or(false);
     expect(|| "Home is on once the capability is proven".into(), home_on)?;
     s.app.with_laser(doc, |p| {
-        // SAFETY: a click on our own button, as a user would; no sender.
-        unsafe { p.simple[0].performClick(None) }
+        if let Some(b) = home(p) {
+            // SAFETY: a click on our own button, as a user would; no sender.
+            unsafe { b.performClick(None) }
+        }
     });
     settle();
     expect(
@@ -191,7 +213,7 @@ fn scenario() -> Result<(), String> {
     // pointer proof is recorded the switch is on and names the offset, and a click switches it off.
     let (switch_on, note) = s
         .app
-        .with_laser(doc, |p| (p.pointer_check.isEnabled(), p.pointer_note.stringValue().to_string()))
+        .with_laser(doc, |p| (p.button(id::POINTER_OFFSET).is_some_and(|b| b.isEnabled()), p.help(id::POINTER_OFFSET)))
         .ok_or("no panel")?;
     expect(
         || format!("without proof: switch {switch_on}, note {note:?}"),
@@ -212,7 +234,8 @@ fn scenario() -> Result<(), String> {
     let (switch_on, state, note) = s
         .app
         .with_laser(doc, |p| {
-            (p.pointer_check.isEnabled(), p.pointer_check.state(), p.pointer_note.stringValue().to_string())
+            let b = p.button(id::POINTER_OFFSET);
+            (b.as_ref().is_some_and(|b| b.isEnabled()), b.map_or(0, |b| b.state()), p.help(id::POINTER_OFFSET))
         })
         .ok_or("no panel")?;
     expect(
@@ -220,12 +243,106 @@ fn scenario() -> Result<(), String> {
         switch_on && state == objc2_app_kit::NSControlStateValueOn && note == "Rode stip: (2; -1) mm",
     )?;
     s.app.with_laser(doc, |p| {
-        // SAFETY: a click on our own checkbox, as a user would; no sender.
-        unsafe { p.pointer_check.performClick(None) }
+        if let Some(b) = p.button(id::POINTER_OFFSET) {
+            // SAFETY: a click on our own checkbox, as a user would; no sender.
+            unsafe { b.performClick(None) }
+        }
     });
     s.pump(0.1);
-    let state = s.app.with_laser(doc, |p| p.pointer_check.state()).ok_or("no panel")?;
+    let state = s.app.with_laser(doc, |p| p.button(id::POINTER_OFFSET).map_or(1, |b| b.state())).ok_or("no panel")?;
     expect(|| format!("switched off, state {state}"), state == objc2_app_kit::NSControlStateValueOff)?;
+
+    // LFE: the window is a form. Seven sections with a heading, in reading order; the unit of a field is
+    // a suffix, never part of its caption; no button carries a glyph; every reason is said once.
+    let (headings, reasons, texts) = s
+        .app
+        .with_laser(doc, |p| {
+            let n = 7;
+            let heading = |i| p.form.heading_label(i).map(|l| l.stringValue().to_string()).unwrap_or_default();
+            let reason = |i| p.form.reason_label(i).map(|l| l.stringValue().to_string()).unwrap_or_default();
+            ((0..n).map(heading).collect::<Vec<_>>(), (0..n).map(reason).collect::<Vec<_>>(), p.form.texts())
+        })
+        .ok_or("no panel")?;
+    expect(
+        || format!("headings {headings:?}"),
+        headings
+            == [
+                "Machine",
+                "Positie en jog",
+                "Oorsprong",
+                "Start vanaf en job-oorsprong",
+                "Frame",
+                "Bestanden op de controller",
+                "Diagnose",
+            ],
+    )?;
+    let said: Vec<&String> = reasons.iter().filter(|r| !r.is_empty()).collect();
+    expect(|| format!("no section says why it is greyed: {reasons:?}"), !said.is_empty())?;
+    for reason in &said {
+        let times = texts.iter().filter(|t| t == reason).count();
+        expect(|| format!("the reason {reason:?} is said {times} times"), times == 1)?;
+    }
+    let (suffixes, captions_with_unit, glyph_buttons) = s
+        .app
+        .with_laser(doc, |p| {
+            let mut all = Vec::new();
+            if let Some(content) = p.panel.contentView() {
+                descendants(&content, &mut all);
+            }
+            let mut suffixes = Vec::new();
+            let mut with_unit = Vec::new();
+            let mut glyphs = Vec::new();
+            for v in &all {
+                let any: &objc2::runtime::AnyObject = v.as_ref();
+                if let Some(l) = any.downcast_ref::<objc2_app_kit::NSTextField>() {
+                    let text = l.stringValue().to_string();
+                    if text == "mm" || text == "mm/s" {
+                        suffixes.push(text.clone());
+                    }
+                    if ["(mm", "mm)"].iter().any(|u| text.contains(u)) {
+                        with_unit.push(text);
+                    }
+                } else if let Some(b) = any.downcast_ref::<NSButton>() {
+                    let title = b.title().to_string();
+                    if title.contains(['◀', '▶', '▲', '▼', '●', '○']) {
+                        glyphs.push(title);
+                    }
+                }
+            }
+            Ok::<_, &str>((suffixes, with_unit, glyphs))
+        })
+        .ok_or("no panel")??;
+    expect(|| format!("unit suffixes {suffixes:?}"), suffixes.iter().filter(|u| *u == "mm").count() >= 3)?;
+    expect(|| format!("a unit stays in a caption: {captions_with_unit:?}"), captions_with_unit.is_empty())?;
+    expect(|| format!("glyphs on buttons: {glyph_buttons:?}"), glyph_buttons.is_empty())?;
+    // The jog cross: four buttons on the cross, the corners are gaps; the press reaches the handler
+    // the tracking loop calls.
+    let cross = s
+        .app
+        .with_laser(doc, |p| {
+            (0..9).map(|i| p.button(id::JOG_PAD + i).is_some_and(|b| !b.isHidden())).collect::<Vec<bool>>()
+        })
+        .ok_or("no panel")?;
+    expect(
+        || format!("jog cross cells {cross:?}"),
+        cross == [false, true, false, true, false, true, false, true, false],
+    )?;
+    let press = s.app.with_laser(doc, |p| p.hold(id::JOG_PAD + 3, true)).unwrap_or(false);
+    settle();
+    expect(|| "the press of the left jog button was refused".into(), press)?;
+    let jogs = live(&sent);
+    expect(
+        || format!("hold press sends a jog start, got {jogs:?}"),
+        jogs.iter().filter(|r| matches!(r, LiveRequest::JogStart(_))).count() == 1,
+    )?;
+    s.app.with_laser(doc, |p| p.hold(id::JOG_PAD + 3, false));
+    settle();
+    let jogs = live(&sent);
+    expect(
+        || format!("the release follows, got {jogs:?}"),
+        jogs.last() == Some(&LiveRequest::JogStop(burnburn_machine::JogKey::XLeft)),
+    )?;
+    let sent_before_arrow_keys = jogs.len();
 
     // The arrow keys jog while the panel has the keyboard: key-down presses once, key repeat is not
     // a new press, key-up releases.
@@ -256,7 +373,7 @@ fn scenario() -> Result<(), String> {
     let jogs = live(&sent);
     expect(
         || format!("one press for a held key, got {jogs:?}"),
-        jogs.iter().filter(|r| matches!(r, LiveRequest::JogStart(_))).count() == 1,
+        jogs.iter().filter(|r| matches!(r, LiveRequest::JogStart(_))).count() == 2,
     )?;
     key(NSEventType::KeyUp, false)?;
     let jogs = live(&sent);
@@ -272,7 +389,8 @@ fn scenario() -> Result<(), String> {
     let jogs = live(&sent);
     expect(
         || format!("resigning key released the key, got {jogs:?}"),
-        jogs.last() == Some(&LiveRequest::JogStop(burnburn_machine::JogKey::XLeft)) && jogs.len() == 5,
+        jogs.last() == Some(&LiveRequest::JogStop(burnburn_machine::JogKey::XLeft))
+            && jogs.len() == sent_before_arrow_keys + 4,
     )?;
 
     // Hiding the panel (the menu toggles) leaves nothing held.

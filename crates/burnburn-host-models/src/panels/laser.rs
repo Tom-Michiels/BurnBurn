@@ -93,6 +93,14 @@ pub enum LaserText {
     PointerOffsetNone,
     PlacementWithDot,
     PointerOffsetLabel,
+    SectionMachine,
+    SectionMove,
+    SectionOrigin,
+    SectionStart,
+    SectionFrame,
+    SectionDiagnostics,
+    FileChoice,
+    NoFiles,
 }
 
 impl LaserText {
@@ -173,6 +181,14 @@ impl LaserText {
         LaserText::PointerOffsetNone,
         LaserText::PlacementWithDot,
         LaserText::PointerOffsetLabel,
+        LaserText::SectionMachine,
+        LaserText::SectionMove,
+        LaserText::SectionOrigin,
+        LaserText::SectionStart,
+        LaserText::SectionFrame,
+        LaserText::SectionDiagnostics,
+        LaserText::FileChoice,
+        LaserText::NoFiles,
     ];
 }
 
@@ -273,6 +289,14 @@ fn pair(text: LaserText) -> (&'static str, &'static str) {
         ),
         T::PlacementWithDot => ("rode stip", "red dot"),
         T::PointerOffsetLabel => ("Rode stip", "Red dot"),
+        T::SectionMachine => ("Machine", "Machine"),
+        T::SectionMove => ("Positie en jog", "Position and Jog"),
+        T::SectionOrigin => ("Oorsprong", "Origin"),
+        T::SectionStart => ("Start vanaf en job-oorsprong", "Start From and Job Origin"),
+        T::SectionFrame => ("Frame", "Frame"),
+        T::SectionDiagnostics => ("Diagnose", "Diagnostics"),
+        T::FileChoice => ("Bestand", "File"),
+        T::NoFiles => ("Geen bestanden", "No files"),
     }
 }
 
@@ -302,11 +326,24 @@ pub struct PanelControl {
     pub tooltip: String,
 }
 
+/// One axis of the head position as a form row reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AxisReading {
+    /// `120,5`, or the word for unknown.
+    pub text: String,
+    /// Whether the text is a number in millimetres (the row then carries the unit `mm`).
+    pub known: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LaserPanel {
     pub connected: bool,
     /// "X: 120,5 mm   Y: onbekend" — an unknown axis is never a number.
     pub position: String,
+    /// The X and the Y axis apart for a form row: the number in the locale's decimal sign without
+    /// the unit, or the word for unknown (never 0 for an unknown axis).
+    pub position_x: AxisReading,
+    pub position_y: AxisReading,
     /// The last refusal in words, or empty.
     pub status: String,
     /// Where the setup put the compiled plan, or empty.
@@ -336,6 +373,8 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
         return LaserPanel {
             connected: false,
             position: String::new(),
+            position_x: AxisReading { text: t(LaserText::Unknown).to_owned(), known: false },
+            position_y: AxisReading { text: t(LaserText::Unknown).to_owned(), known: false },
             status: t(LaserText::NoMachine).to_owned(),
             placement: String::new(),
             user_origin: String::new(),
@@ -388,8 +427,14 @@ pub fn laser_panel(vm: Option<&LaserViewModel>, locale: Locale) -> LaserPanel {
             None => base,
         }
     });
+    let reading = |v: Option<f64>| match v {
+        Some(v) => AxisReading { text: mm_text(v, locale), known: true },
+        None => AxisReading { text: t(LaserText::Unknown).to_owned(), known: false },
+    };
     LaserPanel {
         connected: true,
+        position_x: reading(vm.position.x_mm),
+        position_y: reading(vm.position.y_mm),
         position: format!("{}   {}", axis("X", vm.position.x_mm), axis("Y", vm.position.y_mm)),
         status: vm.last_refusal.map_or_else(String::new, |why| laser_why_text(why, locale)),
         placement,

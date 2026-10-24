@@ -20,3 +20,12 @@ zit in de bovenste inset van de clip view.
 | native `lf15_accessible_names` | 5 problemen: het symbool van een lege toestand las zijn SF-Symbol-naam voor (`square.dashed`, `photo.on.rectangle.angled`, …) | het symbool is decoratie (`setAccessibilityElement(false)`), de naam staat in de identifier |
 
 `lf17_empty_progress` en `layout_invariants` blijven groen.
+
+**Laservenster × LF15/LF17 bij het samenvoegen**: de bouwer kende nu zowel `Control::EmptyState` (LF17) als `Control::Pad`
+(laser); beide behouden, en de knoppen van een pad zijn Tab-stops (`Kind::Pad` in `key_stops`). De uitzondering voor het
+laservenster in `lf15_accessible_names` is weggehaald nu het op de bouwer staat.
+
+| Test | Rood | Groen |
+|---|---|---|
+| native `lf15_accessible_names` (nu met het laservenster) | 8 problemen: jogknoppen zonder woorden ("X+", "Y+"), namen met het minteken als glyph ("X−", "Stap X−") | `laser_form::direction_words`: "Verplaats naar links (X)", "Eén stap omhoog (Y)" (NL/EN); zichtbare titels blijven "X−" enz. |
+| native `laser_window`, `lf15_tab_order`, `layout_invariants`, `lf17_empty_progress`; headless `lfe_laser_form` (16) | — | groen |
