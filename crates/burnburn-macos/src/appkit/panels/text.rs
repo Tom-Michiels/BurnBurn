@@ -20,7 +20,7 @@ use super::textform::{
     Cells, Form, FormRow, TextTarget, caption, check, message_line, new_target, popup, push, segments, set_check,
     set_field, set_popup_items, text_field, unwire,
 };
-use super::widgets::{rect, set_text};
+use super::widgets::{rect, set_error_text};
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -409,7 +409,7 @@ impl DocWindow {
                 set_field(&s.h_space, &p.h_space, keep);
                 set_field(&s.v_space, &p.v_space, keep);
                 set_field(&s.height, &p.height, keep);
-                set_text(&s.note, &p.note);
+                set_error_text(&s.note, &p.note);
                 s.convert.setEnabled(p.convert_enabled);
                 let height = s.form.lay_out();
                 s.toolbar.show(&window, (12.0, 150.0), height, PANEL_WIDTH);
@@ -426,7 +426,7 @@ impl DocWindow {
                 set_field(&s.path_offset, &p.offset, keep);
                 set_check(&s.path_reverse, p.reverse, true, "");
                 set_check(&s.path_live, p.live, true, "");
-                set_text(&s.path_note, &p.note);
+                set_error_text(&s.path_note, &p.note);
                 s.path_apply.setEnabled(p.apply_enabled);
                 let height = s.path_form.lay_out();
                 s.path.show(&window, (SHEET_WIDTH, height));

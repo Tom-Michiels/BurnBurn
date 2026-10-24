@@ -24,7 +24,7 @@
 //! widgets and copy a view model into them; and [`FormView::relayout`] to fit the form again.
 
 use burnburn_host_models::form::{ButtonRole, Control, FormId, FormRow, FormSection, FormSpec, Key, Platform};
-use burnburn_host_models::style::{Space, StatusTone, TextRole};
+use burnburn_host_models::style::{Space, StatusTone, TextRole, toned_text};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
@@ -272,6 +272,12 @@ fn caption_color(invalid: bool) -> Retained<NSColor> {
     if invalid { NSColor::systemRedColor() } else { NSColor::labelColor() }
 }
 
+/// The text of a note: in a warning or error tone it starts with the tone's glyph, so the colour
+/// is never the only carrier (LF15). A bold title note keeps the label colour and needs none.
+fn note_text(tone: StatusTone, strong: bool, text: &str) -> String {
+    if strong { text.to_owned() } else { toned_text(tone, text) }
+}
+
 fn error_text(text: &str) -> String {
     if text.is_empty() { String::new() } else { format!("{} {text}", StatusTone::Error.glyph()) }
 }
@@ -515,7 +521,7 @@ pub fn build_form_with(
                     }
                     Control::Note { value, lines, tone, strong } => {
                         let size = TextRole::Body.size();
-                        let l = wrapping(mtm, value, cw - 4.0, TextRole::Body);
+                        let l = wrapping(mtm, &note_text(*tone, *strong, value), cw - 4.0, TextRole::Body);
                         if *strong {
                             l.setFont(Some(&NSFont::boldSystemFontOfSize(size)));
                         }
@@ -587,6 +593,12 @@ pub fn build_form_with(
                     caption = Some(l);
                     v
                 };
+                // A row without a caption is named by its section's heading, else by the form's title.
+                let accessible_name = if row.label.is_empty() {
+                    section.heading.clone().unwrap_or_else(|| spec.title.clone())
+                } else {
+                    row.label.clone()
+                };
                 // Label for the screen reader and the tooltip, on the control that is not a checkbox.
                 if !matches!(
                     kind,
@@ -599,9 +611,17 @@ pub fn build_form_with(
                         | Kind::Report
                         | Kind::Preview
                         | Kind::Actions
-                ) && !row.label.is_empty()
+                ) && !accessible_name.is_empty()
                 {
-                    control.setAccessibilityLabel(Some(&NSString::from_str(&row.label)));
+                    // A memo is read through its text view, not the scroll view around it. The
+                    // caption is its title element as well, so VoiceOver ties the two (LF15).
+                    let named = if kind == Kind::Memo { memo_view(&control) } else { control.clone() };
+                    named.setAccessibilityLabel(Some(&NSString::from_str(&accessible_name)));
+                    if let Some(c) = &caption {
+                        let title: &AnyObject = c.as_ref();
+                        // SAFETY: the link is unretained; the caption lives in the same row as the control.
+                        unsafe { named.setAccessibilityTitleUIElement(Some(title)) };
+                    }
                 }
                 if let Some(tip) = &row.tooltip {
                     control.setToolTip(Some(&NSString::from_str(tip)));
@@ -1425,9 +1445,9 @@ impl FormView {
                     }
                 }
                 (Control::Picture { .. }, _) => {}
-                (Control::Note { value, .. }, _) => {
+                (Control::Note { value, tone, strong, .. }, _) => {
                     if let Some(l) = any.downcast_ref::<NSTextField>() {
-                        set_text(l, value);
+                        set_text(l, &note_text(*tone, *strong, value));
                     }
                 }
                 (Control::Report { text, .. }, _) => {

@@ -16,7 +16,7 @@ use objc2_app_kit::{NSButton, NSControl, NSPopUpButton, NSTextField};
 use super::form_surface::{FormSurface, form_sheet};
 use super::text::SheetHolder;
 use super::textform::{TextTarget, new_target, set_field, set_popup_items, unwire, wire};
-use super::widgets::set_text;
+use super::widgets::{set_error_text, set_text};
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -206,8 +206,8 @@ impl DocWindow {
         }
         set_text(&s.size_line, &p.size_line);
         set_text(&s.canonical_line, &p.canonical_line);
-        set_text(&s.problems, &p.problems);
-        set_text(&s.readability, &p.readability);
+        set_error_text(&s.problems, &p.problems);
+        set_error_text(&s.readability, &p.readability);
         s.create.setEnabled(p.create_enabled);
         s.create.setTitle(&objc2_foundation::NSString::from_str(&p.create_title));
         let size = s.form.relayout();

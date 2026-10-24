@@ -914,10 +914,8 @@ fn reading_stops(pane: &NSView) -> Vec<Retained<NSView>> {
     }
     let mut views = Vec::new();
     collect(pane, &mut views);
-    let space: Retained<NSView> = pane
-        .downcast_ref::<NSScrollView>()
-        .and_then(|s| s.documentView())
-        .unwrap_or_else(|| pane.retain());
+    let space: Retained<NSView> =
+        pane.downcast_ref::<NSScrollView>().and_then(|s| s.documentView()).unwrap_or_else(|| pane.retain());
     let mut placed: Vec<(f64, f64, Retained<NSView>)> = views
         .into_iter()
         .map(|v| {

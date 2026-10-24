@@ -403,9 +403,8 @@ mod scenario {
         };
         // The loop is a circle: read it from the object list.
         let mut chain = chain;
-        if let Some(at) = chain
-            .iter()
-            .position(|v| as_any(v).downcast_ref::<NSTableView>().is_some() && base_rect(v).origin.x < 5.0)
+        if let Some(at) =
+            chain.iter().position(|v| as_any(v).downcast_ref::<NSTableView>().is_some() && base_rect(v).origin.x < 5.0)
         {
             chain.rotate_left(at);
         }

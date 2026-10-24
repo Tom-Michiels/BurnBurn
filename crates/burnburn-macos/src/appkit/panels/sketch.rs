@@ -15,7 +15,7 @@ use objc2_foundation::{NSIndexSet, NSMutableIndexSet, NSString};
 
 use crate::adapter::{MenuItem, menu_tag};
 use crate::appkit::classes::{SKETCH_PARAM_NAME, SKETCH_PARAM_VALUE};
-use crate::appkit::panels::widgets::{field, label, push_button, rect, selected_rows, set_text};
+use crate::appkit::panels::widgets::{field, label, push_button, rect, selected_rows, set_error_text, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text, message_or_key};
 use crate::panels::{SKETCH_BUTTONS, SKETCH_COLUMNS, SKETCH_TOOLBAR, sketch_panel, sketch_toolbar_enabled};
@@ -225,7 +225,7 @@ impl DocWindow {
         }
         sk.problem.setHidden(problem.is_empty());
         sk.problem.setToolTip(Some(&NSString::from_str(&p.problem_hint)));
-        set_text(&sk.refused, &p.refused);
+        set_error_text(&sk.refused, &p.refused);
         for (key, b) in &sk.buttons {
             let enabled = vm.commands.get(key).is_some_and(|c| c.enabled);
             b.setEnabled(enabled);

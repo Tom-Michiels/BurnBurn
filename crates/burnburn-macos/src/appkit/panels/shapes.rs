@@ -309,7 +309,15 @@ fn show_row(row: &Row, line: &ParamLine, y: f64) {
     row.caption.setFrame(rect(MARGIN, y + 2.0, CAPTION_WIDTH, 20.0));
     row.field.setFrame(rect(MARGIN + CAPTION_WIDTH + 6.0, y, PANEL_WIDTH - 2.0 * MARGIN - CAPTION_WIDTH - 6.0, 24.0));
     row.check.setFrame(rect(MARGIN, y, PANEL_WIDTH - 2.0 * MARGIN, 22.0));
-    let caption = if line.error.is_empty() { line.label.clone() } else { format!("{} — {}", line.label, line.error) };
+    let caption = if line.error.is_empty() {
+        line.label.clone()
+    } else {
+        // The error colour is not the only carrier: the glyph of the tone leads (LF15).
+        burnburn_host_models::style::toned_text(
+            burnburn_host_models::style::StatusTone::Error,
+            &format!("{} — {}", line.label, line.error),
+        )
+    };
     if line.toggle {
         row.check.setTitle(&NSString::from_str(&line.label));
         row.check.setState(if line.text == "1" { NSControlStateValueOn } else { NSControlStateValueOff });

@@ -145,6 +145,12 @@ pub(crate) fn set_button_title(button: &NSButton, title: &str) {
     }
 }
 
+/// Text in the error colour: it starts with the error glyph, so the colour is not the only
+/// carrier (LF15). Empty text stays empty.
+pub(crate) fn set_error_text(label: &NSTextField, text: &str) {
+    set_text(label, &burnburn_host_models::style::toned_text(burnburn_host_models::style::StatusTone::Error, text));
+}
+
 pub(crate) fn set_text(label: &NSTextField, text: &str) {
     if label.stringValue().to_string() != text {
         label.setStringValue(&NSString::from_str(text));
