@@ -182,7 +182,9 @@ fn moving_the_guide_moves_the_bound_text_with_it_in_one_undo_step() {
     w.bind();
     let (text_before, centre_before) = (w.text_bounds(), w.circle_centre());
     w.h.send(UiIntent::Select { document: w.doc, ids: vec![w.circle], mode: SelectMode::Replace });
-    w.h.drag(w.doc, (140.0, 100.0), (152.0, 109.0));
+    // Grab the circle on its outline, off the selection grips (the right edge midpoint (140, 100) is one now).
+    let on_outline = 100.0 + 40.0 * std::f64::consts::FRAC_1_SQRT_2;
+    w.h.drag(w.doc, (on_outline, on_outline), (on_outline + 12.0, on_outline + 9.0));
     let moved = w.circle_centre();
     let (dx, dy) = (moved.x - centre_before.x, moved.y - centre_before.y);
     assert!(dx.abs() > 1.0 || dy.abs() > 1.0, "the circle moved");

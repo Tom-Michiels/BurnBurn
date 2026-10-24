@@ -388,6 +388,7 @@ version = "0.1.0"
 dependencies = [
  "burnburn-editor",
  "burnburn-geometry",
+ "burnburn-text",
  "burnburn-types",
  "lyon_tessellation",
  "pollster",

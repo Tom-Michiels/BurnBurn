@@ -65,6 +65,8 @@ pub struct DocumentViewModel {
     pub viewport: Viewport,
     /// Named snap target under the pointer (cursor label "Eindpunt", E04).
     pub snap: Option<SnapCandidate>,
+    /// The cursor label of that snap target (LF9): a catalogue key the host translates.
+    pub snap_label: Option<MessageKey>,
     pub snap_settings: SnapSettings,
     /// After an Alt-click: which of the overlapping candidates is selected ("2 van 3", E03).
     pub selection_cycle: Option<SelectionCycle>,

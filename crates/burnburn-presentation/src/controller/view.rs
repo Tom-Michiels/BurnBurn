@@ -116,7 +116,7 @@ impl AppController {
         sketch_overlays.extend(super::array_dialog::scene_overlays(s));
         sketch_overlays.extend(super::kerf_view::scene_overlays(s));
         sketch_overlays.extend(super::generator::scene_overlays(s));
-        let mut scene = build_scene(&SceneRequest {
+        let scene = build_scene(&SceneRequest {
             document,
             snapshot: &snapshot,
             selection: &s.selection,
@@ -130,6 +130,7 @@ impl AppController {
             camera: s.camera,
             viewport: s.viewport,
         });
+        let mut scene = scene.with_hovered_handle(s.editor.hovered_handle());
         layers::style_scene(s, &snapshot, &mut scene);
         // The machine's work area lies beneath everything, the grid included (LF2).
         if let Some(m) = &self.machine {
@@ -232,6 +233,7 @@ pub(super) fn document_view(
         camera: s.camera,
         viewport: s.viewport,
         snap: s.editor.snap(),
+        snap_label: s.editor.snap().map(|c| MessageKey::Snap(c.kind)),
         snap_settings: s.snap,
         selection_cycle: s.cycle,
         align_reference: (s.selection.len() >= 2).then(|| s.selection.reference()).flatten(),

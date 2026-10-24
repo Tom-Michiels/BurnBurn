@@ -78,10 +78,13 @@ pub enum Overlay {
     SelectionBounds {
         bounds: Bounds,
     },
-    /// A selection handle (scale corners, rotate).
+    /// A selection handle (eight scale grips, one rotate grip). The rotate grip hangs on a stem
+    /// that starts at `stem_from` (the top edge's midpoint); `hovered` grips are drawn larger.
     Handle {
         at: Point,
         handle: Handle,
+        stem_from: Option<Point>,
+        hovered: bool,
     },
     /// A handle of Warp or Deform; `index` is the handle's place in `ReshapePreview::handles`. An
     /// `invalid` set of handles (non-convex quadrilateral, folded net) is drawn as a problem.
@@ -199,6 +202,19 @@ pub struct SceneSnapshot {
     pub overlays: Vec<Overlay>,
 }
 
+impl SceneSnapshot {
+    /// The same scene with the selection grip under the pointer marked, so that it can be drawn
+    /// larger (LF9). `None` clears the mark.
+    pub fn with_hovered_handle(mut self, hovered: Option<Handle>) -> Self {
+        for overlay in &mut self.overlays {
+            if let Overlay::Handle { handle, hovered: flag, .. } = overlay {
+                *flag = hovered == Some(*handle);
+            }
+        }
+        self
+    }
+}
+
 /// Everything one window contributes to its scene.
 pub struct SceneRequest<'a> {
     pub document: DocumentId,
@@ -281,11 +297,15 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
     if let Some(bounds) = req.selection.bounds(req.snapshot) {
         overlays.push(Overlay::SelectionBounds { bounds });
         if req.tool == ToolKind::Select && !gesture {
-            overlays.extend(
-                crate::tool::selection_handles(bounds, mm_per_point)
-                    .into_iter()
-                    .map(|(handle, at)| Overlay::Handle { at, handle }),
-            );
+            let top_middle = Point::new((bounds.min().x + bounds.max().x) / 2.0, bounds.max().y);
+            overlays.extend(crate::tool::selection_handles(bounds, mm_per_point).into_iter().map(|(handle, at)| {
+                Overlay::Handle {
+                    at,
+                    handle,
+                    stem_from: (handle == Handle::Rotate).then_some(top_middle),
+                    hovered: false,
+                }
+            }));
         }
     }
     if req.tool == ToolKind::Node
@@ -447,15 +467,61 @@ mod tests {
         let scene = build_scene(&req);
         let bounds = Bounds::from_corners(Point::new(0.0, 0.0), Point::new(60.0, 20.0));
         assert!(scene.overlays.contains(&Overlay::SelectionBounds { bounds }));
-        assert!(scene.overlays.contains(&Overlay::Handle {
-            at: Point::new(30.0, 20.0 + ROTATE_HANDLE_OFFSET_PT * 0.5),
-            handle: Handle::Rotate
-        }));
-        assert_eq!(scene.overlays.iter().filter(|o| matches!(o, Overlay::Handle { .. })).count(), 5);
         assert!(
             scene.overlays.contains(&Overlay::SnapCandidate { at: Point::new(40.0, 0.0), kind: SnapKind::Endpoint })
         );
         assert!(matches!(scene.overlays.first(), Some(Overlay::Grid { .. })), "grid below everything");
+    }
+
+    /// LF9: eight scale grips (corners and edge midpoints) plus a rotate grip on a stem.
+    #[test]
+    fn selection_has_eight_scale_grips_and_a_rotate_grip_on_a_stem() {
+        use crate::tool::ScaleGrip::*;
+        let snap = doc();
+        let mut sel = Selection::default();
+        sel.apply(&SelectionChange::Replace(vec![id(1), id(2)]));
+        let scene = build_scene(&request(&snap, &sel, None, ToolKind::Select));
+        let handles: Vec<_> = scene
+            .overlays
+            .iter()
+            .filter_map(|o| match o {
+                Overlay::Handle { at, handle, stem_from, hovered } => Some((*handle, *at, *stem_from, *hovered)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(handles.len(), 9);
+        let scale = |g| handles.iter().find(|h| h.0 == Handle::Scale(g)).map(|h| h.1);
+        // Selection bounds (0,0)-(60,20).
+        assert_eq!(scale(BottomLeft), Some(Point::new(0.0, 0.0)));
+        assert_eq!(scale(Top), Some(Point::new(30.0, 20.0)));
+        assert_eq!(scale(Right), Some(Point::new(60.0, 10.0)));
+        assert_eq!(scale(Left), Some(Point::new(0.0, 10.0)));
+        assert_eq!(scale(Bottom), Some(Point::new(30.0, 0.0)));
+        assert_eq!(handles.iter().filter(|h| matches!(h.0, Handle::Scale(_))).count(), 8);
+        let rotate = handles.iter().find(|h| h.0 == Handle::Rotate).unwrap();
+        assert_eq!(rotate.1, Point::new(30.0, 20.0 + ROTATE_HANDLE_OFFSET_PT * 0.5));
+        assert_eq!(rotate.2, Some(Point::new(30.0, 20.0)), "the stem starts at the top edge");
+        assert!(handles.iter().all(|h| !h.3), "nothing hovered by default");
+        assert!(handles.iter().filter(|h| h.0 != Handle::Rotate).all(|h| h.2.is_none()));
+    }
+
+    /// LF9: the hovered grip is marked in the scene (a render hint, never document data).
+    #[test]
+    fn hovered_grip_is_marked_in_the_scene() {
+        let snap = doc();
+        let mut sel = Selection::default();
+        sel.apply(&SelectionChange::Replace(vec![id(1)]));
+        let scene = build_scene(&request(&snap, &sel, None, ToolKind::Select))
+            .with_hovered_handle(Some(Handle::Scale(crate::tool::ScaleGrip::Right)));
+        let hovered: Vec<_> = scene
+            .overlays
+            .iter()
+            .filter_map(|o| match o {
+                Overlay::Handle { handle, hovered: true, .. } => Some(*handle),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(hovered, vec![Handle::Scale(crate::tool::ScaleGrip::Right)]);
     }
 
     #[test]

@@ -143,38 +143,50 @@ fn dimension(text: &str, mark: SketchMark) -> Overlay {
     }
 }
 
+/// The number of a dimension is a filled glyph outline (LF10), not strokes: the lines and the halo
+/// ring are strokes, the digits one fill in the dimension colour.
+fn label_fill(p: &[Primitive], colour: Rgba) -> Option<&Vec<Vec<[f32; 2]>>> {
+    fills(p).into_iter().find(|(_, c)| *c == colour).map(|(contours, _)| contours)
+}
+
 #[test]
-fn a_dimension_draws_its_lines_and_the_strokes_of_its_digits() {
+fn a_dimension_draws_its_lines_and_the_glyph_outlines_of_its_digits() {
     let t = theme();
     let lines_only = packet_of(vec![dimension("", SketchMark::Normal)]);
     let eight = packet_of(vec![dimension("8", SketchMark::Normal)]);
     let one = packet_of(vec![dimension("1", SketchMark::Normal)]);
     assert!(strokes(&lines_only).len() >= 3, "the three lines");
-    assert!(strokes(&eight).iter().all(|(_, _, c)| *c == t.sketch_dimension));
-    let digit_strokes = |p: &[Primitive]| strokes(p).len() - strokes(&lines_only).len();
-    assert!(digit_strokes(&eight) > digit_strokes(&one), "an 8 has more strokes than a 1");
-    assert!(digit_strokes(&one) >= 1);
-    let label_box = |p: &[Primitive]| {
-        strokes(p)
-            .iter()
-            .skip(strokes(&lines_only).len())
-            .flat_map(|(pts, _, _)| pts.iter().copied())
-            .fold((f32::MAX, f32::MIN), |(lo, hi), [x, _]| (lo.min(x), hi.max(x)))
-    };
-    let (lo, hi) = label_box(&eight);
+    assert!(label_fill(&lines_only, t.sketch_dimension).is_none(), "no text, no glyphs");
+    for p in [&eight, &one] {
+        assert!(
+            strokes(p).iter().all(|(_, _, c)| *c == t.sketch_dimension || *c == t.background),
+            "strokes are the lines or the halo"
+        );
+    }
+    // An 8 has an outer contour and two holes; a 1 is a single contour.
+    assert_eq!(label_fill(&eight, t.sketch_dimension).map(Vec::len), Some(3));
+    assert_eq!(label_fill(&one, t.sketch_dimension).map(Vec::len), Some(1));
+    let (lo, hi) = label_fill(&eight, t.sketch_dimension)
+        .unwrap()
+        .iter()
+        .flatten()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), &[x, _]| (lo.min(x), hi.max(x)));
     assert!(lo > 100.0 - 16.0 && hi < 100.0 + 16.0, "the digit sits around the label position: {lo}..{hi}");
 }
 
 #[test]
 fn longer_numbers_are_wider_and_every_digit_has_its_own_shape() {
-    let width = |text: &str| {
+    let t = theme();
+    let fill_of = |text: &str| {
         let p = packet_of(vec![dimension(text, SketchMark::Normal)]);
-        let s = strokes(&p);
-        let xs: Vec<f32> = s.iter().skip(3).flat_map(|(pts, _, _)| pts.iter().map(|p| p[0])).collect();
+        label_fill(&p, t.sketch_dimension).cloned().unwrap_or_default()
+    };
+    let width = |text: &str| {
+        let xs: Vec<f32> = fill_of(text).iter().flatten().map(|p| p[0]).collect();
         xs.iter().cloned().fold(f32::MIN, f32::max) - xs.iter().cloned().fold(f32::MAX, f32::min)
     };
     assert!(width("120") > width("12"));
-    let shape = |d: char| format!("{:?}", strokes(&packet_of(vec![dimension(&d.to_string(), SketchMark::Normal)])));
+    let shape = |d: char| format!("{:?}", fill_of(&d.to_string()));
     let digits: Vec<String> = "0123456789".chars().map(shape).collect();
     for (i, a) in digits.iter().enumerate() {
         for b in &digits[i + 1..] {
@@ -190,8 +202,9 @@ fn a_conflicting_dimension_gets_a_cross_too() {
     let t = theme();
     let normal = packet_of(vec![dimension("5", SketchMark::Normal)]);
     let conflict = packet_of(vec![dimension("5", SketchMark::Conflict)]);
-    assert!(strokes(&conflict).iter().all(|(_, _, c)| *c == t.issue));
+    assert!(strokes(&conflict).iter().all(|(_, _, c)| *c == t.issue || *c == t.background));
     assert!(strokes(&conflict).len() >= strokes(&normal).len() + 2);
+    assert!(label_fill(&conflict, t.issue).is_some(), "the number is in the conflict colour as well");
 }
 
 #[test]

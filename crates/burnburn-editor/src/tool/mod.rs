@@ -65,7 +65,7 @@ pub(crate) use rectangle::rect_from_bounds;
 pub use rectangle::{RectanglePreview, RectangleTool};
 pub use reshape::{PREVIEW_SEGMENT_LIMIT, ReshapeMode, ReshapePreview, ReshapeTool};
 pub use round_corner::RoundCornerTool;
-pub use select::{Handle, SelectTool, selection_handles};
+pub use select::{Handle, ScaleGrip, SelectTool, selection_handles};
 pub use start_point::StartPointTool;
 pub use tangent::{TangentCirclesTool, TangentPreview};
 
@@ -688,6 +688,14 @@ impl Editor {
 
     pub fn snap(&self) -> Option<SnapCandidate> {
         self.active.tool_ref().snap()
+    }
+
+    /// The selection grip under the pointer (select tool only); drawn larger.
+    pub fn hovered_handle(&self) -> Option<Handle> {
+        match &self.active {
+            Active::Select(t) => t.hovered_handle(),
+            _ => None,
+        }
     }
 }
 

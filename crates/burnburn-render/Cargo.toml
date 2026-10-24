@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 burnburn-editor = { workspace = true }
 burnburn-geometry = { workspace = true }
+burnburn-text = { workspace = true }
 burnburn-types = { workspace = true }
 # General path fills and stroke joins for the screen (ADR 0003); pure Rust.
 lyon_tessellation = { workspace = true }

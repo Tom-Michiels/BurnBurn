@@ -1,11 +1,11 @@
-//! Sketch-mode overlays as primitives: relation glyphs, freedom markers, dimensions with a tiny
-//! stroke font for their numbers, dashed suggestions. Everything is built from strokes and small
+//! Sketch-mode overlays as primitives: relation glyphs, freedom markers, dimensions with their
+//! numbers as glyph outlines (`text`), dashed suggestions. Everything is built from strokes and small
 //! fills in device pixels; a conflict is drawn with a cross as well as the conflict colour (X03).
 
 use burnburn_editor::{Overlay, PointFreedom, SketchGlyph, SketchMark};
 use burnburn_geometry::{Affine, Point};
 
-use super::{Projection, Theme, flatten};
+use super::{Projection, Theme, flatten, text};
 use crate::input::Rgba;
 use crate::packet::Primitive;
 
@@ -13,8 +13,10 @@ use crate::packet::Primitive;
 const GLYPH_HALF_PT: f64 = 6.0;
 const GLYPH_WIDTH_PT: f64 = 1.2;
 const ENTITY_WIDTH_PT: f64 = 2.5;
-/// Height of dimension numbers, in logical points.
-const TEXT_HEIGHT_PT: f64 = 10.0;
+/// Size of dimension labels (the em square), in logical points.
+const TEXT_HEIGHT_PT: f64 = 11.0;
+/// How far the halo around a label reaches beyond its glyphs, in logical points.
+const HALO_PT: f64 = 1.5;
 
 type Stroke = (Vec<[f64; 2]>, bool);
 
@@ -72,68 +74,6 @@ fn glyph_strokes(glyph: SketchGlyph) -> Vec<Stroke> {
         }
         _ => vec![(ring(0.8, 4), true)],
     }
-}
-
-/// Seven-segment digits and a few symbols, in a box of 0.6 × 1 (y up).
-fn char_strokes(c: char) -> Vec<Stroke> {
-    const W: f64 = 0.6;
-    let seg = |name: char| -> [[f64; 2]; 2] {
-        match name {
-            'a' => [[0.0, 1.0], [W, 1.0]],
-            'b' => [[W, 1.0], [W, 0.5]],
-            'c' => [[W, 0.5], [W, 0.0]],
-            'd' => [[0.0, 0.0], [W, 0.0]],
-            'e' => [[0.0, 0.5], [0.0, 0.0]],
-            'f' => [[0.0, 1.0], [0.0, 0.5]],
-            _ => [[0.0, 0.5], [W, 0.5]],
-        }
-    };
-    let digits = |names: &str| names.chars().map(|n| (seg(n).to_vec(), false)).collect::<Vec<Stroke>>();
-    match c {
-        '0' => digits("abcdef"),
-        '1' => digits("bc"),
-        '2' => digits("abged"),
-        '3' => digits("abgcd"),
-        '4' => digits("fgbc"),
-        '5' => digits("afgcd"),
-        '6' => digits("afgedc"),
-        '7' => digits("abc"),
-        '8' => digits("abcdefg"),
-        '9' => digits("abcdfg"),
-        '.' | ',' => vec![(vec![[0.1, 0.0], [0.1, 0.08]], false)],
-        '-' => digits("g"),
-        '(' => vec![(vec![[0.35, 1.1], [0.15, 0.9], [0.15, 0.1], [0.35, -0.1]], false)],
-        ')' => vec![(vec![[0.25, 1.1], [0.45, 0.9], [0.45, 0.1], [0.25, -0.1]], false)],
-        'R' => {
-            let mut s = digits("abfeg");
-            s.push((vec![[0.0, 0.5], [W, 0.0]], false));
-            s
-        }
-        '\u{00D8}' => {
-            let mut s = digits("abcdef");
-            s.push((vec![[0.0, 0.0], [W, 1.0]], false));
-            s
-        }
-        '\u{00B0}' => vec![(vec![[0.35, 1.0], [0.6, 1.0], [0.6, 0.7], [0.35, 0.7]], true)],
-        ' ' => Vec::new(),
-        _ => vec![(vec![[0.0, 0.0], [W, 0.0], [W, 1.0], [0.0, 1.0]], true)],
-    }
-}
-
-/// Strokes of `text`, one em = `height` pixels, centred on the origin, y down.
-fn text_strokes(text: &str, height: f64) -> Vec<Stroke> {
-    const ADVANCE: f64 = 0.85;
-    let chars: Vec<char> = text.chars().collect();
-    let total = ADVANCE * chars.len() as f64 - (ADVANCE - 0.6);
-    let mut out = Vec::new();
-    for (i, c) in chars.iter().enumerate() {
-        let x0 = i as f64 * ADVANCE - total / 2.0;
-        for (points, closed) in char_strokes(*c) {
-            let placed = points.into_iter().map(|[x, y]| [(x0 + x) * height, (0.5 - y) * height]).collect();
-            out.push((placed, closed));
-        }
-    }
-    out
 }
 
 fn colour_of(mark: SketchMark, normal: Rgba, theme: &Theme) -> Rgba {
@@ -240,7 +180,14 @@ pub(super) fn draw(out: &mut Vec<Primitive>, overlay: &Overlay, theme: &Theme, p
                 push(out, vec![(vec![proj.px(pa), proj.px(pb)], false)], s, color);
             }
             let c = proj.px(*label_at);
-            push(out, place(c, 1.0, &text_strokes(text, TEXT_HEIGHT_PT * s)), s, color);
+            let style = text::TextStyle {
+                em_px: TEXT_HEIGHT_PT * s,
+                ink: color,
+                halo: proj.halo,
+                halo_px: (HALO_PT * s) as f32,
+                quarter_turns: 0,
+            };
+            text::label(out, text, c, text::Anchor::Center, style);
             if *mark == SketchMark::Conflict {
                 push(out, cross(c, GLYPH_HALF_PT * s), GLYPH_WIDTH_PT * s, color);
             }
