@@ -24,6 +24,7 @@ mod camera;
 mod dialogs;
 mod forms;
 mod menu;
+pub mod spec_form;
 mod strip;
 pub(crate) mod tips;
 mod util;
