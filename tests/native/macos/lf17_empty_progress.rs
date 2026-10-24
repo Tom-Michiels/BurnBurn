@@ -101,6 +101,23 @@ fn operations() -> Result<(), String> {
     let probe = s.app.operations_empty_state(doc).ok_or("no window")?;
     expect(|| "the empty layer table shows its state".into(), probe.shown)?;
     expect(|| format!("sentence {:?}", probe.text), probe.text.starts_with("Nog geen bewerkingen."))?;
+    // The block sits below the column headers, never over them (seen on the LF-E snapshot).
+    let header = s
+        .app
+        .with_window(doc, |w| {
+            w.operations_table.headerView().map(|h| {
+                let r = h.convertRect_toView(h.bounds(), None);
+                [r.origin.x, r.origin.y, r.size.width, r.size.height]
+            })
+        })
+        .flatten()
+        .ok_or("no header")?;
+    let b = probe.block_in_window;
+    let overlaps = b[0] < header[0] + header[2]
+        && header[0] < b[0] + b[2]
+        && b[1] < header[1] + header[3]
+        && header[1] < b[1] + b[3];
+    expect(|| format!("empty block {b:?} overlaps the column headers {header:?}"), !overlaps)?;
     s.draw_rectangle(doc, (0.0, 0.0), (40.0, 20.0))?;
     let id = s.doc(doc).ok_or("no document")?.objects[0].id;
     s.app.dispatch(UiIntent::Select { document: doc, ids: vec![id], mode: SelectMode::Replace });

@@ -175,11 +175,21 @@ pub(crate) struct EmptyOverlay {
     root: Retained<NSView>,
     stack: Retained<NSStackView>,
     target: Retained<IntentTarget>,
+    /// Height of the column headers above the rows (0 for a plain list).
+    header: f64,
 }
 
 impl EmptyOverlay {
     /// Puts the overlay over `parent` (a scroll view or any list container), full size.
     pub(crate) fn new(mtm: MainThreadMarker, app: Weak<HostApp>, parent: &NSView, text_width: f64) -> Self {
+        // Over a table in a scroll view the block is centred in the rows' area, below the column
+        // headers (which the clip view shares through its top content inset).
+        let header = parent
+            .downcast_ref::<objc2_app_kit::NSScrollView>()
+            .and_then(|scroll| scroll.documentView())
+            .and_then(|doc| doc.downcast::<objc2_app_kit::NSTableView>().ok())
+            .and_then(|table| table.headerView())
+            .map_or(0.0, |h| h.frame().size.height);
         let root = NSView::initWithFrame(NSView::alloc(mtm), parent.bounds());
         root.setAutoresizingMask(NSAutoresizingMaskOptions(
             NSAutoresizingMaskOptions::ViewWidthSizable.0 | NSAutoresizingMaskOptions::ViewHeightSizable.0,
@@ -188,7 +198,7 @@ impl EmptyOverlay {
         stack.setTranslatesAutoresizingMaskIntoConstraints(false);
         root.addSubview(&stack);
         constrain(&stack, NSLayoutAttribute::CenterX, NSLayoutRelation::Equal, Some(&root), 0.0);
-        constrain(&stack, NSLayoutAttribute::CenterY, NSLayoutRelation::Equal, Some(&root), 0.0);
+        constrain(&stack, NSLayoutAttribute::CenterY, NSLayoutRelation::Equal, Some(&root), header / 2.0);
         constrain(&stack, NSLayoutAttribute::Width, NSLayoutRelation::LessThanOrEqual, Some(&root), -2.0 * EDGE);
         let target = IntentTarget::new(mtm, app);
         if let Some((_, _, button)) = parts(&stack) {
@@ -196,7 +206,7 @@ impl EmptyOverlay {
         }
         root.setHidden(true);
         parent.addSubview(&root);
-        EmptyOverlay { root, stack, target }
+        EmptyOverlay { root, stack, target, header }
     }
 
     /// Shows `state`, or hides the overlay when the list is not empty.
@@ -221,6 +231,15 @@ impl EmptyOverlay {
                     self.target.set_intent(None);
                     button.setHidden(true);
                 }
+            }
+        }
+        // A short area (the rows under a table header) keeps the sentence and the button and drops
+        // the symbol, so the block never reaches over the headers.
+        if let Some((image, _, _)) = parts(&self.stack) {
+            image.setHidden(false);
+            let room = self.root.bounds().size.height - self.header - 2.0 * EDGE;
+            if self.stack.fittingSize().height > room {
+                image.setHidden(true);
             }
         }
         if self.root.isHidden() {
@@ -269,6 +288,8 @@ pub struct EmptyProbe {
     pub text: String,
     pub has_image: bool,
     pub button_title: Option<String>,
+    /// The block (symbol, sentence, button) in window coordinates: x, y, width, height.
+    pub block_in_window: [f64; 4],
     button: Option<Retained<NSButton>>,
 }
 
@@ -298,6 +319,10 @@ impl EmptyOverlay {
             text: self.text(),
             has_image: self.has_image(),
             button_title: button.as_ref().map(|b| b.title().to_string()),
+            block_in_window: {
+                let r = self.stack.convertRect_toView(self.stack.bounds(), None);
+                [r.origin.x, r.origin.y, r.size.width, r.size.height]
+            },
             button,
         }
     }
