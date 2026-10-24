@@ -523,6 +523,7 @@ dependencies = [
  "burnburn-editor",
  "burnburn-geometry",
  "burnburn-host-models",
+ "burnburn-icons",
  "burnburn-image",
  "burnburn-io",
  "burnburn-job",

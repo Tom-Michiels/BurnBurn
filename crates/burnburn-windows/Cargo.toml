@@ -36,6 +36,8 @@ path = "src/main.rs"
 burnburn-document = { workspace = true }
 burnburn-editor = { workspace = true }
 burnburn-geometry = { workspace = true }
+# UI icons as DIBs for the tool strip (LF14).
+burnburn-icons = { workspace = true }
 burnburn-host-models = { workspace = true }
 burnburn-image = { workspace = true }
 burnburn-io = { workspace = true }

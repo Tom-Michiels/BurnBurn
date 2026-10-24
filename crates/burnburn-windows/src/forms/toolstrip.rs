@@ -15,6 +15,8 @@ use crate::toolbar::{panel_title, tool_label, tooltip};
 pub struct StripButton {
     /// Catalogue id (`sketch.line`).
     pub id: String,
+    /// The icon id of `burnburn-icons` (the tool id itself); empty without artwork.
+    pub icon: &'static str,
     pub label: String,
     /// Label, shortcut and explanation, or the reason it is disabled.
     pub tooltip: String,
@@ -41,6 +43,7 @@ pub struct StripPanel {
 fn button(b: &ToolButton, locale: Locale) -> StripButton {
     StripButton {
         id: b.id.to_owned(),
+        icon: b.icon,
         label: tool_label(b.id, locale),
         tooltip: tooltip(b.id, b.shortcut, b.enablement, locale),
         selected: b.selected,
@@ -89,10 +92,22 @@ pub enum StripAction {
     Dropdown { group: String },
 }
 
+/// What a strip control draws instead of text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StripIcon {
+    /// Text only: no artwork for the tool.
+    None,
+    /// The icon of the tool (an id of `burnburn-icons`).
+    Tool(&'static str),
+    /// The drop-down caret of a group.
+    Caret,
+}
+
 /// A strip control at its place.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StripPlaced {
     pub action: StripAction,
+    pub icon: StripIcon,
     pub label: String,
     pub tooltip: String,
     pub selected: bool,
@@ -130,11 +145,15 @@ pub fn strip_layout(panels: &[StripPanel], width: i32, scale: f64) -> StripLayou
         }
         for g in &panel.groups {
             let label_w = i32::try_from(g.button.label.chars().count()).unwrap_or(0) * char_w + pad;
+            let icon = if burnburn_icons::has_icon(g.button.icon) { StripIcon::Tool(g.button.icon) } else { StripIcon::None };
             let has_drop = g.variants.len() > 1;
             // The tool and its drop-down stay on one row.
-            let rect = place(&mut x, &mut y, label_w.max(px(28.0)), if has_drop { drop_w + gap } else { 0 });
+            // A button with an icon is as wide as every other one; one without artwork shows its name.
+            let width = if icon == StripIcon::None { label_w.max(px(28.0)) } else { px(28.0) };
+            let rect = place(&mut x, &mut y, width, if has_drop { drop_w + gap } else { 0 });
             controls.push(StripPlaced {
                 action: StripAction::Tool(g.button.id.clone()),
+                icon,
                 label: g.button.label.clone(),
                 tooltip: g.button.tooltip.clone(),
                 selected: g.button.selected || g.variants.iter().any(|v| v.selected),
@@ -147,7 +166,8 @@ pub fn strip_layout(panels: &[StripPanel], width: i32, scale: f64) -> StripLayou
                 x += drop_w + gap;
                 controls.push(StripPlaced {
                     action: StripAction::Dropdown { group: group.clone() },
-                    label: "\u{25BE}".to_owned(),
+                    icon: StripIcon::Caret,
+                    label: String::new(),
                     tooltip: g.button.tooltip.clone(),
                     selected: false,
                     enabled: g.variants.iter().any(|v| v.enabled),
