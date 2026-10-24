@@ -125,6 +125,22 @@ pub struct SpecLayout {
     pub cancel_button: Option<FormId>,
 }
 
+impl SpecLayout {
+    /// Indices into `controls` of the controls Tab visits, in order. Win32 walks the `WS_TABSTOP`
+    /// windows in creation order, so this is the creation order of the visible, enabled controls
+    /// whose style carries the tab stop (`spec_win32::win_spec`); the builder creates them row by
+    /// row with the dialog buttons last, which is the reading order.
+    pub fn tab_order(&self) -> Vec<usize> {
+        const WS_TABSTOP: u32 = 0x0001_0000;
+        (0..self.controls.len())
+            .filter(|&i| {
+                let c = &self.controls[i];
+                c.visible && c.enabled && super::spec_win32::win_spec(c.class, true).style & WS_TABSTOP != 0
+            })
+            .collect()
+    }
+}
+
 /// The sizes of the Windows guidelines, in dialog units.
 mod dlu {
     pub const MARGIN: f64 = 7.0;
