@@ -21,6 +21,7 @@
 #![allow(unsafe_code)]
 
 mod camera;
+pub mod chrome;
 mod dialogs;
 mod forms;
 mod menu;
@@ -52,11 +53,13 @@ use burnburn_types::{DocumentId, OperationId, StableId};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle};
 use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    COLOR_BTNFACE, GetSysColor, GetSysColorBrush, HDC, InvalidateRect, ScreenToClient, SetBkColor, SetTextColor,
+    COLOR_BTNFACE, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DrawTextW, GetSysColorBrush, InvalidateRect,
+    ScreenToClient, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::UI::Controls::DRAWITEMSTRUCT;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
@@ -68,8 +71,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HMENU, IDC_ARROW, IsDialogMessageW, KillTimer, LB_ADDSTRING, LB_RESETCONTENT, LB_SETSEL, LBS_EXTENDEDSEL,
     LBS_NOTIFY, LoadCursorW, LoadIconW, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MB_YESNOCANCEL,
     MESSAGEBOX_RESULT, MSG, MessageBoxW, MoveWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SW_SHOW,
-    SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW, TranslateMessage,
-    WINDOW_EX_STYLE, WM_APP, WM_CTLCOLORSTATIC, WM_DESTROY, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY,
+    SW_SHOWMAXIMIZED, SW_SHOWNOACTIVATE, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateAcceleratorW,
+    TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_DESTROY, WM_DRAWITEM, WM_GETDLGCODE, WM_INITMENUPOPUP, WM_NOTIFY,
     WM_SETTINGCHANGE, WM_TIMER, WM_VSCROLL, WNDCLASSEXW, WS_BORDER, WS_CHILD, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW,
     WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
@@ -88,6 +91,7 @@ use crate::forms::{
     ControlId, ControlValue, FilePick, FormAux, FormContext, FormKind, FormOutcome, PanelState, Placement,
     cam as cam_forms, cut_settings as cut_forms, g5 as g5_forms, react as react_form, text as text_forms,
 };
+use crate::status_bar::part_edges;
 use crate::tasks::{TaskInbox, task_channel};
 
 mod panels_bridge;
@@ -104,7 +108,6 @@ const AUTOSAVE_MS: u32 = 30_000;
 /// Width of the left and right columns, in logical pixels.
 const LEFT_PX: i32 = 280;
 const RIGHT_PX: i32 = 290;
-const STATUS_PX: i32 = 44;
 
 struct DocWin {
     // Field order: the surface goes before the windows it draws into.
@@ -115,6 +118,10 @@ struct DocWin {
     status: HWND,
     /// The colour of the status line (`COLORREF`), after the tone of its message.
     status_color: u32,
+    /// The text of the first part of the status bar (the frame draws it, owner-drawn, in `status_color`).
+    status_text: String,
+    /// The pointer over the canvas in points, for the coordinate part of the status bar.
+    pointer_pt: Option<[f64; 2]>,
     syncing: bool,
     /// Panels of this window: docked ones in the columns, floating ones as tool windows.
     forms: Vec<FormWin>,
@@ -315,17 +322,12 @@ fn apply(update: AppUpdate) {
                 let text = message_text(*message, system_locale());
                 eprintln!("burnburn-win: {text}");
                 let line = crate::status_line::StatusLine::message(*message, system_locale());
-                let shown = document.and_then(|d| {
+                if let Some(d) = document {
                     with_host(|h| {
-                        h.windows.get_mut(&d).map(|w| {
-                            set_status_color(w, line.colorref());
-                            w.status
-                        })
-                    })
-                    .flatten()
-                });
-                if let Some(status) = shown {
-                    set_text(status, &line.text);
+                        if let Some(w) = h.windows.get_mut(d) {
+                            set_status(w, &line);
+                        }
+                    });
                 }
             }
             HostEffect::Redraw { document } => redraw(*document),
@@ -400,8 +402,8 @@ fn refresh() {
             let Some(doc) = vm.document(*document) else { continue };
             set_text(w.frame, &window_title_localized(&vm, *document, locale));
             let line = crate::status_line::status_line(doc, locale);
-            set_text(w.status, &line.text);
-            set_status_color(w, line.colorref());
+            set_status(w, &line);
+            update_status_bar(w, doc, &line);
             w.syncing = true;
             send(w.list, LB_RESETCONTENT, 0, 0);
             for label in object_labels(&vm, *document) {
@@ -471,30 +473,54 @@ fn system_appearance() -> Appearance {
     appearance_from_apps_use_light_theme((status == ERROR_SUCCESS).then_some(data))
 }
 
-/// Stores the status colour and repaints the line when it changed.
-fn set_status_color(w: &mut DocWin, colorref: u32) {
-    if w.status_color != colorref {
-        w.status_color = colorref;
-        // SAFETY: repaint request for our own status control.
+/// Stores the status line (text and tone colour) and repaints the first part of the bar.
+fn set_status(w: &mut DocWin, line: &crate::status_line::StatusLine) {
+    if w.status_text != line.text || w.status_color != line.colorref() {
+        w.status_text.clone_from(&line.text);
+        w.status_color = line.colorref();
+        // SAFETY: repaint request for our own status bar.
         let _ = unsafe { InvalidateRect(Some(w.status), None, true) };
     }
 }
 
-/// `WM_CTLCOLORSTATIC` for a document's status line: the text in the colour of the message's tone on
-/// the dialog background. Any other static control keeps the default.
-fn status_paint(wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
-    let control = HWND(lparam.0 as *mut _);
-    let colorref = with_host(|h| h.windows.values().find(|w| w.status == control).map(|w| w.status_color)).flatten()?;
-    let hdc = HDC(wparam.0 as *mut _);
-    // SAFETY: the device context the system passed for this message, valid while it is handled.
-    let _ = unsafe { SetTextColor(hdc, COLORREF(colorref)) };
-    // SAFETY: a system colour index (no pointers).
-    let face = unsafe { GetSysColor(COLOR_BTNFACE) };
-    // SAFETY: as above, the device context of this message.
-    let _ = unsafe { SetBkColor(hdc, COLORREF(face)) };
-    // SAFETY: a shared system brush (not owned, never deleted).
-    let brush = unsafe { GetSysColorBrush(COLOR_BTNFACE) };
-    Some(LRESULT(brush.0 as isize))
+/// The coordinate, zoom and unit parts of a document's status bar, from the pointer and the camera.
+fn update_status_bar(
+    w: &DocWin,
+    doc: &burnburn_presentation::DocumentViewModel,
+    line: &crate::status_line::StatusLine,
+) {
+    let bar = crate::panels::status_bar(
+        w.pointer_pt,
+        &doc.camera,
+        &doc.viewport,
+        crate::format::LengthPreference::Millimeters,
+        system_locale(),
+    );
+    chrome::set_status_texts(w.status, &crate::status_bar::status_parts(line, &bar, system_locale()));
+}
+
+/// `WM_DRAWITEM` for the first part of a status bar: the text in the colour of the message's tone on
+/// the bar's background. The symbol in the text says the same as the colour.
+fn status_draw(lparam: LPARAM) -> bool {
+    // SAFETY: for WM_DRAWITEM `lparam` points to a DRAWITEMSTRUCT that lives while it is handled.
+    let Some(item) = (unsafe { (lparam.0 as *const DRAWITEMSTRUCT).as_ref() }) else { return false };
+    let Some((text, colorref)) = with_host(|h| {
+        h.windows.values().find(|w| w.status == item.hwndItem).map(|w| (w.status_text.clone(), w.status_color))
+    })
+    .flatten() else {
+        return false;
+    };
+    let mut rect = item.rcItem;
+    rect.left += 4;
+    let mut units: Vec<u16> = text.encode_utf16().collect();
+    // SAFETY: the device context the system passed for this message, valid while it is handled; the
+    // text buffer and the rectangle outlive the call.
+    unsafe { SetBkMode(item.hDC, TRANSPARENT) };
+    // SAFETY: as above.
+    unsafe { SetTextColor(item.hDC, COLORREF(colorref)) };
+    // SAFETY: as above.
+    unsafe { DrawTextW(item.hDC, &mut units, &mut rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS) };
+    true
 }
 
 /// `WM_SETTINGCHANGE`: reads the theme again when the broadcast says it changed, then redraws.
@@ -512,12 +538,14 @@ fn theme_changed(lparam: LPARAM) {
     let appearance = system_appearance();
     let documents = with_host(|h| {
         h.appearance = appearance;
-        h.windows.keys().copied().collect::<Vec<_>>()
+        h.windows.iter().map(|(d, w)| (*d, w.frame)).collect::<Vec<_>>()
     })
     .unwrap_or_default();
-    for document in documents {
+    for (document, frame) in documents {
+        chrome::apply_dark_title_bar(frame, appearance);
         redraw(document);
     }
+    refresh();
 }
 
 fn redraw(document: DocumentId) {
@@ -579,6 +607,13 @@ fn open_window(document: DocumentId) {
             )
         }
     };
+    // The first window opens where the last one was closed, if that place can still be reached.
+    let first = with_host(|h| h.windows.is_empty()).unwrap_or(false);
+    let stored = if first { chrome::initial_window() } else { None };
+    let (x, y, width, height) = match &stored {
+        Some(s) => (s.window.x as i32, s.window.y as i32, s.window.width as i32, s.window.height as i32),
+        None => (CW_USEDEFAULT, CW_USEDEFAULT, 1200, 760),
+    };
     // SAFETY: our registered frame class; the menu is handed to the window.
     let Ok(frame) = (unsafe {
         CreateWindowExW(
@@ -586,10 +621,10 @@ fn open_window(document: DocumentId) {
             w!("BurnBurnFrame"),
             w!("BurnBurn"),
             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            1200,
-            760,
+            x,
+            y,
+            width,
+            height,
             None,
             menu,
             Some(instance),
@@ -610,7 +645,7 @@ fn open_window(document: DocumentId) {
         1002,
     );
     let canvas = child(w!("BurnBurnCanvas"), WS_TABSTOP, frame, 1003);
-    let status = child(w!("STATIC"), windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0), frame, 1004);
+    let status = chrome::create_status_bar(instance, frame, 1004);
     let (Ok(list), Ok(canvas), Ok(status)) = (list, canvas, status) else { return };
     // The document id on every child too, so accelerators work wherever the focus is.
     for hwnd in [list, canvas, status] {
@@ -633,6 +668,8 @@ fn open_window(document: DocumentId) {
                 list,
                 status,
                 status_color: crate::status_line::StatusLine::toned("", crate::style::StatusTone::Neutral).colorref(),
+                status_text: String::new(),
+                pointer_pt: None,
                 syncing: false,
                 forms: Vec::new(),
                 strip: StripWin::new(),
@@ -650,8 +687,10 @@ fn open_window(document: DocumentId) {
     if let Some(built) = &built {
         crate::win32_panels::manager::register_recent_menus(frame, built.recent_projects, built.recent_templates);
     }
+    chrome::apply_dark_title_bar(frame, with_host(|h| h.appearance).unwrap_or_default());
+    let show = if stored.is_some_and(|s| s.maximized) { SW_SHOWMAXIMIZED } else { SW_SHOW };
     // SAFETY: showing our own frame.
-    let _ = unsafe { ShowWindow(frame, SW_SHOW) };
+    let _ = unsafe { ShowWindow(frame, show) };
     refresh();
     redraw(document);
 }
@@ -668,7 +707,8 @@ fn layout(frame: HWND) {
     let scale = f64::from(unsafe { GetDpiForWindow(frame) }.max(96)) / 96.0;
     let px = |v: i32| (f64::from(v) * scale).round() as i32;
     let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
-    let (left, right, status_h) = (px(LEFT_PX), px(RIGHT_PX), px(STATUS_PX));
+    let (left, right) = (px(LEFT_PX), px(RIGHT_PX));
+    let dpi = (scale * 96.0).round() as u32;
     let panels = strip(&view(), system_locale());
     let place = |hwnd: HWND, x: i32, y: i32, width: i32, height: i32| {
         // SAFETY: one of our child windows on the UI thread; repaint requested.
@@ -676,20 +716,26 @@ fn layout(frame: HWND) {
     };
     with_host(|host| {
         let instance = host.instance;
+        let appearance = host.appearance;
         let Some(d) = host.windows.get_mut(&document) else { return };
-        let top = d.strip.sync(instance, frame, &panels, w, scale);
+        let top = d.strip.sync(instance, frame, &panels, w, scale, appearance);
         if let Some(tip) = d.tip {
             tips::set_area_tip(tip, frame, false);
         }
-        let body = (h - top).max(1);
+        // The status bar docks itself at the bottom, over the whole width; its parts follow the width.
+        send(d.status, msg::WM_SIZE, 0, 0);
+        let status_h = chrome::status_bar_height(d.status);
+        if let Some(edges) = spec_form::with_meter(frame, dpi, |base, meter| part_edges(w, base, meter)) {
+            chrome::set_status_edges(d.status, &edges);
+        }
+        let body = (h - top - status_h).max(1);
         let list_h = body * 35 / 100;
         place(d.list, 0, top, left, list_h);
         place(d.canvas, left, top, (w - left - right).max(1), body);
-        place(d.status, w - right + px(8), h - status_h, right - px(16), status_h - px(4));
         for form in &mut d.forms {
             match form.placement {
                 Placement::DockLeft => form.dock(0, top + list_h, left, body - list_h),
-                Placement::DockRight => form.dock(w - right, top, right, body - status_h),
+                Placement::DockRight => form.dock(w - right, top, right, body),
                 Placement::Floating => {}
             }
         }
@@ -735,10 +781,10 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 layout(hwnd);
                 return LRESULT(0);
             }
-            // The status line is a STATIC control: its parent paints its text in the tone's colour.
-            WM_CTLCOLORSTATIC => {
-                if let Some(brush) = status_paint(wparam, lparam) {
-                    return brush;
+            // The first part of the status bar is owner-drawn: its text in the tone's colour.
+            WM_DRAWITEM => {
+                if status_draw(lparam) {
+                    return LRESULT(1);
                 }
             }
             // The user switched between light and dark: the canvas follows (the broadcast reaches
@@ -763,6 +809,8 @@ extern "system" fn frame_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: 
                 return LRESULT(0);
             }
             WM_DESTROY => {
+                // The window is still whole here: keep where it was for the next start.
+                chrome::save_window_state(hwnd);
                 tips::forget(hwnd);
                 crate::win32_panels::manager::forget_recent_menus(hwnd);
                 let remaining = with_host(|h| {
@@ -843,6 +891,8 @@ extern "system" fn canvas_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam:
                 // SAFETY: releases the capture this thread took on button down.
                 let _ = unsafe { ReleaseCapture() };
             }
+            // The coordinate part of the status bar follows the pointer (then the message goes on).
+            msg::WM_MOUSEMOVE => track_pointer(document, hwnd, lparam),
             _ => {}
         }
         // WM_CHAR carries one UTF-16 unit (IME results arrive the same way): decode to text.
@@ -858,6 +908,22 @@ extern "system" fn canvas_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam:
             default()
         }
     })
+}
+
+/// Remembers the pointer over the canvas (in points, as the adapter converts it) and shows the world
+/// coordinate under it in the status bar.
+fn track_pointer(document: DocumentId, canvas: HWND, lparam: LPARAM) {
+    let (x, y) = ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32);
+    // SAFETY: plain query on our canvas window.
+    let dpi = f64::from(unsafe { GetDpiForWindow(canvas) }.max(96));
+    let pointer = [f64::from(x) * 96.0 / dpi, f64::from(y) * 96.0 / dpi];
+    with_host(|h| {
+        let vm = h.controller.view();
+        let (Some(doc), Some(w)) = (vm.document(document), h.windows.get_mut(&document)) else { return };
+        w.pointer_pt = Some(pointer);
+        let line = crate::status_line::status_line(doc, system_locale());
+        update_status_bar(w, doc, &line);
+    });
 }
 
 /// A tool-strip button was clicked: a tool is chosen, a drop-down offers the variants of its group.

@@ -63,10 +63,9 @@ pub fn with_meter<R>(owner: HWND, dpi: u32, f: impl FnOnce(DluBase, &GdiMeter) -
     };
     let out = f(base, &meter);
     // SAFETY: restoring the object that was selected before, then releasing the DC we got.
-    unsafe {
-        SelectObject(hdc, old);
-        ReleaseDC(Some(owner), hdc);
-    }
+    unsafe { SelectObject(hdc, old) };
+    // SAFETY: releasing the DC got above, once.
+    unsafe { ReleaseDC(Some(owner), hdc) };
     Some(out)
 }
 

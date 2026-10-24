@@ -9,9 +9,7 @@
 use burnburn_host_models::form::FormId;
 use burnburn_host_models::l10n::Locale;
 use burnburn_host_models::panels::{CutTop, G5Panel, cut_settings_panel, g5_panel, schikken_panel};
-use burnburn_presentation::{
-    CamDialog, CommandKey, HeadlessEditorHarness, PrefKey, SelectMode, UiIntent,
-};
+use burnburn_presentation::{CamDialog, CommandKey, HeadlessEditorHarness, PrefKey, SelectMode, UiIntent};
 use burnburn_types::DocumentId;
 use burnburn_windows::forms::spec_layout::{DluBase, SpecClass, SpecLayout, TextMeter};
 use burnburn_windows::forms::spec_panels::{self, FilesSheet, SpecPanel, SpecRoute};
@@ -61,7 +59,11 @@ fn check(name: &str, panel: &SpecPanel) -> SpecLayout {
         let shown: Vec<_> = l.controls.iter().filter(|c| c.visible && c.class != SpecClass::Tabs).collect();
         for c in &shown {
             assert!(c.rect.x >= 0 && c.rect.y >= 0, "{name} {dpi}: {c:?}");
-            assert!(c.rect.right() <= l.client.0 && c.rect.bottom() <= l.client.1, "{name} {dpi}: {c:?} in {:?}", l.client);
+            assert!(
+                c.rect.right() <= l.client.0 && c.rect.bottom() <= l.client.1,
+                "{name} {dpi}: {c:?} in {:?}",
+                l.client
+            );
         }
         for (i, a) in shown.iter().enumerate() {
             for b in &shown[i + 1..] {
@@ -89,7 +91,11 @@ fn check(name: &str, panel: &SpecPanel) -> SpecLayout {
 }
 
 fn routed(panel: &SpecPanel) -> Vec<ControlId> {
-    panel.routes.iter().filter_map(|(_, r)| if let SpecRoute::Control(c) = r { Some(c.clone()) } else { None }).collect()
+    panel
+        .routes
+        .iter()
+        .filter_map(|(_, r)| if let SpecRoute::Control(c) = r { Some(c.clone()) } else { None })
+        .collect()
 }
 
 #[test]
@@ -177,8 +183,12 @@ fn the_settings_window_has_three_tabs_a_route_per_preference_and_restore_default
     }
     assert!(spec.routes.iter().any(|(_, r)| *r == SpecRoute::PrefReset));
     // restore defaults is a dialog button after OK and Cancel
-    let order: Vec<&str> =
-        l.controls.iter().filter(|c| matches!(c.class, SpecClass::DialogButton { .. })).map(|c| c.text.as_str()).collect();
+    let order: Vec<&str> = l
+        .controls
+        .iter()
+        .filter(|c| matches!(c.class, SpecClass::DialogButton { .. }))
+        .map(|c| c.text.as_str())
+        .collect();
     assert_eq!(order.last().copied(), spec.spec.buttons.destructive.as_ref().map(|b| b.title.as_str()));
 }
 

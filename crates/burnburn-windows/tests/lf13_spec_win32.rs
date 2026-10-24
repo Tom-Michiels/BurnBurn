@@ -60,7 +60,10 @@ fn each_class_gets_the_standard_control_and_style() {
     assert_ne!(memo.style & ES_MULTILINE, 0);
     assert_ne!(memo.style & WS_VSCROLL, 0);
     let report = spec(SpecClass::Report, true);
-    assert_eq!((report.class, report.style & (ES_MULTILINE | ES_READONLY | WS_VSCROLL)), ("EDIT", ES_MULTILINE | ES_READONLY | WS_VSCROLL));
+    assert_eq!(
+        (report.class, report.style & (ES_MULTILINE | ES_READONLY | WS_VSCROLL)),
+        ("EDIT", ES_MULTILINE | ES_READONLY | WS_VSCROLL)
+    );
     assert_eq!(spec(SpecClass::Caption, true).style & 0xF, SS_LEFT);
 }
 

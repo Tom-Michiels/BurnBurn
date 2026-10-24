@@ -3,6 +3,7 @@
 //! shows the selected tool as pressed and opens a group's drop-down as a popup menu.
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, RECT};
+use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HGDIOBJ};
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, BM_GETCHECK, BM_SETCHECK, CreatePopupMenu, DestroyMenu, GetWindowRect, MF_GRAYED, MF_STRING,
@@ -10,16 +11,25 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, w};
 
+use super::chrome::bitmap_of;
 use super::forms::child;
 use super::util::{send, set_text};
+use crate::appearance::Appearance;
 use crate::forms::layout::Rect;
-use crate::forms::toolstrip::{StripAction, StripButton, StripLayout, StripPanel, disabled_tip_at, strip_layout};
+use crate::forms::toolstrip::{
+    StripAction, StripButton, StripIcon, StripLayout, StripPanel, disabled_tip_at, strip_layout,
+};
+use crate::icon_dib::{caret_dib, icon_dib};
 
 /// First child id of the strip's buttons; control `n` has id `STRIP_BASE + n`.
 pub(super) const STRIP_BASE: usize = 3000;
 const BS_PUSHBUTTON: u32 = 0x0000;
 const BS_AUTOCHECKBOX: u32 = 0x0003;
 const BS_PUSHLIKE: u32 = 0x1000;
+/// The button shows a bitmap (`BM_SETIMAGE`) instead of its text; the text stays as its name.
+const BS_BITMAP: u32 = 0x0080;
+const BM_SETIMAGE: u32 = 0x00F7;
+const IMAGE_BITMAP: usize = 0;
 const BST_CHECKED: usize = 1;
 
 pub(super) struct StripWin {
@@ -29,11 +39,26 @@ pub(super) struct StripWin {
     tip: Option<HWND>,
     /// The strip as last laid out, for the tooltips of disabled buttons.
     last: Option<StripLayout>,
+    /// The bitmaps of the icon buttons (the buttons do not own them).
+    bitmaps: Vec<HBITMAP>,
+}
+
+impl Drop for StripWin {
+    fn drop(&mut self) {
+        self.delete_bitmaps();
+    }
 }
 
 impl StripWin {
     pub(super) fn new() -> StripWin {
-        StripWin { ctls: Vec::new(), signature: Vec::new(), tip: None, last: None }
+        StripWin { ctls: Vec::new(), signature: Vec::new(), tip: None, last: None, bitmaps: Vec::new() }
+    }
+
+    fn delete_bitmaps(&mut self) {
+        for bitmap in self.bitmaps.drain(..) {
+            // SAFETY: a bitmap this strip created; its button is destroyed or about to be.
+            let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
+        }
     }
 
     pub(super) fn set_tip(&mut self, tip: Option<HWND>) {
@@ -53,9 +78,12 @@ impl StripWin {
         panels: &[StripPanel],
         width: i32,
         scale: f64,
+        appearance: Appearance,
     ) -> i32 {
         let lay: StripLayout = strip_layout(panels, width, scale);
-        let signature: Vec<String> = lay.controls.iter().map(|c| format!("{:?}{}", c.action, c.label)).collect();
+        let dpi = (scale * 96.0).round() as u32;
+        let signature: Vec<String> =
+            lay.controls.iter().map(|c| format!("{:?}{}{:?}{dpi}", c.action, c.label, appearance)).collect();
         if signature != self.signature {
             for (hwnd, _) in self.ctls.drain(..) {
                 if let Some(tip) = self.tip {
@@ -64,13 +92,26 @@ impl StripWin {
                 // SAFETY: destroying our own button; no message is in flight for it.
                 let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd) };
             }
+            self.delete_bitmaps();
             for (i, c) in lay.controls.iter().enumerate() {
-                let bits = match c.action {
-                    StripAction::Tool(_) => BS_AUTOCHECKBOX | BS_PUSHLIKE,
-                    StripAction::Dropdown { .. } => BS_PUSHBUTTON,
+                let dib = match c.icon {
+                    StripIcon::Tool(id) => icon_dib(id, appearance, dpi),
+                    StripIcon::Caret => Some(caret_dib(appearance, dpi)),
+                    StripIcon::None => None,
                 };
+                let bitmap = dib.as_ref().and_then(bitmap_of);
+                let look = if bitmap.is_some() { BS_BITMAP } else { 0 };
+                let bits = look
+                    | match c.action {
+                        StripAction::Tool(_) => BS_AUTOCHECKBOX | BS_PUSHLIKE,
+                        StripAction::Dropdown { .. } => BS_PUSHBUTTON,
+                    };
                 let r = Rect { ..c.rect };
                 if let Some(hwnd) = child(instance, frame, w!("BUTTON"), &c.label, bits, r, STRIP_BASE + i) {
+                    if let Some(bitmap) = bitmap {
+                        send(hwnd, BM_SETIMAGE, IMAGE_BITMAP, bitmap.0 as isize);
+                        self.bitmaps.push(bitmap);
+                    }
                     self.ctls.push((hwnd, c.action.clone()));
                 }
             }

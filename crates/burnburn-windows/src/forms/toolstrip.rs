@@ -145,7 +145,8 @@ pub fn strip_layout(panels: &[StripPanel], width: i32, scale: f64) -> StripLayou
         }
         for g in &panel.groups {
             let label_w = i32::try_from(g.button.label.chars().count()).unwrap_or(0) * char_w + pad;
-            let icon = if burnburn_icons::has_icon(g.button.icon) { StripIcon::Tool(g.button.icon) } else { StripIcon::None };
+            let icon =
+                if burnburn_icons::has_icon(g.button.icon) { StripIcon::Tool(g.button.icon) } else { StripIcon::None };
             let has_drop = g.variants.len() > 1;
             // The tool and its drop-down stay on one row.
             // A button with an icon is as wide as every other one; one without artwork shows its name.

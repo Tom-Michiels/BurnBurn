@@ -34,7 +34,7 @@ fn theme_of(appearance: Appearance) -> Theme {
 /// Straight RGBA to premultiplied BGRA.
 fn to_dib(image: &RgbaImage) -> Dib {
     let mut bgra = Vec::with_capacity(image.pixels.len());
-    for p in image.pixels.chunks_exact(4) {
+    for p in image.pixels.as_chunks::<4>().0 {
         let a = u32::from(p[3]);
         let premultiply = |c: u8| ((u32::from(c) * a + 127) / 255) as u8;
         bgra.extend_from_slice(&[premultiply(p[2]), premultiply(p[1]), premultiply(p[0]), p[3]]);

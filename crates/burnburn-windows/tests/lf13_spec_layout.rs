@@ -223,7 +223,7 @@ fn tabs_put_each_page_in_the_same_area_and_the_form_is_as_high_as_its_tallest_pa
         assert_eq!(by_id(&l, 1).tab, Some(0));
         assert_eq!(by_id(&l, 10).tab, Some(1));
         assert_eq!(by_id(&l, 1).rect.y, by_id(&l, 10).rect.y, "{dpi}: pages start at the same place");
-        assert!(by_id(&l, 1).rect.y >= strip[0].rect.y + 1, "{dpi}: pages lie in the strip");
+        assert!(by_id(&l, 1).rect.y > strip[0].rect.y, "{dpi}: pages lie in the strip");
         // the tallest page (5 rows) sets the height, so switching tabs never resizes the dialog
         let last = l.controls.iter().filter(|c| c.tab == Some(1)).map(|c| c.rect.bottom()).max().unwrap();
         let ok = l.controls.iter().find(|c| c.text == "OK").unwrap();

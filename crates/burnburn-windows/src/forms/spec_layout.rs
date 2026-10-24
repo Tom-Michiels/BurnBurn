@@ -62,7 +62,9 @@ pub enum SpecClass {
     /// The caption of a row.
     Caption,
     /// A single-line edit; `numeric` right-aligns it.
-    Edit { numeric: bool },
+    Edit {
+        numeric: bool,
+    },
     /// A drop-down list.
     Combo,
     Check,
@@ -89,7 +91,9 @@ pub enum SpecClass {
     /// The notice of the whole form, above the buttons.
     Notice,
     /// A dialog button; `default` is the one Return answers.
-    DialogButton { default: bool },
+    DialogButton {
+        default: bool,
+    },
 }
 
 /// One control at its place.
@@ -291,7 +295,14 @@ impl Builder<'_> {
         match &row.control {
             Control::Text { value, .. } | Control::Number { value } => {
                 let numeric = matches!(row.control, Control::Number { .. });
-                self.push(SpecClass::Edit { numeric }, id, Rect { x: cx, y, w: field, h: row_h }, value, enabled, shown);
+                self.push(
+                    SpecClass::Edit { numeric },
+                    id,
+                    Rect { x: cx, y, w: field, h: row_h },
+                    value,
+                    enabled,
+                    shown,
+                );
                 right = cx + field;
             }
             Control::Choice { options, selected } => {
@@ -417,7 +428,10 @@ fn columns(spec: &FormSpec, base: DluBase, meter: &dyn TextMeter, buttons_w: i32
         .map(|r| {
             r.tools
                 .iter()
-                .map(|t| base.x(dlu::TOOL_W).max(meter.width(&t.title, false) + base.x(dlu::TOOL_PAD)) + base.x(dlu::TOOL_GAP))
+                .map(|t| {
+                    base.x(dlu::TOOL_W).max(meter.width(&t.title, false) + base.x(dlu::TOOL_PAD))
+                        + base.x(dlu::TOOL_GAP)
+                })
                 .sum::<i32>()
         })
         .max()

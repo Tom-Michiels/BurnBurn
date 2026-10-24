@@ -21,9 +21,7 @@ use burnburn_windows::panels::StatusBar;
 use burnburn_windows::status_bar::{StatusPartKind, part_edges, status_parts};
 use burnburn_windows::status_line::StatusLine;
 use burnburn_windows::style::StatusTone;
-use burnburn_windows::window_state::{
-    SavedWindow, StoredWindow, default_window, load, placement, save, state_file,
-};
+use burnburn_windows::window_state::{SavedWindow, StoredWindow, default_window, load, placement, save, state_file};
 
 // ---- tool strip icons -------------------------------------------------------------------------
 
@@ -36,7 +34,7 @@ fn the_icon_side_follows_the_dpi_from_16_pixels_at_100_percent() {
 }
 
 fn premultiplied_ok(dib: &Dib) -> bool {
-    dib.bgra.chunks_exact(4).all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3])
+    dib.bgra.as_chunks::<4>().0.iter().all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3])
 }
 
 #[test]
@@ -51,7 +49,7 @@ fn every_tool_with_artwork_renders_a_dib_of_the_right_size_and_bit_depth_at_ever
             assert_eq!((dib.width, dib.height), (side, side), "{} at {dpi}", spec.icon);
             assert_eq!(dib.bgra.len(), (side * side * 4) as usize, "32 bits per pixel: {}", spec.icon);
             assert!(premultiplied_ok(&dib), "{} at {dpi}", spec.icon);
-            assert!(dib.bgra.chunks_exact(4).any(|p| p[3] > 0), "{} is not empty", spec.icon);
+            assert!(dib.bgra.as_chunks::<4>().0.iter().any(|p| p[3] > 0), "{} is not empty", spec.icon);
             if dpi == 96 {
                 with_art += 1;
             }
@@ -69,7 +67,7 @@ fn the_channels_are_blue_green_red_and_the_dark_theme_differs_from_the_light_one
     for id in burnburn_icons::icon_ids() {
         let rgba = burnburn_icons::render(id, 16, 1.0, burnburn_icons::Theme::Light).unwrap();
         let dib = icon_dib(id, Appearance::Light, 96).unwrap();
-        for (s, d) in rgba.pixels.chunks_exact(4).zip(dib.bgra.chunks_exact(4)) {
+        for (s, d) in rgba.pixels.as_chunks::<4>().0.iter().zip(dib.bgra.as_chunks::<4>().0.iter()) {
             if s[3] == 255 {
                 assert_eq!([d[0], d[1], d[2], d[3]], [s[2], s[1], s[0], 255], "{id}");
                 checked = true;
@@ -94,7 +92,7 @@ fn the_caret_is_a_drawn_symmetric_chevron_in_the_ink_of_the_appearance() {
                 assert_eq!(row[x * 4..x * 4 + 4], row[(w - 1 - x) * 4..(w - x) * 4], "{dpi}: mirrored");
             }
         }
-        assert!(light.bgra.chunks_exact(4).any(|p| p[3] == 255));
+        assert!(light.bgra.as_chunks::<4>().0.iter().any(|p| p[3] == 255));
         assert_ne!(light, caret_dib(Appearance::Dark, dpi));
     }
 }
@@ -119,7 +117,7 @@ fn strip_buttons_carry_their_catalogue_icon_and_the_layout_draws_icons_not_glyph
     assert!(iconed.iter().all(|c| c.rect.w == iconed[0].rect.w && !c.label.is_empty()));
     for c in layout.controls.iter().filter(|c| matches!(c.action, StripAction::Dropdown { .. })) {
         assert_eq!(c.icon, StripIcon::Caret);
-        assert!(c.label.chars().all(|ch| ch.is_ascii()), "no glyph character in a title: {:?}", c.label);
+        assert!(c.label.is_ascii(), "no glyph character in a title: {:?}", c.label);
     }
 }
 
@@ -142,12 +140,21 @@ fn the_status_bar_has_four_parts_status_with_symbol_coordinate_zoom_and_unit() {
     let error = StatusLine::toned("Openen mislukt", StatusTone::Error);
     let parts = status_parts(&error, &bar("X 12,5  Y 30"), Locale::Nl);
     let kinds: Vec<StatusPartKind> = parts.parts.iter().map(|p| p.kind).collect();
-    assert_eq!(kinds, vec![StatusPartKind::Status, StatusPartKind::Coordinate, StatusPartKind::Zoom, StatusPartKind::Unit]);
+    assert_eq!(
+        kinds,
+        vec![StatusPartKind::Status, StatusPartKind::Coordinate, StatusPartKind::Zoom, StatusPartKind::Unit]
+    );
     let texts: Vec<&str> = parts.parts.iter().map(|p| p.text.as_str()).collect();
     assert_eq!(texts[1..], ["X 12,5  Y 30", "100 %", "mm"]);
-    assert!(texts[0].starts_with('\u{2716}') && texts[0].ends_with("Openen mislukt"), "the symbol comes with the status");
+    assert!(
+        texts[0].starts_with('\u{2716}') && texts[0].ends_with("Openen mislukt"),
+        "the symbol comes with the status"
+    );
     assert_eq!(parts.tone, StatusTone::Error);
-    assert_eq!(parts.parts.iter().map(|p| p.name).collect::<Vec<_>>(), vec!["Status", "Aanwijzerpositie", "Zoom", "Eenheid"]);
+    assert_eq!(
+        parts.parts.iter().map(|p| p.name).collect::<Vec<_>>(),
+        vec!["Status", "Aanwijzerpositie", "Zoom", "Eenheid"]
+    );
     let en = status_parts(&StatusLine::toned("", StatusTone::Neutral), &bar(""), Locale::En);
     assert_eq!(en.parts[1].name, "Pointer position");
     assert_eq!(en.parts[0].text, "");
@@ -220,7 +227,14 @@ fn the_window_state_lives_in_the_burnburn_folder_and_survives_a_round_trip() {
 fn a_damaged_or_odd_file_is_ignored_and_a_path_that_cannot_be_written_is_an_error() {
     let dir = TempDir::new("damaged");
     let file = state_file(&dir.0);
-    for text in ["", "garbage", "1 2 3", "1 2 0 4 5 6\nmaximized=0", "1 2 3 4 5 NaN\nmaximized=0", "1 2 3 4 5 6\nmaximized=maybe"] {
+    for text in [
+        "",
+        "garbage",
+        "1 2 3",
+        "1 2 0 4 5 6\nmaximized=0",
+        "1 2 3 4 5 NaN\nmaximized=0",
+        "1 2 3 4 5 6\nmaximized=maybe",
+    ] {
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, text).unwrap();
         assert_eq!(load(&file), None, "{text:?}");
@@ -256,7 +270,11 @@ fn the_dark_title_bar_is_one_attribute_call_chosen_by_appearance_and_build() {
     assert_eq!(DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, 19);
     let call = |appearance, build| dark_title_bar(appearance, build);
     assert_eq!(call(Appearance::Dark, 22631), Some(DarkTitleBar { attribute: 20, value: 1 }));
-    assert_eq!(call(Appearance::Light, 22631), Some(DarkTitleBar { attribute: 20, value: 0 }), "switching back resets it");
+    assert_eq!(
+        call(Appearance::Light, 22631),
+        Some(DarkTitleBar { attribute: 20, value: 0 }),
+        "switching back resets it"
+    );
     assert_eq!(call(Appearance::Dark, 19041), Some(DarkTitleBar { attribute: 20, value: 1 }));
     assert_eq!(call(Appearance::Dark, 19040), Some(DarkTitleBar { attribute: 19, value: 1 }));
     assert_eq!(call(Appearance::Dark, 17763), Some(DarkTitleBar { attribute: 19, value: 1 }));

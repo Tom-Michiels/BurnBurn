@@ -12,8 +12,7 @@ use burnburn_host_models::hub_form::hub_form;
 use burnburn_host_models::hub_panel::HubPanel;
 use burnburn_host_models::l10n::Locale;
 use burnburn_host_models::panels::files_form::{
-    art_form, bundle_form, export_form, image_adjust_forms, image_import_form, import_form, material_form,
-    tracer_forms,
+    art_form, bundle_form, export_form, image_adjust_forms, image_import_form, import_form, material_form, tracer_forms,
 };
 use burnburn_host_models::panels::{
     CamTarget, CutTarget, CutTop, G5PanelModel, SchikkenPanel, cam_form, cut_form, g5_form, schikken_form,
