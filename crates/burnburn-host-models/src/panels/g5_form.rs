@@ -50,6 +50,7 @@ fn line_of(line: &G5Line) -> FormLine<G5Control> {
             FormLine::Button { control: *control, title: title.clone(), enabled: *enabled }
         }
         G5Line::Image(image) => FormLine::Image(image.clone()),
+        G5Line::EmptyState { symbol, text } => FormLine::Empty { symbol: (*symbol).to_owned(), text: text.clone() },
     }
 }
 

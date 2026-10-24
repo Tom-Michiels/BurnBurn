@@ -28,7 +28,7 @@ pub struct RepeatPanel {
 }
 
 /// Everything the hub window shows.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct HubPanel {
     /// Pop-up items of the known machines.
     pub devices: Vec<String>,
@@ -46,6 +46,8 @@ pub struct HubPanel {
     pub proofs: Vec<String>,
     /// Why the last proof was refused; empty when it was not.
     pub proof_problem: String,
+    /// What each list says when it is empty (LF17); the form shows it in place of the list.
+    pub empty: crate::empty_state::HubEmptyStates,
 }
 
 /// The kind captions of the form's pop-up.
@@ -277,6 +279,7 @@ pub fn hub_panel(vm: &MachineHubViewModel, document_open: bool, locale: Locale) 
         repeat,
         proofs: vm.calibration.rows.iter().map(|row| proof_line(row, locale)).collect(),
         proof_problem: vm.calibration.problem.map_or_else(String::new, |p| proof_problem_text(p, locale).to_owned()),
+        empty: crate::empty_state::hub_empty(vm, locale),
     }
 }
 

@@ -141,8 +141,8 @@ pub(super) fn remnants_lines(
     let _ = draft;
     let remnants = &doc.remnants;
     let mut lines = vec![G5Line::Heading(t(G7Text::RemnantsHeading, locale))];
-    if remnants.rows.is_empty() {
-        lines.push(G5Line::Text(t(G7Text::RemnantsNone, locale)));
+    if let Some(empty) = crate::empty_state::remnants_empty(remnants, locale) {
+        lines.push(G5Line::EmptyState { symbol: empty.symbol, text: empty.text });
     }
     for r in &remnants.rows {
         lines.push(G5Line::Text(g7_fmt(
@@ -297,7 +297,10 @@ pub(super) fn recognition_lines(
     let r = &doc.recognition;
     let mut lines = vec![G5Line::Heading(t(G7Text::RecogHeading, locale)), G5Line::Text(t(G7Text::RecogHint, locale))];
     match &r.template {
-        None => lines.push(G5Line::Text(t(G7Text::RecogNoTemplate, locale))),
+        None => match crate::empty_state::recognition_empty(r, locale) {
+            Some(empty) => lines.push(G5Line::EmptyState { symbol: empty.symbol, text: empty.text }),
+            None => lines.push(G5Line::Text(t(G7Text::RecogNoTemplate, locale))),
+        },
         Some(template) => lines.push(G5Line::Text(g7_fmt(
             G7Text::RecogTemplateLine,
             locale,
