@@ -36,7 +36,7 @@ fn texts(h: &HeadlessEditorHarness, doc: DocumentId, p: G5Panel) -> Vec<String> 
     lines(h, doc, p)
         .into_iter()
         .filter_map(|l| match l {
-            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Heading(t) => Some(t),
+            G5Line::Text(t) | G5Line::Problem(t) | G5Line::Unavailable(t) | G5Line::Heading(t) => Some(t),
             _ => None,
         })
         .collect()

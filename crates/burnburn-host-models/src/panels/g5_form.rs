@@ -32,6 +32,7 @@ fn line_of(line: &G5Line) -> FormLine<G5Control> {
         G5Line::Heading(t) => FormLine::Heading(t.clone()),
         G5Line::Text(t) => FormLine::Text(t.clone()),
         G5Line::Problem(t) => FormLine::Problem(t.clone()),
+        G5Line::Unavailable(t) => FormLine::Unavailable(t.clone()),
         G5Line::Memo { control, text, .. } => FormLine::Memo { control: *control, text: text.clone() },
         G5Line::Field { control, caption, text } => {
             FormLine::Field { control: *control, caption: caption.clone(), text: text.clone(), invalid: false }

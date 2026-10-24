@@ -16,6 +16,8 @@ pub enum FormLine<C> {
     Heading(String),
     Text(String),
     Problem(String),
+    /// Why the section cannot be used now: the section's `unavailable`, said once.
+    Unavailable(String),
     Memo { control: C, text: String },
     Field { control: C, caption: String, text: String, invalid: bool },
     Choice { control: C, caption: String, options: Vec<String>, selected: usize },
@@ -71,6 +73,11 @@ pub fn lines_form<C: Copy>(title: &str, lines: &[FormLine<C>], role: impl Fn(C) 
                     current.rows.push(row);
                 }
             },
+            FormLine::Unavailable(text) => {
+                if current.unavailable.is_none() {
+                    current.unavailable = Some(text.clone());
+                }
+            }
             FormLine::Memo { control, text } => {
                 let id = take_id(Some(*control), &mut controls);
                 current.rows.push(FormRow::new(id, "", Control::Memo { text: text.clone() }));

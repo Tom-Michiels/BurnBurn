@@ -355,7 +355,7 @@ pub(super) fn instance_remove_line(instance: &InstanceRow, locale: Locale) -> G5
 pub(super) fn reference_make_lines(s: &StructureViewModel, locale: Locale) -> Vec<G5Line> {
     let mut lines = vec![G5Line::Heading(t(G6Text::RefMakeHeading, locale))];
     if s.edges.is_empty() {
-        lines.push(G5Line::Text(t(G6Text::RefNoEdges, locale)));
+        lines.push(G5Line::Unavailable(t(G6Text::RefNoEdges, locale)));
         return lines;
     }
     lines.push(field(G5Control::RefName, t(G6Text::RefNameCaption, locale), String::new()));
@@ -474,7 +474,7 @@ pub(super) fn operator_lines(doc: &DocumentViewModel, locale: Locale) -> Option<
     let o = doc.operator.as_ref()?;
     let mut lines = vec![G5Line::Heading(t(G6Text::OperatorMachineHeading, locale))];
     match &o.machine {
-        None => lines.push(G5Line::Text(t(G6Text::OperatorNoMachine, locale))),
+        None => lines.push(G5Line::Unavailable(t(G6Text::OperatorNoMachine, locale))),
         Some(m) => {
             lines.push(G5Line::Text(g6_fmt(
                 G6Text::OperatorMachineLine,
