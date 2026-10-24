@@ -74,7 +74,10 @@ fn a_snap_gets_a_label_beside_its_marker_in_the_language_of_the_host() {
     let xs: Vec<f32> = glyphs[0].iter().flatten().map(|p| p[0]).collect();
     assert!(xs.iter().cloned().fold(f32::MAX, f32::min) > 100.0, "right of the marker");
     // A halo ring (strokes in the background colour) lies beneath the glyphs.
-    let halo = with.iter().filter(|p| matches!(p, Primitive::Stroke { color, .. } if *color == Theme::light().background)).count();
+    let halo = with
+        .iter()
+        .filter(|p| matches!(p, Primitive::Stroke { color, .. } if *color == Theme::light().background))
+        .count();
     assert!(halo >= 3, "halo rings: {halo}");
     assert_ne!(label_fills(&packet(SnapKind::Midpoint, &english), colour), glyphs, "Midpoint is not Midden");
 }

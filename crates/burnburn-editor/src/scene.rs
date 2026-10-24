@@ -299,7 +299,12 @@ pub fn build_scene(req: &SceneRequest<'_>) -> SceneSnapshot {
         if req.tool == ToolKind::Select && !gesture {
             let top_middle = Point::new((bounds.min().x + bounds.max().x) / 2.0, bounds.max().y);
             overlays.extend(crate::tool::selection_handles(bounds, mm_per_point).into_iter().map(|(handle, at)| {
-                Overlay::Handle { at, handle, stem_from: (handle == Handle::Rotate).then_some(top_middle), hovered: false }
+                Overlay::Handle {
+                    at,
+                    handle,
+                    stem_from: (handle == Handle::Rotate).then_some(top_middle),
+                    hovered: false,
+                }
             }));
         }
     }

@@ -19,6 +19,6 @@ pub use input::Rgba;
 pub use packet::{ImageCell, Primitive, RenderPacket};
 pub use scene::{
     CanvasChrome, LAYER_COLOURS, MarkKind, RULER_MIN_MAJOR_GAP_PT, RULER_THICKNESS_PT, RoleStyle, RulerAxis, RulerMark,
-    RulerStep, RulerUnit, Rulers, SnapLabels, Theme, ruler_marks, ruler_step, build_packet, build_packet_with, canvas_text_missing_chars,
-    contrast_ratio, delta_e, size_px,
+    RulerStep, RulerUnit, Rulers, SnapLabels, Theme, build_packet, build_packet_with, canvas_text_missing_chars,
+    contrast_ratio, delta_e, ruler_marks, ruler_step, size_px,
 };

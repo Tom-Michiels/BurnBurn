@@ -14,8 +14,8 @@ mod sketch;
 pub(crate) mod text;
 
 pub use ruler::{
-    MarkKind, RULER_MIN_MAJOR_GAP_PT, RULER_THICKNESS_PT, RulerAxis, RulerMark, RulerStep, RulerUnit, Rulers, ruler_marks,
-    ruler_step,
+    MarkKind, RULER_MIN_MAJOR_GAP_PT, RULER_THICKNESS_PT, RulerAxis, RulerMark, RulerStep, RulerUnit, Rulers,
+    ruler_marks, ruler_step,
 };
 
 use crate::input::Rgba;

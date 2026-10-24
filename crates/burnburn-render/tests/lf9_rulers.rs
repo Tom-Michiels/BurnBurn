@@ -8,7 +8,7 @@ use burnburn_editor::{Camera, SceneSnapshot, Viewport};
 use burnburn_geometry::Point;
 use burnburn_render::gpu::{GpuContext, GpuError, Image, render_offscreen};
 use burnburn_render::{
-    CanvasChrome, MarkKind, RULER_THICKNESS_PT, RulerAxis, RulerUnit, Rulers, Rgba, Theme, build_packet_with,
+    CanvasChrome, MarkKind, RULER_THICKNESS_PT, Rgba, RulerAxis, RulerUnit, Rulers, Theme, build_packet_with,
     contrast_ratio, ruler_marks, ruler_step,
 };
 use burnburn_types::{DocumentId, RevisionId, StableId};

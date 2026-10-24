@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic)] // test helpers outside #[test] fns
 
-use burnburn_editor::{Camera, Handle, Overlay, SceneSnapshot, ScaleGrip, Viewport};
+use burnburn_editor::{Camera, Handle, Overlay, ScaleGrip, SceneSnapshot, Viewport};
 use burnburn_geometry::Point;
 use burnburn_render::gpu::{GpuContext, GpuError, Image, render_offscreen};
 use burnburn_render::{Rgba, Theme, build_packet};
@@ -68,16 +68,18 @@ fn the_rotate_grip_is_round_and_the_scale_grip_is_square() {
         // 40% of the grip's size from its centre along both axes: inside a square, outside a circle.
         let corner = (size_px * 0.4) as u32;
         let (cx, cy) = (200u32, 200u32);
-        let square = render(
-            &ctx,
-            &theme,
-            vec![handle(Point::new(0.0, 0.0), Handle::Scale(ScaleGrip::TopRight), None, false)],
-        );
+        let square =
+            render(&ctx, &theme, vec![handle(Point::new(0.0, 0.0), Handle::Scale(ScaleGrip::TopRight), None, false)]);
         let round = render(&ctx, &theme, vec![handle(Point::new(0.0, 0.0), Handle::Rotate, None, false)]);
         for (label, image, expect_corner_filled) in [("scale", &square, true), ("rotate", &round, false)] {
-            assert!(near(image.pixel(cx, cy).unwrap(), theme.bed_fill, 0.03), "{name} {label}: centre is the grip fill");
+            assert!(
+                near(image.pixel(cx, cy).unwrap(), theme.bed_fill, 0.03),
+                "{name} {label}: centre is the grip fill"
+            );
             for (dx, dy) in [(1i32, 1i32), (-1, 1), (1, -1), (-1, -1)] {
-                let p = image.pixel((cx as i32 + dx * corner as i32) as u32, (cy as i32 + dy * corner as i32) as u32).unwrap();
+                let p = image
+                    .pixel((cx as i32 + dx * corner as i32) as u32, (cy as i32 + dy * corner as i32) as u32)
+                    .unwrap();
                 assert_eq!(
                     near(p, theme.bed_fill, 0.03),
                     expect_corner_filled,
@@ -107,17 +109,17 @@ fn the_rotate_grip_hangs_on_a_stem_drawn_in_the_selection_colour() {
     let Some(ctx) = context() else { return };
     for (name, theme) in themes() {
         // Grip 6 mm (24 pt, 96 px) above the stem's start; the stem is vertical through x = 200.
-        let image = render(
-            &ctx,
-            &theme,
-            vec![handle(Point::new(0.0, 6.0), Handle::Rotate, Some(Point::new(0.0, 0.0)), false)],
-        );
+        let image =
+            render(&ctx, &theme, vec![handle(Point::new(0.0, 6.0), Handle::Rotate, Some(Point::new(0.0, 0.0)), false)]);
         // Half way between grip and top edge, away from both markers.
         let (x, y) = (200u32, 200 - 48);
         let hit = (x - 2..=x + 2).any(|xx| near(image.pixel(xx, y).unwrap(), theme.selection, 0.12));
         assert!(hit, "{name}: no stem pixel in the selection colour near {x},{y}");
         // And not a stem where no grip hangs.
         let bare = render(&ctx, &theme, vec![handle(Point::new(0.0, 6.0), Handle::Rotate, None, false)]);
-        assert!(!(x - 2..=x + 2).any(|xx| near(bare.pixel(xx, y).unwrap(), theme.selection, 0.12)), "{name}: stem without stem_from");
+        assert!(
+            !(x - 2..=x + 2).any(|xx| near(bare.pixel(xx, y).unwrap(), theme.selection, 0.12)),
+            "{name}: stem without stem_from"
+        );
     }
 }

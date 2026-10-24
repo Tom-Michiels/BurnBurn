@@ -114,8 +114,9 @@ impl SelectTool {
         self.hovered = None;
         if !ev.modifiers.alt
             && let Some(bounds) = ctx.selection.bounds(ctx.document)
+            && let Some((handle, p)) = pick_handle(bounds, at, ctx)
         {
-            if let Some((handle, p)) = pick_handle(bounds, at, ctx) {
+            {
                 let (min, max) = (bounds.min(), bounds.max());
                 let opposite = match handle {
                     Handle::Scale(ScaleGrip::BottomLeft) => max,

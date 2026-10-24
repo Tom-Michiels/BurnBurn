@@ -120,7 +120,12 @@ fn r12_5_mm_renders_as_real_glyphs_without_replacement_blocks() {
         assert_eq!(parts.len(), 7, "{name}: R 1 2 , 5 m m expected, got {parts:?}");
         let (r, one, five, comma, m1, m2) = (parts[0], parts[1], parts[4], parts[3], parts[5], parts[6]);
         for m in [m1, m2] {
-            assert!(height(&m) * 100 < height(&five) * 85, "{name}: m ({}) not lower than the digit 5 ({})", height(&m), height(&five));
+            assert!(
+                height(&m) * 100 < height(&five) * 85,
+                "{name}: m ({}) not lower than the digit 5 ({})",
+                height(&m),
+                height(&five)
+            );
             assert!(width(&m) > width(&five), "{name}: m is wider than a digit");
         }
         assert!(height(&one) >= height(&r) * 9 / 10, "{name}: 1 and R are both cap height");
@@ -153,11 +158,18 @@ fn the_halo_has_the_background_colour_where_a_line_crosses_the_text() {
         let row = HEIGHT / 2;
         // Pixels on the line, inside the text's extent, that the text turned into plain background.
         let cut = (x0..=x1)
-            .filter(|&x| near(bare.pixel(x, row).unwrap(), line_colour, 0.05) && near(with_text.pixel(x, row).unwrap(), theme.background, 0.02))
+            .filter(|&x| {
+                near(bare.pixel(x, row).unwrap(), line_colour, 0.05)
+                    && near(with_text.pixel(x, row).unwrap(), theme.background, 0.02)
+            })
             .count();
         assert!(cut >= 8, "{name}: only {cut} halo pixels on the line row");
         // Far from the text the line is untouched.
-        assert!(near(with_text.pixel(WIDTH / 2 + 170, row).unwrap(), line_colour, 0.05) || near(with_text.pixel(WIDTH / 2 - 170, row).unwrap(), line_colour, 0.05), "{name}: the line outside the label");
+        assert!(
+            near(with_text.pixel(WIDTH / 2 + 170, row).unwrap(), line_colour, 0.05)
+                || near(with_text.pixel(WIDTH / 2 - 170, row).unwrap(), line_colour, 0.05),
+            "{name}: the line outside the label"
+        );
     }
 }
 
@@ -167,7 +179,10 @@ fn on_the_bed_the_halo_takes_the_bed_colour() {
     let Some(ctx) = context() else { return };
     for (name, theme) in themes() {
         let mut scene = dimension("R12,5 mm", vec![[Point::new(-45.0, 0.0), Point::new(45.0, 0.0)]]);
-        scene.overlays.insert(0, Overlay::Bed { width_mm: 100.0, height_mm: 40.0, origin: burnburn_editor::BedOrigin::BottomLeft });
+        scene.overlays.insert(
+            0,
+            Overlay::Bed { width_mm: 100.0, height_mm: 40.0, origin: burnburn_editor::BedOrigin::BottomLeft },
+        );
         scene.camera = Camera::new(Point::new(50.0, 20.0), 4.0).unwrap();
         // The label and its line are at the world origin: shift them onto the bed's middle.
         for o in &mut scene.overlays {
@@ -179,7 +194,8 @@ fn on_the_bed_the_halo_takes_the_bed_colour() {
         let image = render(&ctx, &theme, &scene);
         let row = HEIGHT / 2;
         let halo = (300..500).filter(|&x| near(image.pixel(x, row).unwrap(), theme.bed_fill, 0.02)).count();
-        let canvas_coloured = (300..500).filter(|&x| near(image.pixel(x, row).unwrap(), theme.background, 0.02)).count();
+        let canvas_coloured =
+            (300..500).filter(|&x| near(image.pixel(x, row).unwrap(), theme.background, 0.02)).count();
         assert!(halo >= 8, "{name}: only {halo} bed-coloured pixels on the line row");
         assert_eq!(canvas_coloured, 0, "{name}: canvas-coloured halo on the bed");
     }
