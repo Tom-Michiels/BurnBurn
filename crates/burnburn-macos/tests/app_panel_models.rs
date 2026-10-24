@@ -532,7 +532,8 @@ fn the_preview_bitmap_draws_unplayed_cuts_in_full_colour_played_dimmed_the_pick_
     let hidden = render_preview(&h.controller().preview_view(doc).unwrap(), &frame);
     let m = moves[travel];
     let (a, b) = (frame.to_px([m.from.x_mm(), m.from.y_mm()]), frame.to_px([m.to.x_mm(), m.to.y_mm()]));
-    let changed: Vec<usize> = (0..shown.rgba.len()).step_by(4).filter(|i| shown.rgba[*i..*i + 3] != hidden.rgba[*i..*i + 3]).collect();
+    let changed: Vec<usize> =
+        (0..shown.rgba.len()).step_by(4).filter(|i| shown.rgba[*i..*i + 3] != hidden.rgba[*i..*i + 3]).collect();
     assert!(!changed.is_empty(), "hiding travel changes the picture");
     for i in changed {
         let (x, y) = (((i / 4) % 760) as f64, ((i / 4) / 760) as f64);

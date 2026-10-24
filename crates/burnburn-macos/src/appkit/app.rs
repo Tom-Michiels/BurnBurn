@@ -408,7 +408,7 @@ impl HostApp {
     }
 
     /// The display unit of lengths (preferences).
-    fn length_preference(&self) -> burnburn_host_models::format::LengthPreference {
+    pub(crate) fn length_preference(&self) -> burnburn_host_models::format::LengthPreference {
         use burnburn_host_models::format::LengthPreference;
         match self.controller.try_borrow().map(|c| c.prefs_view().unit) {
             Ok(burnburn_presentation::LengthUnit::Inches) => LengthPreference::Inches,

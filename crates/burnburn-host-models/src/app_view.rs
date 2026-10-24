@@ -2,8 +2,8 @@
 //! lines, history lines, the preview's texts and bitmap, and the RD listing.
 
 use burnburn_presentation::{
-    HistoryViewModel, LengthUnit, MessageKey, MoveKind, PlaybackSpeed, PrefKey, PrefProblem, PrefUnit,
-    PrefValue, Preferences, PrefsViewModel, PreviewViewModel, RdInspectViewModel, ShortcutProblem, ShortcutTarget,
+    HistoryViewModel, LengthUnit, MessageKey, MoveKind, PlaybackSpeed, PrefKey, PrefProblem, PrefUnit, PrefValue,
+    Preferences, PrefsViewModel, PreviewViewModel, RdInspectViewModel, ShortcutProblem, ShortcutTarget,
     ShortcutsViewModel,
 };
 

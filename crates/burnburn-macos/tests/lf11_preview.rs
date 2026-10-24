@@ -10,9 +10,8 @@ use std::sync::Arc;
 
 use burnburn_host_models::format::{LengthPreference, format_length};
 use burnburn_macos::app_view::{
-    LegendEntry, PLAYED_OPACITY, PickNames, PreviewFrame, PreviewPanel, PreviewStyle, Swatch,
-    event_at_seconds, preview_legend, preview_panel, preview_panel_units, render_preview, render_preview_styled,
-    render_swatch,
+    LegendEntry, PLAYED_OPACITY, PickNames, PreviewFrame, PreviewPanel, PreviewStyle, Swatch, event_at_seconds,
+    preview_legend, preview_panel, preview_panel_units, render_preview, render_preview_styled, render_swatch,
 };
 use burnburn_macos::l10n::Locale;
 use burnburn_macos::panels_image::BitmapImage;
@@ -77,7 +76,14 @@ fn compiled() -> (HeadlessEditorHarness, DocumentId) {
     (h, doc)
 }
 
-fn mv(kind: MoveKind, from: [f64; 2], to: [f64; 2], event: usize, seconds: f64, op: Option<OperationId>) -> PreviewMove {
+fn mv(
+    kind: MoveKind,
+    from: [f64; 2],
+    to: [f64; 2],
+    event: usize,
+    seconds: f64,
+    op: Option<OperationId>,
+) -> PreviewMove {
     PreviewMove {
         kind,
         from: MachinePoint::new(from[0], from[1]).unwrap(),
@@ -105,7 +111,7 @@ fn synthetic(view: &PreviewViewModel, moves: Vec<PreviewMove>, completed: usize)
 }
 
 fn first_op(view: &PreviewViewModel) -> OperationId {
-    *view.layer_slots.keys().next().expect("the compiled plan has a layer")
+    *view.layer_slots.keys().next().unwrap()
 }
 
 fn rgb(image: &BitmapImage, x: i64, y: i64) -> [f64; 3] {
@@ -200,7 +206,8 @@ fn what_is_played_is_dimmed_in_its_own_colour_and_never_green() {
     };
     assert!((PLAYED_OPACITY - 0.35).abs() < 1e-9, "the plan's 35 %");
     for layer in [[255u8, 0, 0], [0, 0, 255]] {
-        let want: [f64; 3] = std::array::from_fn(|c| PLAYED_OPACITY * f64::from(layer[c]) + (1.0 - PLAYED_OPACITY) * BED[c]);
+        let want: [f64; 3] =
+            std::array::from_fn(|c| PLAYED_OPACITY * f64::from(layer[c]) + (1.0 - PLAYED_OPACITY) * BED[c]);
         let got = at(&played, layer, want);
         assert!(dist(got, want) < 14.0, "played {layer:?} is the layer colour at 35 %: {got:?} vs {want:?}");
         let fresh = at(&unplayed, layer, layer.map(f64::from));
@@ -226,14 +233,18 @@ fn travel_is_dashed_grey_with_gaps_and_hidden_travel_is_not_drawn() {
     let inked = |x: i64| (-1..=1).any(|d| dist(rgb(&image, x, yc.round() as i64 + d), BED) > 25.0);
     let runs = (x0..x1).filter(|x| inked(*x) != inked(*x + 1)).count();
     assert!(runs >= 12, "a dashed line alternates ink and gap, got {runs} edges");
-    let grey = (x0..x1).filter(|x| inked(*x)).map(|x| rgb(&image, x, yc.round() as i64)).filter(|p| dist(*p, BED) > 25.0);
+    let grey =
+        (x0..x1).filter(|x| inked(*x)).map(|x| rgb(&image, x, yc.round() as i64)).filter(|p| dist(*p, BED) > 25.0);
     for p in grey.take(20) {
         assert!((p[0] - p[1]).abs() < 12.0 && (p[1] - p[2]).abs() < 12.0, "travel is grey: {p:?}");
     }
     let mut hidden_view = view.clone();
     hidden_view.show_travel = false;
     let hidden = render_preview_styled(&hidden_view, &frame, &style([255, 0, 0]));
-    assert!((x0..x1).all(|x| dist(rgb(&hidden, x, yc.round() as i64), BED) < 12.0), "hidden travel leaves the bed alone");
+    assert!(
+        (x0..x1).all(|x| dist(rgb(&hidden, x, yc.round() as i64), BED) < 12.0),
+        "hidden travel leaves the bed alone"
+    );
     let _ = &mut h;
 }
 
@@ -261,7 +272,11 @@ fn a_higher_pixel_ratio_draws_proportionally_thicker_strokes() {
     let op = first_op(&base);
     let view = synthetic(&base, vec![mv(MoveKind::Cut, [200.0, 450.0], [1000.0, 450.0], 0, 4.0, Some(op))], 0);
     let thickness = |ratio: f64| {
-        let frame = PreviewFrame::fit(view.bed_mm.unwrap(), [(760.0 * ratio) as u32, (456.0 * ratio) as u32], (8.0 * ratio) as u32);
+        let frame = PreviewFrame::fit(
+            view.bed_mm.unwrap(),
+            [(760.0 * ratio) as u32, (456.0 * ratio) as u32],
+            (8.0 * ratio) as u32,
+        );
         let image = render_preview_styled(&view, &frame, &PreviewStyle { layers: vec![[0, 0, 0]], pixel_ratio: ratio });
         let x = frame.to_px([600.0, 450.0])[0].round() as i64;
         let y = frame.to_px([600.0, 450.0])[1].round() as i64;
@@ -322,11 +337,19 @@ fn the_panel_gives_the_lengths_in_the_preferred_unit_and_the_play_state() {
     let travel_mm = view.preview.travel_length_mm;
     assert!(cut_mm > 100.0);
     let mm: PreviewPanel = preview_panel_units(&view, &PickNames::default(), Locale::En, LengthPreference::Millimeters);
-    assert!(mm.lengths_text.contains(&format_length(cut_mm, LengthPreference::Millimeters, Locale::En)), "{}", mm.lengths_text);
+    assert!(
+        mm.lengths_text.contains(&format_length(cut_mm, LengthPreference::Millimeters, Locale::En)),
+        "{}",
+        mm.lengths_text
+    );
     assert!(mm.lengths_text.contains(&format_length(travel_mm, LengthPreference::Millimeters, Locale::En)));
     assert!(mm.lengths_text.starts_with("Cut "), "{}", mm.lengths_text);
     let inch = preview_panel_units(&view, &PickNames::default(), Locale::Nl, LengthPreference::Inches);
-    assert!(inch.lengths_text.contains(&format_length(cut_mm, LengthPreference::Inches, Locale::Nl)), "{}", inch.lengths_text);
+    assert!(
+        inch.lengths_text.contains(&format_length(cut_mm, LengthPreference::Inches, Locale::Nl)),
+        "{}",
+        inch.lengths_text
+    );
     assert!(inch.lengths_text.starts_with("Snijden "), "{}", inch.lengths_text);
     assert!(!preview_panel(&view, Locale::En).playing);
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::Play { document: doc, playing: true })));
@@ -389,4 +412,33 @@ fn the_default_render_still_draws_cuts_and_the_bed() {
     assert_eq!((image.width, image.height), (760, 456));
     let some_ink = (0..456).any(|y| (0..760).any(|x| dist(rgb(&image, x, y), BED) > 100.0));
     assert!(some_ink);
+}
+
+/// Evidence for the dev note, not a check: with `BURNBURN_GUI_SNAPSHOT_DIR` set, a played, a partly
+/// played, a picked and a dashed-travel scene is written as a binary PPM (`sips` makes a PNG).
+#[test]
+fn write_the_preview_scene_when_asked_to() {
+    let Ok(dir) = std::env::var("BURNBURN_GUI_SNAPSHOT_DIR") else { return };
+    let (mut h, doc) = compiled();
+    let base = h.controller().preview_view(doc).unwrap();
+    let op = first_op(&base);
+    let moves = vec![
+        mv(MoveKind::Travel, [0.0, 0.0], [200.0, 150.0], 0, 1.0, None),
+        mv(MoveKind::Cut, [200.0, 150.0], [700.0, 150.0], 1, 2.0, Some(op)),
+        mv(MoveKind::Cut, [700.0, 150.0], [1100.0, 600.0], 2, 2.0, Some(op)),
+        mv(MoveKind::Travel, [1100.0, 600.0], [300.0, 700.0], 3, 1.0, None),
+        mv(MoveKind::Cut, [300.0, 700.0], [900.0, 800.0], 4, 2.0, Some(op)),
+        mv(MoveKind::Cut, [900.0, 800.0], [1400.0, 300.0], 5, 2.0, Some(op)),
+    ];
+    let mut view = synthetic(&base, moves, 2);
+    view.partial = Some(burnburn_presentation::PartialMove { index: 2, fraction: 0.5 });
+    view.head = [900.0, 375.0];
+    view.selected =
+        Some(burnburn_presentation::PreviewSelection { index: 5, kind: MoveKind::Cut, source: None, power: None });
+    let frame = PreviewFrame::fit(view.bed_mm.unwrap(), [1520, 912], 16);
+    let image = render_preview_styled(&view, &frame, &PreviewStyle { layers: vec![[0, 0, 255]], pixel_ratio: 2.0 });
+    let mut out = format!("P6\n{} {}\n255\n", image.width, image.height).into_bytes();
+    out.extend(image.rgba.as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(std::path::Path::new(&dir).join("scene-played-picked.ppm"), out).unwrap();
 }

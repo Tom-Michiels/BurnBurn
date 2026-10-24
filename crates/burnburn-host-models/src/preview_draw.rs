@@ -118,7 +118,9 @@ pub fn render_swatch(swatch: Swatch, size: [u32; 2], style: &PreviewStyle) -> Bi
     match swatch {
         Swatch::Cut => canvas.pass(1.0, [(a, b, CUT_WIDTH * r, ink, None)]),
         Swatch::LoweredPower => canvas.pass(1.0, [(a, b, CUT_WIDTH * r, LOWERED, None)]),
-        Swatch::Travel => canvas.pass(1.0, [(a, b, TRAVEL_WIDTH * r, TRAVEL, Some((TRAVEL_DASH.0 * r, TRAVEL_DASH.1 * r)))]),
+        Swatch::Travel => {
+            canvas.pass(1.0, [(a, b, TRAVEL_WIDTH * r, TRAVEL, Some((TRAVEL_DASH.0 * r, TRAVEL_DASH.1 * r)))])
+        }
         Swatch::Played => canvas.pass(PLAYED_OPACITY, [(a, b, CUT_WIDTH * r, ink, None)]),
         Swatch::Picked => {
             canvas.pass(0.9, [(a, b, PICKED_HALO * r, WHITE, None)]);
@@ -169,7 +171,7 @@ impl Canvas {
     fn new(width: u32, height: u32, fill: [u8; 3]) -> Canvas {
         let (width, height) = (width as usize, height as usize);
         let mut rgba = vec![255; width * height * 4];
-        for px in rgba.chunks_exact_mut(4) {
+        for px in rgba.as_chunks_mut::<4>().0 {
             px[..3].copy_from_slice(&fill);
         }
         Canvas { width, height, rgba }
@@ -194,8 +196,10 @@ impl Canvas {
 
     fn stroke(&self, mask: &mut Mask, a: [f64; 2], b: [f64; 2], width: f64, colour: [u8; 3], dash: Option<(f64, f64)>) {
         let reach = width / 2.0 + 1.0;
-        let (x0, x1) = ((a[0].min(b[0]) - reach).floor().max(0.0) as usize, (a[0].max(b[0]) + reach).ceil().max(0.0) as usize);
-        let (y0, y1) = ((a[1].min(b[1]) - reach).floor().max(0.0) as usize, (a[1].max(b[1]) + reach).ceil().max(0.0) as usize);
+        let (x0, x1) =
+            ((a[0].min(b[0]) - reach).floor().max(0.0) as usize, (a[0].max(b[0]) + reach).ceil().max(0.0) as usize);
+        let (y0, y1) =
+            ((a[1].min(b[1]) - reach).floor().max(0.0) as usize, (a[1].max(b[1]) + reach).ceil().max(0.0) as usize);
         let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
         let len2 = dx * dx + dy * dy;
         let len = len2.sqrt();
@@ -228,13 +232,13 @@ impl Canvas {
     }
 
     fn composite(&mut self, mask: &Mask, opacity: f64) {
-        for (i, px) in self.rgba.chunks_exact_mut(4).enumerate() {
+        for (i, px) in self.rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             let a = f64::from(mask.cover[i]) * opacity;
             if a <= 0.0 {
                 continue;
             }
-            for c in 0..3 {
-                px[c] = (f64::from(px[c]) * (1.0 - a) + f64::from(mask.colour[i][c]) * a).round() as u8;
+            for (value, ink) in px.iter_mut().zip(mask.colour[i]) {
+                *value = (f64::from(*value) * (1.0 - a) + f64::from(ink) * a).round() as u8;
             }
         }
     }
@@ -303,9 +307,10 @@ pub fn render_preview_styled(view: &PreviewViewModel, frame: &PreviewFrame, styl
         }
     };
     if view.show_travel {
-        let travel = moves.iter().filter(|m| !burning(m.kind)).map(|m| {
-            (px(m.from), px(m.to), TRAVEL_WIDTH * r, TRAVEL, Some((TRAVEL_DASH.0 * r, TRAVEL_DASH.1 * r)))
-        });
+        let travel = moves
+            .iter()
+            .filter(|m| !burning(m.kind))
+            .map(|m| (px(m.from), px(m.to), TRAVEL_WIDTH * r, TRAVEL, Some((TRAVEL_DASH.0 * r, TRAVEL_DASH.1 * r))));
         canvas.pass(1.0, travel);
     }
     // Played (dimmed) below, still to do on top. The move the clock is in is split at its fraction.

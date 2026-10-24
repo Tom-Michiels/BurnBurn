@@ -667,9 +667,35 @@ fn preview() -> Result<(), String> {
     let (_, picked) = s.app.preview_texts().ok_or("no texts")?;
     expect(|| format!("pick line {picked:?}"), picked.starts_with("Gekozen: snijden") && picked.contains("bewerking"))?;
 
+    // LF11: the legend is drawn swatches plus words, and the lengths are said in the unit.
+    let texts = text_fields(&window);
+    for word in ["Snijden", "Verlaagd vermogen (tab)", "Verplaatsing", "Gespeeld", "Gekozen", "Positie"] {
+        expect(|| format!("legend word {word:?} in {texts:?}"), texts.iter().any(|t| t == word))?;
+    }
+    expect(
+        || format!("lengths line in {texts:?}"),
+        texts.iter().any(|t| t.starts_with("Snijden ") && t.contains(" mm")),
+    )?;
+    let swatches: Vec<_> = controls(&window)
+        .into_iter()
+        .filter_map(|v| v.downcast::<objc2_app_kit::NSImageView>().ok())
+        .filter(|v| (v.frame().size.width, v.frame().size.height) == (28.0, 14.0))
+        .collect();
+    expect(|| format!("{} legend swatches", swatches.len()), swatches.len() == 6)?;
+    expect(|| "every swatch is drawn".into(), swatches.iter().all(|v| v.image().is_some()))?;
+    // The play control is a symbol button, labelled for VoiceOver; it becomes Pause while playing.
+    let play = |label: &str| -> Result<Retained<NSButton>, String> {
+        labelled(&window, label)?.downcast::<NSButton>().map_err(|_| format!("{label:?} is no button"))
+    };
+    expect(|| "the play button has a symbol, not a title".into(), {
+        let b = play("Afspelen")?;
+        b.image().is_some() && b.title().to_string().is_empty()
+    })?;
+
     // Play: the timer runs, the clock advances by what the timer reports, the end stops it.
-    click(&*button_titled(&window, "Afspelen")?);
+    click(&*play("Afspelen")?);
     expect(|| "the playback timer runs".into(), s.app.preview_timer_running())?;
+    expect(|| "while playing the button says Pauzeren".into(), play("Pauzeren").is_ok())?;
     s.app.preview_advance(0.5);
     let (time, _) = s.app.preview_texts().ok_or("no texts")?;
     expect(|| format!("clock after 0.5 s: {time:?}"), time.starts_with("Tijd 0:00 van ≈"))?;
@@ -681,7 +707,7 @@ fn preview() -> Result<(), String> {
         time.contains(&format!("Tijd {} van", burnburn_macos::app_view::clock_text(total))),
     )?;
     expect(|| "the end stops the timer".into(), !s.app.preview_timer_running())?;
-    button_titled(&window, "Afspelen")?;
+    play("Afspelen")?;
 
     // An edit makes the shown plan stale, in words.
     s.app.dispatch(UiIntent::Invoke { document: Some(doc), command: CommandKey::SelectAll });

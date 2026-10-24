@@ -120,7 +120,8 @@ fn the_preview_draws_tab_stretches_orange_and_the_pick_names_the_power() {
     let moves = &view.preview.moves;
     let tab = moves.iter().position(|m| m.power.is_some()).expect("a tab stretch");
     // The plain stretch farthest from the head: the head's ring is drawn over what lies near it.
-    let far = |m: &burnburn_presentation::PreviewMove| (m.from.x_mm() - view.head[0]).hypot(m.from.y_mm() - view.head[1]);
+    let far =
+        |m: &burnburn_presentation::PreviewMove| (m.from.x_mm() - view.head[0]).hypot(m.from.y_mm() - view.head[1]);
     let plain = (0..moves.len())
         .filter(|i| moves[*i].kind == burnburn_presentation::MoveKind::Cut && moves[*i].power.is_none())
         .max_by(|a, b| far(&moves[*a]).total_cmp(&far(&moves[*b])))
