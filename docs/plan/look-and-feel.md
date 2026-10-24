@@ -422,6 +422,23 @@ als vergelijking. Ze worden **niet** als golden geaccepteerd zonder review.
 | **LF10 Canvastekst** | `render/src/scene/sketch.rs` → glyph-outlines via `burnburn-text` | Pixeltest: label "R12,5 mm" rendert zonder vervangblokjes; de halo-pixels hebben de achtergrondkleur. | — |
 | **LF11 Toolpad-preview** | `host-models/src/app_view.rs` (preview naar de GPU of AA-raster), `macos/appkit/app_panels/windows.rs` | Pixeltest met tolerantie: AA op een schuine beweging; "gespeeld" is gedimd, niet groen; de legenda is een getekende staal + woord. | afspelen en scrubben |
 
+### Golf LF-C: uitgevoerd (24-10-2026)
+
+- **LF9** linialen (mm/inch volgens de voorkeur, decimaalteken van de taal, aanwijzer gemarkeerd), 8 schaalgrepen en een
+  ronde draaigreep op een steel (hover groter), snapmarkers per soort met label in de venstertaal. **LF10** alle
+  canvastekst als glyph-outlines (Liberation Sans, OFL, `assets/fonts/`) met halo. **LF11** toolpad-preview: AA-raster
+  (gedeeld), laagkleuren, gespeeld gedimd, gestippelde verplaatsing, legenda met stalen, lengtes per taal, SF-Symbol-knoppen;
+  kop "Plan van <tijd> · <duur>", plan-id als tooltip.
+- **LF-B-restpunten**: `BASELINE_PENDING` is weg (document- en laservenster op de basislijn), barcode en Hoeken afronden op
+  de bouwer, redenen per sectie (`G5Line::Unavailable`), laagkleur als rondje in een view-based laagtabel.
+- **LF13/LF14 (headless)**: Windows-formulierbouwer op `FormSpec` (DLU per DPI, knopvolgorde, default-knop), panelen
+  gemodelleerd, iconen-DIB's in de toolstrip, statusbalk met 4 delen, vensterstand, donkere titelbalk. Nooit gelinkt of
+  gedraaid; de Win32-vensters gebruiken voorlopig nog de oude bouwers.
+- Verify (stil) op `integratie/lf-c`: 5132 geslaagd, 0 gefaald, 15 genegeerd; Windows-clippy schoon.
+- **Nog open**: laservenster op de bouwer (nu met de hand, wel op de basislijn); Windows-vensters overzetten naar
+  `spec_panels` en de Win32-laag echt draaien; Windows-linialen; handmatig: cursorvorm bij grepen, gevoel van linialen en
+  preview, 1×/2×-schermen, donker thema, HIG/Fluent-vergelijking.
+
 ### Golf LF-D: Windows op hetzelfde niveau (L8; eerst een Windows-runner)
 
 | Pakket | Eigendom | Eerst te schrijven tests | Handmatig |
