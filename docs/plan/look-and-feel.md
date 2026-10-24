@@ -461,6 +461,21 @@ als vergelijking. Ze worden **niet** als golden geaccepteerd zonder review.
   hub. `NSProgressIndicator` bij compile, trace en nest. Test: het paneelmodel levert `EmptyState { symbol, text,
   action }` en de host toont het.
 
+### Golf LF-E: uitgevoerd (24-10-2026)
+
+- **LF15** Tab-volgorde in leesvolgorde (elk formulier, documentvenster; Windows headless via `SpecLayout::tab_order`),
+  toegankelijke namen op elk control (gekoppeld aan het bijschrift, geen glyphs), kleur nooit enige drager
+  (`style::toned_text`, toon-glyph voor rode/oranje regels). VoiceOver-checklist in `docs/dev-notes/LF15.md` (handmatig).
+- **LF16** tien hoofdmenu's volgens de HIG (Productie in Laser, CAM-instellingen onder Laser ▸ Bewerkingen, submenu's,
+  geen dubbele items, "…" alleen bij invoer, `setHelpMenu`, werkbalk tonen/aanpassen); Windows dezelfde 9.
+- **LF17** lege toestanden (`EmptyState`: symbool, zin, knop) in lijsten, bibliotheken, hub en historie; voortgangsbalk
+  met annuleren in de statusbalk (nog geen taak meldt echte voortgang: onbepaald).
+- **Laservenster** op de formulierbouwer (`laser_form`, `Control::Pad` voor jog-kruis en 3×3), ~1100 → ~600 regels.
+- **Integratie**: lege toestand onder de kolomkoppen; knop van de lege objectlijst in de Tab-lus; symbolen van lege
+  toestanden decoratief; jogknoppen met gesproken woorden. Verify (stil): 5200 geslaagd, 0 gefaald; Windows-clippy schoon.
+- **Nog open**: GRBL-laservenster op de bouwer; taken die echte voortgang melden; Win32 UIA-namen; Windows-run;
+  handmatig: VoiceOver-ronde, toetsenbordnavigatie met "volledige toetsenbordbediening", submenu's, uiterlijk.
+
 ### Volgorde en parallelisme
 
 - **LF-A:** LF1, LF2, LF3 en LF4 tegelijk. Hun bestanden zijn disjunct, behalve `window.rs` (alleen LF1) en
