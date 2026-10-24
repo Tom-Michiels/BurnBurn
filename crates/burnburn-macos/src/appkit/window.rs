@@ -458,7 +458,10 @@ impl DocWindow {
         // SAFETY: data source and delegate are weak; cleared in Drop before the controller goes.
         unsafe { operations.table.setDataSource(Some(table_source(&controller))) };
         // SAFETY: as above.
-        unsafe { operations.table.setDelegate(Some(table_delegate(&controller))) };
+        unsafe {
+            operations.table.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*operations.layer_delegate)))
+        };
+        operations.layer_delegate.attach(&controller);
         // SAFETY: data source and delegate are weak; cleared in Drop before the controller goes.
         unsafe { table.setDataSource(Some(table_source(&controller))) };
         // SAFETY: as above.

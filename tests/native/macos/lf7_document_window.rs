@@ -148,6 +148,13 @@ mod scenario {
         Ok(())
     }
 
+    /// The first text field in `view` or below it.
+    fn first_text_field(view: &NSView) -> Option<Retained<objc2_app_kit::NSTextField>> {
+        view.subviews().iter().find_map(|sub| {
+            sub.clone().downcast::<objc2_app_kit::NSTextField>().ok().or_else(|| first_text_field(&sub))
+        })
+    }
+
     fn layer_table(s: &Session, doc: DocumentId) -> Check {
         s.app.dispatch(UiIntent::SetMachineProfile {
             profile: Box::new(windows::machine_profile()?),
@@ -192,16 +199,15 @@ mod scenario {
                         ));
                     }
                     if table.numberOfRows() > 0 {
-                        let cell = table.preparedCellAtColumn_row(i as isize, 0);
-                        if let Some(cell) = cell {
-                            let is_toggle = column.identifier().to_string() == "output"
-                                || column.identifier().to_string() == "visible";
-                            let text = cell.stringValue().to_string();
-                            if !is_toggle && !text.is_empty() && cell.cellSize().width > column.width() + 0.5 {
+                        // The table is view-based (LFC): the text of the cell lies in its text field.
+                        let view = table.viewAtColumn_row_makeIfNecessary(i as isize, 0, true);
+                        if let Some(field) = view.as_deref().and_then(first_text_field) {
+                            let text = field.stringValue().to_string();
+                            let need = field.cell().map_or(0.0, |c| c.cellSize().width);
+                            if !text.is_empty() && need > field.frame().size.width + 0.5 {
                                 problems.push(format!(
-                                    "cell {text:?} needs {:.0} pt in a {:.0} pt column",
-                                    cell.cellSize().width,
-                                    column.width()
+                                    "cell {text:?} needs {need:.0} pt in a {:.0} pt field",
+                                    field.frame().size.width
                                 ));
                             }
                         }
@@ -213,16 +219,17 @@ mod scenario {
                         columns.iter().map(|c| (c.identifier().to_string(), c.width().round())).collect::<Vec<_>>()
                     ));
                 }
-                // Swatch and name: the layer cell is filled with the layer colour, the name follows.
-                let layer = table.preparedCellAtColumn_row(0, 0);
-                let name = table.preparedCellAtColumn_row(1, 0);
-                let swatch = layer
-                    .as_ref()
-                    .and_then(|c| c.downcast_ref::<objc2_app_kit::NSTextFieldCell>().map(|c| c.drawsBackground()));
-                if swatch != Some(true) {
-                    problems.push("the layer column has no colour swatch".into());
+                // Swatch and name: the layer cell draws a circle in the layer colour, the name follows.
+                let layer = table.viewAtColumn_row_makeIfNecessary(0, 0, true);
+                let name = table.viewAtColumn_row_makeIfNecessary(1, 0, true);
+                let circle = layer.as_ref().is_some_and(|v| {
+                    v.subviews().iter().any(|s| s.class().name().to_str() == Ok("BurnBurnLayerDot"))
+                });
+                if !circle {
+                    problems.push("the layer column has no colour circle".into());
                 }
-                if name.map(|c| c.stringValue().to_string()).as_deref() != Some("Snijden") {
+                let name = name.as_deref().and_then(first_text_field).map(|f| f.stringValue().to_string());
+                if name.as_deref() != Some("Snijden") {
                     problems.push("the second column is not the operation name".into());
                 }
                 problems

@@ -31,6 +31,7 @@ pub(crate) mod image;
 pub(crate) mod import;
 pub(crate) mod inspector;
 pub(crate) mod laser;
+pub(crate) mod layer_cells;
 pub(crate) mod material;
 pub(crate) mod operations;
 pub(crate) mod priority;
