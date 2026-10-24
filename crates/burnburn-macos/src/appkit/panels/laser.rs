@@ -599,7 +599,7 @@ pub(crate) fn laser_section(
     }
     // The caption names the field and its unit (it says "(mm)").
     let step_caption =
-        label(mtm, t(LaserText::StepSize), rect(WIDTH - MARGIN - 66.0 - 6.0 - 140.0, at + 4.0, 140.0, 20.0));
+        label(mtm, t(LaserText::StepSize), rect(WIDTH - MARGIN - 66.0 - 6.0 - 140.0, at + 2.0, 140.0, 20.0));
     step_caption.setAlignment(objc2_app_kit::NSTextAlignment::Right);
     content.addSubview(&step_caption);
     let step_field = field(mtm, rect(WIDTH - MARGIN - 66.0, at + 2.0, 66.0, 24.0));
@@ -740,7 +740,7 @@ pub(crate) fn laser_section(
         rect(MARGIN + 156.0, at, 150.0, 28.0),
     );
     let at = row(28.0, 2.0);
-    let speed_caption = label(mtm, t(LaserText::FrameSpeed), rect(MARGIN, at + 4.0, 170.0, 20.0));
+    let speed_caption = label(mtm, t(LaserText::FrameSpeed), rect(MARGIN, at + 2.0, 170.0, 20.0));
     content.addSubview(&speed_caption);
     let frame_speed = field(mtm, rect(MARGIN + 176.0, at + 2.0, 66.0, 24.0));
     frame_speed.setAccessibilityLabel(Some(&NSString::from_str(t(LaserText::FrameSpeed))));

@@ -24,7 +24,7 @@ pub(crate) fn priority_row(col: &mut Column<'_>, locale: Locale) -> (FieldKey, R
     let mtm = col.mtm;
     let caption_text = message_or_key(MessageKey::Field(FieldKey::Priority), locale);
     col.y -= FIELD_HEIGHT;
-    let caption = label(mtm, &caption_text, rect(12.0, col.y + 2.0, CAPTION_WIDTH, 18.0));
+    let caption = label(mtm, &caption_text, rect(12.0, col.y, CAPTION_WIDTH, 18.0));
     caption.setFont(Some(&NSFont::systemFontOfSize(11.0)));
     col.view.addSubview(&caption);
     let f = field(mtm, rect(12.0 + CAPTION_WIDTH + 6.0, col.y, col.width - CAPTION_WIDTH - 6.0, FIELD_HEIGHT));

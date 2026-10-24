@@ -19,8 +19,8 @@
 //! too.
 //!
 //! (h) a caption and the field it labels share a baseline (within one point). The panels laid out by
-//! hand that still fail this are listed in `BASELINE_PENDING` (LF6 empties the list); the forms the
-//! LF5 builder makes must pass it. `BURNBURN_BASELINE_ALL=1` shows the pending ones too.
+//! hand are held to it too (LFC: the pending list is gone); the forms the
+//! LF5 builder makes must pass it.
 
 use std::process::ExitCode;
 
@@ -126,16 +126,6 @@ mod invariants {
         for (name, sheet) in &sheets {
             walk_window(sheet, &format!("sheet {name}, built"), &mut found);
             check_sheet_keys(sheet, name, &mut found);
-        }
-        if std::env::var_os("BURNBURN_BASELINE_ALL").is_none() {
-            let before = found.len();
-            found.retain(|m| !(m.contains(": baseline") && BASELINE_PENDING.iter().any(|p| m.starts_with(p))));
-            if found.len() < before {
-                eprintln!(
-                    "layout_invariants: {} pending baseline violations skipped (BASELINE_PENDING)",
-                    before - found.len()
-                );
-            }
         }
         if found.is_empty() {
             return Ok(());
@@ -1163,11 +1153,6 @@ mod invariants {
             }
         }
     }
-
-    /// Window titles (the step names of `common::windows::steps()`, `document`, `cut-settings`,
-    /// `sheet`) whose hand-laid captions do not yet share a baseline with their field. LF6 migrates
-    /// them to the form builder and empties this list.
-    const BASELINE_PENDING: &[&str] = &["document", "laser"];
 
     /// The y of the first text baseline of `view` in its parent's own coordinates.
     #[allow(unsafe_code)]
