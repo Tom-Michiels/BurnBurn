@@ -5,7 +5,7 @@
 //! used for CAM). The camera origin is subtracted in `f64` before narrowing to `f32` (ADR 0003).
 //! Colours and widths are a theme decision; the scene only carries semantic roles.
 
-use burnburn_editor::{BedOrigin, CompareSide, Overlay, SceneSnapshot, StyleRole, Viewport};
+use burnburn_editor::{BedOrigin, CompareSide, Handle, Overlay, SceneSnapshot, StyleRole, Viewport};
 use burnburn_geometry::{Affine, DisplayTolerance, Path, Point};
 use burnburn_types::Length;
 
@@ -100,6 +100,9 @@ pub struct Theme {
     pub compare_b: Rgba,
     pub rubber_band_fill: Rgba,
     pub handle_size_pt: f64,
+    /// Selection grips (LF9): size at rest and under the pointer, in logical points.
+    pub grip_size_pt: f64,
+    pub grip_hover_size_pt: f64,
     pub snap: Rgba,
     pub issue: Rgba,
     /// Sketch mode: relation glyphs, freedom markers and suggestions.
@@ -142,6 +145,8 @@ impl Theme {
             compare_b: Rgba::new(0.9, 0.1, 0.1, 1.0),
             rubber_band_fill: Rgba::new(0.0, 0.40, 0.85, 0.12),
             handle_size_pt: 6.0,
+            grip_size_pt: 7.0,
+            grip_hover_size_pt: 9.0,
             snap: Rgba::new(0.85, 0.0, 0.6, 1.0),
             issue: Rgba::new(0.9, 0.1, 0.1, 1.0),
             sketch: Rgba::new(0.0, 0.4, 0.45, 1.0),
@@ -349,6 +354,21 @@ fn marker(out: &mut Vec<Primitive>, at: Point, size_pt: f64, fill: Rgba, stroke:
         .collect::<Vec<_>>();
     out.push(Primitive::Fill { contours_px: vec![square.clone()], color: fill });
     out.push(Primitive::Stroke { points_px: square, closed: true, width_px: proj.scale as f32, color: stroke });
+}
+
+/// A small round marker of `size_pt` (diameter) centred on `at`.
+fn round_marker(out: &mut Vec<Primitive>, at: Point, size_pt: f64, fill: Rgba, stroke: Rgba, proj: &Projection) {
+    const SEGMENTS: usize = 32;
+    let [x, y] = proj.px(at);
+    let r = size_pt * proj.scale / 2.0;
+    let circle: Vec<[f32; 2]> = (0..SEGMENTS)
+        .map(|k| {
+            let a = std::f64::consts::TAU * k as f64 / SEGMENTS as f64;
+            [(x + r * a.cos()) as f32, (y + r * a.sin()) as f32]
+        })
+        .collect();
+    out.push(Primitive::Fill { contours_px: vec![circle.clone()], color: fill });
+    out.push(Primitive::Stroke { points_px: circle, closed: true, width_px: proj.scale as f32, color: stroke });
 }
 
 /// A work area in device pixels: left, top, right and bottom edges.
@@ -624,8 +644,20 @@ pub fn build_packet(scene: &SceneSnapshot, theme: &Theme) -> RenderPacket {
                 let style = RoleStyle { fill: None, stroke: Some(color), stroke_width_pt: width_pt };
                 draw_path(&mut out, flatten(path, &Affine::IDENTITY, &proj), style, proj.scale);
             }
-            Overlay::Handle { at, .. } => {
-                marker(&mut out, *at, theme.handle_size_pt, theme.bed_fill, theme.selection, &proj);
+            Overlay::Handle { at, handle, stem_from, hovered } => {
+                let size = if *hovered { theme.grip_hover_size_pt } else { theme.grip_size_pt };
+                if let Some(from) = stem_from {
+                    out.push(Primitive::Stroke {
+                        points_px: vec![proj.px32(*from), proj.px32(*at)],
+                        closed: false,
+                        width_px: selection_width,
+                        color: theme.selection,
+                    });
+                }
+                match handle {
+                    Handle::Rotate => round_marker(&mut out, *at, size, theme.bed_fill, theme.selection, &proj),
+                    Handle::Scale(_) => marker(&mut out, *at, size, theme.bed_fill, theme.selection, &proj),
+                }
             }
             // A selected node is a larger hollow marker, so it stands out from the filled ones.
             Overlay::Node { at, selected: true, .. } => {

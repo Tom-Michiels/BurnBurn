@@ -13,14 +13,25 @@ use crate::input::{CanvasInput, PointerEvent, PointerPhase};
 use crate::selection::{SelectionChange, hit_test, next_in_cycle, objects_inside};
 use crate::snap::SnapCandidate;
 
-/// Selection handles around the selection bounds.
+/// Which of the eight scale grips of the selection box a [`Handle::Scale`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScaleGrip {
+    BottomLeft,
+    Bottom,
+    BottomRight,
+    Right,
+    TopRight,
+    Top,
+    TopLeft,
+    Left,
+}
+
+/// Selection handles around the selection bounds: eight scale grips (corners scale both axes,
+/// edge midpoints one axis) and one rotate grip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Handle {
-    BottomLeft,
-    BottomRight,
-    TopRight,
-    TopLeft,
-    /// Above the top edge's midpoint.
+    Scale(ScaleGrip),
+    /// Above the top edge's midpoint, on a stem.
     Rotate,
 }
 
@@ -28,10 +39,14 @@ pub enum Handle {
 pub fn selection_handles(bounds: Bounds, mm_per_point: f64) -> Vec<(Handle, Point)> {
     let (min, max) = (bounds.min(), bounds.max());
     vec![
-        (Handle::BottomLeft, min),
-        (Handle::BottomRight, Point::new(max.x, min.y)),
-        (Handle::TopRight, max),
-        (Handle::TopLeft, Point::new(min.x, max.y)),
+        (Handle::Scale(ScaleGrip::BottomLeft), min),
+        (Handle::Scale(ScaleGrip::Bottom), Point::new((min.x + max.x) / 2.0, min.y)),
+        (Handle::Scale(ScaleGrip::BottomRight), Point::new(max.x, min.y)),
+        (Handle::Scale(ScaleGrip::Right), Point::new(max.x, (min.y + max.y) / 2.0)),
+        (Handle::Scale(ScaleGrip::TopRight), max),
+        (Handle::Scale(ScaleGrip::Top), Point::new((min.x + max.x) / 2.0, max.y)),
+        (Handle::Scale(ScaleGrip::TopLeft), Point::new(min.x, max.y)),
+        (Handle::Scale(ScaleGrip::Left), Point::new(min.x, (min.y + max.y) / 2.0)),
         (Handle::Rotate, Point::new((min.x + max.x) / 2.0, max.y + ROTATE_HANDLE_OFFSET_PT * mm_per_point)),
     ]
 }
@@ -64,9 +79,24 @@ struct Drag {
 pub struct SelectTool {
     drag: Option<Drag>,
     snap: Option<SnapCandidate>,
+    hovered: Option<Handle>,
 }
 
 impl SelectTool {
+    /// The grip under the pointer after the last hover move (`None` while dragging).
+    pub fn hovered_handle(&self) -> Option<Handle> {
+        self.hovered
+    }
+
+    /// Hover (no gesture): remembers the grip under the pointer.
+    fn hover(&mut self, ev: &PointerEvent, ctx: &ToolContext<'_>) {
+        self.hovered = if ev.modifiers.alt {
+            None
+        } else {
+            ctx.selection.bounds(ctx.document).and_then(|b| pick_handle(b, ev.position, ctx)).map(|(h, _)| h)
+        };
+    }
+
     fn start(&mut self, press: Point, targets: Vec<GeometryId>, mode: Mode) {
         self.drag = Some(Drag {
             press,
@@ -81,22 +111,21 @@ impl SelectTool {
 
     fn press(&mut self, ev: &PointerEvent, ctx: &ToolContext<'_>) -> ToolStep {
         let at = ev.position;
+        self.hovered = None;
         if !ev.modifiers.alt
             && let Some(bounds) = ctx.selection.bounds(ctx.document)
         {
-            let radius = ctx.tolerance_mm(HANDLE_RADIUS_PT);
-            let picked = selection_handles(bounds, ctx.mm_per_point)
-                .into_iter()
-                .map(|(h, p)| (p.distance(at), h, p))
-                .filter(|(d, ..)| *d <= radius)
-                .min_by(|a, b| a.0.total_cmp(&b.0));
-            if let Some((_, handle, p)) = picked {
+            if let Some((handle, p)) = pick_handle(bounds, at, ctx) {
                 let (min, max) = (bounds.min(), bounds.max());
                 let opposite = match handle {
-                    Handle::BottomLeft => max,
-                    Handle::BottomRight => Point::new(min.x, max.y),
-                    Handle::TopRight => min,
-                    Handle::TopLeft => Point::new(max.x, min.y),
+                    Handle::Scale(ScaleGrip::BottomLeft) => max,
+                    Handle::Scale(ScaleGrip::BottomRight) => Point::new(min.x, max.y),
+                    Handle::Scale(ScaleGrip::TopRight) => min,
+                    Handle::Scale(ScaleGrip::TopLeft) => Point::new(max.x, min.y),
+                    Handle::Scale(ScaleGrip::Bottom) => Point::new(p.x, max.y),
+                    Handle::Scale(ScaleGrip::Top) => Point::new(p.x, min.y),
+                    Handle::Scale(ScaleGrip::Left) => Point::new(max.x, p.y),
+                    Handle::Scale(ScaleGrip::Right) => Point::new(min.x, p.y),
                     Handle::Rotate => bounds.center(),
                 };
                 let mode = match handle {
@@ -226,6 +255,17 @@ impl SelectTool {
     }
 }
 
+/// The grip within pick radius of `at`, nearest first, with its position.
+fn pick_handle(bounds: Bounds, at: Point, ctx: &ToolContext<'_>) -> Option<(Handle, Point)> {
+    let radius = ctx.tolerance_mm(HANDLE_RADIUS_PT);
+    selection_handles(bounds, ctx.mm_per_point)
+        .into_iter()
+        .map(|(h, p)| (p.distance(at), h, p))
+        .filter(|(d, ..)| *d <= radius)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, h, p)| (h, p))
+}
+
 fn rotation_about(center: Point, degrees: f64) -> Option<Affine> {
     let to_origin = Affine::translate(Vector::new(-center.x, -center.y)).ok()?;
     let back = Affine::translate(center.to_vector()).ok()?;
@@ -240,6 +280,10 @@ impl Tool for SelectTool {
         let Some(ev) = tool_pointer(input) else { return ToolStep::Nothing };
         match ev.phase {
             PointerPhase::Down => self.press(ev, ctx),
+            PointerPhase::Move if self.drag.is_none() => {
+                self.hover(ev, ctx);
+                ToolStep::Nothing
+            }
             PointerPhase::Move => self.drag_to(ev, ctx),
             PointerPhase::Up => self.release(ev, ctx),
             PointerPhase::Cancel => self.cancel(),
@@ -248,6 +292,7 @@ impl Tool for SelectTool {
 
     fn cancel(&mut self) -> ToolStep {
         self.snap = None;
+        self.hovered = None;
         match self.drag.take() {
             Some(d) if d.live => ToolStep::Cancelled,
             _ => ToolStep::Nothing,
@@ -457,10 +502,43 @@ mod tests {
     fn handles_sit_on_the_corners_and_above_the_top_edge() {
         let b = Bounds::from_corners(Point::new(0.0, 0.0), Point::new(40.0, 20.0));
         let h = selection_handles(b, 0.5);
-        assert!(h.contains(&(Handle::TopRight, Point::new(40.0, 20.0))));
-        assert!(h.contains(&(Handle::BottomLeft, Point::new(0.0, 0.0))));
+        assert!(h.contains(&(Handle::Scale(ScaleGrip::TopRight), Point::new(40.0, 20.0))));
+        assert!(h.contains(&(Handle::Scale(ScaleGrip::BottomLeft), Point::new(0.0, 0.0))));
         assert!(h.contains(&(Handle::Rotate, Point::new(20.0, 20.0 + ROTATE_HANDLE_OFFSET_PT * 0.5))));
-        assert_eq!(h.len(), 5);
+        assert_eq!(h.len(), 9);
+    }
+
+    /// LF9: an edge grip scales one axis only, about the opposite edge .
+    #[test]
+    fn edge_grip_scales_one_axis_about_the_opposite_edge() {
+        let mut f = Fixture::new(vec![rect(1, 0.0, 0.0, 40.0, 20.0)]);
+        f.select(&[1]);
+        let mut tool = SelectTool::default();
+        // Right edge midpoint (40, 10) dragged to x = 80, and a stray y that must not matter.
+        let (_, m, kind) = transform(&drag(&mut tool, &mut f, (40.0, 10.0), (80.0, 15.0), none())).unwrap();
+        assert_eq!(kind, TransformKind::Scale);
+        assert!(maps(&m, (40.0, 5.0), (80.0, 5.0)) && maps(&m, (0.0, 5.0), (0.0, 5.0)), "x doubles, y unchanged");
+        // Top edge midpoint (20, 20) up to y = 40.
+        let (_, m, _) = transform(&drag(&mut tool, &mut f, (20.0, 20.0), (25.0, 40.0), none())).unwrap();
+        assert!(maps(&m, (7.0, 20.0), (7.0, 40.0)) && maps(&m, (7.0, 0.0), (7.0, 0.0)));
+        // Left edge to x = -40: the right edge stays, x scales by 2 about x = 40.
+        let (_, m, _) = transform(&drag(&mut tool, &mut f, (0.0, 10.0), (-40.0, 10.0), none())).unwrap();
+        assert!(maps(&m, (0.0, 3.0), (-40.0, 3.0)) && maps(&m, (40.0, 3.0), (40.0, 3.0)));
+    }
+
+    /// LF9: the select tool reports which grip the pointer hovers over.
+    #[test]
+    fn hovering_a_grip_reports_its_kind() {
+        let mut f = Fixture::new(vec![rect(1, 0.0, 0.0, 40.0, 20.0)]);
+        f.select(&[1]);
+        let mut tool = SelectTool::default();
+        assert_eq!(tool.hovered_handle(), None);
+        tool.input(&at(PointerPhase::Move, 40.0, 10.0, none()), &f.ctx());
+        assert_eq!(tool.hovered_handle(), Some(Handle::Scale(ScaleGrip::Right)));
+        tool.input(&at(PointerPhase::Move, 20.0, 20.0 + ROTATE_HANDLE_OFFSET_PT * 0.5, none()), &f.ctx());
+        assert_eq!(tool.hovered_handle(), Some(Handle::Rotate));
+        tool.input(&at(PointerPhase::Move, 20.0, 10.0, none()), &f.ctx());
+        assert_eq!(tool.hovered_handle(), None, "inside the object, away from the grips");
     }
 
     #[test]

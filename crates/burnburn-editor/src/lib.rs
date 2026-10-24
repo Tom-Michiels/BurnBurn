@@ -50,7 +50,7 @@ pub use tool::{
     BasicShapeTool, CLICK_TOLERANCE_PT, CircleTool, DEFAULT_ROUND_RADIUS_MM, DRAG_THRESHOLD_PT, DrawTool, EditCommit,
     Editor, EllipseTool, HANDLE_RADIUS_PT, Handle, LineTool, NodeTarget, NodeTool, PREVIEW_SEGMENT_LIMIT, PenTool,
     PolygonConstruction, PolylineTool, ROTATE_HANDLE_OFFSET_PT, RectanglePreview, RectangleTool, ReshapeMode,
-    ReshapePreview, ReshapeTool, RoundCornerTool, SelectTool, ShapeDefaults, ShapeKind, StartPointTool, TangentArcTool,
+    ReshapePreview, ReshapeTool, RoundCornerTool, ScaleGrip, SelectTool, ShapeDefaults, ShapeKind, StartPointTool, TangentArcTool,
     TangentCircleTool, TangentCirclesTool, TangentPreview, Tool, ToolContext, ToolKind, ToolParam, ToolPreview,
     ToolStep, TransformKind, path_nodes, selection_handles,
 };
