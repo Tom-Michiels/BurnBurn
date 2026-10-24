@@ -18,8 +18,8 @@ use super::{Chosen, ControlSpec, DialogRequest, FileFilter, FilePurpose, PanelEv
 use crate::app_menu::{AppAction, action_reaction, binding_from_keystroke, binding_glyphs};
 use crate::app_text::{AppText, app_text};
 use crate::app_view::{
-    PrefsControl, PreviewFrame, ShortcutLine, history_lines, pref_choice_id, prefs_panel, preview_panel, rd_panel,
-    render_preview, shortcut_lines, shortcut_problem_text,
+    PrefsControl, PreviewFrame, PreviewStyle, ShortcutLine, history_lines, pref_choice_id, prefs_panel, preview_panel,
+    rd_panel, render_preview_styled, shortcut_lines, shortcut_problem_text,
 };
 use crate::l10n::Locale;
 
@@ -96,6 +96,7 @@ pub mod id {
     pub const PV_LEGEND: u16 = B + 78;
     pub const PV_BITMAP: u16 = B + 79;
     pub const PV_SPEED_CAPTION: u16 = B + 80;
+    pub const PV_LENGTHS: u16 = B + 81;
 
     // RD inspector.
     pub const RD_HEADER: u16 = B + 90;
@@ -319,9 +320,14 @@ fn preview_spec(input: &AppInput<'_>) -> PanelSpec {
             ControlSpec::combo(id::PV_SPEED, p.speed_titles.clone(), Some(p.speed_index), true),
             ControlSpec::check(id::PV_TRAVEL, at(AppText::PreviewShowTravel, locale), p.show_travel, true).weighted(2),
         ]),
-        Row::one(ControlSpec::bitmap(id::PV_BITMAP, PREVIEW_SIZE[1] as i32, Some(render_preview(view, &frame)))),
+        Row::one(ControlSpec::bitmap(
+            id::PV_BITMAP,
+            PREVIEW_SIZE[1] as i32,
+            Some(render_preview_styled(view, &frame, &PreviewStyle::default())),
+        )),
         Row::one(ControlSpec::label(id::PV_PICKED, p.picked.clone().unwrap_or_else(|| p.picked_hint.clone()))),
-        Row::one(ControlSpec::label(id::PV_LEGEND, p.legend)),
+        Row::one(ControlSpec::label(id::PV_LEGEND, p.legend.clone())),
+        Row::one(ControlSpec::label(id::PV_LENGTHS, p.lengths_text.clone())),
     ];
     PanelSpec { title, rows }
 }

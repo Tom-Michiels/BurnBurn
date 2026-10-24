@@ -889,6 +889,9 @@ mod invariants {
         if name.starts_with("barcode") || name.starts_with("round-corners") {
             check_units_are_suffixes(window, name, found);
         }
+        if name.starts_with("preview") {
+            check_preview_legend(window, name, found);
+        }
         if window.styleMask().contains(NSWindowStyleMask::Resizable)
             && let Some(content) = window.contentView()
         {
@@ -902,6 +905,49 @@ mod invariants {
             // user scrolls back, so the next check starts from the top like a fresh window.
             scroll_to_top(&content);
             s.pump(0.1);
+        }
+    }
+
+    /// LF11: every legend swatch (a 28 x 14 picture) has its word directly to its right, on the same
+    /// middle line, and the legend has one swatch per role; the transport row has the play symbol
+    /// left of the slider.
+    fn check_preview_legend(window: &NSWindow, name: &str, found: &mut Vec<String>) {
+        let Some(root) = window.contentView() else { return };
+        let mut all = Vec::new();
+        descendants(&root, &mut all);
+        let swatches: Vec<_> = all
+            .iter()
+            .filter(|v| as_any(v).downcast_ref::<objc2_app_kit::NSImageView>().is_some())
+            .filter(|v| (v.frame().size.width, v.frame().size.height) == (28.0, 14.0))
+            .collect();
+        if swatches.len() != 6 {
+            found.push(format!("{name}: legend has {} swatches, expected 6", swatches.len()));
+        }
+        for swatch in swatches {
+            let f = swatch.frame();
+            let word = all
+                .iter()
+                .filter(|v| !v.isHidden())
+                .filter_map(|v| as_any(v).downcast_ref::<NSTextField>().map(|t| (v, t)))
+                .find(|(v, _)| {
+                    let g = v.frame();
+                    g.origin.x >= f.origin.x + f.size.width
+                        && g.origin.x - (f.origin.x + f.size.width) <= 12.0
+                        && (g.origin.y - f.origin.y).abs() <= 6.0
+                });
+            match word {
+                None => found.push(format!("{name}: a legend swatch at x={} has no word beside it", f.origin.x)),
+                Some((v, _)) => {
+                    let g = v.frame();
+                    let (cs, cw) = (f.origin.y + f.size.height / 2.0, g.origin.y + g.size.height / 2.0);
+                    if (cs - cw).abs() > 3.0 {
+                        found.push(format!(
+                            "{name}: legend swatch and word are {:.1} pt off the same middle line",
+                            (cs - cw).abs()
+                        ));
+                    }
+                }
+            }
         }
     }
 

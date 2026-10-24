@@ -25,8 +25,8 @@ use crate::adapter::{MenuItem, NativeEvent, menu_item};
 use crate::app_menu::{AppAction, AppEvent, ArrowKey, arrow_key, binding_from_event, binding_glyphs};
 use crate::app_text::{AppText, app_text};
 use crate::app_view::{
-    PickNames, PreviewFrame, history_lines, prefs_panel, preview_panel_named, rd_panel, render_preview, shortcut_lines,
-    shortcut_problem_text,
+    PickNames, PreviewFrame, history_lines, prefs_panel, preview_panel_units, rd_panel, render_preview_styled,
+    shortcut_lines, shortcut_problem_text,
 };
 use crate::appkit::app_panels::windows::{self, PREVIEW_SIZE, present};
 use crate::appkit::app_panels::{AppPanels, SupportDialog};
@@ -863,15 +863,30 @@ impl HostApp {
                 operation: doc.operations.iter().find(|o| o.id == source.operation).map(|o| o.name.clone()),
             })
         });
-        let panel = view.as_ref().map(|v| preview_panel_named(v, &names.unwrap_or_default(), locale));
+        let panel =
+            view.as_ref().map(|v| preview_panel_units(v, &names.unwrap_or_default(), locale, self.length_preference()));
+        // Clicks are mapped in points; the picture has `ratio` device pixels per point (sharp on 2x).
+        let ratio = self
+            .app_panels
+            .try_borrow()
+            .ok()
+            .and_then(|p| p.preview.as_ref().map(|w| windows::preview_ratio(&w.window)))
+            .unwrap_or(1);
         let frame = view.as_ref().map(|v| PreviewFrame::for_view(v, PREVIEW_SIZE, 8));
-        let bitmap = view.as_ref().zip(frame.as_ref()).map(|(v, f)| render_preview(v, f));
+        let bitmap = view.as_ref().map(|v| {
+            let scaled = [PREVIEW_SIZE[0] * ratio, PREVIEW_SIZE[1] * ratio];
+            render_preview_styled(
+                v,
+                &PreviewFrame::for_view(v, scaled, 8 * ratio),
+                &windows::preview_style(f64::from(ratio)),
+            )
+        });
         let playing = view.as_ref().is_some_and(|v| v.playing);
         let shown = self.with_panels(|p| {
             p.preview_frame = frame;
             match &mut p.preview {
                 Some(w) => {
-                    windows::refresh_preview(w, panel.as_ref(), bitmap.as_ref());
+                    windows::refresh_preview(w, panel.as_ref(), bitmap.as_ref(), locale);
                     true
                 }
                 None => false,

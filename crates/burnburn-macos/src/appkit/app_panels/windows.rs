@@ -9,14 +9,14 @@ use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSControlStateValueOff,
-    NSControlStateValueOn, NSFloatingWindowLevel, NSFont, NSLineBreakMode, NSPopUpButton, NSScrollView, NSSlider,
-    NSTableColumn, NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
+    NSControlStateValueOn, NSFloatingWindowLevel, NSFont, NSImageView, NSLineBreakMode, NSPopUpButton, NSScrollView,
+    NSSlider, NSTableColumn, NSTableView, NSTextField, NSTextView, NSView, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::NSString;
 
 use super::target::{AppPanelTarget, HISTORY_TABLE, KeyRecorder, PreviewView, RD_TABLE, SHORTCUT_TABLE};
 use crate::app_text::{AppText, app_text};
-use crate::app_view::{PrefsPanel, PreviewPanel, RdPanel};
+use crate::app_view::{PrefsPanel, PreviewPanel, PreviewStyle, RdPanel, preview_legend, render_swatch};
 use crate::appkit::app::HostApp;
 use crate::appkit::panels::form::{FormView, Wiring, build_form};
 use crate::appkit::panels::image::{caption, note, show_bitmap};
@@ -320,8 +320,25 @@ pub(crate) fn build_history(
 
 // ---- preview ----------------------------------------------------------------------------------
 
-/// Size of the preview bitmap in points; the image view shows it one to one.
+/// Size of the preview bitmap in points; the image view shows it one to one. On a 2× screen the
+/// bitmap has twice the pixels (see [`preview_ratio`]), so strokes stay sharp.
 pub(crate) const PREVIEW_SIZE: [u32; 2] = [760, 456];
+/// A legend swatch in points.
+const SWATCH_SIZE: [u32; 2] = [28, 14];
+
+/// The preview's colours: the layer palette of the canvas theme, so the preview, the operations
+/// panel and the canvas agree, at `ratio` device pixels per point.
+pub(crate) fn preview_style(ratio: f64) -> PreviewStyle {
+    let to8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let layers =
+        burnburn_render::Theme::light().process_layers.iter().map(|c| [to8(c.r), to8(c.g), to8(c.b)]).collect();
+    PreviewStyle { layers, pixel_ratio: ratio }
+}
+
+/// Whole device pixels per point of the window the preview is in (1 or 2; more is not drawn).
+pub(crate) fn preview_ratio(window: &NSWindow) -> u32 {
+    (window.backingScaleFactor().round() as u32).clamp(1, 3)
+}
 
 pub(crate) struct PreviewWindow {
     pub(crate) window: Retained<NSWindow>,
@@ -331,13 +348,16 @@ pub(crate) struct PreviewWindow {
     stale: Retained<NSTextField>,
     time: Retained<NSTextField>,
     picked: Retained<NSTextField>,
-    legend: Retained<NSTextField>,
     pub(crate) play: Retained<NSButton>,
     slider: Retained<NSSlider>,
     speed: Retained<NSPopUpButton>,
     travel: Retained<NSButton>,
     previous: Retained<NSButton>,
     next: Retained<NSButton>,
+    /// Cut / scan / travel lengths in the preferred unit.
+    lengths: Retained<NSTextField>,
+    /// The legend: a drawn swatch and its word per role (never colour alone).
+    legend_views: Vec<(Retained<NSImageView>, Retained<NSTextField>)>,
     /// Shown instead of the controls while the window has no plan.
     no_plan: Retained<NSTextField>,
 }
@@ -368,14 +388,15 @@ pub(crate) fn build_preview(
     image.setAccessibilityLabel(Some(&NSString::from_str(text(AppText::PreviewTitle))));
     content.addSubview(&image);
     let base = h - 60.0 - f64::from(PREVIEW_SIZE[1]);
-    let play = button(mtm, text(AppText::PreviewPlay), t, sel!(previewButton:), rect(16.0, base - 38.0, 100.0, 28.0));
+    let play = button(mtm, "", t, sel!(previewButton:), rect(16.0, base - 38.0, 44.0, 28.0));
     play.setTag(0);
+    symbols::apply(&play, Symbol::Play, locale);
     content.addSubview(&play);
     // SAFETY: `previewSeek:` takes the sender (`v@:@`); the target is kept by `AppPanels`.
     let slider = unsafe {
         NSSlider::sliderWithValue_minValue_maxValue_target_action(0.0, 0.0, 1.0, Some(t), Some(sel!(previewSeek:)), mtm)
     };
-    slider.setFrame(rect(126.0, base - 36.0, 440.0, 24.0));
+    slider.setFrame(rect(70.0, base - 36.0, 496.0, 24.0));
     slider.setContinuous(true);
     slider.setAccessibilityLabel(Some(&NSString::from_str(text(AppText::PreviewTime))));
     content.addSubview(&slider);
@@ -409,9 +430,34 @@ pub(crate) fn build_preview(
     content.addSubview(&previous);
     content.addSubview(&next);
     let picked = note(mtm, &content, rect(16.0, base - 106.0, w - 32.0, 22.0), &NSColor::controlTextColor());
-    let legend = caption(mtm, &content, "", rect(16.0, base - 130.0, w - 32.0, 18.0));
-    legend.setFont(Some(&NSFont::systemFontOfSize(11.0)));
-    legend.setTextColor(Some(&NSColor::secondaryLabelColor()));
+    // The legend: a swatch drawn like the preview draws, then its word.
+    let ratio = preview_ratio(&window);
+    let style = preview_style(f64::from(ratio));
+    let mut legend_views = Vec::new();
+    let mut x = 16.0;
+    for entry in preview_legend(locale) {
+        let swatch = NSImageView::initWithFrame(
+            NSImageView::alloc(mtm),
+            rect(x, base - 128.0, f64::from(SWATCH_SIZE[0]), f64::from(SWATCH_SIZE[1])),
+        );
+        swatch.setImageScaling(objc2_app_kit::NSImageScaling::ScaleAxesIndependently);
+        swatch.setImageFrameStyle(objc2_app_kit::NSImageFrameStyle::None);
+        swatch.setAccessibilityElement(false);
+        let bitmap = render_swatch(entry.swatch, [SWATCH_SIZE[0] * ratio, SWATCH_SIZE[1] * ratio], &style);
+        show_bitmap(&swatch, &mut None, Some(&bitmap));
+        content.addSubview(&swatch);
+        let word = caption(mtm, &content, entry.word, rect(x + 34.0, base - 130.0, 10.0, 18.0));
+        word.setFont(Some(&NSFont::systemFontOfSize(11.0)));
+        word.setTextColor(Some(&NSColor::secondaryLabelColor()));
+        word.sizeToFit();
+        let width = word.frame().size.width;
+        word.setFrame(rect(x + 34.0, base - 130.0, width, 18.0));
+        x += 34.0 + width + 18.0;
+        legend_views.push((swatch, word));
+    }
+    let lengths = caption(mtm, &content, "", rect(16.0, base - 152.0, w - 32.0, 18.0));
+    lengths.setFont(Some(&NSFont::systemFontOfSize(11.0)));
+    lengths.setTextColor(Some(&NSColor::secondaryLabelColor()));
     let no_plan = note(mtm, &content, rect(16.0, base + 200.0, w - 32.0, 40.0), &NSColor::secondaryLabelColor());
     set_text(&no_plan, text(AppText::PreviewNoPlan));
     no_plan.setHidden(true);
@@ -423,26 +469,36 @@ pub(crate) fn build_preview(
         stale,
         time,
         picked,
-        legend,
         play,
         slider,
         speed,
         travel,
         previous,
         next,
+        lengths,
+        legend_views,
         no_plan,
     }
 }
 
 /// What the preview window shows: `None` for a window without a plan.
-pub(crate) fn refresh_preview(w: &mut PreviewWindow, panel: Option<&PreviewPanel>, bitmap: Option<&BitmapImage>) {
+pub(crate) fn refresh_preview(
+    w: &mut PreviewWindow,
+    panel: Option<&PreviewPanel>,
+    bitmap: Option<&BitmapImage>,
+    locale: Locale,
+) {
     let has = panel.is_some();
-    for control in [&w.play as &NSView, &w.slider, &w.speed, &w.travel, &w.previous, &w.next, &w.image] {
+    for control in [&w.play as &NSView, &w.slider, &w.speed, &w.travel, &w.previous, &w.next, &w.image, &w.lengths] {
         control.setHidden(!has);
+    }
+    for (swatch, word) in &w.legend_views {
+        swatch.setHidden(!has);
+        word.setHidden(!has);
     }
     w.no_plan.setHidden(has);
     let Some(p) = panel else {
-        for l in [&w.plan, &w.stale, &w.time, &w.picked, &w.legend] {
+        for l in [&w.plan, &w.stale, &w.time, &w.picked, &w.lengths] {
             set_text(l, "");
         }
         return;
@@ -451,8 +507,8 @@ pub(crate) fn refresh_preview(w: &mut PreviewWindow, panel: Option<&PreviewPanel
     set_text(&w.stale, p.stale.as_deref().unwrap_or(""));
     set_text(&w.time, &p.time_text);
     set_text(&w.picked, p.picked.as_deref().unwrap_or(&p.picked_hint));
-    set_text(&w.legend, p.legend);
-    w.play.setTitle(&NSString::from_str(p.play_title));
+    set_text(&w.lengths, &p.lengths_text);
+    symbols::apply(&w.play, if p.playing { Symbol::Pause } else { Symbol::Play }, locale);
     w.slider.setMaxValue(p.slider_max.max(0.001));
     if !w.slider_is_dragging() {
         w.slider.setDoubleValue(p.slider_value);

@@ -119,7 +119,13 @@ fn the_preview_draws_tab_stretches_orange_and_the_pick_names_the_power() {
     let frame = PreviewFrame::fit(view.bed_mm.unwrap(), [760, 456], 8);
     let moves = &view.preview.moves;
     let tab = moves.iter().position(|m| m.power.is_some()).expect("a tab stretch");
-    let plain = moves.iter().position(|m| m.kind == burnburn_presentation::MoveKind::Cut && m.power.is_none()).unwrap();
+    // The plain stretch farthest from the head: the head's ring is drawn over what lies near it.
+    let far =
+        |m: &burnburn_presentation::PreviewMove| (m.from.x_mm() - view.head[0]).hypot(m.from.y_mm() - view.head[1]);
+    let plain = (0..moves.len())
+        .filter(|i| moves[*i].kind == burnburn_presentation::MoveKind::Cut && moves[*i].power.is_none())
+        .max_by(|a, b| far(&moves[*a]).total_cmp(&far(&moves[*b])))
+        .unwrap();
     let mid = |i: usize| {
         let m = moves[i];
         frame.to_px([(m.from.x_mm() + m.to.x_mm()) / 2.0, (m.from.y_mm() + m.to.y_mm()) / 2.0])
@@ -136,7 +142,7 @@ fn the_preview_draws_tab_stretches_orange_and_the_pick_names_the_power() {
     let picked = preview_panel_named(&view, &PickNames::default(), Locale::En).picked.unwrap();
     assert!(picked.contains("cut") && picked.contains("power") && picked.contains(&format!("{power:.1}")), "{picked}");
     let legend = preview_panel_named(&view, &PickNames::default(), Locale::Nl).legend;
-    assert!(legend.contains("oranje"), "{legend}");
+    assert!(legend.contains("Verlaagd vermogen"), "{legend}");
     // A plain stretch says nothing about power.
     h.send(UiIntent::App(AppIntent::Preview(PreviewIntent::SelectMove { document: doc, index: plain })));
     let picked = preview_panel_named(&h.controller().preview_view(doc).unwrap(), &PickNames::default(), Locale::En)

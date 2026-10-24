@@ -80,6 +80,9 @@ pub struct PreviewViewModel {
     /// Width and height of the machine bed (mm), for the outline the preview draws; `None`
     /// without a machine profile.
     pub bed_mm: Option<[f64; 2]>,
+    /// Palette slot (layer colour) of every operation, as the operations panel and the canvas show
+    /// it: a cut is drawn in the colour of its layer (LF11).
+    pub layer_slots: std::collections::BTreeMap<OperationId, u8>,
 }
 
 /// One decoded record of the RD file this plan lowers to.
@@ -214,6 +217,7 @@ impl AppController {
             selected: state.selected,
             selected_operation: state.selected_operation,
             bed_mm: self.machine.as_ref().map(|m| [m.profile.frame().width_mm(), m.profile.frame().height_mm()]),
+            layer_slots: super::layers::slots(&s.layers, &s.doc.snapshot()),
             preview: plan.preview,
         })
     }

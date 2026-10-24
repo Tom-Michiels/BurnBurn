@@ -25,6 +25,7 @@ pub mod panels;
 pub mod panels_files;
 pub mod panels_image;
 pub mod prefs_form;
+pub mod preview_draw;
 pub mod quit_guard;
 pub mod recent;
 pub mod style;
