@@ -672,6 +672,11 @@ pub struct StatusMessage {
 pub struct TaskBadge {
     pub id: TaskId,
     pub kind: TaskKind,
+    /// The task honours a cancel request (`UiIntent::CancelTask`); saves and exports finish what
+    /// they started and are not offered a cancel button.
+    pub cancellable: bool,
+    /// Progress in per mille (0..=1000) where the task reports it; `None` = indeterminate.
+    pub progress_permille: Option<u16>,
 }
 
 /// Why the active tool refused its gesture (the document is unchanged); hosts say it in words.

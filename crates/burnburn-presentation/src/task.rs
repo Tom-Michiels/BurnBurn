@@ -304,6 +304,25 @@ pub enum TaskKind {
 impl TaskKind {
     /// Results that describe one revision and are worthless after an edit: cancelled when the
     /// document changes. A save is not: it must finish writing the revision it started with.
+    /// Tasks whose worker checks its cancellation token while it runs: a long compile, trace or
+    /// nest can be stopped halfway. Saves and exports finish what they started, and short reads
+    /// are not worth a cancel button.
+    pub fn is_cancellable(self) -> bool {
+        matches!(
+            self,
+            TaskKind::Compile
+                | TaskKind::Trace
+                | TaskKind::Centerline
+                | TaskKind::TraceStudy
+                | TaskKind::Nest
+                | TaskKind::TestJob
+                | TaskKind::Boolean
+                | TaskKind::OffsetPreview
+                | TaskKind::RepairPreview
+                | TaskKind::ImagePreview
+        )
+    }
+
     pub fn is_revision_sensitive(self) -> bool {
         matches!(
             self,
