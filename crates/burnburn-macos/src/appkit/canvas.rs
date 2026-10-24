@@ -47,6 +47,37 @@ pub fn canvas_chrome() -> CanvasChrome {
     }
 }
 
+/// The canvas chrome for the window's settings: the rulers in the length unit of the preferences
+/// (with the locale's decimal sign and the pointer's position marked when it is over the canvas)
+/// and the snap labels in the window language.
+pub fn canvas_chrome_for(
+    unit: burnburn_host_models::format::LengthPreference,
+    locale: crate::l10n::Locale,
+    cursor_mm: Option<burnburn_geometry::Point>,
+) -> CanvasChrome {
+    use burnburn_host_models::format::LengthPreference;
+    let unit = match unit {
+        LengthPreference::Millimeters => RulerUnit::Millimetre,
+        LengthPreference::Inches => RulerUnit::Inch,
+    };
+    let (decimal, snap_labels) = match locale {
+        crate::l10n::Locale::Nl => (',', burnburn_render::SnapLabels::DUTCH),
+        crate::l10n::Locale::En => ('.', burnburn_render::SnapLabels::ENGLISH),
+    };
+    CanvasChrome { snap_labels: Some(snap_labels), rulers: Some(Rulers { unit, cursor_mm, decimal }) }
+}
+
+/// As [`canvas_packet_themed`], with the chrome of [`canvas_chrome_for`].
+pub fn canvas_packet_for(
+    scene: &SceneSnapshot,
+    wireframe: bool,
+    tolerance_px: f64,
+    dark: bool,
+    chrome: &CanvasChrome,
+) -> RenderPacket {
+    build_packet_with(scene, &canvas_theme(dark, wireframe, tolerance_px), chrome)
+}
+
 /// As [`canvas_packet_with`], in the light or the dark canvas theme, with the rulers.
 pub fn canvas_packet_themed(scene: &SceneSnapshot, wireframe: bool, tolerance_px: f64, dark: bool) -> RenderPacket {
     build_packet_with(scene, &canvas_theme(dark, wireframe, tolerance_px), &canvas_chrome())

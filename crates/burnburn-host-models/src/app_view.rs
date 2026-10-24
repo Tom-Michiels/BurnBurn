@@ -270,6 +270,8 @@ pub fn clock_text(seconds: f64) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreviewPanel {
     pub plan_text: String,
+    /// The plan id, for the heading's tooltip (support); never the heading itself.
+    pub plan_tooltip: String,
     /// Always "Time m:ss of ≈ m:ss (estimate)": the clock is an estimate, never a measurement.
     pub time_text: String,
     pub play_title: &'static str,
@@ -352,7 +354,10 @@ pub fn preview_panel_units(
     let lengths_text = lengths.join(" · ");
     let id = view.plan.to_string();
     PreviewPanel {
-        plan_text: format!("{} {}", t(AppText::PreviewPlanId), id.chars().take(21).collect::<String>()),
+        // The heading is the compile moment and duration, as in the inspector (Q4); the id is
+        // only the tooltip.
+        plan_text: crate::panels::plan_title(view.compiled_at, view.estimated_total_seconds, locale),
+        plan_tooltip: id,
         time_text: format!(
             "{} {} {} ≈ {} {}",
             t(AppText::PreviewTime),

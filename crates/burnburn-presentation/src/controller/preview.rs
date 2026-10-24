@@ -59,6 +59,8 @@ pub struct PreviewSelection {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreviewViewModel {
     pub plan: JobPlanId,
+    /// When the plan was compiled (the injected clock); `None` without a usable clock.
+    pub compiled_at: Option<burnburn_generators::JobClock>,
     /// The document or the machine profile changed since this plan was compiled.
     pub stale: bool,
     pub preview: Arc<PlanPreview>,
@@ -205,6 +207,7 @@ impl AppController {
         let (completed_moves, partial, head) = locate(&plan.preview.moves, state.position);
         Some(PreviewViewModel {
             plan: plan.id,
+            compiled_at: plan.compiled_at,
             stale: plan.stale,
             estimated_total_seconds: plan.preview.estimated_seconds,
             estimated_position_seconds: state.position,

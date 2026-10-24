@@ -504,6 +504,7 @@ pub(crate) fn refresh_preview(
         return;
     };
     set_text(&w.plan, &p.plan_text);
+    w.plan.setToolTip(Some(&NSString::from_str(&p.plan_tooltip)));
     set_text(&w.stale, p.stale.as_deref().unwrap_or(""));
     set_text(&w.time, &p.time_text);
     set_text(&w.picked, p.picked.as_deref().unwrap_or(&p.picked_hint));

@@ -405,6 +405,8 @@ impl HostApp {
             w.length_unit = unit;
             w.refresh_status_bar(doc);
         }
+        // The rulers mark the pointer.
+        self.redraw(document);
     }
 
     /// The display unit of lengths (preferences).
@@ -1053,11 +1055,18 @@ impl HostApp {
     /// Draw the document's scene into its canvas (no-op without a surface or scene).
     pub(crate) fn redraw(&self, document: DocumentId) {
         let Some(scene) = self.controller.try_borrow().ok().and_then(|c| c.scene(document)) else { return };
-        let wireframe = self.view().document(document).is_some_and(|d| d.wireframe);
+        let vm = self.view();
+        let doc = vm.document(document);
+        let wireframe = doc.is_some_and(|d| d.wireframe);
+        let unit = self.length_preference();
         let Ok(windows) = self.windows.try_borrow() else { return };
         let Some(w) = windows.get(&document) else { return };
         let dark = super::canvas::is_dark(&w.canvas_view);
-        let packet = super::canvas::canvas_packet_themed(&scene, wireframe, self.display_tolerance_px.get(), dark);
+        // The rulers mark the pointer (world mm), in the preferences' unit and the window language.
+        let cursor_mm = w.pointer.zip(doc).map(|(p, d)| d.camera.points_to_world(&d.viewport, p));
+        let chrome = super::canvas::canvas_chrome_for(unit, self.locale, cursor_mm);
+        let packet =
+            super::canvas::canvas_packet_for(&scene, wireframe, self.display_tolerance_px.get(), dark, &chrome);
         if let Some(Err(e)) = w.controller.with_canvas(|canvas| canvas.draw(&packet)) {
             eprintln!("burnburn: canvas: {e}");
         }

@@ -442,3 +442,33 @@ fn write_the_preview_scene_when_asked_to() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(std::path::Path::new(&dir).join("scene-played-picked.ppm"), out).unwrap();
 }
+
+/// LF-C follow-up (Q4 in the preview window): the preview's heading is the plan's compile moment
+/// and duration, as in the inspector; the plan id is never the heading (it stays available as the
+/// tooltip for support).
+#[test]
+fn the_preview_heading_names_the_compile_moment_not_the_plan_id() {
+    let mut h = HeadlessEditorHarness::new();
+    h.controller().attach_clock(Arc::new(|| burnburn_presentation::JobClock::new(1_781_751_845, 120).ok()));
+    let doc = h.new_document().unwrap();
+    h.send(UiIntent::SetMachineProfile {
+        profile: Box::new(machine_profile()),
+        ruida: burnburn_ruida::RuidaProfile {
+            magic: burnburn_ruida::Magic::FIXTURE_0X88,
+            overscan: burnburn_ruida::OverscanPolicy::ControllerManaged,
+        },
+    });
+    h.invoke(doc, CommandKey::ToolRectangle);
+    h.drag(doc, (10.0, 10.0), (130.0, 90.0));
+    let rect = h.document(doc).unwrap().objects[0].id;
+    h.send(UiIntent::Select { document: doc, ids: vec![rect], mode: burnburn_presentation::SelectMode::Replace });
+    h.send(UiIntent::AddOperation { document: doc, draft: cut() });
+    h.invoke(doc, CommandKey::Compile);
+    h.run_tasks();
+    let view = h.controller().preview_view(doc).expect("a preview");
+    let panel = preview_panel(&view, Locale::Nl);
+    let id = view.plan.to_string();
+    assert!(panel.plan_text.starts_with("Plan van "), "{}", panel.plan_text);
+    assert!(!panel.plan_text.contains(&id[..8]), "no id in the heading: {}", panel.plan_text);
+    assert_eq!(panel.plan_tooltip, id, "the id stays reachable");
+}
