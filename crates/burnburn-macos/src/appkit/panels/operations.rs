@@ -2,7 +2,7 @@
 
 use crate::appkit::panels::layer_cells::{self, LayerTableDelegate};
 use crate::appkit::panels::production::LIFT;
-use crate::appkit::panels::widgets::{push_button, rect, selected_rows, set_text, strip_label};
+use crate::appkit::panels::widgets::{push_button, rect, selected_rows, set_error_text, set_text, strip_label};
 use crate::appkit::toolstrip::symbol_image;
 use crate::appkit::window::DocWindow;
 
@@ -69,7 +69,12 @@ pub(crate) fn build(mtm: MainThreadMarker, strip: &NSView, ops_width: f64, local
         b.setFrame(rect(12.0 + f64::from(slot) * SWATCH_PITCH, 214.0 + LIFT, SWATCH, 26.0));
         b.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinYMargin);
         b.setTag(isize::from(slot));
-        b.setAccessibilityLabel(Some(&NSString::from_str(&layer_label(slot))));
+        // A word before the code ("Laag C01"): VoiceOver reads a bare "C01" letter by letter.
+        b.setAccessibilityLabel(Some(&NSString::from_str(&format!(
+            "{} {}",
+            t(HostText::LayerColumn),
+            layer_label(slot)
+        ))));
         strip.addSubview(&b);
         palette.push(b);
     }
@@ -193,11 +198,15 @@ impl DocWindow {
             }
         }
         // The empty table says so with the empty state laid over it (LF17); the message line keeps
-        // only errors.
+        // only errors, with their tone glyph (LF15: colour is never the only carrier).
         self.operations_empty
             .show(burnburn_host_models::empty_state::operations_empty(vm, document, self.locale).as_ref());
         let message = &panel.error;
-        set_text(&self.operations.error, message);
+        if message.is_empty() {
+            set_text(&self.operations.error, message);
+        } else {
+            set_error_text(&self.operations.error, message);
+        }
         let color = if panel.error.is_empty() { NSColor::secondaryLabelColor() } else { NSColor::systemRedColor() };
         self.operations.error.setTextColor(Some(&color));
     }

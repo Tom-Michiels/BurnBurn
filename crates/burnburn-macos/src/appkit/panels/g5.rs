@@ -27,7 +27,7 @@ use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
 use crate::appkit::panels::form::{FormView, Wiring, build_form, install_form};
 use crate::appkit::panels::image::{image_view, show_bitmap};
-use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_text};
+use crate::appkit::panels::widgets::{field, label, push_button, rect, set_button_title, set_error_text, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
 use crate::panels::{G5Control, G5Line, G5Panel, G5PanelModel, g5_form, g5_opens_by_itself, g5_panel};
@@ -622,7 +622,7 @@ impl G5Section {
                     l.setTextColor(Some(&NSColor::labelColor()));
                 }
                 (G5Line::Problem(t), Widget::Label(l)) => {
-                    set_text(l, t);
+                    set_error_text(l, t);
                     l.setFrame(rect(MARGIN, y, full, *height));
                     l.setTextColor(Some(&NSColor::systemRedColor()));
                 }

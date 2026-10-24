@@ -16,7 +16,7 @@ use super::textform::{
     Cells, Form, FormRow, TextTarget, caption, check, message_line, new_target, popup, push, segments, set_check,
     set_field, set_popup_items, text_field, unwire,
 };
-use super::widgets::set_text;
+use super::widgets::{set_error_text, set_text};
 use crate::appkit::app::HostApp;
 use crate::appkit::window::DocWindow;
 use crate::l10n::Locale;
@@ -242,11 +242,15 @@ impl DocWindow {
         set_text(&s.csv_line, &p.csv_line);
         s.clear_csv.setEnabled(p.csv_loaded);
         s.row.setEnabled(p.csv_loaded);
-        set_text(&s.preview, &p.preview);
+        if p.preview_is_error {
+            set_error_text(&s.preview, &p.preview);
+        } else {
+            set_text(&s.preview, &p.preview);
+        }
         let color = if p.preview_is_error { NSColor::systemRedColor() } else { NSColor::labelColor() };
         s.preview.setTextColor(Some(&color));
         set_text(&s.test_text, &p.test);
-        set_text(&s.problem, &p.problem);
+        set_error_text(&s.problem, &p.problem);
         set_text(&s.bound, &p.bound);
         s.bake.setEnabled(p.variable);
         let height = s.form.lay_out();

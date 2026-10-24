@@ -348,3 +348,15 @@ harness = false
 name = "lf7_document_window"
 path = "../../tests/native/macos/lf7_document_window.rs"
 harness = false
+
+# Toegankelijkheid (LF15): Tab in leesvolgorde door elk formulier en het documentvenster.
+[[test]]
+name = "lf15_tab_order"
+path = "../../tests/native/macos/lf15_tab_order.rs"
+harness = false
+
+# Toegankelijkheid (LF15): toegankelijke namen en kleur nooit enige drager.
+[[test]]
+name = "lf15_accessible_names"
+path = "../../tests/native/macos/lf15_accessible_names.rs"
+harness = false

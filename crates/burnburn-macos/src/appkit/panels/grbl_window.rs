@@ -23,7 +23,9 @@ use objc2_foundation::{NSInteger, NSNotification, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::widgets::{field, label, push_button, rect, selected_rows, set_button_title, set_text};
+use crate::appkit::panels::widgets::{
+    field, label, push_button, rect, selected_rows, set_button_title, set_error_text, set_text,
+};
 use crate::l10n::Locale;
 use crate::panels::{GrblNumber, GrblWindowPanel};
 
@@ -520,7 +522,7 @@ impl GrblWindow {
     /// Copies the model into the widgets.
     pub(crate) fn refresh(&self, model: &GrblWindowPanel) {
         set_text(&self.status, &model.status);
-        set_text(&self.refusal, &model.refusal);
+        set_error_text(&self.refusal, &model.refusal);
         set_text(&self.notes, &model.notes);
         if self.transcript.string().to_string() != model.transcript {
             self.transcript.setString(&NSString::from_str(&model.transcript));

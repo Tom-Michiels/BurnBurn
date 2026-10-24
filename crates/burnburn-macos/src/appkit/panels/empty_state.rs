@@ -154,6 +154,11 @@ fn parts(stack: &NSStackView) -> Option<(Retained<NSImageView>, Retained<NSTextF
     Some((image, label, button))
 }
 
+/// The button of an empty-state stack while it is shown (Tab reaches it, LF15).
+pub(crate) fn empty_button(stack: &NSStackView) -> Option<Retained<NSButton>> {
+    parts(stack).map(|(_, _, button)| button).filter(|b| !b.isHidden())
+}
+
 /// The sentence of an empty-state stack.
 pub(crate) fn sentence(stack: &NSStackView) -> Option<String> {
     parts(stack).map(|(_, label, _)| label.stringValue().to_string())
@@ -162,10 +167,13 @@ pub(crate) fn sentence(stack: &NSStackView) -> Option<String> {
 /// The symbol and sentence of an empty-state stack (only what changed is written).
 pub(crate) fn set_empty(stack: &NSStackView, symbol: &str, text: &str) {
     let Some((image, label, _)) = parts(stack) else { return };
-    let shown = image.accessibilityLabel().map(|l| l.to_string());
-    if shown.as_deref() != Some(symbol) {
+    // The symbol is decoration: the sentence says it all, so VoiceOver skips the image (LF15). Its
+    // name is kept as the identifier (never read out) to know when it changes.
+    let shown = image.accessibilityIdentifier().map(|i| i.to_string()).unwrap_or_default();
+    if shown != symbol {
         image.setImage(big_symbol(symbol, "").as_deref());
-        image.setAccessibilityLabel(Some(&NSString::from_str(symbol)));
+        image.setAccessibilityIdentifier(Some(&NSString::from_str(symbol)));
+        image.setAccessibilityElement(false);
     }
     set_text(&label, text);
 }
@@ -258,11 +266,17 @@ impl EmptyOverlay {
 
     /// The symbol name on the image (for the native test).
     pub(crate) fn symbol(&self) -> String {
-        parts(&self.stack).and_then(|(i, _, _)| i.accessibilityLabel()).map(|s| s.to_string()).unwrap_or_default()
+        parts(&self.stack).and_then(|(i, _, _)| i.accessibilityIdentifier()).map(|s| s.to_string()).unwrap_or_default()
     }
 
     pub(crate) fn has_image(&self) -> bool {
         parts(&self.stack).is_some_and(|(i, _, _)| i.image().is_some())
+    }
+
+    /// The action button whether shown or not (the window's Tab loop links it once; AppKit skips
+    /// it while hidden).
+    pub(crate) fn key_stop(&self) -> Option<Retained<NSButton>> {
+        parts(&self.stack).map(|(_, _, b)| b)
     }
 
     /// The action button, visible only when the model offers an action.

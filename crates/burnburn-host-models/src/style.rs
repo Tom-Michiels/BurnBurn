@@ -133,6 +133,17 @@ impl StatusTone {
     }
 }
 
+/// `text` in `tone`: a warning or an error starts with the tone's glyph, so the colour is never
+/// the only carrier. Empty text stays empty and a text that already starts with the glyph is not
+/// marked twice.
+pub fn toned_text(tone: StatusTone, text: &str) -> String {
+    match tone {
+        StatusTone::Neutral => text.to_owned(),
+        StatusTone::Warning | StatusTone::Error if text.is_empty() || text.starts_with(tone.glyph()) => text.to_owned(),
+        StatusTone::Warning | StatusTone::Error => format!("{} {text}", tone.glyph()),
+    }
+}
+
 /// The tone of a view-model message in the status line: only failures and refusals are an error;
 /// outcomes that are uncertain (a machine whose state is unknown) are a warning; the rest is
 /// information. A key not listed is an error, so a new failure is never shown as calm.

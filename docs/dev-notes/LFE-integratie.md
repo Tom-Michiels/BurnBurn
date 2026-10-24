@@ -11,3 +11,12 @@ zit in de bovenste inset van de clip view.
 - Fix (`appkit/panels/empty_state.rs`): de overlay kent de kophoogte van de tabel, centreert onder de koppen en laat het
   symbool weg als het blok anders niet in de rijen past (zin en knop blijven).
 - `EmptyProbe.block_in_window` voor de test; features `NSTableHeaderView`, `NSClipView`.
+
+**LF15 × LF17 bij het samenvoegen** (de toegankelijkheidstests van LF15 draaiden op het lege-toestandwerk van LF17):
+
+| Test | Rood (na de merge) | Groen |
+|---|---|---|
+| native `lf15_tab_order` | "document window: not in the loop: NSButton 'Teken een rechthoek'" | knop van de lege objectlijst in de Tab-lus (`EmptyOverlay::key_stop`, AppKit slaat hem over zolang hij verborgen is); `Kind::Empty` in `FormView::key_stops` |
+| native `lf15_accessible_names` | 5 problemen: het symbool van een lege toestand las zijn SF-Symbol-naam voor (`square.dashed`, `photo.on.rectangle.angled`, …) | het symbool is decoratie (`setAccessibilityElement(false)`), de naam staat in de identifier |
+
+`lf17_empty_progress` en `layout_invariants` blijven groen.

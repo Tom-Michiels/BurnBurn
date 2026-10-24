@@ -25,7 +25,7 @@ use objc2_foundation::{NSPoint, NSSize, NSString};
 
 use crate::appkit::app::HostApp;
 use crate::appkit::classes::ffi_guard;
-use crate::appkit::panels::widgets::{field, label, push_button, rect, set_text};
+use crate::appkit::panels::widgets::{field, label, push_button, rect, set_error_text, set_text};
 use crate::l10n::Locale;
 use crate::panels::{CameraCommand, CameraInputs, CameraText, CameraWindowPanel, camera_text};
 
@@ -555,7 +555,7 @@ impl CameraWindow {
         set_text(&self.lens_status, &model.lens_status);
         set_text(&self.alignment_status, &model.alignment_status);
         set_text(&self.marks_status, &model.marks_status);
-        set_text(&self.refusal, &model.refusal);
+        set_error_text(&self.refusal, &model.refusal);
         for (command, button) in &self.commands {
             button.setEnabled(model.is_enabled(*command));
         }

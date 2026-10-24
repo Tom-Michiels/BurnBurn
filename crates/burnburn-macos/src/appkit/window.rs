@@ -9,7 +9,7 @@ use burnburn_presentation::{AppViewModel, CameraViewModel, CommandKey, FieldKey,
 use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{MainThreadMarker, MainThreadOnly, sel};
+use objc2::{MainThreadMarker, MainThreadOnly, Message, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAlert, NSAutoresizingMaskOptions, NSBackingStoreType, NSButton, NSColor, NSFloatingWindowLevel,
     NSFont, NSLineBreakMode, NSSavePanel, NSScrollView, NSSegmentedControl, NSSplitView, NSSplitViewDividerStyle,
@@ -487,6 +487,22 @@ impl DocWindow {
         toolbar.setDelegate(Some(toolbar_delegate(&controller)));
         window.setToolbar(Some(&toolbar));
 
+        // LF15: Tab runs object list, canvas, inspector, then the operations of the production strip.
+        {
+            let table_view: Retained<NSView> = Retained::into_super(Retained::into_super(table.clone()));
+            let canvas: Retained<NSView> = Retained::into_super(canvas_view.clone());
+            let mut stops = vec![table_view];
+            // The empty object list's button ("Teken een rechthoek", LF17); AppKit skips it while hidden.
+            if let Some(button) = objects_empty.key_stop() {
+                stops.push(Retained::into_super(Retained::into_super(button)));
+            }
+            stops.push(canvas.clone());
+            stops.extend(reading_stops(&inspector_pane));
+            stops.extend(reading_stops(&strip));
+            link_key_views(&stops);
+            window.setInitialFirstResponder(Some(&canvas));
+        }
+
         match &saved {
             Some(s) => {
                 window.setFrame_display(rect(s.x, s.y, s.width, s.height), false);
@@ -888,6 +904,79 @@ impl Drop for DocWindow {
             self.window.close();
         }
     }
+}
+
+/// Whether Tab can land on `view` (hidden views count: they come and go, AppKit skips them while
+/// they are hidden or disabled).
+fn is_tab_stop(view: &NSView) -> bool {
+    let any: &AnyObject = view.as_ref();
+    if let Some(t) = any.downcast_ref::<NSTextField>() {
+        return t.isEditable();
+    }
+    if let Some(t) = any.downcast_ref::<objc2_app_kit::NSTextView>() {
+        return t.isEditable();
+    }
+    any.downcast_ref::<NSButton>().is_some()
+        || any.downcast_ref::<objc2_app_kit::NSPopUpButton>().is_some()
+        || any.downcast_ref::<NSSegmentedControl>().is_some()
+        || any.downcast_ref::<NSTableView>().is_some()
+}
+
+/// The tab stops under `pane` in reading order: lines from the top, left to right within a line.
+/// Positions are taken in the pane's own document (a scroll view's document view), so how far the
+/// pane is scrolled does not matter.
+#[allow(unsafe_code)]
+fn reading_stops(pane: &NSView) -> Vec<Retained<NSView>> {
+    fn collect(view: &NSView, out: &mut Vec<Retained<NSView>>) {
+        for child in view.subviews().iter() {
+            let any: &AnyObject = child.as_ref();
+            // A field being edited holds its field editor; a text view of a memo is a stop itself
+            // but the scroll views and clip views around it are not.
+            if is_tab_stop(&child) {
+                out.push(child.clone());
+            }
+            if any.downcast_ref::<NSTextField>().is_none() && any.downcast_ref::<NSTableView>().is_none() {
+                collect(&child, out);
+            }
+        }
+    }
+    let mut views = Vec::new();
+    collect(pane, &mut views);
+    let space: Retained<NSView> =
+        pane.downcast_ref::<NSScrollView>().and_then(|s| s.documentView()).unwrap_or_else(|| pane.retain());
+    let mut placed: Vec<(f64, f64, Retained<NSView>)> = views
+        .into_iter()
+        .map(|v| {
+            let r = v.convertRect_toView(v.bounds(), Some(&space));
+            let mid = r.origin.y + r.size.height / 2.0;
+            (if space.isFlipped() { mid } else { -mid }, r.origin.x, v)
+        })
+        .collect();
+    placed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut lines: Vec<Vec<(f64, f64, Retained<NSView>)>> = Vec::new();
+    for p in placed {
+        match lines.last_mut() {
+            Some(line) if line.first().is_some_and(|f| (f.0 - p.0).abs() < 9.0) => line.push(p),
+            _ => lines.push(vec![p]),
+        }
+    }
+    for line in &mut lines {
+        line.sort_by(|a, b| a.1.total_cmp(&b.1));
+    }
+    lines.into_iter().flatten().map(|(_, _, v)| v).collect()
+}
+
+/// Links `stops` into a loop with `nextKeyView`, the last back to the first.
+#[allow(unsafe_code)]
+fn link_key_views(stops: &[Retained<NSView>]) {
+    let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return };
+    for pair in stops.windows(2) {
+        // SAFETY: the links are unretained; every stop is a view of this window, which keeps its
+        // views alive as long as the window exists.
+        unsafe { pair[0].setNextKeyView(Some(&pair[1])) };
+    }
+    // SAFETY: as above.
+    unsafe { last.setNextKeyView(Some(first)) };
 }
 
 /// The caption label above an inspector field (same container, tag `CAPTION_TAG_BASE + field tag`).
