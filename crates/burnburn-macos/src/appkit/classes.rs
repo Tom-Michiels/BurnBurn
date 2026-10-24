@@ -33,8 +33,8 @@ use objc2_app_kit::{
     NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSButton, NSControlStateValueOff,
     NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventType, NSMenuItem, NSMenuItemValidation,
     NSPopUpButton, NSResponder, NSSegmentedControl, NSSplitView, NSSplitViewDelegate, NSTableColumn, NSTableView,
-    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextInputClient, NSToolbar,
-    NSToolbarDelegate, NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
+    NSTableViewDataSource, NSTableViewDelegate, NSTextField, NSTextInputClient, NSToolbar, NSToolbarDelegate,
+    NSToolbarItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowDelegate,
 };
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSInteger, NSNotFound, NSNotification, NSNumber, NSPoint,
@@ -1142,8 +1142,7 @@ impl WindowController {
         let table = &self.ivars().operations_table;
         let row = usize::try_from(table.rowForView(control)).ok()?;
         let column = usize::try_from(table.columnForView(control)).ok()?;
-        layer_column(&table.tableColumns().objectAtIndex(column))
-            .map(|c| (row, c))
+        layer_column(&table.tableColumns().objectAtIndex(column)).map(|c| (row, c))
     }
 
     /// The typed text of a layer-table cell goes to presentation unparsed.

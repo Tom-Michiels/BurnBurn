@@ -26,9 +26,7 @@ use crate::appkit::panels::form_surface::{FormSurface, form_sheet};
 use crate::appkit::panels::widgets::{field, label, rect, set_text};
 use crate::appkit::window::DocWindow;
 use crate::l10n::{HostText, Locale, host_text};
-use crate::panels::{
-    GeometryDialogPanel, PARAM_SLOTS, ParamLine, ParamSection, geometry_dialog_panel, shapes_panel,
-};
+use crate::panels::{GeometryDialogPanel, PARAM_SLOTS, ParamLine, ParamSection, geometry_dialog_panel, shapes_panel};
 
 const PANEL_WIDTH: f64 = 300.0;
 const ROW_HEIGHT: f64 = 28.0;

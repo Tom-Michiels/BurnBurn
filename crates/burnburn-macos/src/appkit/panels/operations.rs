@@ -11,9 +11,8 @@ use burnburn_types::DocumentId;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSCellImagePosition, NSColor,
-    NSFont, NSImageScaling, NSPopUpButton, NSScrollView, NSTableColumn, NSTableView,
-    NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
+    NSAccessibility, NSAutoresizingMaskOptions, NSButton, NSCellImagePosition, NSColor, NSFont, NSImageScaling,
+    NSPopUpButton, NSScrollView, NSTableColumn, NSTableView, NSTableViewColumnAutoresizingStyle, NSTextField, NSView,
 };
 use objc2_foundation::{NSMutableIndexSet, NSSize, NSString};
 

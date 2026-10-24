@@ -18,11 +18,32 @@ pub enum FormLine<C> {
     Problem(String),
     /// Why the section cannot be used now: the section's `unavailable`, said once.
     Unavailable(String),
-    Memo { control: C, text: String },
-    Field { control: C, caption: String, text: String, invalid: bool },
-    Choice { control: C, caption: String, options: Vec<String>, selected: usize },
-    Check { control: C, caption: String, on: bool },
-    Button { control: C, title: String, enabled: bool },
+    Memo {
+        control: C,
+        text: String,
+    },
+    Field {
+        control: C,
+        caption: String,
+        text: String,
+        invalid: bool,
+    },
+    Choice {
+        control: C,
+        caption: String,
+        options: Vec<String>,
+        selected: usize,
+    },
+    Check {
+        control: C,
+        caption: String,
+        on: bool,
+    },
+    Button {
+        control: C,
+        title: String,
+        enabled: bool,
+    },
     Image(BitmapImage),
 }
 

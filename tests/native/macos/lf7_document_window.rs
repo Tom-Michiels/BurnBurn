@@ -222,9 +222,9 @@ mod scenario {
                 // Swatch and name: the layer cell draws a circle in the layer colour, the name follows.
                 let layer = table.viewAtColumn_row_makeIfNecessary(0, 0, true);
                 let name = table.viewAtColumn_row_makeIfNecessary(1, 0, true);
-                let circle = layer.as_ref().is_some_and(|v| {
-                    v.subviews().iter().any(|s| s.class().name().to_str() == Ok("BurnBurnLayerDot"))
-                });
+                let circle = layer
+                    .as_ref()
+                    .is_some_and(|v| v.subviews().iter().any(|s| s.class().name().to_str() == Ok("BurnBurnLayerDot")));
                 if !circle {
                     problems.push("the layer column has no colour circle".into());
                 }

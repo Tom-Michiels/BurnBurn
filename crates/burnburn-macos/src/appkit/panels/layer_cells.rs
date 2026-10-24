@@ -11,7 +11,8 @@ use objc2::runtime::{AnyObject, NSObjectProtocol};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSAutoresizingMaskOptions, NSBezierPath, NSButton, NSColor, NSControlStateValueOff,
-    NSControlStateValueOn, NSControlTextEditingDelegate, NSFont, NSTableCellView, NSTableColumn, NSTableView, NSTableViewDelegate, NSTextField, NSView,
+    NSControlStateValueOn, NSControlTextEditingDelegate, NSFont, NSTableCellView, NSTableColumn, NSTableView,
+    NSTableViewDelegate, NSTextField, NSView,
 };
 use objc2_foundation::{NSObject, NSRect, NSString};
 
@@ -81,17 +82,18 @@ define_class!(
         #[unsafe(method_id(tableView:viewForTableColumn:row:))]
         fn view_for_column(
             &self,
-            table: &NSTableView,
+            _table: &NSTableView,
             column: Option<&NSTableColumn>,
             row: isize,
         ) -> Option<Retained<NSView>> {
             ffi_guard("tableView:viewForTableColumn:row:", None, || {
                 let mtm = MainThreadMarker::new()?;
-                let column = LayerColumn::from_id(&column?.identifier().to_string())?;
+                let table_column = column?;
+                let column = LayerColumn::from_id(&table_column.identifier().to_string())?;
+                let title = table_column.title().to_string();
                 let controller = self.ivars().controller.try_borrow().ok()?.as_ref()?.load()?;
                 let line = controller.operation_line(usize::try_from(row).ok()?)?;
-                let width = table.tableColumnWithIdentifier(&NSString::from_str(column.id())).map_or(48.0, |c| c.width());
-                Some(layer_cell(mtm, &line, column, width, &controller))
+                Some(layer_cell(mtm, &line, column, &title, table_column.width(), &controller))
             })
         }
     }
@@ -121,6 +123,7 @@ pub(crate) fn layer_cell(
     mtm: MainThreadMarker,
     line: &OperationLine,
     column: LayerColumn,
+    title: &str,
     width: f64,
     target: &WindowController,
 ) -> Retained<NSView> {
@@ -130,11 +133,16 @@ pub(crate) fn layer_cell(
         // SAFETY: the target is weak and outlives the cell (the window owns the controller and
         // the table); `layerToggled:` takes the sender (`v@:@`).
         let check = unsafe {
-            NSButton::checkboxWithTitle_target_action(&NSString::from_str(""), Some(any), Some(sel!(layerToggled:)), mtm)
+            NSButton::checkboxWithTitle_target_action(
+                &NSString::from_str(""),
+                Some(any),
+                Some(sel!(layerToggled:)),
+                mtm,
+            )
         };
         check.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
         check.setFrame(rect(((width - CHECK) / 2.0).max(0.0), (ROW_HEIGHT - CHECK) / 2.0, CHECK, CHECK));
-        check.setAccessibilityLabel(Some(&NSString::from_str(&format!("{} {}", column.id(), line.layer))));
+        check.setAccessibilityLabel(Some(&NSString::from_str(&format!("{title} {}", line.layer))));
         cell.addSubview(&check);
         return Retained::into_super(cell);
     }
@@ -157,11 +165,10 @@ pub(crate) fn layer_cell(
             c.setSendsActionOnEndEditing(true);
         }
         // SAFETY: as above; `layerFieldEdited:` takes the sender (`v@:@`).
-        unsafe {
-            text_field.setTarget(Some(any));
-            text_field.setAction(Some(sel!(layerFieldEdited:)));
-        }
-        text_field.setAccessibilityLabel(Some(&NSString::from_str(&format!("{} {}", column.id(), line.layer))));
+        unsafe { text_field.setTarget(Some(any)) };
+        // SAFETY: as above.
+        unsafe { text_field.setAction(Some(sel!(layerFieldEdited:))) };
+        text_field.setAccessibilityLabel(Some(&NSString::from_str(&format!("{title} {}", line.layer))));
     }
     cell.addSubview(&text_field);
     // SAFETY: the field is a subview of the cell; the cell only uses it for accessibility and the

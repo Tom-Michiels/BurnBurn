@@ -19,9 +19,7 @@ fn main() -> ExitCode {
 }
 
 #[cfg(target_os = "macos")]
-fn find<T: objc2::DowncastTarget>(
-    view: &objc2_app_kit::NSView,
-) -> Option<objc2::rc::Retained<T>> {
+fn find<T: objc2::DowncastTarget>(view: &objc2_app_kit::NSView) -> Option<objc2::rc::Retained<T>> {
     for sub in view.subviews().iter() {
         if let Ok(found) = sub.clone().downcast::<T>() {
             return Some(found);
@@ -69,7 +67,10 @@ fn scenario() -> Result<(), String> {
         .find(|v| v.class().name().to_str() == Ok("BurnBurnLayerDot"))
         .ok_or("no circle view in the layer cell")?;
     let size = dot.frame().size;
-    expect(|| format!("the circle is 12 x 12 pt, got {} x {}", size.width, size.height), size.width == 12.0 && size.height == 12.0)?;
+    expect(
+        || format!("the circle is 12 x 12 pt, got {} x {}", size.width, size.height),
+        size.width == 12.0 && size.height == 12.0,
+    )?;
     let name = find::<NSTextField>(&layer).ok_or("no name in the layer cell")?;
     expect(|| format!("the layer's name, got {:?}", name.stringValue()), name.stringValue().to_string() == "C01")?;
     expect(|| "the name is read-only".into(), !name.isEditable())?;
